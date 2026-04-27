@@ -207,24 +207,27 @@ class BasetenRemote(TrussRemote):
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True),
-            "llm_config": config.llm_config or {},
+            "llm_config": config.bis_llm.config or {},
         }
         if model_id is None:
             body["name"] = model_name
-        if config.llm_version:
-            body["llm_version"] = config.llm_version
         if config.environment_variables:
             body["environment_variables"] = config.environment_variables
-        if config.autoscaling_settings is not None:
-            body["autoscaling_settings"] = config.autoscaling_settings.model_dump(
-                exclude_none=True
-            )
-        if config.additional_autoscaling_config is not None:
-            body["additional_autoscaling_config"] = (
-                config.additional_autoscaling_config.model_dump(exclude_none=True)
-            )
         if labels is not None:
             body["metadata"] = labels
+
+        if config.bis_llm:
+            if config.bis_llm.version:
+                body["llm_version"] = config.bis_llm.version
+
+            if config.bis_llm.config is not None:
+                body["config"] = config.bis_llm.config
+
+            if config.bis_llm.additional_autoscaling_config is not None:
+                body["additional_autoscaling_config"] = (
+                    config.bis_llm.additional_autoscaling_config.model_dump(exclude_none=True)
+                )
+
         return body
 
     # Validate and finalize options.
@@ -253,7 +256,7 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle.spec.config
 
-        if config.llm_config is not None:
+        if config.bis_llm is not None:
             self._validate_llm_push_options(
                 publish=publish,
                 promote=promote,
@@ -309,7 +312,7 @@ class BasetenRemote(TrussRemote):
 
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
-        if config.llm_config is None:
+        if config.bis_llm is None:
             validate_truss_config_against_backend(self._api, encoded_config_str)
         default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
         config_yaml_override: Optional[bytes] = None
@@ -374,7 +377,7 @@ class BasetenRemote(TrussRemote):
         )
 
         config = truss_handle.spec.config
-        if config.llm_config is not None:
+        if config.bis_llm is not None:
             model_version_handle = create_llm_service(
                 api=self._api,
                 body=self._prepare_llm_request_body(
