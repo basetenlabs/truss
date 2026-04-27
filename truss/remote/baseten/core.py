@@ -315,9 +315,17 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
 
 
 def archive_dir(
-    dir: pathlib.Path, progress_bar: Optional[Type["progress.Progress"]] = None
+    dir: pathlib.Path,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
+    config_yaml_override: Optional[bytes] = None,
 ) -> IO:
-    """Archive a TrussHandle into a tar file.
+    """Archive a directory (typically a Truss) into a tar file.
+
+    Args:
+        dir: Root directory to pack.
+        progress_bar: Optional Rich progress bar type.
+        config_yaml_override: If set, root ``config.yaml`` in the archive is this
+            content instead of the file on disk (used for ``truss push --config``).
 
     Returns:
         A file-like object containing the tar file
@@ -327,12 +335,19 @@ def archive_dir(
 
     try:
         temp_file = create_tar_with_progress_bar(
-            dir, ignore_patterns, progress_bar=progress_bar
+            dir,
+            ignore_patterns,
+            progress_bar=progress_bar,
+            config_yaml_override=config_yaml_override,
         )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
-            dir, ignore_patterns, delete=False, progress_bar=progress_bar
+            dir,
+            ignore_patterns,
+            delete=False,
+            progress_bar=progress_bar,
+            config_yaml_override=config_yaml_override,
         )
     temp_file.file.seek(0)
     return temp_file
