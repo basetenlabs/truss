@@ -1206,7 +1206,7 @@ def model_config(
         return
 
     raw_config = response.get("raw_config")
-    if raw_config:
+    if raw_config is not None:
         click.echo(raw_config, nl=False)
     else:
         parsed = TrussConfig.from_dict(response.get("config") or {})
