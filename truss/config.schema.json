@@ -1,9 +1,14 @@
 {
   "$defs": {
     "AcceleratorSpec": {
-      "additionalProperties": true,
-      "title": "AcceleratorSpec",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "BaseImage": {
       "additionalProperties": true,

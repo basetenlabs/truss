@@ -149,11 +149,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        schema = handler(core_schema)
-        schema.update(type="string")
-        schema.pop("properties", None)
-        schema.pop("required", None)
-        return schema
+        return {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
 
 class ModelRepoSourceKind(str, enum.Enum):
