@@ -990,7 +990,15 @@ def gen_truss_chainlet(
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
-    if engine_builder_config:
+    # Briton-only engine-builder chainlets emit a pure-briton truss with no
+    # user ``model.py`` and no bundled packages. The custom variant ships real
+    # user code, so it must fall through to ``_gen_truss_chainlet_file`` and
+    # the ``copy_tree_path`` below; the chains-generated ``TrussChainletModel``
+    # is what receives ``trt_llm`` injection from the truss server and routes
+    # requests to ``run_remote``.
+    if engine_builder_config and not framework.is_custom_engine_builder_chainlet(
+        chainlet_descriptor.chainlet_cls
+    ):
         return chainlet_dir
 
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
