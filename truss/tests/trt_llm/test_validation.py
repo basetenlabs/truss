@@ -62,6 +62,41 @@ class Model:
             "foo",
             False,
         ),
+        # Class with class-level annotated assignments before __init__ (mirrors
+        # the chains-generated ``TrussChainletModel``). Should not crash on
+        # accessing ``.name`` of an ``ast.AnnAssign`` node.
+        (
+            """
+from typing import Any, Optional
+
+
+class TrussChainletModel:
+    _context: Any
+    _chainlet: Any
+    _trt_llm: Optional[Any]
+
+    def __init__(self, config, trt_llm=None):
+        pass
+            """,
+            "TrussChainletModel",
+            "trt_llm",
+            False,
+        ),
+        # Same shape, but missing the ``trt_llm`` arg -- should raise the
+        # normal "missing arg" ValidationError, not an AttributeError.
+        (
+            """
+class TrussChainletModel:
+    _context: object
+    _chainlet: object
+
+    def __init__(self, config):
+        pass
+            """,
+            "TrussChainletModel",
+            "trt_llm",
+            True,
+        ),
     ],
 )
 def test_has_class_init_arg(src, expected_arg, class_name, expected_to_raise):

@@ -21,10 +21,17 @@ def _verify_has_class_init_arg(source: str, class_name: str, arg_name: str):
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             for child in node.body:
-                if child.name == "__init__":  # type: ignore[attr-defined]
+                # The class body can contain class-level annotated assignments
+                # (``ast.AnnAssign``), docstrings, etc. Only ``FunctionDef`` /
+                # ``AsyncFunctionDef`` carry a ``.name``; skip everything else
+                # so we don't trip on e.g. ``_chainlet: ABCChainlet`` declared
+                # in the chains-generated ``TrussChainletModel``.
+                if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if child.name == "__init__":
                     model_class_init_found = True
                     arg_found = False
-                    for arg in child.args.args:  # type: ignore[attr-defined]
+                    for arg in child.args.args:
                         if arg.arg == arg_name:
                             arg_found = True
                     if not arg_found:
