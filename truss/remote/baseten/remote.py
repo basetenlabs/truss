@@ -180,23 +180,23 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int],
     ) -> None:
         if not publish:
-            raise ValueError("Development deployment is not supported for LLM models.")
+            raise ValueError("Development deployment is not supported for BIS LLM models.")
         if promote:
-            raise ValueError("Promotion is not supported for LLM models ")
+            raise ValueError("Promotion is not supported for BIS LLM models ")
         if environment:
-            raise ValueError("Environment is not supported for LLM models.")
+            raise ValueError("Environment is not supported for BIS LLM models.")
         if preserve_previous_prod_deployment:
             raise ValueError(
-                "Preserve previous production deployment is not supported for LLM models."
+                "Preserve previous production deployment is not supported for BIS LLM models."
             )
         if disable_truss_download:
-            raise ValueError("Disable truss download is not supported for LLM models.")
+            raise ValueError("Disable truss download is not supported for BIS LLM models.")
         if deployment_name:
-            raise ValueError("Deployment name is not supported for LLM models.")
+            raise ValueError("Deployment name is not supported for BIS LLM models.")
         if origin:
-            raise ValueError("Origin is not supported for LLM models.")
+            raise ValueError("Origin is not supported for BIS LLM models.")
         if deploy_timeout_minutes is not None:
-            raise ValueError("Deploy timeout minutes is not supported for LLM models.")
+            raise ValueError("Deploy timeout minutes is not supported for BIS LLM models.")
 
     def _prepare_bis_llm_request_body(
         self,
