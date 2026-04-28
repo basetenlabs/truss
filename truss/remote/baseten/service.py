@@ -37,7 +37,7 @@ class URLConfig(enum.Enum):
         app_endpoint: str
 
     MODEL = Data("model", "predict", "models")
-    LLM = Data("model", "sync/v1/chat/completions", "models")
+    BIS_LLM = Data("model", "sync/v1/chat/completions", "models")
     CHAIN = Data("chain", "run_remote", "chains")
 
     @staticmethod

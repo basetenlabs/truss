@@ -36,7 +36,7 @@ from truss.remote.baseten.core import (
     ModelVersionId,
     archive_dir,
     create_chain_atomic,
-    create_llm_service,
+    create_bis_llm_service,
     create_truss_service,
     exists_model,
     get_dev_version_from_versions,
@@ -168,7 +168,7 @@ class BasetenRemote(TrussRemote):
             workload_types=["model_container", "model_build"],
         )
 
-    def _validate_llm_push_options(
+    def _validate_bis_llm_push_options(
         self,
         publish: bool,
         promote: bool,
@@ -198,7 +198,7 @@ class BasetenRemote(TrussRemote):
         if deploy_timeout_minutes is not None:
             raise ValueError("Deploy timeout minutes is not supported for LLM models.")
 
-    def _prepare_llm_request_body(
+    def _prepare_bis_llm_request_body(
         self,
         config: Any,
         model_name: str,
@@ -258,7 +258,7 @@ class BasetenRemote(TrussRemote):
         config = truss_handle.spec.config
 
         if config.bis_llm is not None:
-            self._validate_llm_push_options(
+            self._validate_bis_llm_push_options(
                 publish=publish,
                 promote=promote,
                 preserve_previous_prod_deployment=preserve_previous_prod_deployment,
@@ -379,9 +379,9 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle.spec.config
         if config.bis_llm is not None:
-            model_version_handle = create_llm_service(
+            model_version_handle = create_bis_llm_service(
                 api=self._api,
-                body=self._prepare_llm_request_body(
+                body=self._prepare_bis_llm_request_body(
                     config=config,
                     model_name=model_name,
                     model_id=push_data.model_id,
@@ -397,7 +397,7 @@ class BasetenRemote(TrussRemote):
                 service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
                 truss_handle=truss_handle,
                 api=self._api,
-                url_config=URLConfig.LLM,
+                url_config=URLConfig.BIS_LLM,
             )
 
         if include_git_info:

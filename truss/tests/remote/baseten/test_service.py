@@ -44,9 +44,9 @@ def test_chain_invoke_url_draft():
     assert url == "https://chain-abc.api.baseten.co/development/run_remote"
 
 
-def test_llm_invoke_url_prod():
+def test_bis_llm_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://model-abc.api.baseten.co", service.URLConfig.LLM, "123", is_draft=False
+        "https://model-abc.api.baseten.co", service.URLConfig.BIS_LLM, "123", is_draft=False
     )
     assert (
         url
@@ -68,9 +68,9 @@ def test_chain_status_page_url():
     assert url == "https://app.baseten.co/chains/abc/overview"
 
 
-def test_llm_status_page_url():
+def test_bis_llm_status_page_url():
     url = service.URLConfig.status_page_url(
-        "https://app.baseten.co", service.URLConfig.LLM, "123"
+        "https://app.baseten.co", service.URLConfig.BIS_LLM, "123"
     )
     assert url == "https://app.baseten.co/models/123/overview"
 
