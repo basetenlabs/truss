@@ -539,6 +539,33 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+class AutoscalingMetric(pydantic.BaseModel):
+    name: str
+    target: float
+
+
+class AdditionalAutoscalingConfig(pydantic.BaseModel):
+    """Additional autoscaling configuration for in-flight token metrics."""
+
+    metrics: list[AutoscalingMetric] = pydantic.Field(
+        ..., description="List of metric targets for autoscaling."
+    )
+
+
+class BISLLM(custom_types.ConfigModel):
+    """Configuration options for BIS LLM deployments."""
+
+    config: Optional[dict[str, Any]] = pydantic.Field(
+        default=None, description="Configuration options for BIS LLM deployments."
+    )
+    version: str = pydantic.Field(
+        default="", description="The version of the BIS LLM deployment stack."
+    )
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = (
+        pydantic.Field(default=None, description="Additional autoscaling configuration")
+    )
+
+
 class HealthChecks(custom_types.ConfigModel):
     """Custom health check configuration for your deployments."""
 
@@ -1175,6 +1202,11 @@ class TrussConfig(custom_types.ConfigModel):
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
         default=None,
         description="Configuration for deploying from training checkpoints.",
+    )
+
+    bis_llm: Optional[BISLLM] = pydantic.Field(
+        default=None,
+        description="Configuration options for BIS LLM deployments. This field may change in the future.",
     )
 
     # Internal / Legacy.

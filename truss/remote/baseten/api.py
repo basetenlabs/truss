@@ -1131,3 +1131,12 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    def create_bis_llm_model(self, body: dict, team_id: Optional[str] = None) -> dict:
+        endpoint = f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
+        return self._rest_api_client.post(endpoint, body=body)
+
+    def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
+        return self._rest_api_client.post(
+            f"v1/llm_models/{model_id}/deployments", body=body
+        )
