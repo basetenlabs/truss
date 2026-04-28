@@ -652,8 +652,7 @@ def test_push_uses_llm_service_for_llm_config(
     remote, mock_upload_truss, mock_truss_handle
 ):
     mock_truss_handle.spec.config.bis_llm = BISLLM(
-        config={"model": "test-llm"},
-        version="v1",
+        config={"model": "test-llm"}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
 

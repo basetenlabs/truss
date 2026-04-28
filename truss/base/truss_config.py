@@ -569,6 +569,7 @@ class BISLLM(custom_types.ConfigModel):
         pydantic.Field(default=None, description="Additional autoscaling configuration")
     )
 
+
 class HealthChecks(custom_types.ConfigModel):
     """Custom health check configuration for your deployments."""
 
