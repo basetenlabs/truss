@@ -46,7 +46,10 @@ def test_chain_invoke_url_draft():
 
 def test_bis_llm_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://model-abc.api.baseten.co", service.URLConfig.BIS_LLM, "123", is_draft=False
+        "https://model-abc.api.baseten.co",
+        service.URLConfig.BIS_LLM,
+        "123",
+        is_draft=False,
     )
     assert (
         url

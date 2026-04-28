@@ -35,8 +35,8 @@ from truss.remote.baseten.core import (
     ModelVersionHandle,
     ModelVersionId,
     archive_dir,
-    create_chain_atomic,
     create_bis_llm_service,
+    create_chain_atomic,
     create_truss_service,
     exists_model,
     get_dev_version_from_versions,
@@ -180,7 +180,9 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int],
     ) -> None:
         if not publish:
-            raise ValueError("Development deployment is not supported for BIS LLM models.")
+            raise ValueError(
+                "Development deployment is not supported for BIS LLM models."
+            )
         if promote:
             raise ValueError("Promotion is not supported for BIS LLM models ")
         if environment:
@@ -190,13 +192,17 @@ class BasetenRemote(TrussRemote):
                 "Preserve previous production deployment is not supported for BIS LLM models."
             )
         if disable_truss_download:
-            raise ValueError("Disable truss download is not supported for BIS LLM models.")
+            raise ValueError(
+                "Disable truss download is not supported for BIS LLM models."
+            )
         if deployment_name:
             raise ValueError("Deployment name is not supported for BIS LLM models.")
         if origin:
             raise ValueError("Origin is not supported for BIS LLM models.")
         if deploy_timeout_minutes is not None:
-            raise ValueError("Deploy timeout minutes is not supported for BIS LLM models.")
+            raise ValueError(
+                "Deploy timeout minutes is not supported for BIS LLM models."
+            )
 
     def _prepare_bis_llm_request_body(
         self,

@@ -1209,7 +1209,8 @@ class TrussConfig(custom_types.ConfigModel):
     )
 
     bis_llm: Optional[BISLLM] = pydantic.Field(
-        default=None, description="Configuration options for BIS LLM deployments. This field may change in the future."
+        default=None,
+        description="Configuration options for BIS LLM deployments. This field may change in the future.",
     )
 
     # Internal / Legacy.

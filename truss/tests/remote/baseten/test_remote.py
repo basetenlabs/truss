@@ -664,7 +664,9 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         instance_type_name=None,
     )
 
-    with patch("truss.remote.baseten.remote.exists_model", return_value="bis-llm-model-id"):
+    with patch(
+        "truss.remote.baseten.remote.exists_model", return_value="bis-llm-model-id"
+    ):
         with patch(
             "truss.remote.baseten.remote.validate_truss_config_against_backend"
         ) as mock_validate_backend:
@@ -711,10 +713,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
             {"publish": False},
             "Development deployment is not supported for BIS LLM models.",
         ),
-        (
-            {"promote": True},
-            "Promotion is not supported for BIS LLM models ",
-        ),
+        ({"promote": True}, "Promotion is not supported for BIS LLM models "),
         (
             {"environment": "staging"},
             "Environment is not supported for BIS LLM models.",
@@ -748,10 +747,7 @@ def test_push_bis_llm_rejects_disallowed_options(
     kwargs = {"publish": True, **extra_kwargs}
     with pytest.raises(ValueError, match=re.escape(error_message)):
         remote.push(
-            mock_truss_handle,
-            "model_name",
-            mock_truss_handle.truss_dir,
-            **kwargs,
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
         )
 
 
