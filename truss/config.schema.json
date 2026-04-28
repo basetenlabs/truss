@@ -2083,7 +2083,7 @@
         }
       ],
       "default": null,
-      "description": "Configuration options for BIS LLM deployments."
+      "description": "Configuration options for BIS LLM deployments. This field may change in the future."
     },
     "input_type": {
       "default": "Any",
