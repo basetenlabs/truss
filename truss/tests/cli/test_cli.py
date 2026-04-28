@@ -69,7 +69,11 @@ def test_successful_ping_resets_failure_count():
         with patch("truss.cli.utils.common.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                common.keepalive_loop(
+                    "http://fake",
+                    lambda: {"Authorization": "Api-Key test_api_key"},
+                    stop_event,
+                )
     assert call_count == 4  # All calls were made, no early exit
 
 
@@ -85,7 +89,11 @@ def test_exits_after_max_consecutive_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
     mock_exit.assert_called_once_with(1)
 
 
@@ -103,7 +111,11 @@ def test_request_exception_counts_as_failure():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_called_once_with(1)
 
@@ -132,7 +144,11 @@ def test_model_not_ready_does_not_count_as_failure():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_not_called()
 
@@ -150,7 +166,11 @@ def test_5xx_errors_count_as_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_called_once_with(1)
 
@@ -189,7 +209,7 @@ def test_keepalive_loop_emits_30min_warning():
 
                 common.keepalive_loop(
                     model_hostname="https://test.baseten.co",
-                    api_key="test-key",
+                    header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
 
@@ -220,7 +240,7 @@ def _make_watch_mocks(
     mock_tr.spec.config.model_name = "test_model"
 
     remote_provider = MagicMock()
-    remote_provider._auth_service.authenticate.return_value = Mock(value="test_key")
+    remote_provider.auth_header.return_value = {"Authorization": "Api-Key test_key"}
     remote_provider.remote_url = "https://app.baseten.co"
     remote_provider.api.get_deployment.return_value = {"status": "ACTIVE"}
 
@@ -315,7 +335,7 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
     assert thread_args[0] == "https://model-abc123.api.baseten.co"
-    assert thread_args[1] == "test_key"
+    assert thread_args[1] is remote_provider.auth_header
     mock_thread.start.assert_called_once()
 
 
@@ -340,7 +360,7 @@ def test_keepalive_loop_constructs_correct_url():
             with patch.object(stop_event, "wait", side_effect=stop_after_first):
                 common.keepalive_loop(
                     model_hostname="https://model-abc123.api.baseten.co",
-                    api_key="test-key",
+                    header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
 
@@ -492,7 +512,7 @@ def test_keepalive_loop_continues_before_max_duration():
                     with pytest.raises(SystemExit):
                         common.keepalive_loop(
                             "https://model-abc123.api.baseten.co",
-                            "fake_key",
+                            lambda: {"Authorization": "Api-Key fake_key"},
                             stop_event,
                         )
 
@@ -1084,7 +1104,7 @@ def test_push_watch_no_sleep_starts_keepalive(
 
     assert result.exit_code == 0
     mock_start_keepalive.assert_called_once_with(
-        "https://model.api.baseten.co", remote._auth_service.authenticate().value
+        "https://model.api.baseten.co", remote.auth_header
     )
     mock_start_watch.assert_called_once()
 

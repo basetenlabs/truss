@@ -26,6 +26,7 @@ def login(api_key: str):
         name="baseten",
         configs={
             "remote_provider": "baseten",
+            "auth_type": "api_key",
             "api_key": api_key,
             "remote_url": remote_url,
         },

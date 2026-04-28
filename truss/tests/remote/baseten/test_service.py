@@ -84,7 +84,7 @@ def test_predict_response_to_json():
     service_instance = service.BasetenService(
         model_version_handle=mock_handle,
         is_draft=False,
-        api_key="test-key",
+        header_provider=lambda: {"Authorization": "Api-Key test-key"},
         service_url="https://test.com",
         api=mock_api,
     )
@@ -121,3 +121,47 @@ def test_predict_response_to_json():
     mock_response.json.return_value = True
     result = service_instance.predict({"input": "test"})
     assert result is True
+
+
+def test_predict_uses_header_provider_for_each_request():
+    """Inference works with any auth (api_key or OAuth Bearer) supplied by the
+    header_provider; the provider is consulted per request so refreshed OAuth
+    tokens are picked up."""
+    mock_handle = MagicMock(spec=ModelVersionHandle)
+    mock_handle.model_id = "test-model"
+    mock_handle.version_id = "test-version"
+    mock_handle.hostname = "https://model-test.api.baseten.co"
+
+    mock_api = MagicMock()
+    mock_api.app_url = "https://app.baseten.co"
+
+    headers_seen = []
+    tokens = iter(["t1", "t2"])
+
+    def header_provider():
+        return {"Authorization": f"Bearer {next(tokens)}"}
+
+    service_instance = service.BasetenService(
+        model_version_handle=mock_handle,
+        is_draft=False,
+        header_provider=header_provider,
+        service_url="https://test.com",
+        api=mock_api,
+    )
+
+    def fake_send_request(url, method, **kwargs):
+        headers_seen.append(service_instance.authenticate())
+        resp = MagicMock()
+        resp.json.return_value = {"ok": True}
+        resp.headers = {}
+        return resp
+
+    service_instance._send_request = fake_send_request
+
+    service_instance.predict({"input": "a"})
+    service_instance.predict({"input": "b"})
+
+    assert headers_seen == [
+        {"Authorization": "Bearer t1"},
+        {"Authorization": "Bearer t2"},
+    ]
