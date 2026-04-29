@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from dataclasses import replace
 from typing import Callable, Dict, Optional
 
@@ -32,6 +33,7 @@ class AuthService:
         self._api_url: Optional[str] = api_url
         self._on_token_refresh: Optional[Callable[[OAuthCredential], None]] = None
         self._api_key: Optional[str] = None
+        self._refresh_lock = threading.Lock()
         if oauth_credential is not None:
             if api_url is None:
                 raise ValueError("api_url is required for OAuth credentials")
@@ -48,8 +50,11 @@ class AuthService:
         its ``expires_at``.
         """
         if self._oauth_credential is not None:
-            self._refresh_if_expired()
-            return {"Authorization": f"Bearer {self._oauth_credential.access_token}"}
+            with self._refresh_lock:
+                self._refresh_if_expired()
+                return {
+                    "Authorization": f"Bearer {self._oauth_credential.access_token}"
+                }
         if not self._api_key:
             raise AuthorizationError("No credentials provided.")
         return {"Authorization": f"Api-Key {self._api_key}"}

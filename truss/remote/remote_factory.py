@@ -228,7 +228,7 @@ def _apply_secrets_to_config(remote_config: RemoteConfig) -> None:
             f"Keyring entry for remote {remote_config.name!r} is malformed."
         )
     for key in secret_keys:
-        configs[key] = payload[key]
+        configs.setdefault(key, payload[key])
 
 
 def _offload_secrets_from_config(remote_config: RemoteConfig) -> None:
