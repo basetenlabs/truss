@@ -1,9 +1,90 @@
 {
   "$defs": {
     "AcceleratorSpec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "AdditionalAutoscalingConfig": {
+      "description": "Additional autoscaling configuration for in-flight token metrics.",
+      "properties": {
+        "metrics": {
+          "description": "List of metric targets for autoscaling.",
+          "items": {
+            "$ref": "#/$defs/AutoscalingMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "title": "AdditionalAutoscalingConfig",
+      "type": "object"
+    },
+    "AutoscalingMetric": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ],
+      "title": "AutoscalingMetric",
+      "type": "object"
+    },
+    "BISLLM": {
       "additionalProperties": true,
-      "title": "AcceleratorSpec",
-      "type": "string"
+      "description": "Configuration options for BIS LLM deployments.",
+      "properties": {
+        "config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration options for BIS LLM deployments.",
+          "title": "Config"
+        },
+        "version": {
+          "default": "",
+          "description": "The version of the BIS LLM deployment stack.",
+          "title": "Version",
+          "type": "string"
+        },
+        "additional_autoscaling_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdditionalAutoscalingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Additional autoscaling configuration"
+        }
+      },
+      "title": "BISLLM",
+      "type": "object"
     },
     "BaseImage": {
       "additionalProperties": true,
@@ -1996,6 +2077,18 @@
       ],
       "default": null,
       "description": "Configuration for deploying from training checkpoints."
+    },
+    "bis_llm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BISLLM"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configuration options for BIS LLM deployments. This field may change in the future."
     },
     "input_type": {
       "default": "Any",
