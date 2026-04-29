@@ -1001,6 +1001,12 @@ class BasetenApi:
         response = requests.get(presigned_url)
         return response.content
 
+    def get_deployment_download_url(self, model_id: str, deployment_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/download"
+        )
+        return response["download_url"]
+
     def get_model_deployment_logs(
         self,
         model_id: str,
@@ -1124,3 +1130,12 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    def create_bis_llm_model(self, body: dict, team_id: Optional[str] = None) -> dict:
+        endpoint = f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
+        return self._rest_api_client.post(endpoint, body=body)
+
+    def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
+        return self._rest_api_client.post(
+            f"v1/llm_models/{model_id}/deployments", body=body
+        )

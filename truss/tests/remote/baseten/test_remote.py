@@ -1,3 +1,4 @@
+import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,7 @@ import pydantic
 import pytest
 import requests_mock
 
+from truss.base.truss_config import BISLLM
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -15,6 +17,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
+from truss.remote.baseten.service import URLConfig
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
@@ -644,6 +647,108 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             match="Extra fields not allowed: \[extra_field, who_am_i\]",
         ):
             remote.push(th, "model_name", th.truss_dir)
+
+
+def test_push_uses_bis_llm_service_for_bis_llm(
+    remote, mock_upload_truss, mock_truss_handle
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(
+        config={"model": "test-llm"}, version="v1"
+    )
+    mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+
+    bis_llm_handle = mock.Mock(
+        version_id="bis-llm-deployment-id",
+        model_id="bis-llm-model-id",
+        hostname="hostname",
+        instance_type_name=None,
+    )
+
+    with patch(
+        "truss.remote.baseten.remote.exists_model", return_value="bis-llm-model-id"
+    ):
+        with patch(
+            "truss.remote.baseten.remote.validate_truss_config_against_backend"
+        ) as mock_validate_backend:
+            with patch(
+                "truss.remote.baseten.remote.create_bis_llm_service",
+                return_value=bis_llm_handle,
+            ) as mock_create_bis_llm_service:
+                with patch(
+                    "truss.remote.baseten.remote.create_truss_service"
+                ) as mock_create_truss_service:
+                    service = remote.push(
+                        mock_truss_handle,
+                        "model_name",
+                        mock_truss_handle.truss_dir,
+                        publish=True,
+                        labels={"git_sha": "abc123", "environment": "production"},
+                    )
+
+    mock_validate_backend.assert_not_called()
+    mock_upload_truss.assert_called_once()
+    mock_create_truss_service.assert_not_called()
+    mock_create_bis_llm_service.assert_called_once()
+    _, kwargs = mock_create_bis_llm_service.call_args
+    assert kwargs["model_id"] == "bis-llm-model-id"
+    assert kwargs["team_id"] is None
+    assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
+    assert kwargs["body"]["llm_version"] == "v1"
+    assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
+    assert kwargs["body"]["metadata"] == {
+        "git_sha": "abc123",
+        "environment": "production",
+    }
+    assert isinstance(kwargs["body"]["resources"], dict)
+    assert "name" not in kwargs["body"]
+    assert service.model_id == "bis-llm-model-id"
+    assert service.model_version_id == "bis-llm-deployment-id"
+    assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize(
+    "extra_kwargs,error_message",
+    [
+        (
+            {"publish": False},
+            "Development deployment is not supported for BIS LLM models.",
+        ),
+        ({"promote": True}, "Promotion is not supported for BIS LLM models "),
+        (
+            {"environment": "staging"},
+            "Environment is not supported for BIS LLM models.",
+        ),
+        (
+            {"preserve_previous_prod_deployment": True},
+            "Preserve previous production deployment is not supported for BIS LLM models.",
+        ),
+        (
+            {"disable_truss_download": True},
+            "Disable truss download is not supported for BIS LLM models.",
+        ),
+        (
+            {"deployment_name": "v1"},
+            "Deployment name is not supported for BIS LLM models.",
+        ),
+        (
+            {"origin": b10_types.ModelOrigin.BASETEN},
+            "Origin is not supported for BIS LLM models.",
+        ),
+        (
+            {"deploy_timeout_minutes": 30},
+            "Deploy timeout minutes is not supported for BIS LLM models.",
+        ),
+    ],
+)
+def test_push_bis_llm_rejects_disallowed_options(
+    remote, mock_truss_handle, extra_kwargs, error_message
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    kwargs = {"publish": True, **extra_kwargs}
+    with pytest.raises(ValueError, match=re.escape(error_message)):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
+        )
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(

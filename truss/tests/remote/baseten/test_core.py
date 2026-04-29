@@ -12,6 +12,7 @@ from truss.remote.baseten import core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     MAX_BATCH_SIZE,
+    create_bis_llm_service,
     create_truss_service,
     get_training_job_logs_with_pagination,
 )
@@ -1061,3 +1062,41 @@ def test_create_truss_service_passes_labels_for_existing_model():
     api.create_model_version_from_truss.assert_called_once()
     _, kwargs = api.create_model_version_from_truss.call_args
     assert kwargs["labels"] == labels
+
+
+def test_create_bus_llm_service_creates_new_model():
+    api = MagicMock()
+    api.create_bis_llm_model.return_value = {
+        "model_id": "bis-llm-model-id",
+        "version_id": "bis-llm-deployment-id",
+        "hostname": "hostname",
+        "instance_type_name": "A10G",
+    }
+    body = {"name": "my-bis-llm", "resources": {"accelerator": "A10G"}}
+
+    version_handle = create_bis_llm_service(api, body=body, team_id="team-123")
+
+    assert version_handle.model_id == "bis-llm-model-id"
+    assert version_handle.version_id == "bis-llm-deployment-id"
+    api.create_bis_llm_model.assert_called_once_with(body=body, team_id="team-123")
+
+
+def test_create_bis_llm_service_creates_model_version():
+    api = MagicMock()
+    api.create_bis_llm_model_version.return_value = {
+        "model_id": "bis-llm-model-id",
+        "version_id": "bis-llm-deployment-id",
+        "hostname": "hostname",
+        "instance_type_name": "A10G",
+    }
+    body = {"resources": {"accelerator": "A10G"}}
+
+    version_handle = create_bis_llm_service(
+        api, body=body, model_id="bis-llm-model-id", team_id="team-123"
+    )
+
+    assert version_handle.model_id == "bis-llm-model-id"
+    assert version_handle.version_id == "bis-llm-deployment-id"
+    api.create_bis_llm_model_version.assert_called_once_with(
+        model_id="bis-llm-model-id", body=body
+    )
