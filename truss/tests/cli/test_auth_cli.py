@@ -51,7 +51,8 @@ def test_login_no_flags_non_interactive_errors(trussrc):
     with patch("truss.cli.auth.check_is_interactive", return_value=False):
         result = CliRunner().invoke(truss_cli, ["auth", "login"])
     assert result.exit_code == 2
-    assert "--browser or --api-key" in result.output
+    assert "--browser" in result.output
+    assert "--api-key" in result.output
 
 
 def test_truss_login_alias_runs_browser_flow(memory_keyring, trussrc):

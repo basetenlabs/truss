@@ -461,7 +461,7 @@ class BasetenRemote(TrussRemote):
             return BasetenService(
                 model_version_handle=model_version_handle,
                 is_draft=False,
-                api_key=self._auth_service.authenticate().value,
+                header_provider=self.auth_header,
                 service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
                 truss_handle=truss_handle,
                 api=self._api,
