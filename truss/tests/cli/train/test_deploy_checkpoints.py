@@ -286,7 +286,7 @@ def test_hydrate_whisper_checkpoint():
 def mock_trainer_remote():
     mock = MagicMock()
     mock.api.search_trainers.return_value = [
-        {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
+        {"trainer_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
     ]
     mock.api.list_trainer_checkpoints.return_value = {
         "trainer_id": "trnr_xyz",
@@ -306,7 +306,7 @@ def mock_trainer_remote():
 
 def test_resolve_trainer_returns_first_match(mock_trainer_remote):
     result = _resolve_trainer(mock_trainer_remote, "trnr_xyz")
-    assert result["id"] == "trnr_xyz"
+    assert result["trainer_id"] == "trnr_xyz"
     assert result["session_id"] == "sess_abc"
     mock_trainer_remote.api.search_trainers.assert_called_once_with(trainer_id="trnr_xyz")
 

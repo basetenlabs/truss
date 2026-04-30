@@ -382,7 +382,7 @@ def _prompt_user_for_trainer_checkpoint_details(
 ) -> CheckpointList:
     trainer = _resolve_trainer(remote_provider, trainer_id)
     response = remote_provider.api.list_trainer_checkpoints(
-        trainer["session_id"], trainer["id"]
+        trainer["session_id"], trainer["trainer_id"]
     )
     # Pick by checkpoint_name in the UI; map back to trainer-checkpoint
     # database IDs for the wire so the server doesn't need to re-resolve names.
@@ -392,7 +392,7 @@ def _prompt_user_for_trainer_checkpoint_details(
     )
     if not name_to_pk:
         raise click.UsageError(
-            f"No checkpoints found for trainer {trainer['id']}."
+            f"No checkpoints found for trainer {trainer['trainer_id']}."
         )
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
