@@ -363,9 +363,9 @@ def _ensure_trainer_checkpoint_details(
     CLI doesn't need to know it.
     """
     if checkpoint_details and checkpoint_details.trainer_checkpoint_ids:
-        return _process_user_provided_trainer_checkpoint_ids(
-            checkpoint_details, remote_provider
-        )
+        # User-authored trainer-checkpoint IDs in --config — server
+        # resolves and validates on deploy; nothing for the CLI to enrich.
+        return checkpoint_details
     if not trainer_id:
         raise click.UsageError(
             "--trainer-id is required to deploy trainer checkpoints."
@@ -412,13 +412,6 @@ def _prompt_user_for_trainer_checkpoint_details(
         checkpoint_details.base_model_id = trainer.get("base_model") or first_selected.get(
             "base_model"
         )
-    return checkpoint_details
-
-
-def _process_user_provided_trainer_checkpoint_ids(
-    checkpoint_details: CheckpointList, remote_provider: BasetenRemote
-) -> CheckpointList:
-    """User-authored trainer-checkpoint ID list — server resolves and validates on deploy."""
     return checkpoint_details
 
 
