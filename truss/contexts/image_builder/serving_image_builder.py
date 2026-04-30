@@ -175,9 +175,11 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
 
 
 def _should_use_docker_server_slim(config: TrussConfig) -> bool:
-    if not os.getenv("BT_USE_DOCKER_SERVER_SLIM", False):
+    if os.getenv("BT_USE_DOCKER_SERVER_SLIM", "").strip().lower() != "true":
         return False
     if config.docker_server is None:
+        return False
+    if config.docker_server.no_build:
         return False
     return True
 
