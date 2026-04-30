@@ -1,3 +1,4 @@
+import enum
 import inspect
 import json
 import logging
@@ -14,7 +15,7 @@ except ImportError:
 from functools import partial
 from operator import is_not
 from pathlib import Path
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional, Tuple, Type
 
 import keyring
 import keyring.backends.fail
@@ -28,11 +29,19 @@ logger = logging.getLogger(__name__)
 
 KEYRING_SERVICE = "baseten-truss"
 KEYRING_DISABLED_ENV = "BASETEN_TRUSS_AUTH_KEYRING_DISABLED"
-_AUTH_TYPE_API_KEY = "api_key"
-_AUTH_TYPE_OAUTH = "oauth"
-_INLINE_SECRET_KEYS_BY_AUTH_TYPE = {
-    _AUTH_TYPE_API_KEY: ("api_key",),
-    _AUTH_TYPE_OAUTH: ("oauth_access_token", "oauth_refresh_token", "oauth_expires_at"),
+
+
+class AuthType(str, enum.Enum):
+    API_KEY = "api_key"
+    OAUTH = "oauth"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+_INLINE_SECRET_KEYS_BY_AUTH_TYPE: Dict[str, Tuple[str, ...]] = {
+    AuthType.API_KEY: ("api_key",),
+    AuthType.OAUTH: ("oauth_access_token", "oauth_refresh_token", "oauth_expires_at"),
 }
 _INLINE_SECRET_KEYS = tuple(
     key for keys in _INLINE_SECRET_KEYS_BY_AUTH_TYPE.values() for key in keys

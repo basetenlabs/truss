@@ -1,5 +1,6 @@
 import enum
 import logging
+import os
 import re
 import sys
 import time
@@ -20,13 +21,17 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base.constants import CONFIG_FILE, PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import (
+    CONFIG_FILE,
+    DEFAULT_REMOTE_NAME,
+    PRODUCTION_ENVIRONMENT_NAME,
+)
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
-from truss.remote.baseten.auth import AuthService
+from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -46,7 +51,7 @@ from truss.remote.baseten.core import (
     upload_truss,
     validate_truss_config_against_backend,
 )
-from truss.remote.baseten.error import ApiError, RemoteError
+from truss.remote.baseten.error import ApiError, AuthorizationError, RemoteError
 from truss.remote.baseten.oauth import OAuthCredential
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -134,31 +139,35 @@ class BasetenRemote(TrussRemote):
                     f"Remote {oauth_remote_name!r}: OAuth credentials require "
                     "access_token, refresh_token, and expires_at."
                 )
-            credential = OAuthCredential(
-                access_token=oauth_access_token,
-                refresh_token=oauth_refresh_token,
-                expires_at=int(oauth_expires_at),
-            )
             self._auth_service = AuthService(
-                api_url=resolve_rest_api_url(remote_url),
-                oauth_credential=credential,
-                on_token_refresh=self._persist_refreshed_credential,
+                OAuthSession(
+                    api_url=resolve_rest_api_url(remote_url),
+                    credential=OAuthCredential(
+                        access_token=oauth_access_token,
+                        refresh_token=oauth_refresh_token,
+                        expires_at=int(oauth_expires_at),
+                    ),
+                    on_token_refresh=self._persist_refreshed_credential,
+                )
             )
         else:
-            self._auth_service = AuthService(api_key=api_key)
+            api_key = api_key or os.environ.get("BASETEN_API_KEY")
+            if not api_key:
+                raise AuthorizationError("No credentials provided.")
+            self._auth_service = AuthService(ApiKeyCredential(api_key=api_key))
         self._api = BasetenApi(remote_url, self._auth_service)
 
-    def auth_header(self) -> Dict[str, str]:
+    def fetch_auth_header(self) -> dict[str, str]:
         """Return a fresh ``Authorization`` header for the active credential.
 
         Call this per-request rather than caching the return value: for OAuth
         credentials the access token is refreshed in-place when near expiry,
         so a stored header can become stale.
         """
-        return self._auth_service.auth_header()
+        return self._auth_service.fetch_auth_header()
 
     def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
-        from truss.remote.remote_factory import RemoteFactory
+        from truss.remote.remote_factory import AuthType, RemoteFactory
         from truss.remote.truss_remote import RemoteConfig
 
         if not self._oauth_remote_name:
@@ -167,9 +176,9 @@ class BasetenRemote(TrussRemote):
             RemoteConfig(
                 name=self._oauth_remote_name,
                 configs={
-                    "remote_provider": "baseten",
+                    "remote_provider": DEFAULT_REMOTE_NAME,
                     "remote_url": self.remote_url,
-                    "auth_type": "oauth",
+                    "auth_type": AuthType.OAUTH,
                     "oauth_access_token": credential.access_token,
                     "oauth_refresh_token": credential.refresh_token,
                     "oauth_expires_at": str(credential.expires_at),
@@ -461,7 +470,7 @@ class BasetenRemote(TrussRemote):
             return BasetenService(
                 model_version_handle=model_version_handle,
                 is_draft=False,
-                header_provider=self.auth_header,
+                header_provider=self.fetch_auth_header,
                 service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
                 truss_handle=truss_handle,
                 api=self._api,
@@ -504,7 +513,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
-            header_provider=self.auth_header,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
@@ -677,7 +686,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=not published,
-            header_provider=self.auth_header,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}{service_url_path}",
             api=self._api,
         )

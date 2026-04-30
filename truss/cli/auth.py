@@ -4,12 +4,8 @@ from typing import Optional
 
 import rich_click as click
 
-from truss.cli.remote_cli import (
-    DEFAULT_REMOTE_NAME,
-    DEFAULT_REMOTE_URL,
-    inquire_remote_config,
-    inquire_remote_name,
-)
+from truss.base.constants import DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_URL
+from truss.cli.remote_cli import inquire_remote_config, inquire_remote_name
 from truss.cli.utils import common
 from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
@@ -19,6 +15,7 @@ from truss.remote.baseten.oauth import OAuthCredential, OAuthError
 from truss.remote.remote_factory import (
     _INLINE_SECRET_KEYS,
     USER_TRUSSRC_PATH,
+    AuthType,
     RemoteFactory,
     load_config,
 )
@@ -58,7 +55,7 @@ def auth_logout(remote: Optional[str]) -> None:
     except (FileNotFoundError, ValueError) as exc:
         raise click.ClickException(f"Not logged in to remote {remote_name!r}: {exc}")
 
-    if cfg.configs.get("auth_type") == "oauth":
+    if cfg.configs.get("auth_type") == AuthType.OAUTH:
         credential = OAuthCredential(
             access_token=cfg.configs["oauth_access_token"],
             refresh_token=cfg.configs["oauth_refresh_token"],
@@ -122,9 +119,9 @@ def do_login(
             RemoteConfig(
                 name=remote_name,
                 configs={
-                    "remote_provider": "baseten",
+                    "remote_provider": DEFAULT_REMOTE_NAME,
                     "remote_url": remote_url,
-                    "auth_type": "api_key",
+                    "auth_type": AuthType.API_KEY,
                     "api_key": api_key,
                 },
             )
@@ -138,9 +135,9 @@ def do_login(
             RemoteConfig(
                 name=remote_name,
                 configs={
-                    "remote_provider": "baseten",
+                    "remote_provider": DEFAULT_REMOTE_NAME,
                     "remote_url": remote_url,
-                    "auth_type": "oauth",
+                    "auth_type": AuthType.OAUTH,
                     "oauth_access_token": credential.access_token,
                     "oauth_refresh_token": credential.refresh_token,
                     "oauth_expires_at": str(credential.expires_at),

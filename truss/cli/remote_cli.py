@@ -5,17 +5,15 @@ from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
 
+from truss.base.constants import DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_URL
 from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
 from truss.remote.baseten import oauth
 from truss.remote.baseten.api import resolve_rest_api_url
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.oauth import OAuthError
-from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, AuthType, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
-
-DEFAULT_REMOTE_NAME = "baseten"
-DEFAULT_REMOTE_URL = "https://app.baseten.co"
 
 
 class NonEmptyValidator(Validator):
@@ -50,9 +48,9 @@ def inquire_remote_config(
         return RemoteConfig(
             name=remote_name,
             configs={
-                "remote_provider": "baseten",
+                "remote_provider": DEFAULT_REMOTE_NAME,
                 "remote_url": remote_url,
-                "auth_type": "oauth",
+                "auth_type": AuthType.OAUTH,
                 "oauth_access_token": credential.access_token,
                 "oauth_refresh_token": credential.refresh_token,
                 "oauth_expires_at": str(credential.expires_at),
@@ -64,8 +62,8 @@ def inquire_remote_config(
     return RemoteConfig(
         name=remote_name,
         configs={
-            "remote_provider": "baseten",
-            "auth_type": "api_key",
+            "remote_provider": DEFAULT_REMOTE_NAME,
+            "auth_type": AuthType.API_KEY,
             "api_key": api_key,
             "remote_url": remote_url,
         },

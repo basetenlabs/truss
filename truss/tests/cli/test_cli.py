@@ -240,7 +240,9 @@ def _make_watch_mocks(
     mock_tr.spec.config.model_name = "test_model"
 
     remote_provider = MagicMock()
-    remote_provider.auth_header.return_value = {"Authorization": "Api-Key test_key"}
+    remote_provider.fetch_auth_header.return_value = {
+        "Authorization": "Api-Key test_key"
+    }
     remote_provider.remote_url = "https://app.baseten.co"
     remote_provider.api.get_deployment.return_value = {"status": "ACTIVE"}
 
@@ -335,7 +337,7 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
     assert thread_args[0] == "https://model-abc123.api.baseten.co"
-    assert thread_args[1] is remote_provider.auth_header
+    assert thread_args[1] is remote_provider.fetch_auth_header
     mock_thread.start.assert_called_once()
 
 
@@ -1104,7 +1106,7 @@ def test_push_watch_no_sleep_starts_keepalive(
 
     assert result.exit_code == 0
     mock_start_keepalive.assert_called_once_with(
-        "https://model.api.baseten.co", remote.auth_header
+        "https://model.api.baseten.co", remote.fetch_auth_header
     )
     mock_start_watch.assert_called_once()
 

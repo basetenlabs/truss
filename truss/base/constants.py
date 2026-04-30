@@ -90,4 +90,7 @@ PRODUCTION_ENVIRONMENT_NAME = "production"
 
 TRUSS_BASE_IMAGE_NAME = "baseten/truss-server-base"
 
+DEFAULT_REMOTE_NAME = "baseten"
+DEFAULT_REMOTE_URL = "https://app.baseten.co"
+
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/loaded_checkpoints"

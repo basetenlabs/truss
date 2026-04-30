@@ -6,9 +6,9 @@ Tokens are returned as :class:`OAuthCredential` with an absolute Unix
 
 import logging
 import time
-from dataclasses import dataclass
 from typing import Optional
 
+import pydantic
 import requests
 
 logger = logging.getLogger(__name__)
@@ -25,41 +25,43 @@ DEFAULT_POLL_INTERVAL_SECONDS = 5
 EXPIRY_LEEWAY_SECONDS = 60
 
 
-@dataclass(frozen=True)
-class OAuthCredential:
-    access_token: str
-    refresh_token: str
+class OAuthError(Exception):
+    """Raised on terminal OAuth failures (denied, expired, invalid request)."""
+
+
+class OAuthCredential(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(frozen=True, extra="ignore")
+
+    access_token: str = pydantic.Field(min_length=1)
+    refresh_token: str = pydantic.Field(min_length=1)
     expires_at: int  # absolute Unix timestamp seconds
 
     def is_expired(self, leeway: int = EXPIRY_LEEWAY_SECONDS) -> bool:
         return time.time() + leeway >= self.expires_at
 
+    @classmethod
+    def from_token_response(cls, payload: dict) -> "OAuthCredential":
+        expires_in = payload.get("expires_in")
+        if expires_in is None:
+            raise OAuthError(
+                f"Token response missing required fields: {sorted(payload)}"
+            )
+        payload = {**payload, "expires_at": int(time.time()) + int(expires_in)}
+        try:
+            return cls.model_validate(payload)
+        except pydantic.ValidationError as exc:
+            raise OAuthError(f"Token response missing required fields: {exc}") from exc
 
-@dataclass(frozen=True)
-class DeviceAuthorization:
+
+class DeviceAuthorization(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(frozen=True, extra="ignore")
+
     device_code: str
     user_code: str
     verification_uri: str
-    verification_uri_complete: Optional[str]
-    expires_in: int
-    interval: int
-
-
-class OAuthError(Exception):
-    """Raised on terminal OAuth failures (denied, expired, invalid request)."""
-
-
-def _token_from_response(payload: dict) -> OAuthCredential:
-    access_token = payload.get("access_token")
-    refresh_token = payload.get("refresh_token")
-    expires_in = payload.get("expires_in")
-    if not access_token or not refresh_token or expires_in is None:
-        raise OAuthError(f"Token response missing required fields: {sorted(payload)}")
-    return OAuthCredential(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=int(time.time()) + int(expires_in),
-    )
+    verification_uri_complete: Optional[str] = None
+    expires_in: int = 600
+    interval: int = DEFAULT_POLL_INTERVAL_SECONDS
 
 
 def request_device_authorization(api_url: str) -> DeviceAuthorization:
@@ -72,15 +74,10 @@ def request_device_authorization(api_url: str) -> DeviceAuthorization:
         raise OAuthError(
             f"Device authorize failed ({resp.status_code}): {resp.text.strip()}"
         )
-    body = resp.json()
-    return DeviceAuthorization(
-        device_code=body["device_code"],
-        user_code=body["user_code"],
-        verification_uri=body["verification_uri"],
-        verification_uri_complete=body.get("verification_uri_complete"),
-        expires_in=int(body.get("expires_in", 600)),
-        interval=int(body.get("interval", DEFAULT_POLL_INTERVAL_SECONDS)),
-    )
+    try:
+        return DeviceAuthorization.model_validate(resp.json())
+    except pydantic.ValidationError as exc:
+        raise OAuthError(f"Device authorize response malformed: {exc}") from exc
 
 
 def poll_device_token(
@@ -107,7 +104,7 @@ def poll_device_token(
             timeout=30,
         )
         if resp.ok:
-            return _token_from_response(resp.json())
+            return OAuthCredential.from_token_response(resp.json())
         try:
             err = resp.json()
         except ValueError:
@@ -152,7 +149,7 @@ def refresh(api_url: str, credential: OAuthCredential) -> OAuthCredential:
         raise OAuthError(
             f"Token refresh failed ({resp.status_code}): {resp.text.strip()}"
         )
-    return _token_from_response(resp.json())
+    return OAuthCredential.from_token_response(resp.json())
 
 
 def revoke(api_url: str, credential: OAuthCredential) -> None:

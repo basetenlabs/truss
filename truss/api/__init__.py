@@ -6,10 +6,11 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.api import definitions
+from truss.base.constants import DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_URL
 from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
-from truss.remote.remote_factory import RemoteFactory
+from truss.remote.remote_factory import AuthType, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 from truss.truss_handle.build import load
 
@@ -21,14 +22,13 @@ def login(api_key: str):
     Args:
         api_key: Baseten API Key
     """
-    remote_url = "https://app.baseten.co"
     remote_config = RemoteConfig(
-        name="baseten",
+        name=DEFAULT_REMOTE_NAME,
         configs={
-            "remote_provider": "baseten",
-            "auth_type": "api_key",
+            "remote_provider": DEFAULT_REMOTE_NAME,
+            "auth_type": AuthType.API_KEY,
             "api_key": api_key,
-            "remote_url": remote_url,
+            "remote_url": DEFAULT_REMOTE_URL,
         },
     )
     RemoteFactory.update_remote_config(remote_config)

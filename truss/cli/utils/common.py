@@ -7,7 +7,7 @@ import threading
 import time
 import warnings
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pydantic
 import requests as requests_lib
@@ -269,7 +269,9 @@ def wait_for_development_model_ready(
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
     try:
-        requests_lib.post(wake_url, headers=remote_provider.auth_header(), timeout=10)
+        requests_lib.post(
+            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+        )
     except requests_lib.RequestException:
         # best effort
         pass
@@ -306,7 +308,7 @@ def wait_for_development_model_ready(
 
 
 def start_keepalive(
-    model_hostname: str, header_provider: Callable[[], Dict[str, str]]
+    model_hostname: str, header_provider: Callable[[], dict[str, str]]
 ) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
     console.print("💤 --no-sleep enabled: keeping development model warm")
@@ -322,7 +324,7 @@ def start_keepalive(
 
 def keepalive_loop(
     model_hostname: str,
-    header_provider: Callable[[], Dict[str, str]],
+    header_provider: Callable[[], dict[str, str]],
     stop_event: threading.Event,
 ) -> None:
     consecutive_failures = 0

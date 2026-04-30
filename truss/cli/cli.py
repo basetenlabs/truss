@@ -1023,7 +1023,7 @@ def push(
             )
             if watch_no_sleep:
                 model_hostname = resolved_model["hostname"]
-                common.start_keepalive(model_hostname, bt_remote.auth_header)
+                common.start_keepalive(model_hostname, bt_remote.fetch_auth_header)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -1278,7 +1278,7 @@ def watch(
     )
 
     if no_sleep:
-        common.start_keepalive(model_hostname, remote_provider.auth_header)
+        common.start_keepalive(model_hostname, remote_provider.fetch_auth_header)
 
     if tail:
         _start_tail(remote_provider, model_id, dev_version_id, in_background=True)

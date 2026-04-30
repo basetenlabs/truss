@@ -137,7 +137,8 @@ class BasetenApi:
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
         self._rest_api_client = RestAPIClient(
-            base_url=self._rest_api_url, header_provider=self._auth_service.auth_header
+            base_url=self._rest_api_url,
+            header_provider=self._auth_service.fetch_auth_header,
         )
 
     @property
@@ -157,7 +158,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_service.auth_header()
+        headers = self._auth_service.fetch_auth_header()
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
