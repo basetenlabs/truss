@@ -1109,3 +1109,95 @@ def capacity(remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     train_cli.display_training_capacity(remote_provider)
+
+
+@train.command(name="workstation")
+@click.option(
+    "--accelerator",
+    type=click.Choice(["H100", "H200"], case_sensitive=False),
+    default="H100",
+    help="GPU accelerator type (default: H100).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=1,
+    help="Number of GPUs (1-8, default: 1).",
+)
+@click.option(
+    "--project-id",
+    type=str,
+    required=False,
+    help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--image",
+    type=str,
+    required=False,
+    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@common.common_options()
+def workstation(
+    accelerator: str,
+    gpu_count: int,
+    project_id: Optional[str],
+    image: Optional[str],
+    remote: Optional[str],
+    tail: bool,
+):
+    """Spin up an SSH workstation on Baseten training infrastructure."""
+    from truss.cli.train.workstation import (
+        DEFAULT_BASE_IMAGE,
+        build_workstation_project,
+    )
+    from truss_train.public_api import push
+
+    accelerator = accelerator.upper()
+    if not project_id:
+        project_id = f"workstation-{accelerator}"
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    base_image = image or DEFAULT_BASE_IMAGE
+    training_project = build_workstation_project(
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        project_id=project_id,
+        base_image=base_image,
+    )
+
+    console.print(
+        f"Launching workstation [cyan]{project_id}[/cyan] "
+        f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
+    )
+
+    job_resp = push(config=training_project, remote=remote)
+
+    job_id = job_resp["id"]
+    console.print(
+        f"\n[green]Workstation created![/green]\n"
+        f"\n"
+        f"Once the job is running, SSH in with:\n"
+        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+    if tail:
+        remote_provider: BasetenRemote = cast(
+            BasetenRemote, RemoteFactory.create(remote=remote)
+        )
+        project_resp_id = job_resp["training_project"]["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
