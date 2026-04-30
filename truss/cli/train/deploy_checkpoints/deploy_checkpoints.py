@@ -407,11 +407,8 @@ def _prompt_user_for_trainer_checkpoint_details(
     checkpoint_details.trainer_checkpoint_ids = [
         name_to_pk[name] for name in selected_names
     ]
-    first_selected = response_checkpoints[selected_names[0]]
     if checkpoint_details.base_model_id is None:
-        checkpoint_details.base_model_id = trainer.get("base_model") or first_selected.get(
-            "base_model"
-        )
+        checkpoint_details.base_model_id = trainer["base_model"]
     return checkpoint_details
 
 
