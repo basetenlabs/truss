@@ -280,8 +280,9 @@ class CheckpointList(custom_types.SafeModelNoExtra):
     def _no_mixing(self) -> "CheckpointList":
         if self.checkpoints and self.trainer_checkpoint_ids:
             raise ValueError(
-                "checkpoint_details cannot mix checkpoints (training-job checkpoints) "
-                "and trainer_checkpoint_ids (trainer checkpoints) in the same deploy"
+                "checkpoint_details cannot mix checkpoints (training job "
+                "checkpoints) and trainer_checkpoint_ids (trainer checkpoints) "
+                "in the same deploy"
             )
         return self
 
