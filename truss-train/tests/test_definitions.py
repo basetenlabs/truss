@@ -2,7 +2,15 @@ import pytest
 from pydantic import ValidationError
 
 from truss.base import truss_config
-from truss_train.definitions import Compute, Image, Runtime, TrainingJob
+from truss_train.definitions import (
+    CheckpointList,
+    Compute,
+    Image,
+    LoRACheckpoint,
+    ModelWeightsFormat,
+    Runtime,
+    TrainingJob,
+)
 
 
 def _minimal_job(**kwargs):
@@ -100,13 +108,6 @@ class TestTrainingJobWeightsAuthValidation:
         )
         assert len(job.weights) == 1
         assert job.weights[0].auth is None
-
-
-from truss_train.definitions import (
-    CheckpointList,
-    LoRACheckpoint,
-    ModelWeightsFormat,
-)
 
 
 class TestCheckpointListTrainerCheckpoints:
