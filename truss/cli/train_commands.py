@@ -1148,6 +1148,8 @@ def workstation(
     tail: bool,
 ):
     """Spin up an SSH workstation on Baseten training infrastructure."""
+    import tempfile
+
     from truss.cli.train.workstation import (
         DEFAULT_BASE_IMAGE,
         build_workstation_project,
@@ -1174,7 +1176,11 @@ def workstation(
         f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
     )
 
-    job_resp = push(config=training_project, remote=remote)
+    # Use an empty temp dir as source so we don't upload the user's cwd.
+    with tempfile.TemporaryDirectory() as empty_dir:
+        job_resp = push(
+            config=training_project, remote=remote, source_dir=Path(empty_dir)
+        )
 
     job_id = job_resp["id"]
     console.print(
