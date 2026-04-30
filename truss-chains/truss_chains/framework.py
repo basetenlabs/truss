@@ -790,10 +790,18 @@ class _ChainletInitValidator:
         # chainlet class, proper type inference is possible even without annotation.
         # TODO: `Protocol` is not a proper class and this might be version dependent.
         #   Find a better way to inspect this.
+        # For TrussChainlet deps, the framework injects a `DeployedServiceDescriptor`
+        # at runtime (not the chainlet class itself), so allow that annotation too.
         if not (
             param.annotation == inspect.Parameter.empty
             or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
             or utils.issubclass_safe(chainlet_cls, param.annotation)
+            or (
+                is_truss_chainlet(chainlet_cls)
+                and utils.issubclass_safe(
+                    param.annotation, public_types.DeployedServiceDescriptor
+                )
+            )
         ):
             _collect_error(
                 f"The type annotation for `{param.name}` must be a class/subclass of the "
@@ -974,6 +982,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         "ModelBase",
         "EngineBuilderChainlet",
         "EngineBuilderLLMChainlet",
+        "TrussChainlet",
     ]
     if cls.__name__ in _skip_class_name:
         logging.debug(f"Skipping chainlet class validation for `{cls}`.")
@@ -982,6 +991,23 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
+
+    if is_truss_chainlet(cls):
+        # TrussChainlet declarations don't have remote_config / run_remote /
+        # health_check / dependencies. Validate the truss_dir, build a
+        # descriptor with a sentinel endpoint, register, and exit early.
+        _validate_truss_chainlet_cls(cls, src_path, location)
+        chainlet_descriptor = private_types.ChainletAPIDescriptor(
+            chainlet_cls=cls,
+            dependencies={},
+            has_context=False,
+            endpoint=_DUMMY_ENDPOINT_DESCRIPTOR,
+            src_path=src_path,
+            health_check=None,
+            truss_dir=cls._resolved_truss_dir,
+        )
+        _global_chainlet_registry.register_chainlet(chainlet_descriptor)
+        return
 
     _validate_display_name(cls, location)
     _validate_config_class_variable(
@@ -1013,6 +1039,68 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
     )
     _global_chainlet_registry.register_chainlet(chainlet_descriptor)
+
+
+def _validate_truss_chainlet_cls(
+    cls: Type[private_types.ABCChainlet], src_path: str, location: _ErrorLocation
+) -> None:
+    """Validate a TrussChainlet declaration's class attributes and resolve
+    the ``truss_dir``. Sets ``cls._resolved_truss_dir`` on success."""
+    # 1. truss_dir class attribute is required (follow MRO so subclasses inherit).
+    truss_dir_raw = getattr(cls, "truss_dir", None)
+    if not truss_dir_raw:
+        _collect_error(
+            f"`TrussChainlet` subclass `{cls.__name__}` must declare "
+            "a `truss_dir` class attribute pointing at the wrapped Truss directory.",
+            _ErrorKind.MISSING_API_ERROR,
+            location,
+        )
+        return
+    if not isinstance(truss_dir_raw, (str, pathlib.Path)):
+        _collect_error(
+            f"`TrussChainlet.truss_dir` must be a str or pathlib.Path, got "
+            f"`{type(truss_dir_raw).__name__}`.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return
+
+    # 2. Resolve relative to the file where the class was declared.
+    src_dir = pathlib.Path(src_path).parent
+    truss_dir = pathlib.Path(truss_dir_raw)
+    if not truss_dir.is_absolute():
+        truss_dir = (src_dir / truss_dir).resolve()
+    cls._resolved_truss_dir = truss_dir
+
+    # 3. Directory exists.
+    if not truss_dir.is_dir():
+        _collect_error(
+            f"`TrussChainlet.{cls.__name__}.truss_dir` resolved to "
+            f"`{truss_dir}`, which is not a directory.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+        return
+
+    # 4. config.yaml is a valid Truss config.
+    config_path = truss_dir / "config.yaml"
+    if not config_path.is_file():
+        _collect_error(
+            f"`TrussChainlet.{cls.__name__}.truss_dir` ({truss_dir}) is "
+            "missing `config.yaml` — not a valid Truss directory.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+        return
+    try:
+        truss_config.TrussConfig.from_yaml(config_path)
+    except Exception as exc:
+        _collect_error(
+            f"`TrussChainlet.{cls.__name__}.truss_dir` ({truss_dir}) has "
+            f"an invalid `config.yaml`: {exc}",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1691,3 +1779,65 @@ class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
 
 def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
     return issubclass(cls, EngineBuilderChainlet)
+
+
+# TrussChainlet ########################################################################
+
+
+class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
+    """Declares an existing Truss directory as a chain member.
+
+    Unlike ``ChainletBase``, the framework does NOT generate a ``model.py``
+    or a typed ``StubBase`` for this declaration. The user's existing Truss
+    directory (``model.py``-flavored or ``docker_server``) is archived as-is;
+    only ``model_metadata.chains_metadata`` is merged into its ``config.yaml``
+    so the operator's runtime URL injection works for it.
+
+    Subclasses declare the wrapped Truss via a single class attribute::
+
+        class Whisper(chains.TrussChainlet):
+            truss_dir = "../whisper-truss"   # resolved relative to declaring file
+
+    The chain-graph identity is the class name (``Whisper`` here). To use a
+    different chainlet name, alias the class.
+
+    Used as a dep in another chainlet's ``__init__``::
+
+        class Caller(chains.ChainletBase):
+            def __init__(
+                self,
+                whisper: chains.DeployedServiceDescriptor = chains.depends(Whisper),
+                context: chains.DeploymentContext = chains.depends_context(),
+            ):
+                self._url = whisper.target_url
+                self._headers = whisper.with_auth_headers(
+                    context.get_baseten_api_key())
+    """
+
+    truss_dir: ClassVar[str]
+
+    # `_resolved_truss_dir` is set by `__init_subclass__` after path resolution
+    # and validation. Codegen reads it to locate the user's Truss directory.
+    _resolved_truss_dir: ClassVar[Optional[pathlib.Path]] = None
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = private_types.FrameworkConfig(
+            entity_type=private_types.EntityType.TRUSS_CHAINLET,
+            supports_dependencies=False,
+            endpoint_method_name="",  # no run_remote on TrussChainlet
+        )
+        cls.meta_data = private_types.ChainletMetadata()
+        validate_and_register_cls(cls)
+
+
+def is_truss_chainlet(cls: Type[private_types.ABCChainlet]) -> bool:
+    return issubclass(cls, TrussChainlet)
+
+
+def should_skip_codegen(descriptor: private_types.ChainletAPIDescriptor) -> bool:
+    """Predicate covering both engine-builder and TrussChainlet artifacts —
+    neither gets a generated `model.py`."""
+    return is_engine_builder_chainlet(descriptor.chainlet_cls) or is_truss_chainlet(
+        descriptor.chainlet_cls
+    )
