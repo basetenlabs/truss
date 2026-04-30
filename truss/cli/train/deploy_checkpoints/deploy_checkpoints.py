@@ -126,21 +126,12 @@ def _build_inference_template_request(
             },
         }
         weights_sources.append(weights_source)
-    for composite in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
-        if "/" not in composite:
-            raise ValueError(
-                f"trainer_checkpoint_ids entry {composite!r} must be in the format "
-                "'<trainer_id>/<checkpoint_name>'"
-            )
-        trainer_id, checkpoint_name = composite.split("/", 1)
+    for trainer_checkpoint_id in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
         weights_sources.append(
             {
                 "weight_source_type": "B10_TRAINER_CHECKPOINTING",
                 "b10_trainer_checkpoint_weights_source": {
-                    "checkpoint": {
-                        "trainer_id": trainer_id,
-                        "checkpoint_name": checkpoint_name,
-                    }
+                    "checkpoint": {"trainer_checkpoint_id": trainer_checkpoint_id}
                 },
             }
         )
@@ -393,24 +384,28 @@ def _prompt_user_for_trainer_checkpoint_details(
     response = remote_provider.api.list_trainer_checkpoints(
         trainer["session_id"], trainer["id"]
     )
+    # Pick by checkpoint_name in the UI; map back to trainer-checkpoint
+    # database IDs for the wire so the server doesn't need to re-resolve names.
+    name_to_pk = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint["id"])
+        for checkpoint in response["checkpoints"]
+    )
+    if not name_to_pk:
+        raise click.UsageError(
+            f"No checkpoints found for trainer {trainer['id']}."
+        )
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
         for checkpoint in response["checkpoints"]
     )
-    if not response_checkpoints:
-        raise click.UsageError(
-            f"No checkpoints found for trainer {trainer['id']}."
-        )
     selected_names = _get_checkpoint_ids_to_deploy(
-        list(response_checkpoints.keys()), response_checkpoints
+        list(name_to_pk.keys()), response_checkpoints
     )
 
     if not checkpoint_details:
         checkpoint_details = CheckpointList()
-    # Composite "trainer_id/checkpoint_name" — same shape as the
-    # bt://trainers@<trainer_id>/<name> URI body.
     checkpoint_details.trainer_checkpoint_ids = [
-        f"{trainer['id']}/{name}" for name in selected_names
+        name_to_pk[name] for name in selected_names
     ]
     first_selected = response_checkpoints[selected_names[0]]
     if checkpoint_details.base_model_id is None:

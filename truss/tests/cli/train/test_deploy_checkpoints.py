@@ -292,6 +292,7 @@ def mock_trainer_remote():
         "trainer_id": "trnr_xyz",
         "checkpoints": [
             {
+                "id": "tcp_step100",
                 "trainer_id": "trnr_xyz",
                 "checkpoint_id": "step-100",
                 "base_model": "Qwen/Qwen3-8B",
@@ -320,9 +321,7 @@ def test_ensure_trainer_checkpoint_details_user_provided_passes_through(
     mock_trainer_remote,
 ):
     """When the user authored trainer_checkpoint_ids in --config, return as-is."""
-    user_config = definitions.CheckpointList(
-        trainer_checkpoint_ids=["trnr_xyz/step-100"]
-    )
+    user_config = definitions.CheckpointList(trainer_checkpoint_ids=["tcp_step100"])
     result = _ensure_trainer_checkpoint_details(
         mock_trainer_remote, user_config, trainer_id=None
     )
@@ -354,7 +353,7 @@ def test_ensure_trainer_checkpoint_details_picker_emits_ids_and_base_model(
         checkpoint_details=None,
         trainer_id="trnr_xyz",
     )
-    assert result.trainer_checkpoint_ids == ["trnr_xyz/step-100"]
+    assert result.trainer_checkpoint_ids == ["tcp_step100"]
     assert result.base_model_id == "Qwen/Qwen3-8B"
     mock_trainer_remote.api.list_trainer_checkpoints.assert_called_once_with(
         "sess_abc", "trnr_xyz"
