@@ -257,6 +257,21 @@ def _get_model_name(
     ).execute()
 
 
+def _get_trainer_model_name(base_model_id: Optional[str]) -> str:
+    """Prompt for a model name in trainer-checkpoint deploys.
+
+    The CLI doesn't need to know the weight format — the server reads it
+    off the TSC row. We just prompt for a name with the base model as a
+    sensible default.
+    """
+    default = base_model_id.split("/")[-1] if base_model_id else ""
+    return inquirer.text(
+        message="Enter the model name.",
+        validate=lambda s: s and s.strip(),
+        default=default,
+    ).execute()
+
+
 def _hydrate_deploy_config(
     deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
@@ -272,19 +287,21 @@ def _hydrate_deploy_config(
         checkpoint_details = _ensure_trainer_checkpoint_details(
             remote_provider, deploy_config.checkpoint_details, trainer_id
         )
-        # All R.1 trainer outputs are LoRA today.
-        model_weight_format = ModelWeightsFormat.LORA
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            model_name = _get_trainer_model_name(checkpoint_details.base_model_id)
     else:
         checkpoint_details = _ensure_checkpoint_details(
             remote_provider, deploy_config.checkpoint_details, project_id, job_id
         )
-        model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
-
-    base_model_id = checkpoint_details.base_model_id
-    if deploy_config.model_name:
-        model_name = deploy_config.model_name
-    else:
-        model_name = _get_model_name(model_weight_format, base_model_id)
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+            model_name = _get_model_name(
+                model_weight_format, checkpoint_details.base_model_id
+            )
 
     compute = _ensure_compute_spec(deploy_config.compute, remote_provider)
 
@@ -341,7 +358,9 @@ def _ensure_trainer_checkpoint_details(
     """Resolve a trainer checkpoint flow into a CheckpointList.
 
     Each entry in ``trainer_checkpoint_ids`` is a TrainerServerCheckpoint PK.
-    The server resolves it to its trainer + checkpoint_name on deploy.
+    The server resolves it to its trainer + checkpoint_name on deploy and
+    reads the actual weight format off the TSC row — the CLI doesn't need
+    to know it.
     """
     if checkpoint_details and checkpoint_details.trainer_checkpoint_ids:
         return _process_user_provided_trainer_checkpoint_ids(
@@ -387,10 +406,11 @@ def _prompt_user_for_trainer_checkpoint_details(
     checkpoint_details.trainer_checkpoint_ids = [
         name_to_pk[name] for name in selected_names
     ]
+    first_selected = response_checkpoints[selected_names[0]]
     if checkpoint_details.base_model_id is None:
-        checkpoint_details.base_model_id = trainer.get("base_model") or response_checkpoints[
-            selected_names[0]
-        ].get("base_model")
+        checkpoint_details.base_model_id = trainer.get("base_model") or first_selected.get(
+            "base_model"
+        )
     return checkpoint_details
 
 

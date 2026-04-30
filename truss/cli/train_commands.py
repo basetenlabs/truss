@@ -508,7 +508,7 @@ def get_job_metrics(
     "--trainer-id",
     type=str,
     required=False,
-    help="Trainer ID. Use to deploy checkpoints from a trainer (R.1) flow instead of a training job.",
+    help="Trainer ID. Use to deploy checkpoints from a trainer instead of a training job.",
 )
 @click.option(
     "--config",

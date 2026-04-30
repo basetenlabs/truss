@@ -337,21 +337,25 @@ def create_model_version_from_inference_template(
 def _get_checkpoint_names(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
-    names = [
+    return [
         checkpoint.checkpoint_name
         for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
-    # Trainer checkpoints are referenced by TSC PK; server resolves the
-    # name. Print the PK for now — refining this would require a second
-    # API call to resolve PK → name on the client.
-    names.extend(checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids)
-    return names
 
 
 def print_deploy_checkpoints_success_message(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
     checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
+    if not checkpoint_names:
+        # Trainer-checkpoint deploys reference checkpoints by TSC PK; the
+        # client doesn't know each name without an extra API call. Skip the
+        # name-specific guidance.
+        console.print(
+            Text("\nDeployment succeeded. Set the `model` parameter on each "),
+            Text("request to the trainer checkpoint name (e.g. `step-100`)."),
+        )
+        return
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),
