@@ -286,7 +286,11 @@ def test_hydrate_whisper_checkpoint():
 def mock_trainer_remote():
     mock = MagicMock()
     mock.api.search_trainers.return_value = [
-        {"trainer_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
+        {
+            "trainer_id": "trnr_xyz",
+            "session_id": "sess_abc",
+            "base_model": "Qwen/Qwen3-8B",
+        }
     ]
     mock.api.list_trainer_checkpoints.return_value = {
         "trainer_id": "trnr_xyz",
@@ -308,7 +312,9 @@ def test_resolve_trainer_returns_first_match(mock_trainer_remote):
     result = _resolve_trainer(mock_trainer_remote, "trnr_xyz")
     assert result["trainer_id"] == "trnr_xyz"
     assert result["session_id"] == "sess_abc"
-    mock_trainer_remote.api.search_trainers.assert_called_once_with(trainer_id="trnr_xyz")
+    mock_trainer_remote.api.search_trainers.assert_called_once_with(
+        trainer_id="trnr_xyz"
+    )
 
 
 def test_resolve_trainer_raises_when_not_found(mock_trainer_remote):
@@ -349,9 +355,7 @@ def test_ensure_trainer_checkpoint_details_picker_emits_ids_and_base_model(
     so no prompt mock is needed for this case.
     """
     result = _ensure_trainer_checkpoint_details(
-        mock_trainer_remote,
-        checkpoint_details=None,
-        trainer_id="trnr_xyz",
+        mock_trainer_remote, checkpoint_details=None, trainer_id="trnr_xyz"
     )
     assert result.trainer_checkpoint_ids == ["tcp_step100"]
     assert result.base_model_id == "Qwen/Qwen3-8B"

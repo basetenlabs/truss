@@ -115,8 +115,7 @@ class TestCheckpointListTrainerCheckpoints:
 
     def test_trainer_checkpoint_ids_round_trip_to_truss_config(self):
         ckpt_list = CheckpointList(
-            base_model_id="Qwen/Qwen3-8B",
-            trainer_checkpoint_ids=["tcp_a", "tcp_b"],
+            base_model_id="Qwen/Qwen3-8B", trainer_checkpoint_ids=["tcp_a", "tcp_b"]
         )
         truss_ckpt_list = ckpt_list.to_truss_config()
         assert truss_ckpt_list.artifact_references == []

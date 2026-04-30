@@ -1808,7 +1808,9 @@ class TestCheckpointListNoMixing:
     def test_artifact_references_only_accepted(self):
         ckpt_list = CheckpointList(
             artifact_references=[
-                TrainingArtifactReference(training_job_id="tj_abc", paths=["rank-0/step-1/"])
+                TrainingArtifactReference(
+                    training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                )
             ]
         )
         assert ckpt_list.artifact_references[0].training_job_id == "tj_abc"
@@ -1823,7 +1825,9 @@ class TestCheckpointListNoMixing:
         with pytest.raises(pydantic.ValidationError, match="cannot mix"):
             CheckpointList(
                 artifact_references=[
-                    TrainingArtifactReference(training_job_id="tj_abc", paths=["rank-0/step-1/"])
+                    TrainingArtifactReference(
+                        training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                    )
                 ],
                 trainer_checkpoint_ids=["tcp_xyz"],
             )

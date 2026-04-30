@@ -126,7 +126,9 @@ def _build_inference_template_request(
             },
         }
         weights_sources.append(weights_source)
-    for trainer_checkpoint_id in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
+    for (
+        trainer_checkpoint_id
+    ) in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
         weights_sources.append(
             {
                 "weight_source_type": "B10_TRAINER_CHECKPOINTING",
