@@ -880,10 +880,6 @@ class TestDockerServerSlimBuild:
 
     @pytest.mark.parametrize("env_value", ["", "false", "False", "0", "no", "1"])
     def test_legacy_dockerfile_when_flag_value_is_not_true(self, tmp_path, env_value):
-        # only the literal string "true" should enable slim; anything else (including
-        # truthy-looking but non-"true" values like "1" or "no") falls back to legacy.
-        # This pins the parsing against the previous os.getenv(..., False) bug where
-        # any non-empty string was treated as truthy.
         truss_dir = self._make_docker_server_truss(tmp_path)
         with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": env_value}):
             builder = ServingImageBuilderContext.run(truss_dir)
@@ -895,9 +891,6 @@ class TestDockerServerSlimBuild:
         assert "nginx" in dockerfile
 
     def test_no_build_skips_slim_branch_even_with_flag_on(self, tmp_path):
-        # no_build images ship with a customer-supplied ENTRYPOINT/CMD; the slim
-        # branch overrides those, so we must not enter it for no_build regardless of
-        # the slim flag.
         truss_dir = self._make_docker_server_truss(tmp_path)
         config_path = truss_dir / "config.yaml"
         with config_path.open() as f:
@@ -912,9 +905,6 @@ class TestDockerServerSlimBuild:
             builder.prepare_image_build_dir(build_dir)
 
         dockerfile = (build_dir / "Dockerfile").read_text()
-        # no_build template signature: short FROM-only dockerfile with no
-        # SERVER_START_CMD env, no nginx, no supervisord. Both slim and legacy
-        # branches of server.Dockerfile.jinja set SERVER_START_CMD; no_build does not.
         assert "SERVER_START_CMD" not in dockerfile
         assert "nginx" not in dockerfile.lower()
         assert "supervisord" not in dockerfile.lower()
