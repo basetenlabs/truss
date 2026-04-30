@@ -1131,10 +1131,40 @@ def capacity(remote: Optional[str]):
     help="Project name (default: workstation-<accelerator>).",
 )
 @click.option(
+    "--node-count",
+    type=click.IntRange(1, 16),
+    default=1,
+    help="Number of nodes (default: 1). Multi-node clusters share a project cache.",
+)
+@click.option(
     "--image",
     type=str,
     required=False,
     help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+)
+@click.option(
+    "--enable-checkpointing",
+    is_flag=True,
+    default=False,
+    help="Enable checkpoint storage.",
+)
+@click.option(
+    "--checkpoint-path",
+    type=str,
+    required=False,
+    help="Path inside the container to save checkpoints.",
+)
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    required=False,
+    help="Checkpoint volume size in GiB.",
+)
+@click.option(
+    "--checkpoint-from-job",
+    type=str,
+    required=False,
+    help="Job ID to load the latest checkpoint from.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
@@ -1143,7 +1173,12 @@ def workstation(
     accelerator: str,
     gpu_count: int,
     project_id: Optional[str],
+    node_count: int,
     image: Optional[str],
+    enable_checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    checkpoint_from_job: Optional[str],
     remote: Optional[str],
     tail: bool,
 ):
@@ -1169,11 +1204,17 @@ def workstation(
         gpu_count=gpu_count,
         project_id=project_id,
         base_image=base_image,
+        node_count=node_count,
+        enable_checkpointing=enable_checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+        checkpoint_from_job=checkpoint_from_job,
     )
 
+    node_str = f"{node_count}x " if node_count > 1 else ""
     console.print(
         f"Launching workstation [cyan]{project_id}[/cyan] "
-        f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
+        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
     )
 
     # Use an empty temp dir as source so we don't upload the user's cwd.
@@ -1183,14 +1224,31 @@ def workstation(
         )
 
     job_id = job_resp["id"]
+    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        ssh_lines += " (leader)"
+        for i in range(1, node_count):
+            ssh_lines += (
+                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+            )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
     console.print(
         f"\n[green]Workstation created![/green]\n"
         f"\n"
         f"Once the job is running, SSH in with:\n"
-        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"{ssh_lines}\n"
         f"\n"
         f"If you haven't set up SSH yet, run:\n"
         f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
         f"\n"
         f"View logs:\n"
         f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
