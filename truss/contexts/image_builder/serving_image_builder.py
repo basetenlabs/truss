@@ -106,6 +106,14 @@ HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
 
+def _should_use_docker_server_slim(config: TrussConfig) -> bool:
+    if not os.getenv("BT_USE_DOCKER_SERVER_SLIM", False):
+        return False
+    if config.docker_server is None:
+        return False
+    return True
+
+
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
         self.repo_name = repo_name
@@ -651,6 +659,7 @@ class ServingImageBuilder(ImageBuilder):
         if (
             config.docker_server is not None
             and config.docker_server.no_build is not True
+            and not _should_use_docker_server_slim(config)
         ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
@@ -662,7 +671,6 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_supervisord_config(build_dir, config)
 
-            # Copy event listener script
             event_listener_script = (
                 TEMPLATES_DIR / "docker_server" / "event_listener.py"
             )
@@ -962,6 +970,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             run_as_user_id=run_as_user_id,
+            docker_server_slim=_should_use_docker_server_slim(config),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
