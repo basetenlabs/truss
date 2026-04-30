@@ -116,7 +116,6 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 
 {%- if config.docker_server %}
 {%- if docker_server_slim %}
-ENV DOCKER_SERVER_SLIM="true"
 ENV SERVER_START_CMD={{ config.docker_server.start_command | tojson }}
 {{ chown_and_switch_to_regular_user_if_enabled() }}
 ENTRYPOINT ["sh", "-c"]
