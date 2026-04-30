@@ -277,3 +277,86 @@ def test_hydrate_whisper_checkpoint():
     assert result.checkpoint_name == checkpoint_id
     assert result.model_weight_format == definitions.ModelWeightsFormat.WHISPER
     assert isinstance(result, definitions.WhisperCheckpoint)
+
+
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    _ensure_trainer_checkpoint_details,
+    _resolve_trainer,
+)
+import rich_click as click
+
+
+@pytest.fixture
+def mock_trainer_remote():
+    mock = MagicMock()
+    mock.api.search_trainers.return_value = [
+        {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
+    ]
+    mock.api.list_trainer_checkpoints.return_value = {
+        "checkpoints": [
+            {
+                "id": "tcp_step100",
+                "checkpoint_id": "step-100",
+                "base_model": "Qwen/Qwen3-8B",
+                "checkpoint_type": "lora",
+                "lora_adapter_config": {"r": 16},
+            }
+        ]
+    }
+    return mock
+
+
+def test_resolve_trainer_returns_first_match(mock_trainer_remote):
+    result = _resolve_trainer(mock_trainer_remote, "trnr_xyz")
+    assert result["id"] == "trnr_xyz"
+    assert result["session_id"] == "sess_abc"
+    mock_trainer_remote.api.search_trainers.assert_called_once_with(trainer_id="trnr_xyz")
+
+
+def test_resolve_trainer_raises_when_not_found(mock_trainer_remote):
+    mock_trainer_remote.api.search_trainers.return_value = []
+    with pytest.raises(click.UsageError, match="Trainer trnr_missing not found"):
+        _resolve_trainer(mock_trainer_remote, "trnr_missing")
+
+
+def test_ensure_trainer_checkpoint_details_user_provided_passes_through(
+    mock_trainer_remote,
+):
+    """When the user authored trainer_checkpoint_ids in --config, return as-is."""
+    user_config = definitions.CheckpointList(trainer_checkpoint_ids=["tcp_step100"])
+    result = _ensure_trainer_checkpoint_details(
+        mock_trainer_remote, user_config, trainer_id=None
+    )
+    assert result is user_config
+    # Did not hit the API since user authored the IDs.
+    mock_trainer_remote.api.search_trainers.assert_not_called()
+    mock_trainer_remote.api.list_trainer_checkpoints.assert_not_called()
+
+
+def test_ensure_trainer_checkpoint_details_requires_trainer_id_when_unprovided(
+    mock_trainer_remote,
+):
+    with pytest.raises(click.UsageError, match="--trainer-id is required"):
+        _ensure_trainer_checkpoint_details(
+            mock_trainer_remote, checkpoint_details=None, trainer_id=None
+        )
+
+
+def test_ensure_trainer_checkpoint_details_picker_emits_ids_and_base_model(
+    mock_trainer_remote,
+):
+    """With --trainer-id set, picker selects checkpoints and we send IDs on the wire.
+
+    Single checkpoint short-circuits the inquirer prompt (mirroring TJC behavior),
+    so no prompt mock is needed for this case.
+    """
+    result = _ensure_trainer_checkpoint_details(
+        mock_trainer_remote,
+        checkpoint_details=None,
+        trainer_id="trnr_xyz",
+    )
+    assert result.trainer_checkpoint_ids == ["tcp_step100"]
+    assert result.base_model_id == "Qwen/Qwen3-8B"
+    mock_trainer_remote.api.list_trainer_checkpoints.assert_called_once_with(
+        "sess_abc", "trnr_xyz"
+    )
