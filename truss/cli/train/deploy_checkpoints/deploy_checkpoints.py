@@ -261,8 +261,8 @@ def _get_trainer_model_name(base_model_id: Optional[str]) -> str:
     """Prompt for a model name in trainer-checkpoint deploys.
 
     The CLI doesn't need to know the weight format — the server reads it
-    off the TSC row. We just prompt for a name with the base model as a
-    sensible default.
+    off the trainer-checkpoint row. We just prompt for a name with the
+    base model as a sensible default.
     """
     default = base_model_id.split("/")[-1] if base_model_id else ""
     return inquirer.text(
@@ -359,8 +359,8 @@ def _ensure_trainer_checkpoint_details(
 
     Each entry in ``trainer_checkpoint_ids`` is a TrainerServerCheckpoint PK.
     The server resolves it to its trainer + checkpoint_name on deploy and
-    reads the actual weight format off the TSC row — the CLI doesn't need
-    to know it.
+    reads the actual weight format off the trainer-checkpoint row — the
+    CLI doesn't need to know it.
     """
     if checkpoint_details and checkpoint_details.trainer_checkpoint_ids:
         return _process_user_provided_trainer_checkpoint_ids(
@@ -384,7 +384,8 @@ def _prompt_user_for_trainer_checkpoint_details(
     response = remote_provider.api.list_trainer_checkpoints(
         trainer["session_id"], trainer["id"]
     )
-    # Pick by checkpoint_name in the UI; map back to TSC PKs for the wire.
+    # Pick by checkpoint_name in the UI; send the trainer checkpoint IDs
+    # on the wire so the server doesn't need to re-resolve names.
     name_to_pk = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint["id"])
         for checkpoint in response["checkpoints"]
@@ -417,7 +418,7 @@ def _prompt_user_for_trainer_checkpoint_details(
 def _process_user_provided_trainer_checkpoint_ids(
     checkpoint_details: CheckpointList, remote_provider: BasetenRemote
 ) -> CheckpointList:
-    """User-authored TSC PK list — server resolves and validates on deploy."""
+    """User-authored trainer-checkpoint ID list — server resolves and validates on deploy."""
     return checkpoint_details
 
 

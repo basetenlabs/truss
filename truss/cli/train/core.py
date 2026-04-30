@@ -348,7 +348,7 @@ def print_deploy_checkpoints_success_message(
 ):
     checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
     if not checkpoint_names:
-        # Trainer-checkpoint deploys reference checkpoints by TSC PK; the
+        # Trainer-checkpoint deploys reference checkpoints by ID; the
         # client doesn't know each name without an extra API call. Skip the
         # name-specific guidance.
         console.print(
