@@ -7,6 +7,7 @@ import truss_train.definitions as definitions
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _ensure_trainer_checkpoint_details,
     _get_checkpoint_ids_to_deploy,
+    _hydrate_deploy_config,
     _resolve_trainer,
     hydrate_checkpoint,
 )
@@ -362,3 +363,49 @@ def test_ensure_trainer_checkpoint_details_picker_emits_ids_and_base_model(
     mock_trainer_remote.api.list_trainer_checkpoints.assert_called_once_with(
         "sess_abc", "trnr_xyz"
     )
+
+
+def test_hydrate_deploy_config_rejects_trainer_id_with_config_checkpoints(
+    mock_trainer_remote,
+):
+    """--trainer-id + --config that has training-job checkpoints should error."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="tj_abc",
+                    checkpoint_name="step-1",
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                )
+            ]
+        )
+    )
+    with pytest.raises(click.UsageError, match="--trainer-id cannot be combined"):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_trainer_remote,
+            project_id=None,
+            job_id=None,
+            trainer_id="trnr_xyz",
+        )
+
+
+def test_hydrate_deploy_config_rejects_job_id_with_config_trainer_checkpoint_ids(
+    mock_trainer_remote,
+):
+    """--job-id + --config that has trainer_checkpoint_ids should error."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            trainer_checkpoint_ids=["tcp_xyz"]
+        )
+    )
+    with pytest.raises(
+        click.UsageError, match="--project-id / --job-id cannot be combined"
+    ):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_trainer_remote,
+            project_id=None,
+            job_id="tj_abc",
+            trainer_id=None,
+        )

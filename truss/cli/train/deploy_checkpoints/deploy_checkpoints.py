@@ -281,10 +281,26 @@ def _hydrate_deploy_config(
     job_id: Optional[str],
     trainer_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
-    is_trainer_flow = trainer_id is not None or (
+    config_has_training_job_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.checkpoints)
+    )
+    config_has_trainer_checkpoints = (
         deploy_config.checkpoint_details is not None
         and bool(deploy_config.checkpoint_details.trainer_checkpoint_ids)
     )
+    if trainer_id is not None and config_has_training_job_checkpoints:
+        raise click.UsageError(
+            "--trainer-id cannot be combined with checkpoint_details.checkpoints "
+            "from --config (training job checkpoints). Pick one source."
+        )
+    if (project_id or job_id) and config_has_trainer_checkpoints:
+        raise click.UsageError(
+            "--project-id / --job-id cannot be combined with "
+            "checkpoint_details.trainer_checkpoint_ids from --config. Pick one source."
+        )
+
+    is_trainer_flow = trainer_id is not None or config_has_trainer_checkpoints
     if is_trainer_flow:
         checkpoint_details = _ensure_trainer_checkpoint_details(
             remote_provider, deploy_config.checkpoint_details, trainer_id
