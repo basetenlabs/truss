@@ -505,6 +505,12 @@ def get_job_metrics(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
+    "--trainer-id",
+    type=str,
+    required=False,
+    help="Trainer ID. Use to deploy checkpoints from a trainer (R.1) flow instead of a training job.",
+)
+@click.option(
     "--config",
     type=str,
     required=False,
@@ -525,6 +531,7 @@ def deploy_checkpoints(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
@@ -540,14 +547,20 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
-    )
+    if trainer_id and (project_id or project or job_id):
+        raise click.UsageError(
+            "--trainer-id cannot be combined with --project, --project-id, or --job-id."
+        )
+    if not trainer_id:
+        project_id = _maybe_resolve_project_id_from_id_or_name(
+            remote_provider, project_id=project_id, project=project
+        )
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
+            trainer_id=trainer_id,
             deploy_config_path=config,
             dry_run=dry_run,
         ),

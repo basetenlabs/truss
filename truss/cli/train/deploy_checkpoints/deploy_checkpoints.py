@@ -40,10 +40,11 @@ def create_model_version_from_inference_template(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
     dry_run: bool,
 ) -> DeploySuccessResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id
+        checkpoint_deploy_config, remote_provider, project_id, job_id, trainer_id
     )
 
     request_data = _build_inference_template_request(
@@ -125,6 +126,15 @@ def _build_inference_template_request(
             },
         }
         weights_sources.append(weights_source)
+    for trainer_checkpoint_id in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
+        weights_sources.append(
+            {
+                "weight_source_type": "B10_TRAINER_CHECKPOINTING",
+                "b10_trainer_checkpoint_weights_source": {
+                    "checkpoint": {"trainer_checkpoint_id": trainer_checkpoint_id}
+                },
+            }
+        )
 
     # Build environment variables
     environment_variables = []
@@ -252,11 +262,23 @@ def _hydrate_deploy_config(
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
-    checkpoint_details = _ensure_checkpoint_details(
-        remote_provider, deploy_config.checkpoint_details, project_id, job_id
+    is_trainer_flow = trainer_id is not None or (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.trainer_checkpoint_ids)
     )
-    model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+    if is_trainer_flow:
+        checkpoint_details = _ensure_trainer_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, trainer_id
+        )
+        # All R.1 trainer outputs are LoRA today.
+        model_weight_format = ModelWeightsFormat.LORA
+    else:
+        checkpoint_details = _ensure_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, project_id, job_id
+        )
+        model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
 
     base_model_id = checkpoint_details.base_model_id
     if deploy_config.model_name:
@@ -309,6 +331,81 @@ def _ensure_checkpoint_details(
         return _prompt_user_for_checkpoint_details(
             remote_provider, checkpoint_details, project_id, job_id
         )
+
+
+def _ensure_trainer_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    trainer_id: Optional[str],
+) -> CheckpointList:
+    """Resolve a trainer checkpoint flow into a CheckpointList.
+
+    Each entry in ``trainer_checkpoint_ids`` is a TrainerServerCheckpoint PK.
+    The server resolves it to its trainer + checkpoint_name on deploy.
+    """
+    if checkpoint_details and checkpoint_details.trainer_checkpoint_ids:
+        return _process_user_provided_trainer_checkpoint_ids(
+            checkpoint_details, remote_provider
+        )
+    if not trainer_id:
+        raise click.UsageError(
+            "--trainer-id is required to deploy trainer checkpoints."
+        )
+    return _prompt_user_for_trainer_checkpoint_details(
+        remote_provider, checkpoint_details, trainer_id
+    )
+
+
+def _prompt_user_for_trainer_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    trainer_id: str,
+) -> CheckpointList:
+    trainer = _resolve_trainer(remote_provider, trainer_id)
+    response = remote_provider.api.list_trainer_checkpoints(
+        trainer["session_id"], trainer["id"]
+    )
+    # Pick by checkpoint_name in the UI; map back to TSC PKs for the wire.
+    name_to_pk = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint["id"])
+        for checkpoint in response["checkpoints"]
+    )
+    if not name_to_pk:
+        raise click.UsageError(
+            f"No checkpoints found for trainer {trainer['id']}."
+        )
+    response_checkpoints = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint)
+        for checkpoint in response["checkpoints"]
+    )
+    selected_names = _get_checkpoint_ids_to_deploy(
+        list(name_to_pk.keys()), response_checkpoints
+    )
+
+    if not checkpoint_details:
+        checkpoint_details = CheckpointList()
+    checkpoint_details.trainer_checkpoint_ids = [
+        name_to_pk[name] for name in selected_names
+    ]
+    if checkpoint_details.base_model_id is None:
+        checkpoint_details.base_model_id = trainer.get("base_model") or response_checkpoints[
+            selected_names[0]
+        ].get("base_model")
+    return checkpoint_details
+
+
+def _process_user_provided_trainer_checkpoint_ids(
+    checkpoint_details: CheckpointList, remote_provider: BasetenRemote
+) -> CheckpointList:
+    """User-authored TSC PK list — server resolves and validates on deploy."""
+    return checkpoint_details
+
+
+def _resolve_trainer(remote_provider: BasetenRemote, trainer_id: str) -> dict:
+    matches = remote_provider.api.search_trainers(trainer_id=trainer_id)
+    if not matches:
+        raise click.UsageError(f"Trainer {trainer_id} not found.")
+    return matches[0]
 
 
 def _prompt_user_for_checkpoint_details(

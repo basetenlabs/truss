@@ -317,6 +317,7 @@ def create_model_version_from_inference_template(
             DeployCheckpointsConfig(),
             args.project_id,
             args.job_id,
+            args.trainer_id,
             args.dry_run,
         )
     # User provided a checkpoint deploy config file
@@ -328,6 +329,7 @@ def create_model_version_from_inference_template(
             checkpoint_deploy,
             args.project_id,
             args.job_id,
+            args.trainer_id,
             args.dry_run,
         )
 
@@ -335,10 +337,15 @@ def create_model_version_from_inference_template(
 def _get_checkpoint_names(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
-    return [
+    names = [
         checkpoint.checkpoint_name
         for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
+    # Trainer checkpoints are referenced by TSC PK; server resolves the
+    # name. Print the PK for now — refining this would require a second
+    # API call to resolve PK → name on the client.
+    names.extend(checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids)
+    return names
 
 
 def print_deploy_checkpoints_success_message(
