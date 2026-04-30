@@ -1,5 +1,6 @@
 from truss.base import truss_config
 from truss_train.definitions import (
+    CacheConfig,
     Compute,
     Image,
     InteractiveSession,
@@ -28,7 +29,10 @@ def build_workstation_project(
         ),
     )
 
-    runtime = Runtime(start_commands=["sleep infinity"])
+    runtime = Runtime(
+        start_commands=["sleep infinity"],
+        cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
+    )
 
     interactive_session = InteractiveSession(
         trigger=InteractiveSessionTrigger.ON_STARTUP,
