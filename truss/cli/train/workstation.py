@@ -1,11 +1,16 @@
+from typing import Optional
+
 from truss.base import truss_config
 from truss_train.definitions import (
+    BasetenCheckpoint,
     CacheConfig,
+    CheckpointingConfig,
     Compute,
     Image,
     InteractiveSession,
     InteractiveSessionProvider,
     InteractiveSessionTrigger,
+    LoadCheckpointConfig,
     Runtime,
     TrainingJob,
     TrainingProject,
@@ -19,6 +24,10 @@ def build_workstation_project(
     gpu_count: int,
     project_id: str,
     base_image: str = DEFAULT_BASE_IMAGE,
+    enable_checkpointing: bool = False,
+    checkpoint_path: Optional[str] = None,
+    checkpoint_volume_size: Optional[int] = None,
+    checkpoint_from_job: Optional[str] = None,
 ) -> TrainingProject:
     accel_enum = truss_config.Accelerator(accelerator)
 
@@ -29,9 +38,24 @@ def build_workstation_project(
         ),
     )
 
+    load_checkpoint_config = None
+    if checkpoint_from_job:
+        load_checkpoint_config = LoadCheckpointConfig(
+            enabled=True,
+            checkpoints=[
+                BasetenCheckpoint.from_latest_checkpoint(job_id=checkpoint_from_job)
+            ],
+        )
+
     runtime = Runtime(
         start_commands=["sleep infinity"],
         cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
+        checkpointing_config=CheckpointingConfig(
+            enabled=enable_checkpointing,
+            checkpoint_path=checkpoint_path,
+            volume_size_gib=checkpoint_volume_size,
+        ),
+        load_checkpoint_config=load_checkpoint_config,
     )
 
     interactive_session = InteractiveSession(

@@ -1136,6 +1136,30 @@ def capacity(remote: Optional[str]):
     required=False,
     help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
 )
+@click.option(
+    "--enable-checkpointing",
+    is_flag=True,
+    default=False,
+    help="Enable checkpoint storage.",
+)
+@click.option(
+    "--checkpoint-path",
+    type=str,
+    required=False,
+    help="Path inside the container to save checkpoints.",
+)
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    required=False,
+    help="Checkpoint volume size in GiB.",
+)
+@click.option(
+    "--checkpoint-from-job",
+    type=str,
+    required=False,
+    help="Job ID to load the latest checkpoint from.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @common.common_options()
@@ -1144,6 +1168,10 @@ def workstation(
     gpu_count: int,
     project_id: Optional[str],
     image: Optional[str],
+    enable_checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    checkpoint_from_job: Optional[str],
     remote: Optional[str],
     tail: bool,
 ):
@@ -1169,6 +1197,10 @@ def workstation(
         gpu_count=gpu_count,
         project_id=project_id,
         base_image=base_image,
+        enable_checkpointing=enable_checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+        checkpoint_from_job=checkpoint_from_job,
     )
 
     console.print(
