@@ -64,6 +64,7 @@ from truss.base.truss_config import (
     K8S_RESERVED_ENVIRONMENT_VARIABLES,
     DockerServer,
     RequirementsFileType,
+    TransportKind,
     TrussConfig,
 )
 from truss.base.truss_spec import TrussSpec
@@ -104,6 +105,16 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
+
+
+def _should_use_docker_server_sidecar(config: TrussConfig) -> bool:
+    if not os.getenv("BT_USE_DOCKER_SERVER_SIDECAR", False):
+        return False
+    if config.docker_server is None:
+        return False
+    if config.runtime.transport.kind == TransportKind.GRPC:
+        return False
+    return True
 
 
 class RemoteCache(ABC):
@@ -652,23 +663,23 @@ class ServingImageBuilder(ImageBuilder):
             config.docker_server is not None
             and config.docker_server.no_build is not True
         ):
-            self._copy_into_build_dir(
-                TEMPLATES_DIR / "docker_server_requirements.txt",
-                build_dir,
-                "docker_server_requirements.txt",
-            )
+            if not _should_use_docker_server_sidecar(config):
+                self._copy_into_build_dir(
+                    TEMPLATES_DIR / "docker_server_requirements.txt",
+                    build_dir,
+                    "docker_server_requirements.txt",
+                )
 
-            generate_docker_server_nginx_config(build_dir, config)
+                generate_docker_server_nginx_config(build_dir, config)
 
-            generate_docker_server_supervisord_config(build_dir, config)
+                generate_docker_server_supervisord_config(build_dir, config)
 
-            # Copy event listener script
-            event_listener_script = (
-                TEMPLATES_DIR / "docker_server" / "event_listener.py"
-            )
-            self._copy_into_build_dir(
-                event_listener_script, build_dir, "event_listener.py"
-            )
+                event_listener_script = (
+                    TEMPLATES_DIR / "docker_server" / "event_listener.py"
+                )
+                self._copy_into_build_dir(
+                    event_listener_script, build_dir, "event_listener.py"
+                )
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
@@ -962,6 +973,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             run_as_user_id=run_as_user_id,
+            docker_server_uses_sidecar=_should_use_docker_server_sidecar(config),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
