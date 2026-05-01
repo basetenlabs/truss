@@ -276,8 +276,11 @@ def test_truss_chainlet_artifact_preserves_user_files(truss_dir_path, tmp_path):
     # Empty for a leaf TrussChainlet (no nested deps).
     assert chains_meta["chainlet_to_service"] == {}
 
-    # User's other config keys preserved.
-    assert dst_config["model_name"] == "EchoTruss"
+    # `model_name` is overwritten with the chain-uniquified name; user's
+    # literal `EchoTruss` is preserved in the source `truss_dir` but not in
+    # the generated artifact (Project 2.5 fix). Other user-set config keys
+    # remain preserved.
+    assert dst_config["model_name"] != "EchoTruss"
     assert dst_config["python_version"] == "py311"
 
 
@@ -374,3 +377,103 @@ def test_depends_on_random_class_rejected():
 
     with pytest.raises(public_types.ChainsUsageError):
         framework.raise_validation_errors()
+
+
+# ---- Project 2.5: TrussChainlet artifact parity with ChainletBase -----------
+
+
+def test_truss_chainlet_artifact_overrides_user_model_name(truss_dir_path, tmp_path):
+    """The codegen artifact must carry the chain-uniquified model_name, not
+    the user's literal `truss_dir/config.yaml.model_name`. This avoids
+    workspace name collisions on `chains push` (Issue 1) and `OracleVersion.name`
+    regex failures during UI promotion (Issue 5)."""
+    from truss_chains.deployment import code_gen
+
+    truss_dir_str = str(truss_dir_path)
+
+    class _Echo(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Echo)
+    chainlet_dir = code_gen.gen_truss_chainlet(
+        chain_root=tmp_path,
+        chain_name="codegen-test",
+        chainlet_descriptor=descriptor,
+        model_name="_Echo-abc12345",
+    )
+
+    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
+    assert dst_config["model_name"] == "_Echo-abc12345"
+
+    # User's source file is untouched.
+    src_config = yaml.safe_load((truss_dir_path / "config.yaml").read_text())
+    assert src_config["model_name"] == "EchoTruss"
+
+
+def test_truss_chainlet_artifact_auto_adds_chain_api_key(truss_dir_path, tmp_path):
+    """The codegen artifact must include `baseten_chain_api_key` in its
+    `secrets` map so any TrussChainlet that calls a sibling via the chain
+    RPC URL has the chain-internal key available (Issue 2). The ChainletBase
+    path auto-adds this; the TrussChainlet path must too."""
+    from truss_chains.deployment import code_gen
+
+    truss_dir_str = str(truss_dir_path)
+
+    class _Echo(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Echo)
+    chainlet_dir = code_gen.gen_truss_chainlet(
+        chain_root=tmp_path,
+        chain_name="codegen-test",
+        chainlet_descriptor=descriptor,
+        model_name="_Echo-abc12345",
+    )
+
+    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
+    assert public_types.CHAIN_API_KEY_SECRET_NAME in dst_config["secrets"]
+    assert (
+        dst_config["secrets"][public_types.CHAIN_API_KEY_SECRET_NAME]
+        == public_types.SECRET_DUMMY
+    )
+
+
+def test_truss_chainlet_artifact_chain_api_key_idempotent(tmp_path):
+    """If the user's truss `config.yaml` already lists `baseten_chain_api_key`
+    in its `secrets` map, the codegen must not overwrite it — same idempotency
+    contract as the ChainletBase path."""
+    from truss_chains.deployment import code_gen
+
+    # User truss with chain_api_key already declared.
+    user_config = (
+        VALID_TRUSS_CONFIG_YAML
+        + f"secrets:\n  {public_types.CHAIN_API_KEY_SECRET_NAME}: null\n"
+    )
+    truss_dir = tmp_path / "user_truss"
+    truss_dir.mkdir()
+    (truss_dir / "config.yaml").write_text(user_config)
+    (truss_dir / "model").mkdir()
+    (truss_dir / "model" / "model.py").write_text(VALID_MODEL_PY)
+
+    truss_dir_str = str(truss_dir)
+
+    class _Echo(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Echo)
+    chainlet_dir = code_gen.gen_truss_chainlet(
+        chain_root=tmp_path,
+        chain_name="codegen-test",
+        chainlet_descriptor=descriptor,
+        model_name="_Echo-abc12345",
+    )
+
+    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
+    # User's literal value (None) preserved — codegen did NOT overwrite to '***'.
+    assert (
+        dst_config["secrets"][public_types.CHAIN_API_KEY_SECRET_NAME]
+        != public_types.SECRET_DUMMY
+    )

@@ -957,11 +957,15 @@ def _prepare_truss_chainlet_artifact(
     chainlet_dir: pathlib.Path,
     chainlet_descriptor: private_types.ChainletAPIDescriptor,
     dep_services: Mapping[str, private_types.ServiceDescriptor],
+    model_name: str,
 ) -> pathlib.Path:
     """Build a TrussChainlet artifact: copy the user's `truss_dir` to
     ``chainlet_dir`` and merge ``model_metadata.chains_metadata`` into its
     ``config.yaml``. The user's source files (model.py, custom server, etc.)
-    are preserved byte-for-byte. Returns ``chainlet_dir``."""
+    are preserved byte-for-byte. ``model_name`` (the chain-uniquified name
+    matching the ChainletBase form ``<display_name>-<uuid_prefix>``) overwrites
+    the user's literal ``config.yaml.model_name`` so workspace/promote-time
+    name uniqueness is satisfied. Returns ``chainlet_dir``."""
     src_truss_dir = chainlet_descriptor.truss_dir
     if src_truss_dir is None or not src_truss_dir.is_dir():
         raise public_types.ChainsUsageError(
@@ -975,6 +979,16 @@ def _prepare_truss_chainlet_artifact(
 
     config_path = chainlet_dir / serving_image_builder.CONFIG_FILE
     config = truss_config.TrussConfig.from_yaml(config_path)
+    config.model_name = model_name
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
+        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
+            public_types.SECRET_DUMMY
+        )
+    else:
+        logging.info(
+            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
+            "to secrets - no need to manually add it."
+        )
     # Preserve any user-set model_metadata keys; only overwrite chains_metadata.
     config.model_metadata = dict(config.model_metadata or {})
     config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
@@ -1009,7 +1023,10 @@ def gen_truss_chainlet(
         # backend recognizes it as a chain member. No `model.py` generation,
         # no chain-root copy.
         return _prepare_truss_chainlet_artifact(
-            chainlet_dir, chainlet_descriptor, dep_services
+            chainlet_dir,
+            chainlet_descriptor,
+            dep_services,
+            model_name=model_name or chain_name,
         )
     if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
         engine_builder_config = cast(

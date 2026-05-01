@@ -994,8 +994,9 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
 
     if is_truss_chainlet(cls):
         # TrussChainlet declarations don't have remote_config / run_remote /
-        # health_check / dependencies. Validate the truss_dir, build a
-        # descriptor with a sentinel endpoint, register, and exit early.
+        # health_check / dependencies. Validate the truss_dir + display_name,
+        # build a descriptor with a sentinel endpoint, register, and exit early.
+        _validate_display_name(cls, location)
         _validate_truss_chainlet_cls(cls, src_path, location)
         chainlet_descriptor = private_types.ChainletAPIDescriptor(
             chainlet_cls=cls,
