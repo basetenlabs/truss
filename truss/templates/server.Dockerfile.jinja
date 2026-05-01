@@ -115,6 +115,12 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- endif %} {#- endif build_commands #}
 
 {%- if config.docker_server %}
+{%- if docker_server_slim %}
+ENV SERVER_START_CMD={{ config.docker_server.start_command | tojson }}
+{{ chown_and_switch_to_regular_user_if_enabled() }}
+ENTRYPOINT ["sh", "-c"]
+CMD [{{ config.docker_server.start_command | tojson }}]
+{%- else %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
@@ -137,6 +143,7 @@ RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
+{%- endif %} {#- endif docker_server_slim #}
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
