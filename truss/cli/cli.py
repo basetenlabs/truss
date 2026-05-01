@@ -22,6 +22,7 @@ from truss.base.constants import (
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
+from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.resolvers.model_team_resolver import (
@@ -171,16 +172,15 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
+@click.option("--browser", is_flag=True, help="Log in via browser (OAuth device flow).")
 @click.option("--api-key", type=str, required=False, help="API key for authentication.")
+@click.option("--remote", type=str, default=None, help="Remote name to create.")
 @common.common_options()
-def login(api_key: Optional[str]):
-    from truss.api import login
+def login(browser: bool, api_key: Optional[str], remote: Optional[str]):
+    do_login(browser=browser, api_key=api_key, remote=remote)
 
-    if not api_key:
-        remote_config = remote_cli.inquire_remote_config()
-        RemoteFactory.update_remote_config(remote_config)
-    else:
-        login(api_key)
+
+truss_cli.add_command(auth_group)
 
 
 @truss_cli.command()
@@ -1023,8 +1023,7 @@ def push(
             )
             if watch_no_sleep:
                 model_hostname = resolved_model["hostname"]
-                api_key = bt_remote._auth_service.authenticate().value
-                common.start_keepalive(model_hostname, api_key)
+                common.start_keepalive(model_hostname, bt_remote.fetch_auth_header)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -1270,19 +1269,16 @@ def watch(
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
 
-    api_key = remote_provider._auth_service.authenticate().value
-
     common.wait_for_development_model_ready(
         model_hostname=model_hostname,
         model_id=model_id,
         dev_version_id=dev_version_id,
         remote_provider=remote_provider,
         console=console,
-        api_key=api_key,
     )
 
     if no_sleep:
-        common.start_keepalive(model_hostname, api_key)
+        common.start_keepalive(model_hostname, remote_provider.fetch_auth_header)
 
     if tail:
         _start_tail(remote_provider, model_id, dev_version_id, in_background=True)

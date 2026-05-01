@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.auth import ApiKey, AuthService
+from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
@@ -86,6 +86,11 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
+def resolve_rest_api_url(remote_url: str) -> str:
+    """Map an app remote_url (e.g. https://app.baseten.co) to its REST API base."""
+    return API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+
+
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
         f'model_name: "{oracle.model_name}"',
@@ -125,16 +130,15 @@ class BasetenApi:
 
     def __init__(self, remote_url: str, auth_service: AuthService) -> None:
         graphql_api_url = f"{remote_url}/graphql/"
-        # Ensure we strip off trailing '/' to denormalize URLs.
-        rest_api_url = API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+        rest_api_url = resolve_rest_api_url(remote_url)
 
         self._remote_url = remote_url
         self._graphql_api_url = graphql_api_url
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
-        self._auth_token = self._auth_service.authenticate()
         self._rest_api_client = RestAPIClient(
-            base_url=self._rest_api_url, headers=self._auth_token.header()
+            base_url=self._rest_api_url,
+            header_provider=self._auth_service.fetch_auth_header,
         )
 
     @property
@@ -146,10 +150,6 @@ class BasetenApi:
         return self._rest_api_url
 
     @property
-    def auth_token(self) -> ApiKey:
-        return self._auth_token
-
-    @property
     def suppress_error_print(self) -> bool:
         return self._rest_api_client.suppress_error_print
 
@@ -158,7 +158,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_token.header()
+        headers = self._auth_service.fetch_auth_header()
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
