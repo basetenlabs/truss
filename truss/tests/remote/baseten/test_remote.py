@@ -6,7 +6,7 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM
+from truss.base.truss_config import BISLLM, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -656,6 +656,12 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         config={"model": "test-llm"}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    mock_truss_handle.spec.config.weights = Weights(
+        [
+            WeightsSource(source="hf://model-1", mount_location="/models/base"),
+            WeightsSource(source="hf://model-2", mount_location="/models/adapter"),
+        ]
+    )
 
     bis_llm_handle = mock.Mock(
         version_id="bis-llm-deployment-id",
@@ -694,6 +700,10 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert kwargs["team_id"] is None
     assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
     assert kwargs["body"]["llm_version"] == "v1"
+    assert kwargs["body"]["weights"] == [
+        {"source": "hf://model-1", "mount_location": "/models/base"},
+        {"source": "hf://model-2", "mount_location": "/models/adapter"},
+    ]
     assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
     assert kwargs["body"]["metadata"] == {
         "git_sha": "abc123",
