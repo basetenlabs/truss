@@ -1,0 +1,98 @@
+"""
+SLURM Login/Controller Node Configuration
+
+This is a CPU-only node that runs slurmctld (the SLURM controller daemon).
+It stays alive to accept job submissions from worker nodes.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from shared.docker_auth import build_docker_auth
+from truss.base import truss_config
+from truss_train import definitions
+
+config_path = Path(__file__).parent / "runtime_config.json"
+runtime_config = json.loads(config_path.read_text()) if config_path.exists() else {}
+
+GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
+PARTITION = runtime_config.get("partition", None)
+
+BASE_IMAGE = runtime_config.get(
+    "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
+DOCKER_AUTH = build_docker_auth(
+    BASE_IMAGE,
+    runtime_config.get("docker_auth_method"),
+    runtime_config.get("docker_auth_secret"),
+)
+
+training_runtime = definitions.Runtime(
+    start_commands=[
+        "apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1 || true",
+        "command -v pip >/dev/null 2>&1 || python3 -m ensurepip --default-pip -q 2>/dev/null || (curl -sS https://bootstrap.pypa.io/get-pip.py | python3)",
+        "pip install --quiet 'truss @ git+https://github.com/basetenlabs/truss.git@rcano/slurm-cli'",
+        "bash login_node/setup_login.sh",
+    ],
+    environment_variables={
+        "GPUS_PER_NODE": str(GPUS_PER_NODE),
+        "BASETEN_API_KEY": definitions.SecretReference(name="baseten_api_key"),
+    },
+    cache_config=definitions.CacheConfig(enabled=True, require_cache_affinity=False),
+    checkpointing_config=definitions.CheckpointingConfig(
+        enabled=runtime_config.get("checkpointing", True),
+        checkpoint_path=runtime_config.get("checkpoint_path"),
+        volume_size_gib=runtime_config.get("checkpoint_volume_size"),
+    ),
+)
+
+if PARTITION:
+    training_compute = definitions.Compute(
+        accelerator=truss_config.AcceleratorSpec(
+            accelerator=truss_config.Accelerator(PARTITION), count=GPUS_PER_NODE
+        )
+    )
+else:
+    training_compute = definitions.Compute(cpu_count=4, memory="16Gi")
+
+_ISESSION_TRIGGERS = {
+    "on_startup": definitions.InteractiveSessionTrigger.ON_STARTUP,
+    "on_failure": definitions.InteractiveSessionTrigger.ON_FAILURE,
+    "on_demand": definitions.InteractiveSessionTrigger.ON_DEMAND,
+}
+_ISESSION_PROVIDERS = {
+    "vs_code": definitions.InteractiveSessionProvider.VS_CODE,
+    "cursor": definitions.InteractiveSessionProvider.CURSOR,
+}
+_ISESSION_AUTH_PROVIDERS = {
+    "microsoft": definitions.InteractiveSessionAuthProvider.MICROSOFT,
+    "github": definitions.InteractiveSessionAuthProvider.GITHUB,
+}
+_isession_trigger = runtime_config.get("interactive_session", "on_startup")
+_isession_kwargs = {}
+if _isession_trigger in _ISESSION_TRIGGERS:
+    _session_args = {"trigger": _ISESSION_TRIGGERS[_isession_trigger]}
+    _sp = runtime_config.get("session_provider", "vs_code")
+    if _sp in _ISESSION_PROVIDERS:
+        _session_args["session_provider"] = _ISESSION_PROVIDERS[_sp]
+    _ap = runtime_config.get("auth_provider", "microsoft")
+    if _ap in _ISESSION_AUTH_PROVIDERS:
+        _session_args["auth_provider"] = _ISESSION_AUTH_PROVIDERS[_ap]
+    _isession_kwargs["interactive_session"] = definitions.InteractiveSession(
+        **_session_args
+    )
+
+training_job = definitions.TrainingJob(
+    image=definitions.Image(base_image=BASE_IMAGE, docker_auth=DOCKER_AUTH),
+    compute=training_compute,
+    runtime=training_runtime,
+    **_isession_kwargs,
+    name=runtime_config.get("job_name"),
+)
+
+training_project = definitions.TrainingProject(
+    name=runtime_config.get("project_name", "slurm-harness"), job=training_job
+)

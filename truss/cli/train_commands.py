@@ -732,6 +732,382 @@ def init_training_job(
         sys.exit(1)
 
 
+@train.group(name="slurm")
+def slurm():
+    """SLURM harness commands for multi-node GPU jobs"""
+
+
+@slurm.command(name="login")
+@click.option(
+    "--project", type=str, default="slurm-harness", help="Training project name"
+)
+@click.option(
+    "--gres", type=str, default="gpu:8", help="GPU resources per node (default: gpu:8)"
+)
+@click.option(
+    "--partition",
+    "-p",
+    type=str,
+    default=None,
+    help="Accelerator partition (e.g. H100, H200, A100). Defaults to CPU-only.",
+)
+@click.option(
+    "--self-test", is_flag=True, help="Push a test worker from the login node"
+)
+@click.option("--image", type=str, default=None, help="Base Docker image")
+@click.option(
+    "--docker-auth-method",
+    type=click.Choice(
+        ["registry_secret", "gcp_service_account", "aws_iam"], case_sensitive=False
+    ),
+    default=None,
+    help="Docker auth method for private registries",
+)
+@click.option(
+    "--docker-auth-secret",
+    type=str,
+    default=None,
+    help="Baseten secret name for Docker registry auth",
+)
+@click.option(
+    "--interactive",
+    type=click.Choice(
+        ["on_startup", "on_failure", "on_demand", "none"], case_sensitive=False
+    ),
+    default="on_startup",
+    help="Interactive session trigger (default: on_startup)",
+)
+@click.option(
+    "--session-provider",
+    type=click.Choice(["vs_code", "cursor"], case_sensitive=False),
+    default="vs_code",
+    help="IDE for interactive sessions (default: vs_code)",
+)
+@click.option(
+    "--auth-provider",
+    type=click.Choice(["microsoft", "github"], case_sensitive=False),
+    default="microsoft",
+    help="Auth provider for interactive sessions (default: microsoft)",
+)
+@click.option(
+    "--checkpointing/--no-checkpointing",
+    default=True,
+    help="Enable checkpointing (default: on)",
+)
+@click.option("--checkpoint-path", type=str, default=None, help="Checkpoint path")
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    default=None,
+    help="Checkpoint volume size (GiB)",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def slurm_login(
+    project: str,
+    gres: str,
+    partition: Optional[str],
+    self_test: bool,
+    image: Optional[str],
+    docker_auth_method: Optional[str],
+    docker_auth_secret: Optional[str],
+    interactive: str,
+    session_provider: str,
+    auth_provider: str,
+    checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    remote: Optional[str],
+):
+    """Start a SLURM login/controller node on Baseten training."""
+    from truss.cli.train.slurm import build_login_runtime_config, parse_gres, push_node
+
+    gpus_per_node = parse_gres(gres)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    # Check for an existing active login node in this project
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    try:
+        proj = train_cli.fetch_project_by_name_or_id(remote_provider, project)
+        active_jobs = remote_provider.api.search_training_jobs(
+            statuses=["TRAINING_JOB_RUNNING", "TRAINING_JOB_DEPLOYING"],
+            project_id=proj["id"],
+        )
+        login_jobs = [j for j in active_jobs if j.get("name") == "slurm-login"]
+        if login_jobs:
+            job = login_jobs[0]
+            job_id = job["id"]
+            console.print(
+                f"Login node already running: [cyan]{job_id}[/cyan]", style="green"
+            )
+            console.print(
+                f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]"
+            )
+            console.print(
+                f"SSH access:   [cyan]truss train isession --job-id {job_id}[/cyan]"
+            )
+            console.print(
+                f"Submit jobs:  [cyan]truss train slurm sbatch <script.sh> --project {project}[/cyan]"
+            )
+            return
+    except Exception:
+        pass  # Project may not exist yet, proceed with creation
+
+    console.print("Starting SLURM login node:")
+    console.print(f"  Project:       {project}")
+    console.print(f"  Compute:       {partition or 'CPU-only'}")
+    console.print()
+
+    runtime_config = build_login_runtime_config(
+        project=project,
+        gpus_per_node=gpus_per_node,
+        partition=partition,
+        self_test=self_test,
+        image=image,
+        docker_auth_method=docker_auth_method,
+        docker_auth_secret=docker_auth_secret,
+        interactive=interactive,
+        session_provider=session_provider,
+        auth_provider=auth_provider,
+        checkpointing=checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+    )
+
+    with console.status("Pushing login node...", spinner="dots"):
+        result = push_node("login_node", runtime_config, remote=remote)
+
+    job_id = result.get("id", "unknown")
+    console.print(f"Login node pushed: {job_id}", style="green")
+    console.print(f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]")
+    console.print(
+        f"Once LOGIN_READY, submit jobs with: "
+        f"[cyan]truss train slurm sbatch <script.sh> --project {project}[/cyan]"
+    )
+
+
+@slurm.command(name="status")
+@common.common_options()
+def slurm_status():
+    """Check SLURM readiness on this node."""
+    import subprocess
+    from pathlib import Path
+
+    def _check(cmd, timeout=5):
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            return (
+                r.returncode == 0,
+                r.stdout.decode().strip(),
+                r.stderr.decode().strip(),
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False, "", "not available"
+
+    def _pgrep(name):
+        ok, _, _ = _check(["pgrep", "-x", name])
+        return ok
+
+    checks = []
+
+    # slurm.conf
+    has_conf = Path("/etc/slurm/slurm.conf").exists()
+    checks.append((has_conf, "slurm.conf", "exists" if has_conf else "missing"))
+
+    # munge
+    munge_ok = _pgrep("munged")
+    checks.append((munge_ok, "munge", "running" if munge_ok else "not running"))
+
+    # slurmctld reachable
+    sq_ok, sq_out, sq_err = _check(["squeue", "--noheader"])
+    if sq_ok:
+        jobs = len(sq_out.splitlines()) if sq_out else 0
+        checks.append((True, "slurmctld", f"reachable ({jobs} job(s))"))
+    else:
+        checks.append((False, "slurmctld", sq_err))
+
+    # node status — only show active nodes (idle/mixed/alloc)
+    si_ok, si_out, si_err = _check(["sinfo", "-N", "--noheader"])
+    if si_ok and si_out:
+        all_lines = si_out.splitlines()
+        active_lines = [
+            l for l in all_lines if any(s in l for s in ["idle", "mix", "alloc"])
+        ]
+        if active_lines:
+            checks.append((True, "nodes", f"{len(active_lines)} active"))
+            for line in active_lines:
+                console.print(f"    {line.strip()}")
+        else:
+            checks.append((True, "nodes", "none active (waiting for workers)"))
+    elif si_ok:
+        checks.append((True, "nodes", "none registered"))
+    else:
+        checks.append((False, "sinfo", si_err))
+
+    ok = all(passed for passed, _, _ in checks)
+    for passed, name, detail in checks:
+        icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
+        console.print(f"{icon} {name}: {detail}")
+
+    if ok:
+        console.print("\n[green]SLURM is ready.[/green]")
+    else:
+        console.print("\n[red]SLURM is not ready.[/red] Wait for setup to complete.")
+        raise SystemExit(1)
+
+
+@slurm.command(name="sbatch")
+@click.argument("script", type=click.Path(exists=True), required=False, default=None)
+@click.option(
+    "--wrap", type=str, default=None, help="Inline command to wrap in a batch script"
+)
+@click.option("--nodes", "-N", type=int, default=1, help="Number of nodes")
+@click.option(
+    "--gres", type=str, default="gpu:8", help="GPU resources per node (default: gpu:8)"
+)
+@click.option(
+    "--partition",
+    "-p",
+    type=str,
+    default="H200",
+    help="Accelerator partition (e.g. H100, H200, A100)",
+)
+@click.option("--project", type=str, default=None, help="Training project name")
+@click.option(
+    "--job-name", "-J", type=str, default=None, help="Name for the worker job"
+)
+@click.option("--image", type=str, default=None, help="Base Docker image")
+@click.option(
+    "--docker-auth-method",
+    type=click.Choice(
+        ["registry_secret", "gcp_service_account", "aws_iam"], case_sensitive=False
+    ),
+    default=None,
+    help="Docker auth method for private registries",
+)
+@click.option(
+    "--docker-auth-secret",
+    type=str,
+    default=None,
+    help="Baseten secret name for Docker registry auth",
+)
+@click.option(
+    "--interactive",
+    type=click.Choice(
+        ["on_startup", "on_failure", "on_demand", "none"], case_sensitive=False
+    ),
+    default="on_demand",
+    help="Interactive session trigger (default: on_demand)",
+)
+@click.option(
+    "--checkpointing/--no-checkpointing",
+    default=True,
+    help="Enable checkpointing (default: on)",
+)
+@click.option("--checkpoint-path", type=str, default=None, help="Checkpoint path")
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    default=None,
+    help="Checkpoint volume size (GiB)",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def slurm_sbatch(
+    script: Optional[str],
+    wrap: Optional[str],
+    nodes: int,
+    gres: str,
+    partition: str,
+    project: Optional[str],
+    job_name: Optional[str],
+    image: Optional[str],
+    docker_auth_method: Optional[str],
+    docker_auth_secret: Optional[str],
+    interactive: str,
+    checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    remote: Optional[str],
+):
+    """Submit a SLURM batch job via Baseten training infrastructure."""
+    from truss.cli.train.slurm import (
+        build_sbatch_runtime_config,
+        detect_default_project,
+        detect_login_docker_auth,
+        detect_login_image,
+        detect_login_session_config,
+        parse_gres,
+        push_node,
+    )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    if project is None:
+        project = detect_default_project()
+
+    # Default to the login node's image, auth, and session config
+    if image is None:
+        image = detect_login_image()
+    if docker_auth_method is None and docker_auth_secret is None:
+        login_method, login_secret = detect_login_docker_auth()
+        if login_method and login_secret:
+            docker_auth_method = login_method
+            docker_auth_secret = login_secret
+    login_session_provider, login_auth_provider = detect_login_session_config()
+
+    if wrap:
+        job_script = f"#!/bin/bash\n{wrap}\n"
+    elif script:
+        script_path = Path(script)
+        job_script = script_path.read_text()
+    else:
+        error_console.print("Provide a script path or --wrap command")
+        sys.exit(1)
+
+    gpus_per_node = parse_gres(gres)
+
+    console.print("Submitting SLURM job:")
+    console.print(f"  Script:      {script or '(--wrap)'}")
+    console.print(f"  Nodes:       {nodes}")
+    console.print(f"  GPUs/node:   {gpus_per_node}")
+    console.print(f"  Partition:   {partition}")
+    console.print(f"  Project:     {project}")
+    console.print()
+
+    effective_job_name = job_name or "slurm-worker"
+
+    runtime_config = build_sbatch_runtime_config(
+        project=project,
+        job_name=effective_job_name,
+        node_count=nodes,
+        gpus_per_node=gpus_per_node,
+        partition=partition,
+        sbatch_script=job_script,
+        image=image,
+        docker_auth_method=docker_auth_method,
+        docker_auth_secret=docker_auth_secret,
+        interactive=interactive,
+        session_provider=login_session_provider,
+        auth_provider=login_auth_provider,
+        checkpointing=checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+    )
+
+    with console.status("Pushing worker job...", spinner="dots"):
+        result = push_node("worker_node", runtime_config, remote=remote)
+
+    job_id = result.get("id", "unknown")
+    console.print(f"Worker job pushed: {job_id}", style="green")
+    console.print(f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]")
+
+
 @train.group(name="cache")
 def cache():
     """Cache-related subcommands for truss train"""
