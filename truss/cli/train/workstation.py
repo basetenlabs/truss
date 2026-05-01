@@ -1,6 +1,9 @@
+import shutil
+from pathlib import Path
 from typing import Optional
 
 from truss.base import truss_config
+from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss_train.definitions import (
     BasetenCheckpoint,
     CacheConfig,
@@ -19,11 +22,21 @@ from truss_train.definitions import (
 DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
 
 
+def copy_workstation_templates(target_dir: Path) -> None:
+    """Copy workstation SLURM setup scripts to the target directory."""
+    for script in WORKSTATION_TEMPLATE_DIR.iterdir():
+        if script.is_file() and script.suffix == ".sh":
+            dest = target_dir / script.name
+            shutil.copy2(str(script), str(dest))
+            dest.chmod(0o755)
+
+
 def build_workstation_project(
     accelerator: str,
     gpu_count: int,
     project_id: str,
     base_image: str = DEFAULT_BASE_IMAGE,
+    node_count: int = 1,
     enable_checkpointing: bool = False,
     checkpoint_path: Optional[str] = None,
     checkpoint_volume_size: Optional[int] = None,
@@ -32,7 +45,7 @@ def build_workstation_project(
     accel_enum = truss_config.Accelerator(accelerator)
 
     compute = Compute(
-        node_count=1,
+        node_count=node_count,
         accelerator=truss_config.AcceleratorSpec(
             accelerator=accel_enum, count=gpu_count
         ),
@@ -47,8 +60,13 @@ def build_workstation_project(
             ],
         )
 
+    if node_count > 1:
+        start_commands = ["bash /b10/workspace/setup_slurm.sh"]
+    else:
+        start_commands = ["sleep infinity"]
+
     runtime = Runtime(
-        start_commands=["sleep infinity"],
+        start_commands=start_commands,
         cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
         checkpointing_config=CheckpointingConfig(
             enabled=enable_checkpointing,
