@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import http
 import logging
@@ -9,6 +8,7 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import Callable
 
+import anyio
 import httpx
 from endpoints import control_app
 from fastapi import FastAPI, Request, Response
@@ -105,21 +105,22 @@ def create_app(base_config: dict):
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
-        asyncio.create_task(
-            async_inference_server_startup_flow(
-                app_state.inference_server_controller, app_logger
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(
+                async_inference_server_startup_flow,
+                app_state.inference_server_controller,
+                app_logger,
             )
-        )
-        try:
-            yield
-        finally:
-            # FastApi handles the term signal to start the shutdown flow. Here we
-            # make sure that the inference server is stopped when control server
-            # shuts down. Inference server has logic to wait until all requests are
-            # finished before exiting. By waiting on that, we inherit the same
-            # behavior for control server.
-            app.state.logger.info("Term signal received, shutting down.")
-            app.state.inference_server_process_controller.terminate_with_wait()
+            try:
+                yield
+            finally:
+                # FastApi handles the term signal to start the shutdown flow. Here we
+                # make sure that the inference server is stopped when control server
+                # shuts down. Inference server has logic to wait until all requests are
+                # finished before exiting. By waiting on that, we inherit the same
+                # behavior for control server.
+                app.state.logger.info("Term signal received, shutting down.")
+                app.state.inference_server_process_controller.terminate_with_wait()
 
     app = FastAPI(title="Truss Live Reload Server", lifespan=lifespan)
     app.state = app_state

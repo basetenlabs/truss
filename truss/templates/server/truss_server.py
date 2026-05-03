@@ -10,6 +10,7 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional, Union
 
+import anyio
 import pydantic
 import uvicorn
 import yaml
@@ -40,6 +41,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
+from shared.asgi_env import use_hypercorn_trio, validate_asgi_backend_env
 from shared.log_config import chain_request_id_context, request_id_context
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
@@ -384,6 +386,7 @@ class TrussServer:
     """
 
     _server: Optional[uvicorn.Server]
+    _request_shutdown: Optional[Callable[[], None]]
 
     def __init__(self, http_port: int, config_or_path: Union[str, Path, dict]):
         # This is run before uvicorn is up. Need explicit logging config here.
@@ -402,35 +405,30 @@ class TrussServer:
         self._model = ModelWrapper(self._config, tracer)
         self._endpoints = BasetenEndpoints(self._model, tracer)
         self._server = None
+        self._request_shutdown = None
 
     def cleanup(self):
         if INFERENCE_SERVER_FAILED_FILE.exists():
             INFERENCE_SERVER_FAILED_FILE.unlink()
 
-    def on_startup(self):
-        """
-        This method will be started inside the main process, so here is where
-        we want to setup our logging and model.
-        """
-        self.cleanup()
-        self._model.start_load_thread()
-        asyncio.create_task(self._shutdown_if_load_fails())
-        self._model.setup_polling_for_environment_updates()
-
-    async def _shutdown_if_load_fails(self):
+    async def _shutdown_if_load_fails(self) -> None:
         while not self._model.ready:
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             if self._model.load_failed:
-                assert self._server is not None
                 logging.info("Trying shut down after failed model load.")
-                self._server.should_exit = True
+                if self._request_shutdown is not None:
+                    self._request_shutdown()
                 return
 
     def create_application(self):
         @contextlib.asynccontextmanager
         async def lifespan(app):
-            self.on_startup()
-            yield
+            self.cleanup()
+            self._model.start_load_thread()
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(self._shutdown_if_load_fails)
+                tg.start_soon(self._model.poll_for_environment_updates)
+                yield
 
         app = FastAPI(
             title="Baseten Inference Server",
@@ -532,25 +530,54 @@ class TrussServer:
         return app
 
     def start(self):
+        validate_asgi_backend_env()
         log_level = (
             "DEBUG"
             if self._config["runtime"].get("enable_debug_logs", False)
             else "INFO"
         )
         extra_kwargs = {}
+        transport = self._config.get("runtime", {}).get("transport") or {}
+        ws_ping_interval_seconds = transport.get("ping_interval_seconds")
+        ws_ping_timeout_seconds = transport.get("ping_timeout_seconds")
         # We don't pass these if not set, to not override the default.
-        if (
-            ws_ping_interval_seconds := self._config["runtime"]
-            .get("transport", {})
-            .get("ping_interval_seconds")
-        ):
+        if ws_ping_interval_seconds:
             extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
-        if (
-            ws_ping_timeout_seconds := self._config["runtime"]
-            .get("transport", {})
-            .get("ping_timeout_seconds")
-        ):
+        if ws_ping_timeout_seconds:
             extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
+
+        if use_hypercorn_trio():
+            try:
+                import trio
+                from hypercorn.config import Config as HypercornConfig
+                from hypercorn.trio import serve as hypercorn_trio_serve
+            except ImportError as e:
+                raise ImportError(
+                    "TRUSS_ASGI_SERVER=hypercorn with TRUSS_ASYNC_BACKEND=trio requires "
+                    "optional dependencies. Install with: pip install 'truss[trio]'"
+                ) from e
+
+            app = self.create_application()
+            hc = HypercornConfig()
+            hc.bind = [f"0.0.0.0:{self._http_port}"]
+            hc.websocket_max_message_size = WS_MAX_MSG_SZ_BYTES
+            hc.shutdown_timeout = TIMEOUT_GRACEFUL_SHUTDOWN
+            hc.loglevel = log_level.upper()
+            hc.use_reloader = False
+            if ws_ping_interval_seconds:
+                hc.websocket_ping_interval = ws_ping_interval_seconds
+
+            shutdown_event = trio.Event()
+            self._server = None
+            self._request_shutdown = shutdown_event.set
+
+            async def _hypercorn_main() -> None:
+                await hypercorn_trio_serve(
+                    app, hc, shutdown_trigger=shutdown_event.wait
+                )
+
+            trio.run(_hypercorn_main)
+            return
 
         cfg = uvicorn.Config(
             self.create_application(),
@@ -569,4 +596,5 @@ class TrussServer:
         )
         server = uvicorn.Server(config=cfg)
         self._server = server
+        self._request_shutdown = lambda: setattr(server, "should_exit", True)
         asyncio.run(server.serve())

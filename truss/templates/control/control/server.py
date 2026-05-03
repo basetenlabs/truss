@@ -5,6 +5,7 @@ import pathlib
 import uvicorn
 import yaml
 from application import create_app
+from shared.asgi_env import use_hypercorn_trio, validate_asgi_backend_env
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -38,6 +39,7 @@ class ControlServer:
             self._config = {}
 
     def run(self):
+        validate_asgi_backend_env()
         application = create_app(
             {
                 "inference_server_home": self._inf_serv_home,
@@ -56,13 +58,46 @@ class ControlServer:
         )
 
         extra_kwargs = {}
+        transport = {}
         if self._config:
-            transport = self._config.get("runtime", {}).get("transport", {})
+            transport = self._config.get("runtime", {}).get("transport") or {}
             if transport and transport.get("kind") == "websocket":
                 if ping_interval_seconds := transport.get("ping_interval_seconds"):
                     extra_kwargs["ws_ping_interval"] = ping_interval_seconds
                 if ping_timeout_seconds := transport.get("ping_timeout_seconds"):
                     extra_kwargs["ws_ping_timeout"] = ping_timeout_seconds
+
+        if use_hypercorn_trio():
+            try:
+                import trio
+                from hypercorn.config import Config as HypercornConfig
+                from hypercorn.trio import serve as hypercorn_trio_serve
+            except ImportError as e:
+                raise ImportError(
+                    "TRUSS_ASGI_SERVER=hypercorn with TRUSS_ASYNC_BACKEND=trio requires "
+                    "optional dependencies. Install with: pip install 'truss[trio]'"
+                ) from e
+
+            hc = HypercornConfig()
+            hc.bind = [
+                f"{application.state.control_server_host}:"
+                f"{application.state.control_server_port}"
+            ]
+            hc.loglevel = "INFO"
+            hc.use_reloader = False
+            if transport.get("kind") == "websocket":
+                if ping_interval_seconds := transport.get("ping_interval_seconds"):
+                    hc.websocket_ping_interval = ping_interval_seconds
+
+            shutdown_event = trio.Event()
+
+            async def _hypercorn_main() -> None:
+                await hypercorn_trio_serve(
+                    application, hc, shutdown_trigger=shutdown_event.wait
+                )
+
+            trio.run(_hypercorn_main)
+            return
 
         cfg = uvicorn.Config(
             application,

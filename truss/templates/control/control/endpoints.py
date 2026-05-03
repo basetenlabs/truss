@@ -1,8 +1,8 @@
-import asyncio
 import logging
 from typing import Any, Callable, Optional, Protocol
 
 import httpx
+from anyio import create_task_group, to_thread
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady, PatchFailedRecoverable
@@ -166,9 +166,9 @@ async def _handle_websocket_forwarding(
 ):
     logger = client_ws.app.state.logger
     try:
-        async with asyncio.TaskGroup() as tg:  # type: ignore[attr-defined]
-            tg.create_task(forward_to_client(client_ws, server_ws))
-            tg.create_task(forward_to_server(client_ws, server_ws))
+        async with create_task_group() as tg:
+            tg.start_soon(forward_to_client, client_ws, server_ws)
+            tg.start_soon(forward_to_server, client_ws, server_ws)
     except ExceptionGroup as eg:  # type: ignore[name-defined] # noqa: F821
         # NB(nikhil): The first websocket proxy method to raise an error will
         # be surfaced here, and that contains the information we want to forward to the
@@ -219,12 +219,8 @@ control_app.add_route("/metrics/", proxy_http, ["GET"])
 async def patch(request: Request) -> dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: request.app.state.inference_server_controller.apply_patch(
-            patch_request
-        ),
+    await to_thread.run_sync(
+        request.app.state.inference_server_controller.apply_patch, patch_request
     )
     # If all patches have hot_reload set, apply_patch above skipped the
     # process restart, so signal the inference server to reload

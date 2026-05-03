@@ -16,9 +16,9 @@ import pytest
 import yaml
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
+@pytest.fixture(params=["asyncio", "trio"])
+def anyio_backend(request):
+    return request.param
 
 
 @pytest.fixture

@@ -208,6 +208,18 @@ client = OpenAI(
 
 Your model ID is the string after `/models/` in the logs URL from `uvx truss push`. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
 
+# ASGI runtime (asyncio / Trio)
+
+By default the inference and live-reload servers use **Uvicorn** with **uvloop**. To run the same FastAPI apps on **Trio**, install the optional extra and set:
+
+```bash
+pip install 'truss[trio]'
+export TRUSS_ASGI_SERVER=hypercorn
+export TRUSS_ASYNC_BACKEND=trio
+```
+
+Uvicorn does not drive a Trio event loop; **Hypercorn** is used when `TRUSS_ASGI_SERVER=hypercorn`. Custom `model.py` code that calls `asyncio` APIs directly may not work on Trio; prefer [`anyio`](https://anyio.readthedocs.io/) for portable async.
+
 # IDE support
 
 Truss ships a [JSON schema](truss/config.schema.json) for `config.yaml`. Projects created with `truss init` include a schema reference automatically, giving you autocompletion, hover docs, and validation in any editor that supports the [YAML language server](https://github.com/redhat-developer/yaml-language-server) (VS Code, JetBrains, Neovim, and others).

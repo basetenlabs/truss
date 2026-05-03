@@ -1,4 +1,3 @@
-import asyncio
 import dataclasses
 import enum
 import importlib
@@ -12,7 +11,7 @@ import sys
 import time
 import weakref
 from collections.abc import AsyncGenerator, Awaitable, Generator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
@@ -23,7 +22,15 @@ import opentelemetry.sdk.trace as sdk_trace
 import pydantic
 import starlette.requests
 import starlette.responses
-from anyio import Semaphore, to_thread
+from anyio import (
+    BrokenResourceError,
+    Semaphore,
+    create_memory_object_stream,
+    create_task_group,
+    fail_after,
+    sleep,
+    to_thread,
+)
 from common import errors, tracing
 from common.patches import apply_patches
 from common.retry import retry
@@ -379,7 +386,6 @@ class ModelWrapper:
     _logger: logging.Logger
     _status: "ModelWrapper.Status"
     _predict_semaphore: Semaphore
-    _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
 
     class Status(enum.Enum):
@@ -408,7 +414,6 @@ class ModelWrapper:
                 "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
             )
         )
-        self._poll_for_environment_updates_task = None
         self._environment = None
 
     @property
@@ -561,11 +566,6 @@ class ModelWrapper:
             )
         lazy_data_resolver.raise_if_not_collected()
 
-    def setup_polling_for_environment_updates(self):
-        self._poll_for_environment_updates_task = asyncio.create_task(
-            self.poll_for_environment_updates()
-        )
-
     def _initialize_environment_before_load(self):
         environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
             dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
@@ -601,7 +601,7 @@ class ModelWrapper:
 
         while True:
             # Give control back to the event loop while waiting for environment updates
-            await asyncio.sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
+            await sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
 
             # Wait for load to finish before checking for environment updates
             if not self.ready:
@@ -694,23 +694,25 @@ class ModelWrapper:
         )
         return await self._execute_user_model_fn(result, request, descriptor)
 
-    async def _write_response_to_queue(
-        self,
-        queue: asyncio.Queue,
-        generator: AsyncGenerator[bytes, None],
-        span: trace.Span,
+    async def _write_response_to_send_stream(
+        self, send_stream: Any, generator: AsyncGenerator[bytes, None], span: trace.Span
     ) -> None:
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
                 async for chunk in generator:
-                    await queue.put(chunk)
+                    await send_stream.send(chunk)
             except Exception as e:
                 self._logger.exception(
                     f"Exception while generating streamed response: {str(e)}",
                     exc_info=errors.filter_traceback(self.model_file_name),
                 )
             finally:
-                await queue.put(SENTINEL)
+                try:
+                    await send_stream.send(SENTINEL)
+                except BrokenResourceError:
+                    pass
+                with suppress(BrokenResourceError):
+                    await send_stream.aclose()
 
     async def _stream_with_background_task(
         self,
@@ -726,37 +728,46 @@ class ModelWrapper:
         )
         async_generator = _force_async_generator(generator)
         # To ensure that a partial read from a client does not keep  the semaphore
-        # claimed, we write all the data from the stream to the queue as it is produced,
+        # claimed, we write all the data from the stream as it is produced,
         # irrespective of how fast it is consumed.
-        # We then return a new generator that reads from the queue, and then
+        # We then return a new generator that reads from the stream, and then
         # exits the semaphore block.
-        response_queue: asyncio.Queue = asyncio.Queue()
+        send_stream, receive_stream = create_memory_object_stream[
+            Union[bytes, _Sentinel]
+        ](float("inf"))
 
-        # `write_response_to_queue` keeps running the background until completion.
-        gen_task = asyncio.create_task(
-            self._write_response_to_queue(response_queue, async_generator, span)
-        )
-        # Defer the release of the semaphore until the write_response_to_queue task.
-        gen_task.add_done_callback(lambda _: cleanup_fn())
-
-        # The gap between responses in a stream must be < streaming_read_timeout
-        # TODO: this whole buffering might be superfluous and sufficiently done by
-        #   by the FastAPI server already. See `test_limit_concurrency_with_sse`.
         async def _buffered_response_generator() -> AsyncGenerator[bytes, None]:
-            # `span` is tied to the "producer" `gen_task` which might complete before
+            # `span` is tied to the producer task which might complete before
             # "consume" part here finishes, therefore a dedicated span is required.
             # Because all of this code is inside a `detach_context` block, we
             # explicitly propagate the tracing context for this span.
-            with self._tracer.start_as_current_span(
-                "buffered-response-generator", context=trace_ctx
-            ):
-                while True:
-                    chunk = await asyncio.wait_for(
-                        response_queue.get(), timeout=streaming_read_timeout
-                    )
-                    if chunk == SENTINEL:
-                        return
-                    yield chunk
+            try:
+                async with create_task_group() as tg:
+
+                    async def producer() -> None:
+                        try:
+                            await self._write_response_to_send_stream(
+                                send_stream, async_generator, span
+                            )
+                        finally:
+                            cleanup_fn()
+
+                    tg.start_soon(producer)
+                    try:
+                        with self._tracer.start_as_current_span(
+                            "buffered-response-generator", context=trace_ctx
+                        ):
+                            while True:
+                                with fail_after(streaming_read_timeout):
+                                    chunk = await receive_stream.receive()
+                                if isinstance(chunk, _Sentinel):
+                                    return
+                                yield chunk
+                    finally:
+                        tg.cancel_scope.cancel()
+            finally:
+                with suppress(BrokenResourceError):
+                    await receive_stream.aclose()
 
         return _buffered_response_generator()
 

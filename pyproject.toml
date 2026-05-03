@@ -56,6 +56,11 @@ dependencies = [
     "truss-transfer>=0.0.40,<0.0.44",
 ]
 
+[project.optional-dependencies]
+trio = [
+    "hypercorn[trio]>=0.16.0",
+]
+
 [project.urls]
 Repository = "https://github.com/basetenlabs/truss"
 Homepage = "https://truss.baseten.co"
@@ -104,6 +109,8 @@ dev-server = [
     "uvicorn>=0.24.0",
     "uvloop>=0.17.0; sys_platform != 'win32'",
     "websockets>=14.0",
+    "hypercorn[trio]>=0.16.0",
+    "trio>=0.24.0",
 ]
 
 [tool.uv]
@@ -140,7 +147,8 @@ build-backend = "hatchling.build"
 
 [tool.mypy]
 ignore_missing_imports = true
-python_version = "3.9"
+# 3.10+: dependencies (e.g. huggingface_hub) use pattern matching; 3.9 breaks pre-commit mypy.
+python_version = "3.10"
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

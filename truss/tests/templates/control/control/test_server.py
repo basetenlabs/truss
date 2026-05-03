@@ -78,6 +78,7 @@ def app(truss_container_fs, truss_original_hash, ports):
             ),
         ),
         pytest.param(("asyncio", {"use_uvloop": False}), id="asyncio"),
+        pytest.param("trio", id="trio"),
     ]
 )
 def anyio_backend(request):
