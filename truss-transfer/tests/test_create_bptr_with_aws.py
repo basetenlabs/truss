@@ -105,3 +105,52 @@ def test_dolly_with_download():
     assert Path(
         "/app/model_cache/julien_dummy/rank-0/checkpoint-24/tokenizer_config.json"
     ).exists()
+
+
+def test_nonexistent_s3_prefix_errors():
+    """Issue #2354: a misconfigured S3 URI/prefix must fail manifest creation
+    rather than silently producing an empty manifest and starting the
+    container with no weights synced."""
+    if not Path("/secrets/aws-secret-json").exists():
+        pytest.skip(
+            "Skipping test_nonexistent_s3_prefix_errors because AWS secret is not available."
+        )
+
+    models = [
+        truss_transfer.PyModelRepo(
+            repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/this/prefix/does/not/exist/",
+            revision="",
+            runtime_secret_name="aws-secret-json",
+            volume_folder="bogus_prefix",
+            kind="s3",
+            allow_patterns=None,
+            ignore_patterns=None,
+        )
+    ]
+
+    with pytest.raises(Exception, match="No objects found"):
+        truss_transfer.create_basetenpointer_from_models(models)
+
+
+def test_allow_pattern_matches_nothing_errors():
+    """Issue #2354: a real S3 prefix with an allow_pattern that matches no
+    files must fail manifest creation."""
+    if not Path("/secrets/aws-secret-json").exists():
+        pytest.skip(
+            "Skipping test_allow_pattern_matches_nothing_errors because AWS secret is not available."
+        )
+
+    models = [
+        truss_transfer.PyModelRepo(
+            repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects/n4q95w5/jobs/prwny3y/",
+            revision="",
+            runtime_secret_name="aws-secret-json",
+            volume_folder="julien_dummy",
+            kind="s3",
+            allow_patterns=["*.this_extension_will_never_exist"],
+            ignore_patterns=None,
+        )
+    ]
+
+    with pytest.raises(Exception, match="No files at"):
+        truss_transfer.create_basetenpointer_from_models(models)

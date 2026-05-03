@@ -65,12 +65,19 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
 
         let mut list_stream = object_store.list(Some(&prefix_path));
 
+        // Track per-model object counts so we can fail fast on misconfigured
+        // weights sources (bad URI/prefix or filters that match nothing) instead
+        // of silently producing an empty manifest and starting the container.
+        let mut listed_count: usize = 0;
+        let mut kept_for_model: usize = 0;
+
         while let Some(meta) = list_stream
             .next()
             .await
             .transpose()
-            .map_err(|e| anyhow!("Failed to list objects: {}", e))?
+            .map_err(|e| anyhow!("Failed to list objects under '{}': {}", model.repo_id, e))?
         {
+            listed_count += 1;
             let object_path = meta.location.to_string();
 
             // Extract relative path from the prefix (for file naming)
@@ -120,6 +127,25 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             };
 
             basetenpointers.push(pointer);
+            kept_for_model += 1;
+        }
+
+        if listed_count == 0 {
+            return Err(anyhow!(
+                "No objects found at '{}'. Verify the URI/prefix exists and that the provided \
+                 credentials ('{}') have list access to it.",
+                model.repo_id,
+                model.runtime_secret_name
+            ));
+        }
+        if kept_for_model == 0 {
+            return Err(anyhow!(
+                "No files at '{}' matched the configured allow_patterns={:?} / \
+                 ignore_patterns={:?}. Adjust the patterns or remove them to include files.",
+                model.repo_id,
+                model.allow_patterns,
+                model.ignore_patterns
+            ));
         }
     }
 
@@ -134,4 +160,169 @@ pub async fn create_single_cloud_basetenpointers<T: CloudMetadataProvider>(
     model_path: &String,
 ) -> Result<Vec<BasetenPointer>> {
     extract_cloud_metadata(provider, vec![repo], model_path.clone()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{GcsResolution, ResolutionType};
+    use bytes::Bytes;
+    use object_store::memory::InMemory;
+    use object_store::path::Path as ObjPath;
+    use std::sync::Arc;
+
+    /// Test provider that wraps an in-memory ObjectStore so we can drive
+    /// extract_cloud_metadata without hitting the network. Holds an
+    /// Arc<dyn ObjectStore> (which has a blanket ObjectStore impl in the
+    /// crate) so we can hand out shared, pre-populated stores via
+    /// create_object_store while keeping the trait's Box<dyn ObjectStore>
+    /// return type.
+    struct TestProvider {
+        store: Arc<dyn ObjectStore>,
+        prefix: String,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudMetadataProvider for TestProvider {
+        fn parse_uri(&self, _uri: &str) -> Result<(String, String)> {
+            Ok(("test-bucket".to_string(), self.prefix.clone()))
+        }
+
+        fn create_object_store(
+            &self,
+            _bucket: &str,
+            _runtime_secret_name: &str,
+        ) -> Result<Box<dyn ObjectStore>> {
+            Ok(Box::new(Arc::clone(&self.store)))
+        }
+
+        fn create_resolution(&self, bucket: &str, object_path: &str) -> Resolution {
+            Resolution::Gcs(GcsResolution::new(
+                object_path.to_string(),
+                bucket.to_string(),
+            ))
+        }
+
+        fn hash_type(&self) -> &'static str {
+            "etag"
+        }
+
+        fn extract_hash(&self, meta: &object_store::ObjectMeta) -> String {
+            meta.e_tag
+                .clone()
+                .unwrap_or_else(|| "test-etag".to_string())
+        }
+
+        fn generate_uid(&self, bucket: &str, object_path: &str, _hash: &str) -> String {
+            format!("test:{bucket}:{object_path}")
+        }
+    }
+
+    fn make_repo(allow: Option<Vec<String>>, ignore: Option<Vec<String>>) -> ModelRepo {
+        ModelRepo {
+            repo_id: "s3://test-bucket/missing/prefix".to_string(),
+            revision: "".to_string(),
+            allow_patterns: allow,
+            ignore_patterns: ignore,
+            volume_folder: "test_vol".to_string(),
+            runtime_secret_name: "aws-secret-json".to_string(),
+            kind: ResolutionType::S3,
+        }
+    }
+
+    #[tokio::test]
+    async fn errors_when_listing_returns_zero_objects() {
+        // Empty in-memory store -> `list` yields nothing.
+        let provider = TestProvider {
+            store: Arc::new(InMemory::new()),
+            prefix: "missing/prefix".to_string(),
+        };
+        let repo = make_repo(None, None);
+
+        let err = extract_cloud_metadata(&provider, vec![&repo], "/app/model_cache".to_string())
+            .await
+            .expect_err("expected an error when no objects are listed");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("No objects found"),
+            "unexpected error message: {msg}"
+        );
+        assert!(
+            msg.contains(&repo.repo_id),
+            "error should reference repo_id, got: {msg}"
+        );
+        assert!(
+            msg.contains(&repo.runtime_secret_name),
+            "error should reference runtime secret name, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn errors_when_all_files_filtered_out() {
+        // Populate the store with two real objects under the prefix.
+        let store = InMemory::new();
+        for name in &["model.bin", "config.json"] {
+            store
+                .put(
+                    &ObjPath::from(format!("data/{name}")),
+                    Bytes::from_static(b"hello").into(),
+                )
+                .await
+                .unwrap();
+        }
+        let provider = TestProvider {
+            store: Arc::new(store),
+            prefix: "data".to_string(),
+        };
+
+        // allow_patterns matches none of the listed objects -> all filtered out.
+        let repo = make_repo(Some(vec!["*.zzz".to_string()]), None);
+
+        let err = extract_cloud_metadata(&provider, vec![&repo], "/app/model_cache".to_string())
+            .await
+            .expect_err("expected an error when filters drop every object");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("No files at"),
+            "unexpected error message: {msg}"
+        );
+        assert!(
+            msg.contains("*.zzz"),
+            "error message should mention the failing allow_pattern, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn succeeds_when_at_least_one_file_matches() {
+        let store = InMemory::new();
+        store
+            .put(
+                &ObjPath::from("data/model.safetensors"),
+                Bytes::from_static(b"weights").into(),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &ObjPath::from("data/README.md"),
+                Bytes::from_static(b"docs").into(),
+            )
+            .await
+            .unwrap();
+        let provider = TestProvider {
+            store: Arc::new(store),
+            prefix: "data".to_string(),
+        };
+
+        let repo = make_repo(Some(vec!["*.safetensors".to_string()]), None);
+
+        let pointers =
+            extract_cloud_metadata(&provider, vec![&repo], "/app/model_cache".to_string())
+                .await
+                .expect("expected success when at least one file matches");
+        assert_eq!(pointers.len(), 1);
+        assert!(pointers[0].file_name.ends_with("model.safetensors"));
+    }
 }

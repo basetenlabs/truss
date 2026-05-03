@@ -134,6 +134,17 @@ pub async fn metadata_hf_repo(
         .collect();
     let filtered_files = filter_repo_files(files, allow_patterns, ignore_patterns)?;
 
+    // Fail fast if the configured patterns excluded every file in the repo,
+    // otherwise the runtime would silently sync zero files and start the
+    // container with no weights.
+    if filtered_files.is_empty() {
+        return Err(HfError::Pattern(format!(
+            "No files in HuggingFace repo '{repo_id}' (revision '{revision}') matched the configured \
+             allow_patterns={allow_patterns:?} / ignore_patterns={ignore_patterns:?}. \
+             Adjust the patterns or remove them to include files."
+        )));
+    }
+
     // Use semaphore to limit concurrent metadata requests (max 20 concurrent)
     let semaphore = Arc::new(Semaphore::new(20));
     let mut tasks = FuturesUnordered::new();
@@ -302,5 +313,49 @@ mod tests {
         assert_eq!(model_repo.revision, "main");
         assert_eq!(model_repo.volume_folder, "test");
         assert_eq!(model_repo.runtime_secret_name, "hf_access_token");
+    }
+
+    /// Network-dependent test: ensures that when allow_patterns matches no
+    /// files in a real HuggingFace repo, metadata_hf_repo errors out instead
+    /// of silently returning an empty manifest. Mirrors the style of
+    /// `test_create_basetenpointer_hf_julien_dummy` in basetenpointer.rs which
+    /// already requires network access to HuggingFace.
+    #[tokio::test]
+    async fn metadata_hf_repo_errors_when_patterns_match_nothing() {
+        const HF_REPO: &str = "julien-c/dummy-unknown";
+        const HF_REVISION: &str = "60b8d3fe22aebb024b573f1cca224db3126d10f3";
+
+        let allow_patterns = vec!["*.this_extension_will_never_exist".to_string()];
+
+        let result = metadata_hf_repo(
+            HF_REPO,
+            HF_REVISION,
+            Some(&allow_patterns),
+            None,
+            None,
+        )
+        .await;
+
+        match result {
+            Err(HfError::Pattern(msg)) => {
+                assert!(
+                    msg.contains("matched the configured"),
+                    "unexpected error message: {msg}"
+                );
+                assert!(
+                    msg.contains("this_extension_will_never_exist"),
+                    "error should reference the failing pattern, got: {msg}"
+                );
+            }
+            Err(HfError::InvalidMetadata(msg))
+                if msg.contains("Failed to get repo info")
+                    || msg.contains("Failed to build HuggingFace API") =>
+            {
+                // No network access in this environment - skip the assertion.
+                eprintln!("Skipping network-dependent assertion: {msg}");
+            }
+            Ok(_) => panic!("expected an error when allow_patterns match nothing"),
+            Err(other) => panic!("unexpected error variant: {other:?}"),
+        }
     }
 }
