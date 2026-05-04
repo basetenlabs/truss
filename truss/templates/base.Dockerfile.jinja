@@ -76,12 +76,12 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{# Use apt's mirror method on Canonical's US country list. mirrors.txt is a stale fallback. #}
+{# Rewrite apt sources to a multi-mirror list. Default is Canonical's US country list; override with BT_APT_MIRROR_URL. #}
 {# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
 {%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
 {%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
 RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
-    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/US.txt|g' {{ ubuntu_sources_list_file }}; \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|{{ apt_mirror_url }}|g' {{ ubuntu_sources_list_file }}; \
 fi
 {%- endfor %}
 
