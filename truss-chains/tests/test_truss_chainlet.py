@@ -92,16 +92,36 @@ def test_declares_truss_dir_required():
 
 
 def test_truss_dir_must_resolve_to_directory(tmp_path):
+    """A missing `truss_dir` is OK at parse time (matches ChainletBase, which
+    has no filesystem-state checks at parse). The error surfaces at codegen
+    time only for chainlets that are actually being built/deployed — which
+    keeps `truss chains watch --experimental-chainlet-names <subset>` working
+    when non-targeted chainlets' truss_dirs are absent locally."""
+    from truss_chains.deployment import code_gen
+
     bad_path = str(tmp_path / "does_not_exist")
 
     class _Bad(chains.TrussChainlet):
         truss_dir = bad_path
 
+    # Parse-time validation now succeeds (source-only invariants pass).
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Bad)
+
+    # Codegen surfaces the error at the natural phase.
     with pytest.raises(public_types.ChainsUsageError, match="not a directory"):
-        framework.raise_validation_errors()
+        code_gen.gen_truss_chainlet(
+            chain_root=tmp_path,
+            chain_name="codegen-test",
+            chainlet_descriptor=descriptor,
+        )
 
 
 def test_truss_dir_missing_config_yaml(tmp_path):
+    """An existing directory without a `config.yaml` is OK at parse time; the
+    error surfaces at codegen."""
+    from truss_chains.deployment import code_gen
+
     bad = tmp_path / "bad_truss"
     bad.mkdir()
     bad_path = str(bad)
@@ -109,11 +129,22 @@ def test_truss_dir_missing_config_yaml(tmp_path):
     class _Bad(chains.TrussChainlet):
         truss_dir = bad_path
 
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Bad)
+
     with pytest.raises(public_types.ChainsUsageError, match="missing `config.yaml`"):
-        framework.raise_validation_errors()
+        code_gen.gen_truss_chainlet(
+            chain_root=tmp_path,
+            chain_name="codegen-test",
+            chainlet_descriptor=descriptor,
+        )
 
 
 def test_truss_dir_invalid_config_yaml(tmp_path):
+    """An unparseable `config.yaml` is OK at parse time; the error surfaces
+    at codegen."""
+    from truss_chains.deployment import code_gen
+
     bad = tmp_path / "bad_truss"
     bad.mkdir()
     (bad / "config.yaml").write_text("not: a valid: truss config { broken")
@@ -122,8 +153,15 @@ def test_truss_dir_invalid_config_yaml(tmp_path):
     class _Bad(chains.TrussChainlet):
         truss_dir = bad_path
 
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Bad)
+
     with pytest.raises(public_types.ChainsUsageError, match="invalid `config.yaml`"):
-        framework.raise_validation_errors()
+        code_gen.gen_truss_chainlet(
+            chain_root=tmp_path,
+            chain_name="codegen-test",
+            chainlet_descriptor=descriptor,
+        )
 
 
 def test_truss_dir_resolved_relative_to_declaring_file():

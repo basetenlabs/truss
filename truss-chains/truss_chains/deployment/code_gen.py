@@ -969,8 +969,8 @@ def _prepare_truss_chainlet_artifact(
     src_truss_dir = chainlet_descriptor.truss_dir
     if src_truss_dir is None or not src_truss_dir.is_dir():
         raise public_types.ChainsUsageError(
-            f"TrussChainlet `{chainlet_descriptor.name}`: truss_dir is not set "
-            "or does not exist. Validation should have caught this earlier."
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` resolved to "
+            f"`{src_truss_dir}`, which is not a directory."
         )
     # Replace any pre-existing chainlet_dir from a stale prior generation.
     if chainlet_dir.exists():
@@ -978,7 +978,18 @@ def _prepare_truss_chainlet_artifact(
     truss_path.copy_tree_path(src_truss_dir, chainlet_dir)
 
     config_path = chainlet_dir / serving_image_builder.CONFIG_FILE
-    config = truss_config.TrussConfig.from_yaml(config_path)
+    if not config_path.is_file():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) is "
+            "missing `config.yaml` — not a valid Truss directory."
+        )
+    try:
+        config = truss_config.TrussConfig.from_yaml(config_path)
+    except Exception as exc:
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) has "
+            f"an invalid `config.yaml`: {exc}"
+        ) from exc
     config.model_name = model_name
     if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
         config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (

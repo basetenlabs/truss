@@ -1045,8 +1045,18 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
 def _validate_truss_chainlet_cls(
     cls: Type["TrussChainlet"], src_path: str, location: _ErrorLocation
 ) -> None:
-    """Validate a TrussChainlet declaration's class attributes and resolve
-    the ``truss_dir``. Sets ``cls._resolved_truss_dir`` on success."""
+    """Validate a TrussChainlet declaration's source-level class attributes and
+    resolve the ``truss_dir`` path (relative to the declaring file). Sets
+    ``cls._resolved_truss_dir`` on success.
+
+    Filesystem-state checks — ``truss_dir`` actually existing on disk and
+    containing a parseable ``config.yaml`` — are deferred to codegen. They are
+    performed by ``_prepare_truss_chainlet_artifact`` in
+    ``truss_chains/deployment/code_gen.py`` only for chainlets that are
+    actually being built/deployed, which respects ``--experimental-chainlet-names``
+    filtering during ``truss chains watch``. Mirrors the ChainletBase pattern
+    where parse-time validation only checks source-level invariants.
+    """
     # 1. truss_dir class attribute is required (follow MRO so subclasses inherit).
     truss_dir_raw = getattr(cls, "truss_dir", None)
     if not truss_dir_raw:
@@ -1066,42 +1076,14 @@ def _validate_truss_chainlet_cls(
         )
         return
 
-    # 2. Resolve relative to the file where the class was declared.
+    # 2. Resolve relative to the file where the class was declared. Note that
+    # ``Path.resolve()`` succeeds even when the target doesn't exist; existence
+    # is intentionally not checked here (see docstring).
     src_dir = pathlib.Path(src_path).parent
     truss_dir = pathlib.Path(truss_dir_raw)
     if not truss_dir.is_absolute():
         truss_dir = (src_dir / truss_dir).resolve()
     cls._resolved_truss_dir = truss_dir
-
-    # 3. Directory exists.
-    if not truss_dir.is_dir():
-        _collect_error(
-            f"`TrussChainlet.{cls.__name__}.truss_dir` resolved to "
-            f"`{truss_dir}`, which is not a directory.",
-            _ErrorKind.INVALID_CONFIG_ERROR,
-            location,
-        )
-        return
-
-    # 4. config.yaml is a valid Truss config.
-    config_path = truss_dir / "config.yaml"
-    if not config_path.is_file():
-        _collect_error(
-            f"`TrussChainlet.{cls.__name__}.truss_dir` ({truss_dir}) is "
-            "missing `config.yaml` — not a valid Truss directory.",
-            _ErrorKind.INVALID_CONFIG_ERROR,
-            location,
-        )
-        return
-    try:
-        truss_config.TrussConfig.from_yaml(config_path)
-    except Exception as exc:
-        _collect_error(
-            f"`TrussChainlet.{cls.__name__}.truss_dir` ({truss_dir}) has "
-            f"an invalid `config.yaml`: {exc}",
-            _ErrorKind.INVALID_CONFIG_ERROR,
-            location,
-        )
 
 
 # Dependency-Injection / Registry ######################################################
