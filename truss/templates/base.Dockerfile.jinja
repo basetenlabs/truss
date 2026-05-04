@@ -76,7 +76,7 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{# Rewrite apt sources to a multi-mirror list. Default is Canonical's US country list; override with BT_APT_MIRROR_URL. #}
+{# Rewrite apt sources. Default uses apt's mirror method on Canonical's US country list. Override with BT_APT_MIRROR_URL: must end in '/ubuntu/' for a single mirror (e.g. https://mirrors.kernel.org/ubuntu/) or be a 'mirror://...' URL. #}
 {# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
 {%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
 {%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
