@@ -468,7 +468,7 @@ class BasetenChainService(ChainService):
 
         Returns:
             The JSON response."""
-        headers = self._remote._auth_service.authenticate().header()
+        headers = self._remote.fetch_auth_header()
         response = requests.post(
             self.run_remote_url, json=json_data, headers=headers, stream=True
         )

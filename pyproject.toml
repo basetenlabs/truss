@@ -1,6 +1,6 @@
 [project]
 name = "truss"
-version = "0.16.2"
+version = "0.17.1"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
@@ -39,6 +39,7 @@ dependencies = [
     "httpx>=0.24.1",
     "httpx-ws>=0.7.1,<0.8",
     "inquirerpy>=0.3.4,<0.4",
+    "keyring>=25,<26",
     "libcst>=1.1.2",
     "loguru>=0.7.2",
     "packaging>=20.9",

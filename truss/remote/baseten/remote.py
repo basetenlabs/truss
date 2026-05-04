@@ -1,5 +1,6 @@
 import enum
 import logging
+import os
 import re
 import sys
 import time
@@ -20,13 +21,17 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base.constants import CONFIG_FILE, PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import (
+    CONFIG_FILE,
+    DEFAULT_REMOTE_NAME,
+    PRODUCTION_ENVIRONMENT_NAME,
+)
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
-from truss.remote.baseten.auth import AuthService
+from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
+from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -35,6 +40,7 @@ from truss.remote.baseten.core import (
     ModelVersionHandle,
     ModelVersionId,
     archive_dir,
+    create_bis_llm_service,
     create_chain_atomic,
     create_truss_service,
     exists_model,
@@ -45,7 +51,8 @@ from truss.remote.baseten.core import (
     upload_truss,
     validate_truss_config_against_backend,
 )
-from truss.remote.baseten.error import ApiError, RemoteError
+from truss.remote.baseten.error import ApiError, AuthorizationError, RemoteError
+from truss.remote.baseten.oauth import OAuthCredential
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
@@ -114,10 +121,75 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str):
+    def __init__(
+        self,
+        remote_url: str,
+        api_key: Optional[str] = None,
+        *,
+        oauth_remote_name: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
+        oauth_refresh_token: Optional[str] = None,
+        oauth_expires_at: Optional[str] = None,
+    ):
         super().__init__(remote_url)
-        self._auth_service = AuthService(api_key=api_key)
+        self._oauth_remote_name = oauth_remote_name
+        if oauth_access_token:
+            if api_key:
+                raise ValueError(
+                    f"Remote {oauth_remote_name!r}: cannot specify both api_key "
+                    "and OAuth credentials."
+                )
+            if not (oauth_refresh_token and oauth_expires_at):
+                raise ValueError(
+                    f"Remote {oauth_remote_name!r}: OAuth credentials require "
+                    "access_token, refresh_token, and expires_at."
+                )
+            self._auth_service = AuthService(
+                OAuthSession(
+                    api_url=resolve_rest_api_url(remote_url),
+                    credential=OAuthCredential(
+                        access_token=oauth_access_token,
+                        refresh_token=oauth_refresh_token,
+                        expires_at=int(oauth_expires_at),
+                    ),
+                    on_token_refresh=self._persist_refreshed_credential,
+                )
+            )
+        else:
+            api_key = api_key or os.environ.get("BASETEN_API_KEY")
+            if not api_key:
+                raise AuthorizationError("No credentials provided.")
+            self._auth_service = AuthService(ApiKeyCredential(api_key=api_key))
         self._api = BasetenApi(remote_url, self._auth_service)
+
+    def fetch_auth_header(self) -> dict[str, str]:
+        """Return a fresh ``Authorization`` header for the active credential.
+
+        Call this per-request rather than caching the return value: for OAuth
+        credentials the access token is refreshed in-place when near expiry,
+        so a stored header can become stale.
+        """
+        return self._auth_service.fetch_auth_header()
+
+    def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
+        from truss.remote.remote_factory import AuthType, RemoteFactory
+        from truss.remote.truss_remote import RemoteConfig
+
+        if not self._oauth_remote_name:
+            return
+        RemoteFactory.update_remote_config(
+            RemoteConfig(
+                name=self._oauth_remote_name,
+                configs={
+                    "remote_provider": DEFAULT_REMOTE_NAME,
+                    "remote_url": self.remote_url,
+                    "auth_type": AuthType.OAUTH,
+                    "oauth_access_token": credential.access_token,
+                    "oauth_refresh_token": credential.refresh_token,
+                    "oauth_expires_at": str(credential.expires_at),
+                },
+            )
+        )
 
     @property
     def api(self) -> BasetenApi:
@@ -172,6 +244,77 @@ class BasetenRemote(TrussRemote):
             workload_types=["model_container", "model_build"],
         )
 
+    def _validate_bis_llm_push_options(
+        self,
+        publish: bool,
+        promote: bool,
+        preserve_previous_prod_deployment: bool,
+        disable_truss_download: bool,
+        deployment_name: Optional[str],
+        origin: Optional[custom_types.ModelOrigin],
+        environment: Optional[str],
+        deploy_timeout_minutes: Optional[int],
+    ) -> None:
+        if not publish:
+            raise ValueError(
+                "Development deployment is not supported for BIS LLM models."
+            )
+        if promote:
+            raise ValueError("Promotion is not supported for BIS LLM models ")
+        if environment:
+            raise ValueError("Environment is not supported for BIS LLM models.")
+        if preserve_previous_prod_deployment:
+            raise ValueError(
+                "Preserve previous production deployment is not supported for BIS LLM models."
+            )
+        if disable_truss_download:
+            raise ValueError(
+                "Disable truss download is not supported for BIS LLM models."
+            )
+        if deployment_name:
+            raise ValueError("Deployment name is not supported for BIS LLM models.")
+        if origin:
+            raise ValueError("Origin is not supported for BIS LLM models.")
+        if deploy_timeout_minutes is not None:
+            raise ValueError(
+                "Deploy timeout minutes is not supported for BIS LLM models."
+            )
+
+    def _prepare_bis_llm_request_body(
+        self,
+        config: Any,
+        model_name: str,
+        model_id: Optional[str],
+        labels: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {
+            "resources": config.resources.model_dump(exclude_none=True)
+        }
+        if model_id is None:
+            body["name"] = model_name
+        if config.environment_variables:
+            body["environment_variables"] = config.environment_variables
+        if config.weights:
+            body["weights"] = config.weights.model_dump(exclude_none=True)
+        if labels is not None:
+            body["metadata"] = labels
+
+        if config.bis_llm:
+            if config.bis_llm.version:
+                body["llm_version"] = config.bis_llm.version
+
+            if config.bis_llm.config is not None:
+                body["llm_config"] = config.bis_llm.config
+
+            if config.bis_llm.additional_autoscaling_config is not None:
+                body["additional_autoscaling_config"] = (
+                    config.bis_llm.additional_autoscaling_config.model_dump(
+                        exclude_none=True
+                    )
+                )
+
+        return body
+
     # Validate and finalize options.
     # Upload Truss files to S3 and return S3 key.
     def _prepare_push(
@@ -195,6 +338,20 @@ class BasetenRemote(TrussRemote):
 
         if truss_handle.is_scattered():
             truss_handle = TrussHandle(truss_handle.gather())
+
+        config = truss_handle.spec.config
+
+        if config.bis_llm is not None:
+            self._validate_bis_llm_push_options(
+                publish=publish,
+                promote=promote,
+                preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+                disable_truss_download=disable_truss_download,
+                deployment_name=deployment_name,
+                origin=origin,
+                environment=environment,
+                deploy_timeout_minutes=deploy_timeout_minutes,
+            )
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
@@ -238,11 +395,10 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        config = truss_handle._spec._config
-
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
-        validate_truss_config_against_backend(self._api, encoded_config_str)
+        if config.bis_llm is None:
+            validate_truss_config_against_backend(self._api, encoded_config_str)
         default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
         config_yaml_override: Optional[bytes] = None
         if truss_handle.spec.config_path.resolve() != default_config:
@@ -325,6 +481,29 @@ class BasetenRemote(TrussRemote):
             labels=labels,
         )
 
+        config = truss_handle.spec.config
+        if config.bis_llm is not None:
+            model_version_handle = create_bis_llm_service(
+                api=self._api,
+                body=self._prepare_bis_llm_request_body(
+                    config=config,
+                    model_name=model_name,
+                    model_id=push_data.model_id,
+                    labels=push_data.labels,
+                ),
+                model_id=push_data.model_id,
+                team_id=push_data.team_id,
+            )
+            return BasetenService(
+                model_version_handle=model_version_handle,
+                is_draft=False,
+                header_provider=self.fetch_auth_header,
+                service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
+                truss_handle=truss_handle,
+                api=self._api,
+                url_config=URLConfig.BIS_LLM,
+            )
+
         if include_git_info:
             truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
         else:
@@ -362,10 +541,11 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
-            api_key=self._auth_service.authenticate().value,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
+            url_config=URLConfig.MODEL,
         )
 
     def push_chain_atomic(
@@ -534,7 +714,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=not published,
-            api_key=self._auth_service.authenticate().value,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}{service_url_path}",
             api=self._api,
         )

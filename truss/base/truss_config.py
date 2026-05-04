@@ -91,6 +91,7 @@ class Accelerator(str, enum.Enum):
     H100_40GB = "H100_40GB"
     B200 = "B200"
     L40S = "L40S"
+    RTX_PRO_6000 = "RTX_PRO_6000"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -149,11 +150,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        schema = handler(core_schema)
-        schema.update(type="string")
-        schema.pop("properties", None)
-        schema.pop("required", None)
-        return schema
+        return {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
 
 class ModelRepoSourceKind(str, enum.Enum):
@@ -541,6 +538,33 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
                 )
             mount_locations.append(source.mount_location)
         return self
+
+
+class AutoscalingMetric(pydantic.BaseModel):
+    name: str
+    target: float
+
+
+class AdditionalAutoscalingConfig(pydantic.BaseModel):
+    """Additional autoscaling configuration for in-flight token metrics."""
+
+    metrics: list[AutoscalingMetric] = pydantic.Field(
+        ..., description="List of metric targets for autoscaling."
+    )
+
+
+class BISLLM(custom_types.ConfigModel):
+    """Configuration options for BIS LLM deployments."""
+
+    config: Optional[dict[str, Any]] = pydantic.Field(
+        default=None, description="Configuration options for BIS LLM deployments."
+    )
+    version: str = pydantic.Field(
+        default="", description="The version of the BIS LLM deployment stack."
+    )
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = (
+        pydantic.Field(default=None, description="Additional autoscaling configuration")
+    )
 
 
 class HealthChecks(custom_types.ConfigModel):
@@ -1179,6 +1203,11 @@ class TrussConfig(custom_types.ConfigModel):
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
         default=None,
         description="Configuration for deploying from training checkpoints.",
+    )
+
+    bis_llm: Optional[BISLLM] = pydantic.Field(
+        default=None,
+        description="Configuration options for BIS LLM deployments. This field may change in the future.",
     )
 
     # Internal / Legacy.

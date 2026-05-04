@@ -87,6 +87,7 @@ def ssh_setup(python_path: Optional[str], default_remote: Optional[str]):
         console.print(f"Default remote: {default_remote}", style="dim")
 
     console.print(
-        "\n[green]SSH access configured.[/green] Connect to any running training job with:\n\n"
-        "  ssh [bold]training-job-<job-id>-<node>.ssh.baseten.co[/bold]"
+        "\n[green]SSH access configured.[/green] Connect to a running workload with:\n\n"
+        "  Training job: ssh [bold]training-job-<job-id>-<node>.ssh.baseten.co[/bold]\n"
+        "  Inference model: ssh [bold]model-<model-id>-<deployment-id>.ssh.baseten.co[/bold]"
     )

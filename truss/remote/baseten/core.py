@@ -523,6 +523,25 @@ def create_truss_service(
     )
 
 
+def create_bis_llm_service(
+    api: BasetenApi,
+    body: dict,
+    model_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+) -> ModelVersionHandle:
+    if model_id is None:
+        response = api.create_bis_llm_model(team_id=team_id, body=body)
+    else:
+        response = api.create_bis_llm_model_version(model_id=model_id, body=body)
+
+    return ModelVersionHandle(
+        model_id=response["model_id"],
+        version_id=response["version_id"],
+        hostname=response["hostname"],
+        instance_type_name=response["instance_type_name"],
+    )
+
+
 def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     """
     Validate a truss config as well as the truss version.

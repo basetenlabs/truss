@@ -76,7 +76,9 @@ def test_get_blob_credentials_for_chain():
 
     # Create a real API instance and mock the GraphQL call
     mock_auth_service = Mock()
-    mock_auth_service.authenticate.return_value = Mock(value="test-token")
+    mock_auth_service.fetch_auth_header.return_value = {
+        "Authorization": "Api-Key test-token"
+    }
     api = BasetenApi("https://test.baseten.co", mock_auth_service)
     with patch.object(api, "_post_graphql_query") as mock_graphql:
         mock_graphql.return_value = mock_graphql_response
@@ -107,7 +109,9 @@ def test_get_blob_credentials_for_other_types_uses_rest():
     }
 
     mock_auth_service = Mock()
-    mock_auth_service.authenticate.return_value = Mock(value="test-token")
+    mock_auth_service.fetch_auth_header.return_value = {
+        "Authorization": "Api-Key test-token"
+    }
     api = BasetenApi("https://test.baseten.co", mock_auth_service)
     with (
         patch.object(api, "_rest_api_client") as mock_client,

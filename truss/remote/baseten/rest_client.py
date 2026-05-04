@@ -1,15 +1,14 @@
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 import requests
 
 
 class RestAPIClient:
     base_url: str
-    headers: Dict[str, str]
 
-    def __init__(self, base_url: str, headers: Dict[str, str]):
+    def __init__(self, base_url: str, header_provider: Callable[[], Dict[str, str]]):
         self.base_url = base_url
-        self.headers = headers
+        self._header_provider = header_provider
         self.suppress_error_print = False
 
     def _handle_error(self, resp: requests.Response):
@@ -24,24 +23,30 @@ class RestAPIClient:
 
     def get(self, path: str, url_params: Dict[str, str] = {}):
         resp = requests.get(
-            f"{self.base_url}/{path}", headers=self.headers, params=url_params
+            f"{self.base_url}/{path}",
+            headers=self._header_provider(),
+            params=url_params,
         )
         self._handle_error(resp)
         return resp.json()
 
     def post(self, path: str, body: Any):
-        resp = requests.post(f"{self.base_url}/{path}", headers=self.headers, json=body)
+        resp = requests.post(
+            f"{self.base_url}/{path}", headers=self._header_provider(), json=body
+        )
         self._handle_error(resp)
         return resp.json()
 
     def delete(self, path: str):
-        resp = requests.delete(f"{self.base_url}/{path}", headers=self.headers)
+        resp = requests.delete(
+            f"{self.base_url}/{path}", headers=self._header_provider()
+        )
         self._handle_error(resp)
         return resp.json()
 
     def patch(self, path: str, body: Any):
         resp = requests.patch(
-            f"{self.base_url}/{path}", headers=self.headers, json=body
+            f"{self.base_url}/{path}", headers=self._header_provider(), json=body
         )
         self._handle_error(resp)
         return resp.json()
