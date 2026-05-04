@@ -891,6 +891,18 @@ class BasetenApi:
         )
         return resp_json
 
+    def search_trainers(self, trainer_id: Optional[str] = None):
+        resp_json = self._rest_api_client.post(
+            "v1/trainers/search", body={"trainer_id": trainer_id}
+        )
+        return resp_json["trainers"]
+
+    def list_trainer_checkpoints(self, session_id: str, trainer_id: str):
+        resp_json = self._rest_api_client.get(
+            f"v1/trainer_sessions/{session_id}/trainers/{trainer_id}/checkpoints"
+        )
+        return resp_json
+
     def get_training_job_isession(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/auth_codes"

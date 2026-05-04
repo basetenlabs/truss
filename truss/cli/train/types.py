@@ -17,6 +17,7 @@ class DeployCheckpointArgs:
     dry_run: bool
     project_id: Optional[str]
     job_id: Optional[str]
+    trainer_id: Optional[str]
     deploy_config_path: Optional[str]
 
 

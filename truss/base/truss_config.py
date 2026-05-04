@@ -1085,6 +1085,22 @@ class CheckpointList(custom_types.ConfigModel):
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
     )
+    trainer_checkpoint_ids: list[str] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Trainer checkpoint IDs to deploy. Mutually exclusive with artifact_references."
+        ),
+    )
+
+    @pydantic.model_validator(mode="after")
+    def _no_mixing(self) -> "CheckpointList":
+        if self.artifact_references and self.trainer_checkpoint_ids:
+            raise ValueError(
+                "training_checkpoints cannot mix artifact_references (training "
+                "job checkpoints) and trainer_checkpoint_ids (trainer checkpoints) "
+                "in the same deploy"
+            )
+        return self
 
 
 # TODO: remove just use normal python version instead of this.
