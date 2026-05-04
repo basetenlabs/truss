@@ -94,8 +94,9 @@ sanity-checking the helpers in development.
 
 - The `truss_chains.runtime.get_service(name)` API for **non-`ChainletBase`**
   Trusses. That use case is unlocked by Project 2 (`TrussChainlet`); see
-  `truss-chains/tests/runtime_discovery/02_raw_truss_reading_siblings/` for
-  the contract test.
+  `test_plain_truss_picks_up_siblings` in `truss-chains/tests/test_runtime.py`
+  (with the fixture under `tests/runtime_discovery/plain_truss/`) for the
+  contract test.
 - WebSocket-flavored siblings. The helpers `ws_url` / `internal_ws_url` are
   exercised in the runtime_discovery contract tests; a WebSocket-fronted
   deployable demo would need a chainlet using

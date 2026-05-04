@@ -11,10 +11,19 @@ runtime exactly as it would behave inside a real chainlet pod.
 """
 
 import json
+import pathlib
+import sys
 
 import pytest
 
+import truss_chains as chains
 from truss_chains import private_types, public_types, runtime
+
+# Make the plain Truss model fixture importable.
+_PLAIN_TRUSS_MODEL_DIR = (
+    pathlib.Path(__file__).parent / "runtime_discovery" / "plain_truss" / "model"
+)
+sys.path.insert(0, str(_PLAIN_TRUSS_MODEL_DIR))
 
 # ---- Test fixtures -----------------------------------------------------------
 
@@ -277,3 +286,113 @@ def test_descriptor_ws_url_unknown_scheme_raises():
     )
     with pytest.raises(ValueError, match="Cannot convert to WebSocket scheme"):
         _ = desc.ws_url
+
+
+def test_descriptor_type_identity_across_imports():
+    """One canonical class, regardless of import path."""
+    from truss_chains import DeployedServiceDescriptor as A
+    from truss_chains.public_types import DeployedServiceDescriptor as B
+
+    assert A is B
+
+
+# ---- run_local: typed dependency exposes descriptor helpers ------------------
+
+
+class _Echo(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(
+        compute=chains.Compute(cpu_count=1, memory="512Mi")
+    )
+
+    async def run_remote(self, text: str) -> str:
+        return text
+
+
+class _Caller(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(
+        compute=chains.Compute(cpu_count=1, memory="512Mi")
+    )
+
+    def __init__(
+        self,
+        echo: _Echo = chains.depends(_Echo),
+        context: chains.DeploymentContext = chains.depends_context(),
+    ) -> None:
+        self._echo = echo
+        self._context = context
+
+    async def run_remote(self, text: str) -> str:
+        return await self._echo.run_remote(text)
+
+
+def test_chain_runs_locally_with_deployed_dep():
+    """``run_local`` with a ``chainlet_to_service`` override exposes the
+    descriptor helpers via the typed path (``context.get_service_descriptor``)."""
+    fake_descriptor = chains.DeployedServiceDescriptor(
+        name="_Echo",
+        display_name="_Echo",
+        options=chains.RPCOptions(),
+        predict_url="https://chain-abc.api.baseten.co/.../echo/run_remote",
+        internal_url=chains.DeployedServiceDescriptor.InternalURL(
+            gateway_run_remote_url="https://wp.api.baseten.co/.../echo/run_remote",
+            hostname="chain-abc.api.baseten.co",
+        ),
+    )
+
+    with chains.run_local(
+        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: "test-key"},
+        chainlet_to_service={"_Echo": fake_descriptor},
+    ):
+        caller = _Caller()
+
+    desc = caller._context.get_service_descriptor("_Echo")
+    assert desc.target_url == "https://wp.api.baseten.co/.../echo/run_remote"
+    assert desc.ws_url == "wss://chain-abc.api.baseten.co/.../echo/run_remote"
+    assert desc.internal_ws_url == "wss://wp.api.baseten.co/.../echo/run_remote"
+    assert desc.with_auth_headers("test-key") == {
+        "Authorization": "Api-Key test-key",
+        "Host": "chain-abc.api.baseten.co",
+    }
+
+
+# ---- Plain Truss bring-your-own-client -------------------------------------
+
+
+def test_plain_truss_picks_up_siblings(tmp_path, dynamic_config_mount_dir):
+    """A non-ChainletBase Truss reads sibling URLs via ``runtime.list_services``
+    and ``runtime.get_service`` — the bring-your-own-client pattern."""
+    _write_config(
+        tmp_path,
+        {
+            "Diarizer": {
+                "predict_url": "https://chain-abc.api.baseten.co/.../diarizer/run_remote",
+                "internal_url": {
+                    "gateway_run_remote_url": "https://wp.api.baseten.co/.../diarizer/run_remote",
+                    "hostname": "chain-abc.api.baseten.co",
+                },
+            }
+        },
+    )
+
+    from model import Model  # type: ignore[import-not-found]
+
+    m = Model()
+    m.load()
+    out = m.predict({})
+    assert out["diarizer_url"] == "https://wp.api.baseten.co/.../diarizer/run_remote"
+    assert out["auth_headers"] == {
+        "Authorization": "Api-Key <from-secrets>",
+        "Host": "chain-abc.api.baseten.co",
+    }
+
+
+def test_plain_truss_runs_standalone(tmp_path, dynamic_config_mount_dir):
+    """No dynamic config file present — ``list_services`` returns empty,
+    Model.load short-circuits, predict returns the standalone shape."""
+    from model import Model  # type: ignore[import-not-found]
+
+    m = Model()
+    m.load()
+    out = m.predict({})
+    assert out["diarizer_url"] is None
+    assert out["auth_headers"] is None
