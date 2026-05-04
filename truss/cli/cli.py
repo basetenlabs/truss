@@ -11,6 +11,7 @@ from typing import Optional, cast
 import requests
 import rich.table
 import rich_click as click
+import yaml
 from rich import console as rich_console
 from rich import progress
 
@@ -20,7 +21,7 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
-from truss.base.truss_config import Build, ModelServer, TransportKind
+from truss.base.truss_config import Build, ModelServer, TransportKind, TrussConfig
 from truss.cli import remote_cli
 from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
@@ -1163,6 +1164,54 @@ def download(
                 else:
                     tar.extractall(path=out_path)
             console.print(f"Extracted to {out_path}")
+
+
+@truss_cli.command(name="model-config")
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'text' prints the original config.yaml (or the parsed config "
+        "rendered as YAML if no original is stored). 'json' emits the full response "
+        "{config, raw_config} as JSON to stdout."
+    ),
+)
+@common.common_options()
+@json_command
+def model_config(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    output_format: str = "text",
+) -> None:
+    """
+    Fetches the config of a deployed model.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    response = remote_provider.api.get_deployment_config(model_id, deployment_id)
+
+    if output_format == "json":
+        print(json.dumps(response))
+        return
+
+    raw_config = response.get("raw_config")
+    if raw_config is not None:
+        click.echo(raw_config, nl=False)
+    else:
+        parsed = TrussConfig.from_dict(response.get("config") or {})
+        click.echo(
+            yaml.safe_dump(parsed.to_dict(verbose=False), sort_keys=False), nl=False
+        )
 
 
 @truss_cli.command()

@@ -799,6 +799,47 @@ def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
     assert kwargs.get("deploy_timeout_minutes") is None
 
 
+def test_push_propagates_raw_config_bytes(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+):
+    expected = mock_truss_handle.spec.config_path.read_bytes()
+
+    remote.push(
+        mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+    )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["raw_config"] == expected
+
+
+def test_push_drops_oversize_raw_config(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+    monkeypatch,
+    caplog,
+):
+    monkeypatch.setattr("truss.remote.baseten.remote.RAW_CONFIG_MAX_BYTES", 1)
+    with caplog.at_level("WARNING"):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+        )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["raw_config"] is None
+    assert any("exceeds" in record.message for record in caplog.records)
+
+
 def test_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     remote,

@@ -66,6 +66,10 @@ if TYPE_CHECKING:
     from rich import progress
 
 
+# Server-side cap on raw config.yaml; payloads larger than this are dropped.
+RAW_CONFIG_MAX_BYTES = 100 * 1024
+
+
 class PatchStatus(enum.Enum):
     SUCCESS = enum.auto()
     FAILED = enum.auto()
@@ -113,6 +117,7 @@ class FinalPushData(custom_types.OracleData):
     allow_truss_download: bool
     team_id: Optional[str] = None
     labels: Optional[Dict[str, Any]] = None
+    raw_config: Optional[bytes] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -399,6 +404,25 @@ class BasetenRemote(TrussRemote):
         if truss_handle.spec.config_path.resolve() != default_config:
             # Match non-override packing: stream literal file bytes into config.yaml.
             config_yaml_override = truss_handle.spec.config_path.read_bytes()
+        # Capture the original config.yaml bytes so the server can persist them as-is.
+        # Best-effort: if the file cannot be read or is too large, push proceeds without raw.
+        raw_config_bytes = config_yaml_override
+        if raw_config_bytes is None:
+            try:
+                raw_config_bytes = truss_handle.spec.config_path.read_bytes()
+            except OSError as exc:
+                logging.warning(
+                    f"Could not read raw config.yaml ({exc}); proceeding without uploading raw config."
+                )
+        if (
+            raw_config_bytes is not None
+            and len(raw_config_bytes) > RAW_CONFIG_MAX_BYTES
+        ):
+            logging.warning(
+                f"Raw config.yaml is {len(raw_config_bytes)} bytes, exceeds "
+                f"{RAW_CONFIG_MAX_BYTES} byte cap; proceeding without uploading raw config."
+            )
+            raw_config_bytes = None
         temp_file = archive_dir(
             truss_handle._truss_dir,
             progress_bar,
@@ -419,6 +443,7 @@ class BasetenRemote(TrussRemote):
             allow_truss_download=not disable_truss_download,
             team_id=team_id,
             labels=labels,
+            raw_config=raw_config_bytes,
         )
 
     def push(  # type: ignore
@@ -505,6 +530,7 @@ class BasetenRemote(TrussRemote):
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=push_data.team_id,
             labels=push_data.labels,
+            raw_config=push_data.raw_config,
         )
 
         if model_version_handle.instance_type_name:

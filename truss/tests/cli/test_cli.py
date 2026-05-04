@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import requests
+import yaml
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
@@ -1495,3 +1496,95 @@ def test_download_allows_existing_empty_dir(tmp_path):
         )
     assert result.exit_code == 0
     assert "Extracted to" in result.output
+
+
+def _invoke_model_config(args):
+    runner = CliRunner()
+    return runner.invoke(truss_cli, ["model-config", *args])
+
+
+def _patch_model_config_remote(response):
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_config.return_value = response
+    return mock_remote
+
+
+def test_model_config_text_prefers_raw():
+    mock_remote = _patch_model_config_remote(
+        {"config": {"model_name": "foo"}, "raw_config": "model_name: foo  # neat\n"}
+    )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    assert result.output == "model_name: foo  # neat\n"
+    mock_remote.api.get_deployment_config.assert_called_once_with("m", "d")
+
+
+def test_model_config_text_falls_back_to_parsed_when_raw_null():
+    mock_remote = _patch_model_config_remote(
+        {"config": {"model_name": "foo", "resources": {"cpu": "1"}}, "raw_config": None}
+    )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    # Output is a TrussConfig roundtrip with verbose=False: caller-set fields are present,
+    # but TrussConfig.to_dict always emits resources and python_version blocks.
+    parsed = yaml.safe_load(result.output)
+    assert parsed["model_name"] == "foo"
+    assert parsed["resources"]["cpu"] == "1"
+    assert "python_version" in parsed
+
+
+def test_model_config_text_with_empty_config_and_no_raw():
+    mock_remote = _patch_model_config_remote({"config": {}, "raw_config": None})
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    parsed = yaml.safe_load(result.output)
+    # Empty input still emits the always-included blocks from TrussConfig.to_dict.
+    assert "resources" in parsed
+    assert "python_version" in parsed
+
+
+def test_model_config_json_output():
+    response = {"config": {"model_name": "foo"}, "raw_config": "model_name: foo\n"}
+    mock_remote = _patch_model_config_remote(response)
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(
+            ["--model-id", "m", "--deployment-id", "d", "--output", "json"]
+        )
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == response
+
+
+def test_model_config_json_output_on_error():
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_config.side_effect = RuntimeError("boom")
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(
+            ["--model-id", "m", "--deployment-id", "d", "--output", "json"]
+        )
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["error"]["message"] == "boom"
+
+
+def test_model_config_requires_model_id_and_deployment_id():
+    result = _invoke_model_config([])
+    assert result.exit_code != 0
+    assert "--model-id" in result.output
