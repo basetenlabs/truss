@@ -73,6 +73,9 @@ _GRAPHQL_QUERY = (
 
 def _chain_id_from_descriptor(desc: chains.DeployedServiceDescriptor) -> str:
     """Extract chain id from ``internal_url.hostname`` (``chain-<id>...``)."""
+    assert desc.internal_url is not None, (
+        "internal_url is always populated for sibling DeployedServiceDescriptor at runtime"
+    )
     hostname = desc.internal_url.hostname
     first = hostname.split(".", 1)[0]
     if not first.startswith("chain-"):
@@ -82,6 +85,9 @@ def _chain_id_from_descriptor(desc: chains.DeployedServiceDescriptor) -> str:
 
 def _chain_deployment_id_from_descriptor(desc: chains.DeployedServiceDescriptor) -> str:
     """Extract chain deployment id from the descriptor's gateway URL path."""
+    assert desc.internal_url is not None, (
+        "internal_url is always populated for sibling DeployedServiceDescriptor at runtime"
+    )
     parts = urlparse(desc.internal_url.gateway_run_remote_url).path.split("/")
     # Path: /deployment/<chain_dep_id>/chainlet/<chainlet_id>/run_remote
     return parts[parts.index("deployment") + 1]
@@ -237,6 +243,9 @@ class Orchestrator(chains.ChainletBase):
                 await tws.send(json.dumps({}))  # mock config frame, ignored
                 await tws.send(completion)
                 audio_out = await tws.recv()
+                assert isinstance(audio_out, bytes), (
+                    f"TTSMock should return bytes, got {type(audio_out).__name__}"
+                )
                 log.warning("TTSMock returned %d bytes", len(audio_out))
 
             await websocket.send_bytes(audio_out)

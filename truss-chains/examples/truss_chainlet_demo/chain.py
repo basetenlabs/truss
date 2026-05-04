@@ -103,9 +103,7 @@ class Caller(chains.ChainletBase):
         # Demonstrates data flowing through BOTH dep flavors in one chain hop.
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
-                self._echo_url,
-                headers=self._echo_headers,
-                json={"text": reversed_text},
+                self._echo_url, headers=self._echo_headers, json={"text": reversed_text}
             )
             response.raise_for_status()
             reversed_then_uppercased = response.json()["out"]

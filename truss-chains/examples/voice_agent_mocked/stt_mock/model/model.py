@@ -26,9 +26,7 @@ class Model:
                     return
                 if "bytes" in msg and msg["bytes"] is not None:
                     audio = msg["bytes"]
-                    await ws.send_text(
-                        json.dumps({"text": f"text-{len(audio)}"})
-                    )
+                    await ws.send_text(json.dumps({"text": f"text-{len(audio)}"}))
                 # Text frames (e.g. JSON metadata handshake) are silently consumed.
         except Exception:
             return

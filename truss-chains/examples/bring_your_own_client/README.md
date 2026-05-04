@@ -20,7 +20,7 @@ If Project 1's helpers correctly mirror what `BasetenSession.__init__` would
 construct internally, both paths return the same string. The chain returns
 both results plus the descriptor metadata so you can see them line up.
 
-This is the **bring-your-own-client** pattern: keep the chain's UI grouping,
+This is the **bring_your_own_client** pattern: keep the chain's UI grouping,
 atomic deploy, and per-pod sibling-URL discovery, but plug in any HTTP / WS
 client you like (httpx, websockets, grpc.aio, …).
 
@@ -36,7 +36,7 @@ truss login   # if not already authenticated
 ## Push
 
 ```sh
-chains push truss-chains/examples/bring-your-own-client/chain.py
+chains push truss-chains/examples/bring_your_own_client/chain.py
 ```
 
 The CLI prints the chain's invoke URL when the deploy completes. Copy the
@@ -47,7 +47,7 @@ The CLI prints the chain's invoke URL when the deploy completes. Copy the
 ```sh
 export BASETEN_API_KEY="..."
 export CHAIN_URL="https://chain-<id>.api.baseten.co/environments/production/run_remote"
-python truss-chains/examples/bring-your-own-client/invoke.py "hello world"
+python truss-chains/examples/bring_your_own_client/invoke.py "hello world"
 ```
 
 Expected output:
@@ -84,7 +84,7 @@ You can run `chain.py` directly under `run_local` to inspect the descriptor
 helpers without deploying:
 
 ```sh
-python truss-chains/examples/bring-your-own-client/chain.py
+python truss-chains/examples/bring_your_own_client/chain.py
 ```
 
 Prints the four helper outputs against a fake `Echo` descriptor. Useful for

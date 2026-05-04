@@ -5,7 +5,7 @@ Usage:
         python invoke.py "hello world"
 
 The chain returns both the stub-path and the raw-httpx-path results plus the
-descriptor metadata, so you can verify the bring-your-own-client pattern
+descriptor metadata, so you can verify the bring_your_own_client pattern
 matches the framework stub byte-for-byte.
 """
 

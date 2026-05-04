@@ -2,7 +2,7 @@
 
 A regular Truss directory (not a `ChainletBase` subclass) that uses
 `from truss_chains.runtime import get_service` to discover sibling URLs.
-This is the bring-your-own-client pattern that Project 2 will rely on:
+This is the bring_your_own_client pattern that Project 2 will rely on:
 the Truss does not depend on the chains framework code, only on the
 `truss_chains` package being installed.
 

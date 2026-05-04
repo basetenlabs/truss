@@ -37,7 +37,7 @@ from typing import (
 )
 
 import pydantic
-from typing_extensions import ParamSpec
+from typing_extensions import ParamSpec, TypeGuard
 
 from truss.base import custom_types, trt_llm_config, truss_config
 from truss_chains import private_types, public_types, utils
@@ -1043,7 +1043,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
 
 
 def _validate_truss_chainlet_cls(
-    cls: Type[private_types.ABCChainlet], src_path: str, location: _ErrorLocation
+    cls: Type["TrussChainlet"], src_path: str, location: _ErrorLocation
 ) -> None:
     """Validate a TrussChainlet declaration's class attributes and resolve
     the ``truss_dir``. Sets ``cls._resolved_truss_dir`` on success."""
@@ -1832,7 +1832,9 @@ class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
         validate_and_register_cls(cls)
 
 
-def is_truss_chainlet(cls: Type[private_types.ABCChainlet]) -> bool:
+def is_truss_chainlet(
+    cls: Type[private_types.ABCChainlet],
+) -> TypeGuard[Type["TrussChainlet"]]:
     return issubclass(cls, TrussChainlet)
 
 

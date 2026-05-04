@@ -32,7 +32,7 @@ uv run pytest truss-chains/tests/runtime_discovery/
 
 | Dir | What it demonstrates | Type |
 |---|---|---|
-| `01_basic_descriptor_access/` | Typed chainlets accessing the new `target_url`, `ws_url`, `internal_ws_url`, `with_auth_headers()` helpers via `context.get_service_descriptor(...)`. | Positive |
+| `basic_descriptor_access/` | Typed chainlets accessing the new `target_url`, `ws_url`, `internal_ws_url`, `with_auth_headers()` helpers via `context.get_service_descriptor(...)`. | Positive |
 | `02_raw_truss_reading_siblings/` | A non-`ChainletBase` Truss using `from truss_chains.runtime import get_service` to discover sibling URLs. | Positive |
 | `03_missing_sibling/` | `MissingDependencyError` with helpful "Available: ..." message when looking up a non-existent sibling. | Adversarial |
 | `04_dynamic_config_absent/` | `list_services()` returns `{}` (does not raise) and `get_service(...)` raises with a clear "not running inside a chain context" message when no config file is present. | Adversarial |
@@ -40,4 +40,4 @@ uv run pytest truss-chains/tests/runtime_discovery/
 
 Each scenario has a `test_<name>.py` that runs under `pytest`. Scenarios that
 involve a Truss directory have a `plain_truss/` subdirectory with a hand-written
-`config.yaml` and `model/model.py` showing the bring-your-own-client pattern.
+`config.yaml` and `model/model.py` showing the bring_your_own_client pattern.
