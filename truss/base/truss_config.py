@@ -1397,6 +1397,24 @@ class TrussConfig(custom_types.ConfigModel):
             )
         return self
 
+    @pydantic.model_validator(mode="after")
+    def _warn_predict_concurrency_ignored(self) -> "TrussConfig":
+        concurrency = self.runtime.predict_concurrency
+        if concurrency == 1:
+            return self
+
+        is_model_py_server = self.docker_server is None and self.trt_llm is None
+        if not is_model_py_server:
+            warnings.warn(
+                f"`runtime.predict_concurrency` is set to {concurrency}, but only "
+                "has an effect for Trusses using a model.py predict server. "
+                "This setting will be deprecated in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        return self
+
     @pydantic.field_validator("cache_internal", mode="before")
     def _default_cache_internal_if_none(cls, v: Any) -> CacheInternal:
         return CacheInternal([]) if v is None else v

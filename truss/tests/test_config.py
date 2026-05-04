@@ -1803,3 +1803,131 @@ class TestTrussConfigWeights:
         assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
         assert config_new.weights.sources[0].mount_location == "/models/llama"
         assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
+
+
+DOCKER_SERVER_KWARGS = {
+    "start_command": "start.sh",
+    "server_port": 8080,
+    "predict_endpoint": "/predict",
+    "readiness_endpoint": "/ready",
+    "liveness_endpoint": "/health",
+}
+
+
+class TestPredictConcurrencyWarnings:
+    def test_no_warning_when_default_concurrency(self, recwarn):
+        """No warning when predict_concurrency is left at default (1)."""
+        TrussConfig(docker_server=DockerServer(**DOCKER_SERVER_KWARGS))
+        deprecation_warnings = [
+            w
+            for w in recwarn
+            if issubclass(w.category, DeprecationWarning)
+            and "predict_concurrency" in str(w.message)
+        ]
+        assert len(deprecation_warnings) == 0
+
+    def test_no_warning_for_standard_truss(self, recwarn):
+        """No warning for a standard custom model truss with predict_concurrency set."""
+        config = TrussConfig(runtime=Runtime(predict_concurrency=4))
+        deprecation_warnings = [
+            w
+            for w in recwarn
+            if issubclass(w.category, DeprecationWarning)
+            and "predict_concurrency" in str(w.message)
+        ]
+        assert len(deprecation_warnings) == 0
+        assert config.runtime.predict_concurrency == 4
+
+    def test_warns_docker_server(self):
+        with pytest.warns(
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
+        ):
+            TrussConfig(
+                docker_server=DockerServer(**DOCKER_SERVER_KWARGS),
+                runtime=Runtime(predict_concurrency=4),
+            )
+
+    def test_warns_trt_llm_v2(self, tmp_path):
+        yaml_content = """
+        trt_llm:
+          inference_stack: v2
+          runtime:
+            max_seq_len: 2048
+          build:
+            checkpoint_repository:
+              source: HF
+              repo: meta-llama/Llama-2-7b
+        runtime:
+          predict_concurrency: 8
+        resources:
+          accelerator: H100:1
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+        with pytest.warns(
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
+        ):
+            TrussConfig.from_yaml(config_path)
+
+    def test_warns_trt_llm_encoder(self, tmp_path):
+        yaml_content = """
+        trt_llm:
+          runtime: {}
+          build:
+            base_model: encoder
+            checkpoint_repository:
+              source: HF
+              repo: BAAI/bge-m3
+        runtime:
+          predict_concurrency: 8
+        resources:
+          accelerator: L4:1
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+        with pytest.warns(
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
+        ):
+            TrussConfig.from_yaml(config_path)
+
+    def test_warns_trt_llm_encoder_bert(self, tmp_path):
+        yaml_content = """
+        trt_llm:
+          runtime: {}
+          build:
+            base_model: encoder_bert
+            checkpoint_repository:
+              source: HF
+              repo: some-bert-model
+        runtime:
+          predict_concurrency: 8
+        resources:
+          accelerator: L4:1
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+        with pytest.warns(
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
+        ):
+            TrussConfig.from_yaml(config_path)
+
+    def test_warns_trt_llm_v1_decoder(self, tmp_path):
+        yaml_content = """
+        trt_llm:
+          runtime: {}
+          build:
+            base_model: decoder
+            checkpoint_repository:
+              source: HF
+              repo: meta-llama/Llama-2-7b
+        runtime:
+          predict_concurrency: 8
+        resources:
+          accelerator: H100:1
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+        with pytest.warns(
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
+        ):
+            TrussConfig.from_yaml(config_path)
