@@ -1,10 +1,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import rich_click as click
 
 import truss_train.definitions as definitions
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    _ensure_trainer_checkpoint_details,
     _get_checkpoint_ids_to_deploy,
+    _hydrate_deploy_config,
+    _resolve_trainer,
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
@@ -277,3 +281,131 @@ def test_hydrate_whisper_checkpoint():
     assert result.checkpoint_name == checkpoint_id
     assert result.model_weight_format == definitions.ModelWeightsFormat.WHISPER
     assert isinstance(result, definitions.WhisperCheckpoint)
+
+
+@pytest.fixture
+def mock_trainer_remote():
+    mock = MagicMock()
+    mock.api.search_trainers.return_value = [
+        {
+            "trainer_id": "trnr_xyz",
+            "session_id": "sess_abc",
+            "base_model": "Qwen/Qwen3-8B",
+        }
+    ]
+    mock.api.list_trainer_checkpoints.return_value = {
+        "trainer_id": "trnr_xyz",
+        "checkpoints": [
+            {
+                "id": "tcp_step100",
+                "trainer_id": "trnr_xyz",
+                "checkpoint_id": "step-100",
+                "base_model": "Qwen/Qwen3-8B",
+                "checkpoint_type": "lora",
+                "lora_adapter_config": {"r": 16},
+            }
+        ],
+    }
+    return mock
+
+
+def test_resolve_trainer_returns_first_match(mock_trainer_remote):
+    result = _resolve_trainer(mock_trainer_remote, "trnr_xyz")
+    assert result["trainer_id"] == "trnr_xyz"
+    assert result["session_id"] == "sess_abc"
+    mock_trainer_remote.api.search_trainers.assert_called_once_with(
+        trainer_id="trnr_xyz"
+    )
+
+
+def test_resolve_trainer_raises_when_not_found(mock_trainer_remote):
+    mock_trainer_remote.api.search_trainers.return_value = []
+    with pytest.raises(click.UsageError, match="Trainer trnr_missing not found"):
+        _resolve_trainer(mock_trainer_remote, "trnr_missing")
+
+
+def test_ensure_trainer_checkpoint_details_user_provided_passes_through(
+    mock_trainer_remote,
+):
+    """When the user authored trainer_checkpoint_ids in --config, return as-is."""
+    user_config = definitions.CheckpointList(trainer_checkpoint_ids=["tcp_step100"])
+    result = _ensure_trainer_checkpoint_details(
+        mock_trainer_remote, user_config, trainer_id=None
+    )
+    assert result is user_config
+    # Did not hit the API since user authored the IDs.
+    mock_trainer_remote.api.search_trainers.assert_not_called()
+    mock_trainer_remote.api.list_trainer_checkpoints.assert_not_called()
+
+
+def test_ensure_trainer_checkpoint_details_requires_trainer_id_when_unprovided(
+    mock_trainer_remote,
+):
+    with pytest.raises(click.UsageError, match="--trainer-id is required"):
+        _ensure_trainer_checkpoint_details(
+            mock_trainer_remote, checkpoint_details=None, trainer_id=None
+        )
+
+
+def test_ensure_trainer_checkpoint_details_picker_emits_ids_and_base_model(
+    mock_trainer_remote,
+):
+    """With --trainer-id set, picker selects checkpoints and we send IDs on the wire.
+
+    Single checkpoint short-circuits the inquirer prompt (mirroring TJC behavior),
+    so no prompt mock is needed for this case.
+    """
+    result = _ensure_trainer_checkpoint_details(
+        mock_trainer_remote, checkpoint_details=None, trainer_id="trnr_xyz"
+    )
+    assert result.trainer_checkpoint_ids == ["tcp_step100"]
+    assert result.base_model_id == "Qwen/Qwen3-8B"
+    mock_trainer_remote.api.list_trainer_checkpoints.assert_called_once_with(
+        "sess_abc", "trnr_xyz"
+    )
+
+
+def test_hydrate_deploy_config_rejects_trainer_id_with_config_checkpoints(
+    mock_trainer_remote,
+):
+    """--trainer-id + --config that has training-job checkpoints should error."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="tj_abc",
+                    checkpoint_name="step-1",
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                )
+            ]
+        )
+    )
+    with pytest.raises(click.UsageError, match="--trainer-id cannot be combined"):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_trainer_remote,
+            project_id=None,
+            job_id=None,
+            trainer_id="trnr_xyz",
+        )
+
+
+def test_hydrate_deploy_config_rejects_job_id_with_config_trainer_checkpoint_ids(
+    mock_trainer_remote,
+):
+    """--job-id + --config that has trainer_checkpoint_ids should error."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            trainer_checkpoint_ids=["tcp_xyz"]
+        )
+    )
+    with pytest.raises(
+        click.UsageError, match="--project-id / --job-id cannot be combined"
+    ):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_trainer_remote,
+            project_id=None,
+            job_id="tj_abc",
+            trainer_id=None,
+        )

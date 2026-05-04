@@ -27,6 +27,7 @@ from truss.base.truss_config import (
     ModelRepoCacheInternal,
     Resources,
     Runtime,
+    TrainingArtifactReference,
     TransportKind,
     TrussConfig,
     WebsocketOptions,
@@ -1803,3 +1804,39 @@ class TestTrussConfigWeights:
         assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
         assert config_new.weights.sources[0].mount_location == "/models/llama"
         assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
+
+
+class TestCheckpointListNoMixing:
+    """CheckpointList rejects mixing training-job and trainer checkpoint sources."""
+
+    def test_artifact_references_only_accepted(self):
+        ckpt_list = CheckpointList(
+            artifact_references=[
+                TrainingArtifactReference(
+                    training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                )
+            ]
+        )
+        assert ckpt_list.artifact_references[0].training_job_id == "tj_abc"
+        assert ckpt_list.trainer_checkpoint_ids == []
+
+    def test_trainer_checkpoint_ids_only_accepted(self):
+        ckpt_list = CheckpointList(trainer_checkpoint_ids=["tcp_xyz"])
+        assert ckpt_list.trainer_checkpoint_ids == ["tcp_xyz"]
+        assert ckpt_list.artifact_references == []
+
+    def test_mixing_raises(self):
+        with pytest.raises(pydantic.ValidationError, match="cannot mix"):
+            CheckpointList(
+                artifact_references=[
+                    TrainingArtifactReference(
+                        training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                    )
+                ],
+                trainer_checkpoint_ids=["tcp_xyz"],
+            )
+
+    def test_empty_lists_accepted(self):
+        ckpt_list = CheckpointList()
+        assert ckpt_list.artifact_references == []
+        assert ckpt_list.trainer_checkpoint_ids == []

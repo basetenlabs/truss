@@ -11,6 +11,7 @@ from typing import Optional, cast
 import requests
 import rich.table
 import rich_click as click
+import yaml
 from rich import console as rich_console
 from rich import progress
 
@@ -20,8 +21,9 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
-from truss.base.truss_config import Build, ModelServer, TransportKind
+from truss.base.truss_config import Build, ModelServer, TransportKind, TrussConfig
 from truss.cli import remote_cli
+from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.resolvers.model_team_resolver import (
@@ -171,16 +173,15 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
+@click.option("--browser", is_flag=True, help="Log in via browser (OAuth device flow).")
 @click.option("--api-key", type=str, required=False, help="API key for authentication.")
+@click.option("--remote", type=str, default=None, help="Remote name to create.")
 @common.common_options()
-def login(api_key: Optional[str]):
-    from truss.api import login
+def login(browser: bool, api_key: Optional[str], remote: Optional[str]):
+    do_login(browser=browser, api_key=api_key, remote=remote)
 
-    if not api_key:
-        remote_config = remote_cli.inquire_remote_config()
-        RemoteFactory.update_remote_config(remote_config)
-    else:
-        login(api_key)
+
+truss_cli.add_command(auth_group)
 
 
 @truss_cli.command()
@@ -1023,8 +1024,7 @@ def push(
             )
             if watch_no_sleep:
                 model_hostname = resolved_model["hostname"]
-                api_key = bt_remote._auth_service.authenticate().value
-                common.start_keepalive(model_hostname, api_key)
+                common.start_keepalive(model_hostname, bt_remote.fetch_auth_header)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -1166,6 +1166,54 @@ def download(
             console.print(f"Extracted to {out_path}")
 
 
+@truss_cli.command(name="model-config")
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'text' prints the original config.yaml (or the parsed config "
+        "rendered as YAML if no original is stored). 'json' emits the full response "
+        "{config, raw_config} as JSON to stdout."
+    ),
+)
+@common.common_options()
+@json_command
+def model_config(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    output_format: str = "text",
+) -> None:
+    """
+    Fetches the config of a deployed model.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    response = remote_provider.api.get_deployment_config(model_id, deployment_id)
+
+    if output_format == "json":
+        print(json.dumps(response))
+        return
+
+    raw_config = response.get("raw_config")
+    if raw_config is not None:
+        click.echo(raw_config, nl=False)
+    else:
+        parsed = TrussConfig.from_dict(response.get("config") or {})
+        click.echo(
+            yaml.safe_dump(parsed.to_dict(verbose=False), sort_keys=False), nl=False
+        )
+
+
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
@@ -1270,19 +1318,16 @@ def watch(
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
 
-    api_key = remote_provider._auth_service.authenticate().value
-
     common.wait_for_development_model_ready(
         model_hostname=model_hostname,
         model_id=model_id,
         dev_version_id=dev_version_id,
         remote_provider=remote_provider,
         console=console,
-        api_key=api_key,
     )
 
     if no_sleep:
-        common.start_keepalive(model_hostname, api_key)
+        common.start_keepalive(model_hostname, remote_provider.fetch_auth_header)
 
     if tail:
         _start_tail(remote_provider, model_id, dev_version_id, in_background=True)

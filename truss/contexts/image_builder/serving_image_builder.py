@@ -105,6 +105,12 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
+_DEFAULT_APT_MIRROR_URL = "mirror://mirrors.ubuntu.com/US.txt"
+
+
+def _resolve_apt_mirror_url() -> str:
+    return os.getenv("BT_APT_MIRROR_URL") or _DEFAULT_APT_MIRROR_URL
+
 
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
@@ -962,6 +968,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             run_as_user_id=run_as_user_id,
+            apt_mirror_url=_resolve_apt_mirror_url(),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.

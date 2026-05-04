@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import requests
+import yaml
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
@@ -69,7 +70,11 @@ def test_successful_ping_resets_failure_count():
         with patch("truss.cli.utils.common.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                common.keepalive_loop(
+                    "http://fake",
+                    lambda: {"Authorization": "Api-Key test_api_key"},
+                    stop_event,
+                )
     assert call_count == 4  # All calls were made, no early exit
 
 
@@ -85,7 +90,11 @@ def test_exits_after_max_consecutive_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
     mock_exit.assert_called_once_with(1)
 
 
@@ -103,7 +112,11 @@ def test_request_exception_counts_as_failure():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_called_once_with(1)
 
@@ -132,7 +145,11 @@ def test_model_not_ready_does_not_count_as_failure():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_not_called()
 
@@ -150,7 +167,11 @@ def test_5xx_errors_count_as_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        lambda: {"Authorization": "Api-Key test_api_key"},
+                        stop_event,
+                    )
 
     mock_exit.assert_called_once_with(1)
 
@@ -189,7 +210,7 @@ def test_keepalive_loop_emits_30min_warning():
 
                 common.keepalive_loop(
                     model_hostname="https://test.baseten.co",
-                    api_key="test-key",
+                    header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
 
@@ -220,7 +241,9 @@ def _make_watch_mocks(
     mock_tr.spec.config.model_name = "test_model"
 
     remote_provider = MagicMock()
-    remote_provider._auth_service.authenticate.return_value = Mock(value="test_key")
+    remote_provider.fetch_auth_header.return_value = {
+        "Authorization": "Api-Key test_key"
+    }
     remote_provider.remote_url = "https://app.baseten.co"
     remote_provider.api.get_deployment.return_value = {"status": "ACTIVE"}
 
@@ -315,7 +338,7 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
     assert thread_args[0] == "https://model-abc123.api.baseten.co"
-    assert thread_args[1] == "test_key"
+    assert thread_args[1] is remote_provider.fetch_auth_header
     mock_thread.start.assert_called_once()
 
 
@@ -340,7 +363,7 @@ def test_keepalive_loop_constructs_correct_url():
             with patch.object(stop_event, "wait", side_effect=stop_after_first):
                 common.keepalive_loop(
                     model_hostname="https://model-abc123.api.baseten.co",
-                    api_key="test-key",
+                    header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
 
@@ -492,7 +515,7 @@ def test_keepalive_loop_continues_before_max_duration():
                     with pytest.raises(SystemExit):
                         common.keepalive_loop(
                             "https://model-abc123.api.baseten.co",
-                            "fake_key",
+                            lambda: {"Authorization": "Api-Key fake_key"},
                             stop_event,
                         )
 
@@ -1084,7 +1107,7 @@ def test_push_watch_no_sleep_starts_keepalive(
 
     assert result.exit_code == 0
     mock_start_keepalive.assert_called_once_with(
-        "https://model.api.baseten.co", remote._auth_service.authenticate().value
+        "https://model.api.baseten.co", remote.fetch_auth_header
     )
     mock_start_watch.assert_called_once()
 
@@ -1473,3 +1496,95 @@ def test_download_allows_existing_empty_dir(tmp_path):
         )
     assert result.exit_code == 0
     assert "Extracted to" in result.output
+
+
+def _invoke_model_config(args):
+    runner = CliRunner()
+    return runner.invoke(truss_cli, ["model-config", *args])
+
+
+def _patch_model_config_remote(response):
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_config.return_value = response
+    return mock_remote
+
+
+def test_model_config_text_prefers_raw():
+    mock_remote = _patch_model_config_remote(
+        {"config": {"model_name": "foo"}, "raw_config": "model_name: foo  # neat\n"}
+    )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    assert result.output == "model_name: foo  # neat\n"
+    mock_remote.api.get_deployment_config.assert_called_once_with("m", "d")
+
+
+def test_model_config_text_falls_back_to_parsed_when_raw_null():
+    mock_remote = _patch_model_config_remote(
+        {"config": {"model_name": "foo", "resources": {"cpu": "1"}}, "raw_config": None}
+    )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    # Output is a TrussConfig roundtrip with verbose=False: caller-set fields are present,
+    # but TrussConfig.to_dict always emits resources and python_version blocks.
+    parsed = yaml.safe_load(result.output)
+    assert parsed["model_name"] == "foo"
+    assert parsed["resources"]["cpu"] == "1"
+    assert "python_version" in parsed
+
+
+def test_model_config_text_with_empty_config_and_no_raw():
+    mock_remote = _patch_model_config_remote({"config": {}, "raw_config": None})
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code == 0
+    parsed = yaml.safe_load(result.output)
+    # Empty input still emits the always-included blocks from TrussConfig.to_dict.
+    assert "resources" in parsed
+    assert "python_version" in parsed
+
+
+def test_model_config_json_output():
+    response = {"config": {"model_name": "foo"}, "raw_config": "model_name: foo\n"}
+    mock_remote = _patch_model_config_remote(response)
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(
+            ["--model-id", "m", "--deployment-id", "d", "--output", "json"]
+        )
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == response
+
+
+def test_model_config_json_output_on_error():
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_config.side_effect = RuntimeError("boom")
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+    ):
+        result = _invoke_model_config(
+            ["--model-id", "m", "--deployment-id", "d", "--output", "json"]
+        )
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["error"]["message"] == "boom"
+
+
+def test_model_config_requires_model_id_and_deployment_id():
+    result = _invoke_model_config([])
+    assert result.exit_code != 0
+    assert "--model-id" in result.output

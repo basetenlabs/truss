@@ -317,6 +317,7 @@ def create_model_version_from_inference_template(
             DeployCheckpointsConfig(),
             args.project_id,
             args.job_id,
+            args.trainer_id,
             args.dry_run,
         )
     # User provided a checkpoint deploy config file
@@ -328,6 +329,7 @@ def create_model_version_from_inference_template(
             checkpoint_deploy,
             args.project_id,
             args.job_id,
+            args.trainer_id,
             args.dry_run,
         )
 
@@ -345,6 +347,15 @@ def print_deploy_checkpoints_success_message(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
     checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
+    if not checkpoint_names:
+        # Trainer-checkpoint deploys reference checkpoints by ID; the
+        # client doesn't know each name without an extra API call. Skip the
+        # name-specific guidance.
+        console.print(
+            Text("\nDeployment succeeded. Set the `model` parameter on each "),
+            Text("request to the trainer checkpoint name (e.g. `step-100`)."),
+        )
+        return
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),

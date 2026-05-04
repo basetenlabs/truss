@@ -1,5 +1,6 @@
 import enum
 import logging
+import os
 import re
 import sys
 import time
@@ -20,13 +21,17 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base.constants import CONFIG_FILE, PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import (
+    CONFIG_FILE,
+    DEFAULT_REMOTE_NAME,
+    PRODUCTION_ENVIRONMENT_NAME,
+)
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
-from truss.remote.baseten.auth import AuthService
+from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
+from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -46,7 +51,8 @@ from truss.remote.baseten.core import (
     upload_truss,
     validate_truss_config_against_backend,
 )
-from truss.remote.baseten.error import ApiError, RemoteError
+from truss.remote.baseten.error import ApiError, AuthorizationError, RemoteError
+from truss.remote.baseten.oauth import OAuthCredential
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
@@ -58,6 +64,10 @@ from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 if TYPE_CHECKING:
     from rich import console as rich_console
     from rich import progress
+
+
+# Server-side cap on raw config.yaml; payloads larger than this are dropped.
+RAW_CONFIG_MAX_BYTES = 100 * 1024
 
 
 class PatchStatus(enum.Enum):
@@ -107,13 +117,79 @@ class FinalPushData(custom_types.OracleData):
     allow_truss_download: bool
     team_id: Optional[str] = None
     labels: Optional[Dict[str, Any]] = None
+    raw_config: Optional[bytes] = None
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str):
+    def __init__(
+        self,
+        remote_url: str,
+        api_key: Optional[str] = None,
+        *,
+        oauth_remote_name: Optional[str] = None,
+        oauth_access_token: Optional[str] = None,
+        oauth_refresh_token: Optional[str] = None,
+        oauth_expires_at: Optional[str] = None,
+    ):
         super().__init__(remote_url)
-        self._auth_service = AuthService(api_key=api_key)
+        self._oauth_remote_name = oauth_remote_name
+        if oauth_access_token:
+            if api_key:
+                raise ValueError(
+                    f"Remote {oauth_remote_name!r}: cannot specify both api_key "
+                    "and OAuth credentials."
+                )
+            if not (oauth_refresh_token and oauth_expires_at):
+                raise ValueError(
+                    f"Remote {oauth_remote_name!r}: OAuth credentials require "
+                    "access_token, refresh_token, and expires_at."
+                )
+            self._auth_service = AuthService(
+                OAuthSession(
+                    api_url=resolve_rest_api_url(remote_url),
+                    credential=OAuthCredential(
+                        access_token=oauth_access_token,
+                        refresh_token=oauth_refresh_token,
+                        expires_at=int(oauth_expires_at),
+                    ),
+                    on_token_refresh=self._persist_refreshed_credential,
+                )
+            )
+        else:
+            api_key = api_key or os.environ.get("BASETEN_API_KEY")
+            if not api_key:
+                raise AuthorizationError("No credentials provided.")
+            self._auth_service = AuthService(ApiKeyCredential(api_key=api_key))
         self._api = BasetenApi(remote_url, self._auth_service)
+
+    def fetch_auth_header(self) -> dict[str, str]:
+        """Return a fresh ``Authorization`` header for the active credential.
+
+        Call this per-request rather than caching the return value: for OAuth
+        credentials the access token is refreshed in-place when near expiry,
+        so a stored header can become stale.
+        """
+        return self._auth_service.fetch_auth_header()
+
+    def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
+        from truss.remote.remote_factory import AuthType, RemoteFactory
+        from truss.remote.truss_remote import RemoteConfig
+
+        if not self._oauth_remote_name:
+            return
+        RemoteFactory.update_remote_config(
+            RemoteConfig(
+                name=self._oauth_remote_name,
+                configs={
+                    "remote_provider": DEFAULT_REMOTE_NAME,
+                    "remote_url": self.remote_url,
+                    "auth_type": AuthType.OAUTH,
+                    "oauth_access_token": credential.access_token,
+                    "oauth_refresh_token": credential.refresh_token,
+                    "oauth_expires_at": str(credential.expires_at),
+                },
+            )
+        )
 
     @property
     def api(self) -> BasetenApi:
@@ -328,6 +404,25 @@ class BasetenRemote(TrussRemote):
         if truss_handle.spec.config_path.resolve() != default_config:
             # Match non-override packing: stream literal file bytes into config.yaml.
             config_yaml_override = truss_handle.spec.config_path.read_bytes()
+        # Capture the original config.yaml bytes so the server can persist them as-is.
+        # Best-effort: if the file cannot be read or is too large, push proceeds without raw.
+        raw_config_bytes = config_yaml_override
+        if raw_config_bytes is None:
+            try:
+                raw_config_bytes = truss_handle.spec.config_path.read_bytes()
+            except OSError as exc:
+                logging.warning(
+                    f"Could not read raw config.yaml ({exc}); proceeding without uploading raw config."
+                )
+        if (
+            raw_config_bytes is not None
+            and len(raw_config_bytes) > RAW_CONFIG_MAX_BYTES
+        ):
+            logging.warning(
+                f"Raw config.yaml is {len(raw_config_bytes)} bytes, exceeds "
+                f"{RAW_CONFIG_MAX_BYTES} byte cap; proceeding without uploading raw config."
+            )
+            raw_config_bytes = None
         temp_file = archive_dir(
             truss_handle._truss_dir,
             progress_bar,
@@ -348,6 +443,7 @@ class BasetenRemote(TrussRemote):
             allow_truss_download=not disable_truss_download,
             team_id=team_id,
             labels=labels,
+            raw_config=raw_config_bytes,
         )
 
     def push(  # type: ignore
@@ -401,7 +497,7 @@ class BasetenRemote(TrussRemote):
             return BasetenService(
                 model_version_handle=model_version_handle,
                 is_draft=False,
-                api_key=self._auth_service.authenticate().value,
+                header_provider=self.fetch_auth_header,
                 service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
                 truss_handle=truss_handle,
                 api=self._api,
@@ -434,6 +530,7 @@ class BasetenRemote(TrussRemote):
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=push_data.team_id,
             labels=push_data.labels,
+            raw_config=push_data.raw_config,
         )
 
         if model_version_handle.instance_type_name:
@@ -444,7 +541,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
-            api_key=self._auth_service.authenticate().value,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
@@ -617,7 +714,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=not published,
-            api_key=self._auth_service.authenticate().value,
+            header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}{service_url_path}",
             api=self._api,
         )
