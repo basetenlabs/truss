@@ -1031,7 +1031,7 @@ class BasetenRemote(TrussRemote):
         session_id,
         model,
         lora_rank=16,
-        max_seq_len=32768,
+        max_seq_len=4096,
         seed=None,
         sampler_checkpoint_id=None,
         trainer_checkpoint_id=None,

@@ -38,6 +38,13 @@ truss_cli.add_command(loops)
     required=False,
     help="Checkpoint ID to use for the trainer server.",
 )
+@click.option(
+    "--max-seq-len",
+    type=int,
+    default=4096,
+    show_default=True,
+    help="Maximum sequence length for training.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_trainer_deployment(
@@ -45,6 +52,7 @@ def push_trainer_deployment(
     training_project_id: Optional[str],
     sampler_checkpoint: Optional[str],
     trainer_checkpoint: Optional[str],
+    max_seq_len: int,
     remote: Optional[str],
 ) -> None:
     """Deploy training infrastructure for a base model.
@@ -73,6 +81,7 @@ def push_trainer_deployment(
         remote_provider.create_trainer_server(
             session_id=session_id,
             model=base_model_id,
+            max_seq_len=max_seq_len,
             sampler_checkpoint_id=sampler_checkpoint,
             trainer_checkpoint_id=trainer_checkpoint,
         )

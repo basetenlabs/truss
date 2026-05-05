@@ -42,6 +42,7 @@ def test_push_basic(mock_remote):
     mock_remote.create_trainer_server.assert_called_once_with(
         session_id="session_abc123",
         model="Qwen/Qwen3-8B",
+        max_seq_len=4096,
         sampler_checkpoint_id=None,
         trainer_checkpoint_id=None,
     )
@@ -82,6 +83,7 @@ def test_push_with_sampler_checkpoint(mock_remote):
     mock_remote.create_trainer_server.assert_called_once_with(
         session_id="session_abc123",
         model="Qwen/Qwen3-8B",
+        max_seq_len=4096,
         sampler_checkpoint_id="ckpt_sampler",
         trainer_checkpoint_id=None,
     )
@@ -103,6 +105,7 @@ def test_push_with_trainer_checkpoint(mock_remote):
     mock_remote.create_trainer_server.assert_called_once_with(
         session_id="session_abc123",
         model="Qwen/Qwen3-8B",
+        max_seq_len=4096,
         sampler_checkpoint_id=None,
         trainer_checkpoint_id="ckpt_trainer",
     )
@@ -131,8 +134,25 @@ def test_push_with_all_options(mock_remote):
     mock_remote.create_trainer_server.assert_called_once_with(
         session_id="session_abc123",
         model="Qwen/Qwen3-8B",
+        max_seq_len=4096,
         sampler_checkpoint_id="ckpt_sampler",
         trainer_checkpoint_id="ckpt_trainer",
+    )
+
+
+def test_push_with_max_seq_len(mock_remote):
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--max-seq-len", "32768"],
+        mock_remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.create_trainer_server.assert_called_once_with(
+        session_id="session_abc123",
+        model="Qwen/Qwen3-8B",
+        max_seq_len=32768,
+        sampler_checkpoint_id=None,
+        trainer_checkpoint_id=None,
     )
 
 
@@ -192,3 +212,4 @@ def test_push_help():
     assert "--training-project-id" in result.output
     assert "--sampler-checkpoint" in result.output
     assert "--trainer-checkpoint" in result.output
+    assert "--max-seq-len" in result.output

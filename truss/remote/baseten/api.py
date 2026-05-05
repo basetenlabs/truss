@@ -1189,7 +1189,7 @@ class BasetenApi:
         session_id: str,
         model: str,
         lora_rank: int = 16,
-        max_seq_len: int = 32768,
+        max_seq_len: int = 4096,
         seed: Optional[int] = None,
         sampler_checkpoint_id: Optional[str] = None,
         trainer_checkpoint_id: Optional[str] = None,
