@@ -60,15 +60,6 @@ def test_push_with_project_id(mock_remote):
     )
 
 
-def test_push_with_sampler(mock_remote):
-    result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--sampler", "Qwen/Qwen3-0.6B"],
-        mock_remote,
-    )
-
-    assert result.exit_code == 0, result.output
-
-
 def test_push_with_max_seq_len(mock_remote):
     result = _invoke_loops_push(
         ["Qwen/Qwen3-8B", "--remote", "test_remote", "--max-seq-len", "32768"],
@@ -173,5 +164,4 @@ def test_push_help():
 
     assert result.exit_code == 0
     assert "--project-id" in result.output
-    assert "--sampler" in result.output
     assert "--max-seq-len" in result.output

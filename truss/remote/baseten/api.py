@@ -1195,8 +1195,6 @@ class BasetenApi:
         lora_rank: int = 16,
         max_seq_len: int = 4096,
         seed: Optional[int] = None,
-        sampler_checkpoint_id: Optional[str] = None,
-        trainer_checkpoint_id: Optional[str] = None,
     ) -> dict:
         body: Dict[str, Any] = {
             "model": model,
@@ -1205,10 +1203,6 @@ class BasetenApi:
         }
         if seed is not None:
             body["seed"] = seed
-        if sampler_checkpoint_id is not None:
-            body["sampler_checkpoint_id"] = sampler_checkpoint_id
-        if trainer_checkpoint_id is not None:
-            body["trainer_checkpoint_id"] = trainer_checkpoint_id
         resp_json = self._rest_api_client.post(
             f"v1/trainers/sessions/{session_id}/trainers", body=body
         )

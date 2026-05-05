@@ -32,12 +32,6 @@ truss_cli.add_command(loops)
     help="Training project ID to associate the deployment with.",
 )
 @click.option(
-    "--sampler",
-    type=str,
-    required=False,
-    help="Base model ID for additional samplers to include in the deployment.",
-)
-@click.option(
     "--max-seq-len",
     type=int,
     default=4096,
@@ -49,7 +43,6 @@ truss_cli.add_command(loops)
 def push_trainer_deployment(
     base_model: str,
     project_id: Optional[str],
-    sampler: Optional[str],
     max_seq_len: int,
     remote: Optional[str],
 ) -> None:

@@ -1036,8 +1036,6 @@ class BasetenRemote(TrussRemote):
         lora_rank=16,
         max_seq_len=4096,
         seed=None,
-        sampler_checkpoint_id=None,
-        trainer_checkpoint_id=None,
     ):
         return self._api.create_trainer_server(
             session_id=session_id,
@@ -1045,6 +1043,4 @@ class BasetenRemote(TrussRemote):
             lora_rank=lora_rank,
             max_seq_len=max_seq_len,
             seed=seed,
-            sampler_checkpoint_id=sampler_checkpoint_id,
-            trainer_checkpoint_id=trainer_checkpoint_id,
         )
