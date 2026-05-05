@@ -1498,4 +1498,5 @@ from truss.cli import (  # noqa: F401
     migrate_commands,
     ssh_commands,
     train_commands,
+    trainers_commands,
 )

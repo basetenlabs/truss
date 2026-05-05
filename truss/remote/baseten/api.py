@@ -1175,3 +1175,41 @@ class BasetenApi:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
         )
+
+    def create_trainer_deployment(
+        self,
+        base_model: str,
+        lora_rank: int = 16,
+        max_seq_len: int = 32768,
+        scale_down_delay_seconds: int = 3600,
+        team_id: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> dict:
+        body: Dict[str, Any] = {
+            "base_model": base_model,
+            "lora_rank": lora_rank,
+            "max_seq_len": max_seq_len,
+            "scale_down_delay_seconds": scale_down_delay_seconds,
+        }
+        if team_id is not None:
+            body["team_id"] = team_id
+        if name is not None:
+            body["name"] = name
+        resp = self._rest_api_client.post("v1/trainer_deployments", body=body)
+        return resp["trainer_deployment"]
+
+    def get_trainer_deployment(self, deployment_id: str) -> dict:
+        resp = self._rest_api_client.get(f"v1/trainer_deployments/{deployment_id}")
+        return resp["trainer_deployment"]
+
+    def activate_trainer_deployment(self, deployment_id: str) -> dict:
+        resp = self._rest_api_client.post(
+            f"v1/trainer_deployments/{deployment_id}/activate", body={}
+        )
+        return resp["trainer_deployment"]
+
+    def deactivate_trainer_deployment(self, deployment_id: str) -> dict:
+        resp = self._rest_api_client.post(
+            f"v1/trainer_deployments/{deployment_id}/deactivate", body={}
+        )
+        return resp["trainer_deployment"]
