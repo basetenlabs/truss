@@ -29,6 +29,8 @@ BEI_REQUIRED_MAX_NUM_TOKENS = 16384
 
 TRTLLM_MIN_MEMORY_REQUEST_GI = 10
 HF_MODELS_API_URL = "https://huggingface.co/api/models"
+EMPTY_HF_REPO = "michaelfeil/empty-model"
+HF_MAIN_BRANCH = "main"
 HF_ACCESS_TOKEN_KEY = "hf_access_token"
 TRUSSLESS_MAX_PAYLOAD_SIZE = "64M"
 # Alias for TEMPLATES_DIR
