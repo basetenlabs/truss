@@ -727,6 +727,17 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
+def _to_websocket_scheme(url: str) -> str:
+    """Rewrite an http(s):// URL to ws(s)://. Raises if the scheme is unknown."""
+    if url.startswith("https://"):
+        return "wss://" + url[len("https://") :]
+    if url.startswith("http://"):
+        return "ws://" + url[len("http://") :]
+    raise ValueError(
+        f"Cannot convert to WebSocket scheme; expected http(s):// prefix: {url!r}"
+    )
+
+
 class DeployedServiceDescriptor(custom_types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
@@ -755,6 +766,52 @@ class DeployedServiceDescriptor(custom_types.SafeModel):
                 "At least one of 'predict_url' or 'internal_url' must be provided."
             )
         return self
+
+    @property
+    def target_url(self) -> str:
+        """The URL a ``StubBase`` would post to: prefer ``internal_url``'s
+        ``gateway_run_remote_url`` (cluster-local, lower-latency), fall back to
+        ``predict_url``. Mirrors the selection logic in
+        ``BasetenSession.__init__``."""
+        if self.internal_url is not None:
+            return self.internal_url.gateway_run_remote_url
+        # Validator guarantees predict_url is set when internal_url is None.
+        assert self.predict_url is not None
+        return self.predict_url
+
+    @property
+    def ws_url(self) -> Optional[str]:
+        """``predict_url`` with the http(s):// scheme rewritten to ws(s)://.
+        ``None`` when ``predict_url`` is not set."""
+        if self.predict_url is None:
+            return None
+        return _to_websocket_scheme(self.predict_url)
+
+    @property
+    def internal_ws_url(self) -> Optional[str]:
+        """``internal_url.gateway_run_remote_url`` with the http(s):// scheme
+        rewritten to ws(s)://. ``None`` when ``internal_url`` is not set."""
+        if self.internal_url is None:
+            return None
+        return _to_websocket_scheme(self.internal_url.gateway_run_remote_url)
+
+    def with_auth_headers(self, api_key: str) -> dict[str, str]:
+        """Build the headers a ``StubBase`` would send for outbound calls:
+
+        * ``Authorization: Api-Key {api_key}`` — always.
+        * ``Host: {internal_url.hostname}`` — only when ``internal_url`` is set,
+          so cluster-local routing matches the chain hostname.
+
+        ``api_key`` is typically sourced from
+        ``DeploymentContext.get_baseten_api_key()`` inside a ``ChainletBase`` or
+        from the standard Truss secrets API (``baseten_chain_api_key``) for raw
+        Trusses. The helper takes the key explicitly so it can be used outside
+        a chainlet context.
+        """
+        headers = {"Authorization": f"Api-Key {api_key}"}
+        if self.internal_url is not None:
+            headers["Host"] = self.internal_url.hostname
+        return headers
 
 
 class Environment(custom_types.SafeModel):

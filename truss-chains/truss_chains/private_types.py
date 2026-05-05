@@ -68,6 +68,7 @@ class EntityType(utils.StrEnum):
     CHAINLET = enum.auto()
     MODEL = enum.auto()
     ENGINE_BUILDER_MODEL = enum.auto()
+    TRUSS_CHAINLET = enum.auto()
 
 
 class FrameworkConfig(custom_types.SafeModelNonSerializable):
@@ -242,6 +243,10 @@ class ChainletAPIDescriptor(custom_types.SafeModelNonSerializable):
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
     health_check: Optional[HealthCheckAPIDescriptor]
+    # Set for TRUSS_CHAINLET entity type only; absolute path to the user's
+    # existing Truss directory. The framework copies this dir as-is (only
+    # `model_metadata.chains_metadata` is added to its `config.yaml`).
+    truss_dir: Optional[pathlib.Path] = None
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)
@@ -253,6 +258,10 @@ class ChainletAPIDescriptor(custom_types.SafeModelNonSerializable):
     @property
     def display_name(self) -> str:
         return self.chainlet_cls.display_name
+
+    @property
+    def is_truss_chainlet(self) -> bool:
+        return self.chainlet_cls.entity_type == EntityType.TRUSS_CHAINLET
 
 
 ########################################################################################
