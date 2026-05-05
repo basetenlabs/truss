@@ -13,6 +13,7 @@ from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_service.fetch_auth_header()
+        headers = with_user_agent(self._auth_service.fetch_auth_header())
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
