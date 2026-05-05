@@ -21,10 +21,7 @@ def mock_remote():
             "base_url": "https://model-def789.api.baseten.co/deployment/v1/sync",
         },
     }
-    remote.get_trainer_session.return_value = {
-        "id": "session_abc123",
-        "trainer_servers": [{"id": "trainer_xyz456", "status": "running"}],
-    }
+    remote.fetch_auth_header.return_value = {"Authorization": "Api-Key test_key"}
     return remote
 
 
@@ -33,7 +30,9 @@ def _invoke_loops_push(args, mock_remote):
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        return runner.invoke(truss_cli, ["loops", "push"] + args)
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = Mock(status_code=200)
+            return runner.invoke(truss_cli, ["loops", "push"] + args)
 
 
 def test_push_basic(mock_remote):
@@ -83,43 +82,39 @@ def test_push_with_max_seq_len(mock_remote):
 
 
 def test_push_polls_until_running(mock_remote):
-    # First two polls return deploying, third returns running.
-    mock_remote.get_trainer_session.side_effect = [
-        {
-            "id": "session_abc123",
-            "trainer_servers": [{"id": "t1", "status": "deploying"}],
-        },
-        {
-            "id": "session_abc123",
-            "trainer_servers": [{"id": "t1", "status": "deploying"}],
-        },
-        {
-            "id": "session_abc123",
-            "trainer_servers": [{"id": "t1", "status": "running"}],
-        },
-    ]
+    # First two polls return 503, third returns 200.
+    responses = [Mock(status_code=503), Mock(status_code=503), Mock(status_code=200)]
 
-    with patch("truss.cli.loops_commands.time.sleep"):
-        result = _invoke_loops_push(
-            ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote
-        )
+    runner = CliRunner()
+    with patch(
+        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
+    ):
+        with patch("requests.get", side_effect=responses):
+            with patch("truss.cli.loops_commands.time.sleep"):
+                result = runner.invoke(
+                    truss_cli, ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"]
+                )
 
     assert result.exit_code == 0, result.output
-    assert mock_remote.get_trainer_session.call_count == 3
 
 
-def test_push_fails_on_failed_status(mock_remote):
-    mock_remote.get_trainer_session.return_value = {
-        "id": "session_abc123",
-        "trainer_servers": [{"id": "t1", "status": "failed"}],
-    }
-
-    result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote
-    )
+def test_push_times_out_waiting_for_health(mock_remote):
+    runner = CliRunner()
+    with patch(
+        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
+    ):
+        with patch("requests.get", return_value=Mock(status_code=503)):
+            with patch("truss.cli.loops_commands.time.sleep"):
+                with patch(
+                    "truss.cli.loops_commands.time.monotonic", side_effect=[0, 0, 700]
+                ):
+                    result = runner.invoke(
+                        truss_cli,
+                        ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
+                    )
 
     assert result.exit_code != 0
-    assert "failed" in result.output.lower()
+    assert "Timed out" in result.output
 
 
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
@@ -130,7 +125,9 @@ def test_push_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
+            with patch("requests.get") as mock_get:
+                mock_get.return_value = Mock(status_code=200)
+                result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
 
     assert result.exit_code == 0, result.output
     mock_inquire.assert_called_once()

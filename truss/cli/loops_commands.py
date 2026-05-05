@@ -1,6 +1,7 @@
 import time
 from typing import Optional, cast
 
+import requests
 import rich_click as click
 
 from truss.cli import remote_cli
@@ -10,10 +11,8 @@ from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
+_READY_TIMEOUT_SECONDS = 600
 _POLL_INTERVAL_SECONDS = 10
-_READY_TIMEOUT_SECONDS = (
-    600  # ~10 minutes; trainer cold-start typically takes ~5 minutes
-)
 
 
 @click.group()
@@ -77,10 +76,11 @@ def push_trainer_deployment(
         f" (this may take ~5 minutes)...",
         spinner="dots",
     ):
-        remote_provider.create_trainer_server(
+        trainer_server = remote_provider.create_trainer_server(
             session_id=session_id, model=base_model, max_seq_len=max_seq_len
         )
-        _poll_until_running(remote_provider, session_id)
+        trainer_base_url = trainer_server["base_url"]
+        _poll_until_running(remote_provider, trainer_base_url)
 
     console.print(
         f"✨ Trainer deployment for [cyan]{base_model}[/cyan] is ready.\n"
@@ -89,19 +89,18 @@ def push_trainer_deployment(
     )
 
 
-def _poll_until_running(remote_provider: BasetenRemote, session_id: str) -> None:
-    """Poll GET /v1/trainers/sessions/{session_id} until all trainer servers are RUNNING."""
+def _poll_until_running(remote_provider: BasetenRemote, trainer_base_url: str) -> None:
+    """Poll GET {trainer_base_url}/health until the trainer server is up."""
+    health_url = f"{trainer_base_url}/health"
+    auth_header = remote_provider.fetch_auth_header()
     deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        session_overview = remote_provider.get_trainer_session(session_id)
-        trainer_servers = session_overview.get("trainer_servers", [])
-        statuses = [ts.get("status") for ts in trainer_servers]
-        if statuses and all(s == "running" for s in statuses):
-            return
-        if any(s == "failed" for s in statuses):
-            raise click.ClickException(
-                "Trainer deployment failed. Check the Baseten dashboard for details."
-            )
+        try:
+            resp = requests.get(health_url, headers=auth_header, timeout=10)
+            if resp.status_code == 200:
+                return
+        except requests.RequestException:
+            pass
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise click.ClickException(
         f"Timed out waiting for trainer deployment to become ready after"
