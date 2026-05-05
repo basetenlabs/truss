@@ -21,6 +21,10 @@ def mock_remote():
             "base_url": "https://model-def789.api.baseten.co/deployment/v1/sync",
         },
     }
+    remote.get_trainer_session.return_value = {
+        "id": "session_abc123",
+        "trainer_servers": [{"id": "trainer_xyz456", "status": "running"}],
+    }
     return remote
 
 
@@ -40,24 +44,14 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123",
-        model="Qwen/Qwen3-8B",
-        max_seq_len=4096,
-        sampler_checkpoint_id=None,
-        trainer_checkpoint_id=None,
+        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=4096
     )
     assert "Qwen/Qwen3-8B" in result.output
 
 
-def test_push_with_training_project_id(mock_remote):
+def test_push_with_project_id(mock_remote):
     result = _invoke_loops_push(
-        [
-            "Qwen/Qwen3-8B",
-            "--remote",
-            "test_remote",
-            "--training-project-id",
-            "proj_abc",
-        ],
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--project-id", "proj_abc"],
         mock_remote,
     )
 
@@ -67,77 +61,13 @@ def test_push_with_training_project_id(mock_remote):
     )
 
 
-def test_push_with_sampler_checkpoint(mock_remote):
+def test_push_with_sampler(mock_remote):
     result = _invoke_loops_push(
-        [
-            "Qwen/Qwen3-8B",
-            "--remote",
-            "test_remote",
-            "--sampler-checkpoint",
-            "ckpt_sampler",
-        ],
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--sampler", "Qwen/Qwen3-0.6B"],
         mock_remote,
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123",
-        model="Qwen/Qwen3-8B",
-        max_seq_len=4096,
-        sampler_checkpoint_id="ckpt_sampler",
-        trainer_checkpoint_id=None,
-    )
-
-
-def test_push_with_trainer_checkpoint(mock_remote):
-    result = _invoke_loops_push(
-        [
-            "Qwen/Qwen3-8B",
-            "--remote",
-            "test_remote",
-            "--trainer-checkpoint",
-            "ckpt_trainer",
-        ],
-        mock_remote,
-    )
-
-    assert result.exit_code == 0, result.output
-    mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123",
-        model="Qwen/Qwen3-8B",
-        max_seq_len=4096,
-        sampler_checkpoint_id=None,
-        trainer_checkpoint_id="ckpt_trainer",
-    )
-
-
-def test_push_with_all_options(mock_remote):
-    result = _invoke_loops_push(
-        [
-            "Qwen/Qwen3-8B",
-            "--remote",
-            "test_remote",
-            "--training-project-id",
-            "proj_abc",
-            "--sampler-checkpoint",
-            "ckpt_sampler",
-            "--trainer-checkpoint",
-            "ckpt_trainer",
-        ],
-        mock_remote,
-    )
-
-    assert result.exit_code == 0, result.output
-    mock_remote.create_trainer_session.assert_called_once_with(
-        training_project_id="proj_abc"
-    )
-    mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123",
-        model="Qwen/Qwen3-8B",
-        max_seq_len=4096,
-        sampler_checkpoint_id="ckpt_sampler",
-        trainer_checkpoint_id="ckpt_trainer",
-    )
 
 
 def test_push_with_max_seq_len(mock_remote):
@@ -148,12 +78,48 @@ def test_push_with_max_seq_len(mock_remote):
 
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123",
-        model="Qwen/Qwen3-8B",
-        max_seq_len=32768,
-        sampler_checkpoint_id=None,
-        trainer_checkpoint_id=None,
+        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=32768
     )
+
+
+def test_push_polls_until_running(mock_remote):
+    # First two polls return deploying, third returns running.
+    mock_remote.get_trainer_session.side_effect = [
+        {
+            "id": "session_abc123",
+            "trainer_servers": [{"id": "t1", "status": "deploying"}],
+        },
+        {
+            "id": "session_abc123",
+            "trainer_servers": [{"id": "t1", "status": "deploying"}],
+        },
+        {
+            "id": "session_abc123",
+            "trainer_servers": [{"id": "t1", "status": "running"}],
+        },
+    ]
+
+    with patch("truss.cli.loops_commands.time.sleep"):
+        result = _invoke_loops_push(
+            ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote
+        )
+
+    assert result.exit_code == 0, result.output
+    assert mock_remote.get_trainer_session.call_count == 3
+
+
+def test_push_fails_on_failed_status(mock_remote):
+    mock_remote.get_trainer_session.return_value = {
+        "id": "session_abc123",
+        "trainer_servers": [{"id": "t1", "status": "failed"}],
+    }
+
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote
+    )
+
+    assert result.exit_code != 0
+    assert "failed" in result.output.lower()
 
 
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
@@ -170,7 +136,7 @@ def test_push_uses_inquire_when_remote_not_provided(mock_remote):
     mock_inquire.assert_called_once()
 
 
-def test_push_fails_when_base_model_id_missing():
+def test_push_fails_when_base_model_missing():
     runner = CliRunner()
     result = runner.invoke(truss_cli, ["loops", "push", "--remote", "test_remote"])
 
@@ -209,7 +175,6 @@ def test_push_help():
     result = runner.invoke(truss_cli, ["loops", "push", "--help"])
 
     assert result.exit_code == 0
-    assert "--training-project-id" in result.output
-    assert "--sampler-checkpoint" in result.output
-    assert "--trainer-checkpoint" in result.output
+    assert "--project-id" in result.output
+    assert "--sampler" in result.output
     assert "--max-seq-len" in result.output

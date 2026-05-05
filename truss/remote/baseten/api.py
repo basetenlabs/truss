@@ -1177,6 +1177,10 @@ class BasetenApi:
             f"v1/llm_models/{model_id}/deployments", body=body
         )
 
+    def get_trainer_session(self, session_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/trainers/sessions/{session_id}")
+        return resp_json["session"]
+
     def create_trainer_session(self, training_project_id: Optional[str] = None) -> dict:
         body: Dict[str, Any] = {}
         if training_project_id is not None:
