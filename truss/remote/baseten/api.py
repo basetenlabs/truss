@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from enum import Enum
@@ -8,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.auth import ApiKey, AuthService
+from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
@@ -86,6 +87,11 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
+def resolve_rest_api_url(remote_url: str) -> str:
+    """Map an app remote_url (e.g. https://app.baseten.co) to its REST API base."""
+    return API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+
+
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
         f'model_name: "{oracle.model_name}"',
@@ -125,16 +131,15 @@ class BasetenApi:
 
     def __init__(self, remote_url: str, auth_service: AuthService) -> None:
         graphql_api_url = f"{remote_url}/graphql/"
-        # Ensure we strip off trailing '/' to denormalize URLs.
-        rest_api_url = API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+        rest_api_url = resolve_rest_api_url(remote_url)
 
         self._remote_url = remote_url
         self._graphql_api_url = graphql_api_url
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
-        self._auth_token = self._auth_service.authenticate()
         self._rest_api_client = RestAPIClient(
-            base_url=self._rest_api_url, headers=self._auth_token.header()
+            base_url=self._rest_api_url,
+            header_provider=self._auth_service.fetch_auth_header,
         )
 
     @property
@@ -146,11 +151,15 @@ class BasetenApi:
         return self._rest_api_url
 
     @property
-    def auth_token(self) -> ApiKey:
-        return self._auth_token
+    def suppress_error_print(self) -> bool:
+        return self._rest_api_client.suppress_error_print
+
+    @suppress_error_print.setter
+    def suppress_error_print(self, value: bool) -> None:
+        self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_token.header()
+        headers = self._auth_service.fetch_auth_header()
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
@@ -204,9 +213,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -220,6 +230,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -241,6 +252,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -259,9 +273,10 @@ class BasetenApi:
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -274,6 +289,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -297,6 +313,9 @@ class BasetenApi:
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
                 else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
+                else None,
             },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
@@ -312,9 +331,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -324,6 +344,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -346,6 +367,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -857,9 +881,25 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def get_training_capacity(self) -> list[dict]:
+        resp_json = self._rest_api_client.get("v1/training/capacity")
+        return resp_json.get("gpu_capacities", [])
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"
+        )
+        return resp_json
+
+    def search_trainers(self, trainer_id: Optional[str] = None):
+        resp_json = self._rest_api_client.post(
+            "v1/trainers/search", body={"trainer_id": trainer_id}
+        )
+        return resp_json["trainers"]
+
+    def list_trainer_checkpoints(self, session_id: str, trainer_id: str):
+        resp_json = self._rest_api_client.get(
+            f"v1/trainer_sessions/{session_id}/trainers/{trainer_id}/checkpoints"
         )
         return resp_json
 
@@ -892,6 +932,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.patch(
             f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_sessions/{session_id}",
             body,
+        )
+        return resp_json
+
+    def sign_ssh_certificate(
+        self, project_id: str, job_id: str, public_key: str, replica_id: str
+    ) -> dict:
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/ssh/sign",
+            body={"public_key": public_key, "replica_id": replica_id},
         )
         return resp_json
 
@@ -980,6 +1029,19 @@ class BasetenApi:
     def get_from_presigned_url(self, presigned_url: str) -> bytes:
         response = requests.get(presigned_url)
         return response.content
+
+    def get_deployment_download_url(self, model_id: str, deployment_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/download"
+        )
+        return response["download_url"]
+
+    def get_deployment_config(
+        self, model_id: str, deployment_id: str
+    ) -> Dict[str, Any]:
+        return self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/config"
+        )
 
     def get_model_deployment_logs(
         self,
@@ -1104,3 +1166,12 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    def create_bis_llm_model(self, body: dict, team_id: Optional[str] = None) -> dict:
+        endpoint = f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
+        return self._rest_api_client.post(endpoint, body=body)
+
+    def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
+        return self._rest_api_client.post(
+            f"v1/llm_models/{model_id}/deployments", body=body
+        )

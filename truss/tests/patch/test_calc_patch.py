@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, List, Optional
@@ -17,6 +18,9 @@ from truss.templates.control.control.helpers.custom_types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
+)
+from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_code_patch,
 )
 from truss.truss_handle.patch.calc_patch import (
     _calc_python_requirements_patches,
@@ -54,6 +58,43 @@ def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(action=Action.ADD, path="dummy", content="content"),
     )
+
+
+def test_calc_and_apply_binary_model_code(custom_model_truss_dir: Path, tmp_path: Path):
+    # Verify binary files survive the full patch round-trip (calc, serialize, apply)
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    binary_content = b"\xff\xd8\xff\xe0\x00\x10"
+    (custom_model_truss_dir / "model" / "weights.bin").write_bytes(binary_content)
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+
+    assert len(patches) == 1
+    serialized = patches[0].to_dict()
+    deserialized = Patch.from_dict(serialized)
+
+    target_dir = tmp_path / "applied" / "model"
+    target_dir.mkdir(parents=True)
+    apply_code_patch(target_dir, deserialized.body, logging.getLogger())
+    assert (target_dir / "weights.bin").read_bytes() == binary_content
+
+
+def test_calc_and_apply_binary_package(
+    custom_model_truss_dir_with_bundled_packages: Path, tmp_path: Path
+):
+    # Verify binary package files survive the full patch round-trip (calc, serialize, apply)
+    prev_sign = calc_truss_signature(custom_model_truss_dir_with_bundled_packages)
+    binary_content = b"\x00\x01\x02\xff\xfe\xfd"
+    pkg_dir = custom_model_truss_dir_with_bundled_packages / "packages" / "test_package"
+    (pkg_dir / "lib.so").write_bytes(binary_content)
+    patches = calc_truss_patch(custom_model_truss_dir_with_bundled_packages, prev_sign)
+
+    assert len(patches) == 1
+    serialized = patches[0].to_dict()
+    deserialized = Patch.from_dict(serialized)
+
+    target_dir = tmp_path / "applied" / "packages"
+    target_dir.mkdir(parents=True)
+    apply_code_patch(target_dir, deserialized.body, logging.getLogger())
+    assert (target_dir / "test_package" / "lib.so").read_bytes() == binary_content
 
 
 def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path):

@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any, Dict
 from unittest import mock
 
+import keyring
+import keyring.backend
+import keyring.backends.fail
+import keyring.errors
 import pytest
 import requests
 import requests_mock
@@ -24,6 +28,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
+from truss.remote import remote_factory
 from truss.remote.baseten.core import ModelVersionHandle
 from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle.build import init_directory
@@ -732,7 +737,7 @@ def _modify_yaml(yaml_path: Path):
 @pytest.fixture
 def default_config() -> Dict[str, Any]:
     return {
-        "python_version": "py39",
+        "python_version": "py313",
         "resources": {
             "accelerator": None,
             "cpu": "1",
@@ -1006,6 +1011,7 @@ def mock_remote_factory():
     """Fixture that mocks RemoteFactory.create and returns a configured mock remote."""
     from unittest.mock import MagicMock, patch
 
+    from truss.remote.baseten.custom_types import TeamType
     from truss.remote.remote_factory import RemoteFactory
 
     with patch.object(RemoteFactory, "create") as mock_factory:
@@ -1014,6 +1020,10 @@ def mock_remote_factory():
         mock_service.model_id = "model_id"
         mock_service.model_version_id = "version_id"
         mock_remote.push.return_value = mock_service
+        mock_remote.api.get_teams.return_value = {
+            "default": TeamType(id="default_team_id", name="default", default=True)
+        }
+        mock_remote.api.models.return_value = {"models": []}
         mock_factory.return_value = mock_remote
         yield mock_remote
 
@@ -1060,3 +1070,53 @@ def mock_truss_handle(custom_model_truss_dir_with_pre_and_post):
 
     truss_handle = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     return truss_handle
+
+
+class _InMemoryKeyring(keyring.backend.KeyringBackend):
+    priority = 1000
+
+    def __init__(self):
+        self._store = {}
+
+    def get_password(self, service, username):
+        return self._store.get((service, username))
+
+    def set_password(self, service, username, password):
+        self._store[(service, username)] = password
+
+    def delete_password(self, service, username):
+        try:
+            del self._store[(service, username)]
+        except KeyError as exc:
+            raise keyring.errors.PasswordDeleteError(str(exc)) from exc
+
+
+@pytest.fixture
+def trussrc(tmp_path, monkeypatch):
+    path = tmp_path / "trussrc"
+    monkeypatch.setattr(remote_factory, "USER_TRUSSRC_PATH", path)
+    monkeypatch.setattr("truss.cli.auth.USER_TRUSSRC_PATH", path)
+    monkeypatch.delenv(remote_factory.KEYRING_DISABLED_ENV, raising=False)
+    monkeypatch.setattr(remote_factory, "_keyring_fallback_warned", False)
+    return path
+
+
+@pytest.fixture
+def memory_keyring(trussrc):
+    backend = _InMemoryKeyring()
+    prior = keyring.get_keyring()
+    keyring.set_keyring(backend)
+    try:
+        yield backend
+    finally:
+        keyring.set_keyring(prior)
+
+
+@pytest.fixture
+def fail_keyring(trussrc):
+    prior = keyring.get_keyring()
+    keyring.set_keyring(keyring.backends.fail.Keyring())
+    try:
+        yield
+    finally:
+        keyring.set_keyring(prior)

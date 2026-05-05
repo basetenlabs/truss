@@ -1,3 +1,4 @@
+import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,7 @@ import pydantic
 import pytest
 import requests_mock
 
+from truss.base.truss_config import BISLLM, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -15,6 +17,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
+from truss.remote.baseten.service import URLConfig
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
@@ -646,6 +649,118 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             remote.push(th, "model_name", th.truss_dir)
 
 
+def test_push_uses_bis_llm_service_for_bis_llm(
+    remote, mock_upload_truss, mock_truss_handle
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(
+        config={"model": "test-llm"}, version="v1"
+    )
+    mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    mock_truss_handle.spec.config.weights = Weights(
+        [
+            WeightsSource(source="hf://model-1", mount_location="/models/base"),
+            WeightsSource(source="hf://model-2", mount_location="/models/adapter"),
+        ]
+    )
+
+    bis_llm_handle = mock.Mock(
+        version_id="bis-llm-deployment-id",
+        model_id="bis-llm-model-id",
+        hostname="hostname",
+        instance_type_name=None,
+    )
+
+    with patch(
+        "truss.remote.baseten.remote.exists_model", return_value="bis-llm-model-id"
+    ):
+        with patch(
+            "truss.remote.baseten.remote.validate_truss_config_against_backend"
+        ) as mock_validate_backend:
+            with patch(
+                "truss.remote.baseten.remote.create_bis_llm_service",
+                return_value=bis_llm_handle,
+            ) as mock_create_bis_llm_service:
+                with patch(
+                    "truss.remote.baseten.remote.create_truss_service"
+                ) as mock_create_truss_service:
+                    service = remote.push(
+                        mock_truss_handle,
+                        "model_name",
+                        mock_truss_handle.truss_dir,
+                        publish=True,
+                        labels={"git_sha": "abc123", "environment": "production"},
+                    )
+
+    mock_validate_backend.assert_not_called()
+    mock_upload_truss.assert_called_once()
+    mock_create_truss_service.assert_not_called()
+    mock_create_bis_llm_service.assert_called_once()
+    _, kwargs = mock_create_bis_llm_service.call_args
+    assert kwargs["model_id"] == "bis-llm-model-id"
+    assert kwargs["team_id"] is None
+    assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
+    assert kwargs["body"]["llm_version"] == "v1"
+    assert kwargs["body"]["weights"] == [
+        {"source": "hf://model-1", "mount_location": "/models/base"},
+        {"source": "hf://model-2", "mount_location": "/models/adapter"},
+    ]
+    assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
+    assert kwargs["body"]["metadata"] == {
+        "git_sha": "abc123",
+        "environment": "production",
+    }
+    assert isinstance(kwargs["body"]["resources"], dict)
+    assert "name" not in kwargs["body"]
+    assert service.model_id == "bis-llm-model-id"
+    assert service.model_version_id == "bis-llm-deployment-id"
+    assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize(
+    "extra_kwargs,error_message",
+    [
+        (
+            {"publish": False},
+            "Development deployment is not supported for BIS LLM models.",
+        ),
+        ({"promote": True}, "Promotion is not supported for BIS LLM models "),
+        (
+            {"environment": "staging"},
+            "Environment is not supported for BIS LLM models.",
+        ),
+        (
+            {"preserve_previous_prod_deployment": True},
+            "Preserve previous production deployment is not supported for BIS LLM models.",
+        ),
+        (
+            {"disable_truss_download": True},
+            "Disable truss download is not supported for BIS LLM models.",
+        ),
+        (
+            {"deployment_name": "v1"},
+            "Deployment name is not supported for BIS LLM models.",
+        ),
+        (
+            {"origin": b10_types.ModelOrigin.BASETEN},
+            "Origin is not supported for BIS LLM models.",
+        ),
+        (
+            {"deploy_timeout_minutes": 30},
+            "Deploy timeout minutes is not supported for BIS LLM models.",
+        ),
+    ],
+)
+def test_push_bis_llm_rejects_disallowed_options(
+    remote, mock_truss_handle, extra_kwargs, error_message
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    kwargs = {"publish": True, **extra_kwargs}
+    with pytest.raises(ValueError, match=re.escape(error_message)):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
+        )
+
+
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
     remote,
@@ -682,6 +797,47 @@ def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
     assert kwargs.get("deploy_timeout_minutes") is None
+
+
+def test_push_propagates_raw_config_bytes(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+):
+    expected = mock_truss_handle.spec.config_path.read_bytes()
+
+    remote.push(
+        mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+    )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["raw_config"] == expected
+
+
+def test_push_drops_oversize_raw_config(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+    monkeypatch,
+    caplog,
+):
+    monkeypatch.setattr("truss.remote.baseten.remote.RAW_CONFIG_MAX_BYTES", 1)
+    with caplog.at_level("WARNING"):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+        )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["raw_config"] is None
+    assert any("exceeds" in record.message for record in caplog.records)
 
 
 def test_push_integration_deploy_timeout_minutes_propagated(
@@ -749,6 +905,209 @@ def test_api_push_integration_labels_propagated(
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
     assert push_kwargs.get("labels") == labels
+
+
+def _make_baseten_remote_mock(teams, models=None):
+    """Helper to create a mock BasetenRemote with teams and optional models."""
+    from truss.remote.baseten.remote import BasetenRemote
+
+    mock_remote = MagicMock(spec=BasetenRemote)
+    mock_service = MagicMock()
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_remote.push.return_value = mock_service
+    mock_remote.api.get_teams.return_value = teams
+    mock_remote.api.models.return_value = {"models": models or []}
+    return mock_remote
+
+
+def test_api_push_team_resolved_and_passed(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "my-team": TeamType(id="team_123", name="my-team", default=True),
+            "other-team": TeamType(id="team_456", name="other-team", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir),
+            remote="baseten",
+            model_name="test_model",
+            team="my-team",
+        )
+
+    mock_remote.api.get_teams.assert_called_once()
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_123"
+
+
+def test_api_push_invalid_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={"my-team": TeamType(id="team_123", name="my-team", default=True)}
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Team 'nonexistent' does not exist"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="test_model",
+                team="nonexistent",
+            )
+
+
+def test_api_push_single_team_auto_resolved(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={"only-team": TeamType(id="team_789", name="only-team", default=True)}
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_789"
+
+
+def test_api_push_multiple_teams_no_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="new_model",
+            )
+
+
+def test_api_push_existing_model_auto_resolves_team(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        },
+        models=[{"name": "test_model", "team": {"id": "team_b", "name": "team-b"}}],
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
+
+
+@patch(
+    "truss.cli.resolvers.model_team_resolver.RemoteFactory.get_remote_team",
+    return_value="team-b",
+)
+def test_api_push_falls_back_to_trussrc_team(
+    mock_get_remote_team,
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_get_remote_team.assert_called_once_with("baseten")
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
+
+
+def test_api_push_model_in_multiple_teams_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        },
+        models=[
+            {"name": "test_model", "team": {"id": "team_a", "name": "team-a"}},
+            {"name": "test_model", "team": {"id": "team_b", "name": "team-b"}},
+        ],
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="test_model",
+            )
 
 
 @patch("truss.remote.baseten.remote.time.sleep")

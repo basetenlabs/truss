@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import signal
 import socket
@@ -39,13 +40,18 @@ def _change_directory(new_directory: Path):
 
 @contextmanager
 def _clear_truss_server_modules():
-    """Clear truss_server module for clean import."""
-    modules_to_remove = ["truss_server"]
-    for mod in modules_to_remove:
+    """Clear truss_server and model modules for clean import."""
+    for mod in ["truss_server"] + [
+        k for k in sys.modules if k == "model" or k.startswith("model.")
+    ]:
         sys.modules.pop(mod, None)
-    yield
-    for mod in modules_to_remove:
-        sys.modules.pop(mod, None)
+    try:
+        yield
+    finally:
+        for mod in ["truss_server"] + [
+            k for k in sys.modules if k == "model" or k.startswith("model.")
+        ]:
+            sys.modules.pop(mod, None)
 
 
 def _get_endpoints(app_path):
@@ -171,6 +177,119 @@ def test_truss_server_termination(truss_container_fs):
     assert not subproc.is_alive()
     # Port should be free now
     assert _is_port_available(port)
+
+
+@pytest.mark.anyio
+async def test_hot_reload_with_namespace_subpackage(app_path):
+    # Regression test for https://github.com/basetenlabs/truss/issues/2320:
+    # When model/ is a regular package (__init__.py) but a subdirectory is a
+    # namespace package (no __init__.py), hot reload evicts the parent from
+    # sys.modules but leaves the namespace child. The child's _NamespacePath
+    # then raises KeyError looking up the evicted parent.
+    model_dir = app_path / "model"
+    model_file = model_dir / "model.py"
+
+    # analyzer/ is a namespace package (no __init__.py)
+    analyzer_dir = model_dir / "analyzer"
+    analyzer_dir.mkdir()
+    request_dir = analyzer_dir / "request"
+    request_dir.mkdir()
+    (request_dir / "__init__.py").write_text("")
+    (request_dir / "schema.py").write_text('class RequestModel:\n    name = "v1"\n')
+
+    model_file.write_text("""\
+from model.analyzer.request.schema import RequestModel
+
+class Model:
+    def predict(self, request):
+        return {"version": RequestModel.name}
+""")
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        endpoints = _get_endpoints(app_path)
+        mock_request = _make_connected_request()
+
+        async def predict():
+            resp = await endpoints.predict(
+                model_name="model", request=mock_request, body_raw=b"{}"
+            )
+            assert resp.status_code == 200, f"predict failed: {resp.body}"
+            return json.loads(resp.body)
+
+        result = await predict()
+        assert result["version"] == "v1"
+
+        # Update and hot reload
+        (request_dir / "schema.py").write_text('class RequestModel:\n    name = "v2"\n')
+        resp = endpoints.hot_reload(mock_request)
+        assert resp == {"msg": "Hot reload complete"}
+
+        result = await predict()
+        assert result["version"] == "v2"
+
+
+@pytest.mark.anyio
+async def test_hot_reload_endpoint(app_path):
+    # Tests the HTTP endpoint layer: successful hot reload changes predict
+    # output, and a syntax error returns 422 while old predict still works.
+    model_file = app_path / "model" / "model.py"
+
+    original_model = """\
+class Model:
+    def __init__(self, **kwargs):
+        self.load_count = 0
+        self.predict_count = 0
+
+    def load(self):
+        self.load_count += 1
+
+    def predict(self, request):
+        self.predict_count += 1
+        return {"version": "v1", "load_count": self.load_count, "predict_count": self.predict_count}
+"""
+    model_file.write_text(original_model)
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        endpoints = _get_endpoints(app_path)
+        mock_request = _make_connected_request()
+
+        async def predict():
+            resp = await endpoints.predict(
+                model_name="model", request=mock_request, body_raw=b"{}"
+            )
+            assert resp.status_code == 200, f"predict failed: {resp.body}"
+            return json.loads(resp.body)
+
+        result = await predict()
+        assert result["version"] == "v1"
+        assert result["load_count"] == 1
+        assert result["predict_count"] == 1
+
+        # Hot reload with new code
+        model_file.write_text("""\
+class Model:
+    def predict(self, request):
+        self.predict_count += 1
+        return {"version": "v2", "load_count": self.load_count, "predict_count": self.predict_count}
+""")
+        resp = endpoints.hot_reload(mock_request)
+        assert resp == {"msg": "Hot reload complete"}
+
+        result = await predict()
+        assert result["version"] == "v2"
+        assert result["load_count"] == 1
+        assert result["predict_count"] == 2
+
+        # Hot reload with syntax error (missing colon) returns 422
+        model_file.write_text("class Model:\n    def predict(self, request)\n")
+        resp = endpoints.hot_reload(mock_request)
+        assert resp.status_code == 422
+        assert "SyntaxError" in resp.body.decode()
+
+        # Old predict still works with preserved state
+        result = await predict()
+        assert result["version"] == "v2"
+        assert result["predict_count"] == 3
 
 
 def _is_port_available(port):

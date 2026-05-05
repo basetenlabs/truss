@@ -17,6 +17,7 @@ from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.resolvers.training_project_team_resolver import (
     resolve_training_project_team_name,
 )
+from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.train.cache import (
@@ -86,7 +87,13 @@ def _handle_post_create_logic(
     project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
     project_name = job_resp["training_project"]["name"]
 
-    if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+    if job_resp.get("current_status") == "TRAINING_JOB_PENDING":
+        console.print(
+            f"🟡 Training job is pending — waiting for GPU capacity. "
+            f"Check status: 'truss train view --job-id={job_id}'.",
+            style="yellow",
+        )
+    elif job_resp.get("current_status") == "TRAINING_JOB_QUEUED":
         console.print(
             f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
             style="green",
@@ -133,7 +140,7 @@ def _resolve_team_name(
 
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
 @click.option(
@@ -163,6 +170,12 @@ def _resolve_team_name(
 )
 @click.option("--node-count", type=int, required=False, help="Number of compute nodes")
 @click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
+@click.option(
+    "--priority",
+    type=int,
+    required=False,
+    help="Job priority (higher values run first when capacity frees up).",
+)
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -175,6 +188,7 @@ def push_training_job(
     accelerator: Optional[str],
     node_count: Optional[int],
     entrypoint: Optional[str],
+    priority: Optional[int],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -211,6 +225,7 @@ def push_training_job(
                 accelerator=accelerator,
                 node_count=node_count,
                 entrypoint=entrypoint,
+                priority=priority,
             )
 
     # Note: This post create logic needs to happen outside the context
@@ -223,7 +238,7 @@ def push_training_job(
 @click.option(
     "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
 @common.common_options()
 def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bool):
@@ -313,6 +328,7 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             border_style="blue",
         )
         has_expiry = any(code.get("expires_at") for code in isession)
+        has_working_dir = any(code.get("working_directory") for code in isession)
 
         table.add_column("Replica ID", style="cyan")
         table.add_column("Tunnel Name", style="yellow")
@@ -321,6 +337,8 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
         table.add_column("Generated At (Local)", style="dim")
         if has_expiry:
             table.add_column("Expires In", style="dim")
+        if has_working_dir:
+            table.add_column("Working Directory", style="green")
 
         for code in isession:
             row = [
@@ -332,16 +350,19 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             ]
             if has_expiry:
                 row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            if has_working_dir:
+                row.append(code.get("working_directory", ""))
             table.add_row(*row)
 
         console.print(table)
+
     except Exception:
         # Silently skip if auth codes aren't available
         pass
 
 
 @train.command(name="logs")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
@@ -392,7 +413,7 @@ def get_job_logs(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def stop_job(
     project_id: Optional[str],
@@ -430,7 +451,7 @@ def stop_job(
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_training(
     project_id: Optional[str],
@@ -457,7 +478,7 @@ def view_training(
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def get_job_metrics(
     project_id: Optional[str],
@@ -484,6 +505,12 @@ def get_job_metrics(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
+    "--trainer-id",
+    type=str,
+    required=False,
+    help="Trainer ID. Use to deploy checkpoints from a trainer instead of a training job.",
+)
+@click.option(
     "--config",
     type=str,
     required=False,
@@ -498,12 +525,13 @@ def get_job_metrics(
     required=False,
     help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
@@ -519,14 +547,20 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
-    )
+    if trainer_id and (project_id or project or job_id):
+        raise click.UsageError(
+            "--trainer-id cannot be combined with --project, --project-id, or --job-id."
+        )
+    if not trainer_id:
+        project_id = _maybe_resolve_project_id_from_id_or_name(
+            remote_provider, project_id=project_id, project=project
+        )
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
+            trainer_id=trainer_id,
             deploy_config_path=config,
             dry_run=dry_run,
         ),
@@ -568,7 +602,7 @@ def _write_truss_config(
 
 @train.command(name="download")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--target-directory",
     type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
@@ -616,7 +650,7 @@ def download_training_job(
 
 @train.command(name="get_checkpoint_urls")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) -> None:
     if not remote:
@@ -718,7 +752,7 @@ def cache():
 
 @cache.command(name="summarize")
 @click.argument("project", type=str, required=True)
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--sort",
     type=click.Choice(
@@ -763,6 +797,94 @@ def view_cache_summary(
     )
 
 
+@train.group(name="checkpoints")
+def checkpoints():
+    """Checkpoint-related subcommands for truss train"""
+
+
+@checkpoints.command(name="list")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--checkpoint-name",
+    type=str,
+    required=False,
+    help="Jump directly into a specific checkpoint's files.",
+)
+@click.option(
+    "--sort",
+    type=click.Choice(
+        [
+            checkpoint_mod.SORT_BY_CHECKPOINT_ID,
+            checkpoint_mod.SORT_BY_SIZE,
+            checkpoint_mod.SORT_BY_CREATED,
+            checkpoint_mod.SORT_BY_TYPE,
+        ]
+    ),
+    default=checkpoint_mod.SORT_BY_CREATED,
+    help="Sort checkpoints by checkpoint-id, size, created date, or type.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([checkpoint_mod.SORT_ORDER_ASC, checkpoint_mod.SORT_ORDER_DESC]),
+    default=checkpoint_mod.SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [
+            checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+            checkpoint_mod.OUTPUT_FORMAT_CSV,
+            checkpoint_mod.OUTPUT_FORMAT_JSON,
+        ]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
+@common.common_options()
+def list_checkpoints(
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    checkpoint_name: Optional[str],
+    sort: str,
+    order: str,
+    output_format: str,
+):
+    """List checkpoints for a training job"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+    project_id, job_id = train_common.get_most_recent_job(
+        remote_provider, project_id, job_id
+    )
+
+    interactive = common.check_is_interactive()
+
+    checkpoint_mod.view_checkpoint_list(
+        remote_provider=remote_provider,
+        project_id=project_id,
+        job_id=job_id,
+        sort_by=sort,
+        order=order,
+        output_format=output_format,
+        interactive=interactive,
+        checkpoint_name=checkpoint_name,
+    )
+
+
 def _maybe_resolve_project_id_from_id_or_name(
     remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
 ) -> Optional[str]:
@@ -789,7 +911,7 @@ def _maybe_resolve_project_id_from_id_or_name(
     required=False,
     help="Number of minutes before the interactive session times out.",
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def update_session(
     job_id: str,
@@ -835,7 +957,7 @@ def update_session(
 
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--update-timeout",
     "timeout_minutes",
@@ -987,3 +1109,146 @@ def _patch_sessions(
         sys.exit(1)
 
     return messages
+
+
+@train.command(name="capacity")
+@common.common_options()
+@click.option("--remote", type=str, required=False, help="Name of the remote to use")
+def capacity(remote: Optional[str]):
+    """Show GPU capacity limits and current usage for the organization."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.display_training_capacity(remote_provider)
+
+
+@train.command(name="workstation")
+@click.option(
+    "--accelerator",
+    type=click.Choice(["H100", "H200"], case_sensitive=False),
+    default="H100",
+    help="GPU accelerator type (default: H100).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=1,
+    help="Number of GPUs (1-8, default: 1).",
+)
+@click.option(
+    "--project-id",
+    type=str,
+    required=False,
+    help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--image",
+    type=str,
+    required=False,
+    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+)
+@click.option(
+    "--enable-checkpointing",
+    is_flag=True,
+    default=False,
+    help="Enable checkpoint storage.",
+)
+@click.option(
+    "--checkpoint-path",
+    type=str,
+    required=False,
+    help="Path inside the container to save checkpoints.",
+)
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    required=False,
+    help="Checkpoint volume size in GiB.",
+)
+@click.option(
+    "--checkpoint-from-job",
+    type=str,
+    required=False,
+    help="Job ID to load the latest checkpoint from.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@common.common_options()
+def workstation(
+    accelerator: str,
+    gpu_count: int,
+    project_id: Optional[str],
+    image: Optional[str],
+    enable_checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    checkpoint_from_job: Optional[str],
+    remote: Optional[str],
+    tail: bool,
+):
+    """Spin up an SSH workstation on Baseten training infrastructure."""
+    import tempfile
+
+    from truss.cli.train.workstation import (
+        DEFAULT_BASE_IMAGE,
+        build_workstation_project,
+    )
+    from truss_train.public_api import push
+
+    accelerator = accelerator.upper()
+    if not project_id:
+        project_id = f"workstation-{accelerator}"
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    base_image = image or DEFAULT_BASE_IMAGE
+    training_project = build_workstation_project(
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        project_id=project_id,
+        base_image=base_image,
+        enable_checkpointing=enable_checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+        checkpoint_from_job=checkpoint_from_job,
+    )
+
+    console.print(
+        f"Launching workstation [cyan]{project_id}[/cyan] "
+        f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
+    )
+
+    # Use an empty temp dir as source so we don't upload the user's cwd.
+    with tempfile.TemporaryDirectory() as empty_dir:
+        job_resp = push(
+            config=training_project, remote=remote, source_dir=Path(empty_dir)
+        )
+
+    job_id = job_resp["id"]
+    console.print(
+        f"\n[green]Workstation created![/green]\n"
+        f"\n"
+        f"Once the job is running, SSH in with:\n"
+        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+    if tail:
+        remote_provider: BasetenRemote = cast(
+            BasetenRemote, RemoteFactory.create(remote=remote)
+        )
+        project_resp_id = job_resp["training_project"]["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)

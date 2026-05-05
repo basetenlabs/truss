@@ -54,10 +54,13 @@ class MethodName(str, enum.Enum):
 
     CHAT_COMPLETIONS = enum.auto()
     COMPLETIONS = enum.auto()
+    EMBEDDINGS = enum.auto()
     IS_HEALTHY = enum.auto()
+    MESSAGES = enum.auto()
     POSTPROCESS = enum.auto()
     PREDICT = enum.auto()
     PREPROCESS = enum.auto()
+    RESPONSES = enum.auto()
     SETUP_ENVIRONMENT = enum.auto()
     WEBSOCKET = enum.auto()
 
@@ -240,6 +243,9 @@ class ModelDescriptor:
     is_healthy: Optional[MethodDescriptor]
     completions: Optional[MethodDescriptor]
     chat_completions: Optional[MethodDescriptor]
+    embeddings: Optional[MethodDescriptor]
+    messages: Optional[MethodDescriptor]
+    responses: Optional[MethodDescriptor]
     websocket: Optional[MethodDescriptor]
 
     @cached_property
@@ -287,6 +293,9 @@ class ModelDescriptor:
         setup = cls._safe_extract_descriptor(model_cls, MethodName.SETUP_ENVIRONMENT)
         completions = cls._safe_extract_descriptor(model_cls, MethodName.COMPLETIONS)
         chats = cls._safe_extract_descriptor(model_cls, MethodName.CHAT_COMPLETIONS)
+        embeddings = cls._safe_extract_descriptor(model_cls, MethodName.EMBEDDINGS)
+        messages = cls._safe_extract_descriptor(model_cls, MethodName.MESSAGES)
+        responses = cls._safe_extract_descriptor(model_cls, MethodName.RESPONSES)
         is_healthy = cls._safe_extract_descriptor(model_cls, MethodName.IS_HEALTHY)
         if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
             raise errors.ModelDefinitionError(
@@ -355,6 +364,9 @@ class ModelDescriptor:
             is_healthy=is_healthy,
             completions=completions,
             chat_completions=chats,
+            embeddings=embeddings,
+            messages=messages,
+            responses=responses,
             websocket=websocket,
         )
 
@@ -921,11 +933,80 @@ class ModelWrapper:
         )
         return await self._execute_model_endpoint(inputs, request, descriptor)
 
+    async def embeddings(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.embeddings, MethodName.EMBEDDINGS
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def messages(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.messages, MethodName.MESSAGES
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def responses(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.responses, MethodName.RESPONSES
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
     async def websocket(self, ws: WebSocket) -> None:
         descriptor = self.model_descriptor.websocket
         assert descriptor, "websocket can only be invoked if present on model."
         assert descriptor.is_async, "websocket endpoints are enforced to be async."
         await self._model.websocket(ws)
+
+    def hot_reload(self):
+        """Reload user model module and swap __class__ on the live instance.
+
+        If any step fails (syntax error, missing class, etc.), the exception
+        bubbles up and the live model instance is left unchanged.
+        """
+        model_module_dir = Path(self._config["model_module_dir"]).resolve()
+
+        # Evict all user-code modules from sys.modules so that imports
+        # (e.g. helpers, utils) are re-read from disk. We check both
+        # __file__ (regular modules) and __path__ (packages, including
+        # namespace packages with __file__=None) to avoid leaving orphaned
+        # entries whose stale _NamespacePath would raise KeyError.
+        to_evict = []
+        for name, mod in list(sys.modules.items()):
+            mod_file = getattr(mod, "__file__", None)
+            if mod_file and Path(mod_file).resolve().is_relative_to(model_module_dir):
+                to_evict.append(name)
+                continue
+            for p in getattr(mod, "__path__", ()):
+                if Path(p).resolve().is_relative_to(model_module_dir):
+                    to_evict.append(name)
+                    break
+        for name in to_evict:
+            self._logger.debug(f"Hot reload: evicting module {name}")
+            sys.modules.pop(name, None)
+        importlib.invalidate_caches()
+
+        # Re-import the model module through normal import machinery so
+        # Python naturally rebuilds the package tree. If anything fails,
+        # the live model instance is left unchanged (swap hasn't happened).
+        try:
+            model_module_name = self._config["model_module_dir"]
+            model_file_stem = Path(self.model_file_name).stem
+            module = importlib.import_module(f"{model_module_name}.{model_file_stem}")
+
+            new_class = getattr(module, self._config["model_class_name"])
+            self._model.__class__ = new_class
+            self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
+        except Exception:
+            self._logger.exception("Hot reload failed")
+            raise
+
+        self._logger.info("Hot reload complete.")
 
 
 async def _gather_generator(

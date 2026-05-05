@@ -2,13 +2,16 @@ import inspect
 import json
 import os
 import sys
+import tarfile
 import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
 
+import requests
 import rich.table
 import rich_click as click
+import yaml
 from rich import console as rich_console
 from rich import progress
 
@@ -18,8 +21,9 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
-from truss.base.truss_config import Build, ModelServer, TransportKind
+from truss.base.truss_config import Build, ModelServer, TransportKind, TrussConfig
 from truss.cli import remote_cli
+from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.resolvers.model_team_resolver import (
@@ -27,7 +31,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_team_name,
 )
 from truss.cli.utils import common, self_upgrade
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -92,6 +96,28 @@ def _get_truss_from_directory(
     return load(truss_dir, config_path=config_path)
 
 
+def _start_tail(
+    remote: BasetenRemote, model_id: str, version_id: str, in_background: bool
+) -> None:
+    log_watcher = ModelDeploymentLogWatcher(remote.api, model_id, version_id)
+
+    def _tail_logs():
+        try:
+            for log in log_watcher.watch(show_spinner=not in_background):
+                cli_log_utils.output_log(log)
+        except Exception as exc:
+            error_console.print(
+                f"[red]Log tailing stopped due to an error:[/red] {exc}"
+            )
+            raise
+
+    if in_background:
+        thread = threading.Thread(target=_tail_logs, daemon=True)
+        thread.start()
+    else:
+        _tail_logs()
+
+
 def _start_watch_mode(
     target_directory: str,
     model_name: str,
@@ -100,10 +126,16 @@ def _start_watch_mode(
     resolved_versions: list,
     console: "rich_console.Console",
     error_console: "rich_console.Console",
+    hot_reload: bool = False,
 ) -> None:
     if not os.path.isfile(target_directory):
         remote_provider.sync_truss_to_dev_version_with_model(
-            resolved_model, resolved_versions, target_directory, console, error_console
+            resolved_model,
+            resolved_versions,
+            target_directory,
+            console,
+            error_console,
+            hot_reload=hot_reload,
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.
@@ -121,7 +153,11 @@ def _start_watch_mode(
 ### Top-level & utility commands. ######################################################
 
 
-@click.group(name="truss", invoke_without_command=True)  # type: ignore
+@click.group(
+    name="truss",
+    invoke_without_command=True,
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)  # type: ignore
 @click.pass_context
 @click.version_option(truss.__version__)
 @common.common_options(add_middleware=False)
@@ -137,21 +173,15 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
-@click.option(
-    "--api-key",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to patch changes to",
-)
+@click.option("--browser", is_flag=True, help="Log in via browser (OAuth device flow).")
+@click.option("--api-key", type=str, required=False, help="API key for authentication.")
+@click.option("--remote", type=str, default=None, help="Remote name to create.")
 @common.common_options()
-def login(api_key: Optional[str]):
-    from truss.api import login
+def login(browser: bool, api_key: Optional[str], remote: Optional[str]):
+    do_login(browser=browser, api_key=api_key, remote=remote)
 
-    if not api_key:
-        remote_config = remote_cli.inquire_remote_config()
-        RemoteFactory.update_remote_config(remote_config)
-    else:
-        login(api_key)
+
+truss_cli.add_command(auth_group)
 
 
 @truss_cli.command()
@@ -357,7 +387,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "-d",
@@ -501,7 +531,7 @@ def run_python(script, target_directory):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "--model-name",
@@ -639,7 +669,19 @@ def run_python(script, target_directory):
     help=(
         "Deploy as a development model and watch for changes. "
         "Waits for deployment to complete, then starts watching for code changes "
-        "to apply live patches. Cannot be used with --promote, --environment, or --tail."
+        "to apply live patches. Cannot be used with --promote or --environment."
+    ),
+)
+@click.option(
+    "--watch-hot-reload",
+    "watch_hot_reload",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Enable hot-reload for model code changes during watch mode. "
+        "Swaps model class in-process without restarting, preserving state. "
+        "Requires --watch."
     ),
 )
 @click.option(
@@ -650,8 +692,28 @@ def run_python(script, target_directory):
     default=False,
     help="Force a full rebuild without using cached layers.",
 )
+@click.option(
+    "--watch-no-sleep",
+    type=bool,
+    required=False,
+    default=True,
+    help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
+)
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and "
+        "all other output (progress, logs) to stderr."
+    ),
+)
 @common.common_options()
+@click.pass_context
+@json_command
 def push(
+    ctx: click.Context,
     target_directory: str,
     config: Optional[str],
     remote: str,
@@ -672,7 +734,10 @@ def push(
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
     watch_after_push: bool = False,
+    watch_hot_reload: bool = False,
     no_cache: bool = False,
+    watch_no_sleep: bool = True,
+    output_format: str = "text",
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -701,22 +766,22 @@ def push(
             raise click.UsageError(
                 "Cannot use --watch with --environment. Watch mode runs a development deployment."
             )
-        if tail:
-            raise click.UsageError("Cannot use --watch with --tail.")
         # Development deployment for watch mode
         publish = False
         wait = True
     else:
+        if watch_hot_reload:
+            raise click.UsageError("--watch-hot-reload requires --watch.")
+        if (
+            ctx.get_parameter_source("watch_no_sleep")
+            != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
+        ):
+            raise click.UsageError("--watch-no-sleep requires --watch.")
         # Default is now published deployment
         publish = True
         console.print(
             "Deploying as a published deployment. Use --watch for a development deployment.",
             style="green",
-        )
-
-    if wait and tail:
-        raise click.UsageError(
-            "Cannot use --wait with --tail. Use --tail by itself to wait for deployment and tail logs."
         )
 
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
@@ -740,9 +805,11 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
+        include_git_info = user_config.get_settings().include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
+    if output_format == "json" and isinstance(remote_provider, BasetenRemote):
+        remote_provider.api.suppress_error_print = True
 
     # model_name from CLI flag (explicit), or fall back to config
     cli_model_name = model_name  # what the user inputted for `--model-name`
@@ -759,15 +826,12 @@ def push(
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
         existing_teams = remote_provider.api.get_teams()
-        # Use config team as fallback if --team not provided
-        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
-            remote
-        )
         team_name, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=effective_team_name,
+            provided_team_name=provided_team_name,
             existing_model_name=model_name,
             existing_teams=existing_teams,
+            remote_name=remote,
         )
 
     if promote and environment:
@@ -864,7 +928,7 @@ def push(
         labels=labels_dict,
     )
 
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+    console.print(f"✨ Model {model_name} was successfully pushed ✨")
 
     if service.is_draft:
         draft_model_text = """
@@ -878,7 +942,7 @@ def push(
 |---------------------------------------------------------------------------------------|
 """
 
-        click.echo(draft_model_text)
+        console.print(draft_model_text)
 
     if environment:
         promotion_text = (
@@ -890,16 +954,37 @@ def push(
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
+
+    if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
+        service, BasetenService
+    ):
+        console.print(
+            "🔐  SSH into this deployment (after one-time 'truss ssh setup'): "
+            f"ssh model-{service.model_id}-{service.model_version_id}.ssh.baseten.co"
+        )
+
+    if tail and isinstance(service, BasetenService):
+        # When combined with --wait/--watch, tail runs in background so the
+        # wait polling loop below can proceed on the main thread.
+        _start_tail(
+            cast(BasetenRemote, remote_provider),
+            service.model_id,
+            service.model_version_id,
+            in_background=wait,
+        )
+
+    last_deployment = None
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            for deployment_status in service.poll_deployment_status():
+            for deployment in service.poll_deployment():
+                last_deployment = deployment
+                deployment_status = deployment["status"]
                 if (
                     timeout_seconds is not None
                     and time.time() - start_time > timeout_seconds
                 ):
-                    console.print("Deployment timed out.", style="red")
-                    sys.exit(1)
+                    raise TimeoutError("Deployment timed out.")
 
                 status.update(
                     f"[bold green]Deploying...Current Status: {deployment_status}"
@@ -920,11 +1005,11 @@ def push(
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    console.print(
-                        f"Deployment failed with status {deployment_status}.",
-                        style="red",
+                    exc = RuntimeError(
+                        f"Deployment failed with status {deployment_status}."
                     )
-                    sys.exit(1)
+                    setattr(exc, "json_data", {"deployment": deployment})
+                    raise exc
 
         # If --watch was used, start watching after deploy success
         if watch_after_push:
@@ -937,6 +1022,9 @@ def push(
             resolved_model, versions = resolve_model_for_watch(
                 bt_remote, model_name, provided_team_name=team_name
             )
+            if watch_no_sleep:
+                model_hostname = resolved_model["hostname"]
+                common.start_keepalive(model_hostname, bt_remote.fetch_auth_header)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -945,19 +1033,26 @@ def push(
                 resolved_versions=versions,
                 console=console,
                 error_console=error_console,
+                hot_reload=watch_hot_reload,
             )
 
-    elif tail and isinstance(service, BasetenService):
-        bt_remote = cast(BasetenRemote, remote_provider)
-        log_watcher = ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id
-        )
-        for log in log_watcher.watch():
-            cli_log_utils.output_log(log)
+    if output_format == "json" and isinstance(service, BasetenService):
+        result: dict = {
+            "model_id": service.model_id,
+            "model_version_id": service.model_version_id,
+            "predict_url": service.predict_url,
+            "logs_url": service.logs_url,
+            "is_draft": service.is_draft,
+        }
+        if last_deployment is not None:
+            result["deployment"] = last_deployment
+        print(json.dumps(result, indent=2), file=sys.stdout)
 
 
 @truss_cli.command()
-@click.option("--remote", type=str, required=False)
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
@@ -985,6 +1080,141 @@ def model_logs(
 
 
 @truss_cli.command()
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--out-file",
+    type=click.Path(dir_okay=False),
+    required=False,
+    help="Save the truss as a tar file at this path.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False),
+    required=False,
+    help="Extract the truss into this directory.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Allow overwriting an existing file or non-empty directory.",
+)
+@common.common_options()
+def download(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    out_file: Optional[str],
+    out_dir: Optional[str],
+    overwrite: bool,
+) -> None:
+    """
+    Downloads the truss for a deployed model.
+    """
+    if out_file and out_dir:
+        raise click.UsageError("Cannot specify both --out-file and --out-dir.")
+
+    if not out_file and not out_dir:
+        raise click.UsageError("Must specify either --out-file or --out-dir.")
+
+    out_path = Path(out_file or out_dir)  # type: ignore[arg-type]
+
+    if not out_path.parent.exists():
+        raise click.UsageError(f"Parent directory does not exist: {out_path.parent}")
+
+    if not overwrite:
+        if out_file and out_path.exists():
+            raise click.UsageError(
+                f"File already exists: {out_path}. Use --overwrite to replace it."
+            )
+        if out_dir and out_path.exists() and any(out_path.iterdir()):
+            raise click.UsageError(
+                f"Directory is not empty: {out_path}. Use --overwrite to write into it."
+            )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    console.print("Fetching download URL...")
+    download_url = remote_provider.api.get_deployment_download_url(
+        model_id, deployment_id
+    )
+
+    console.print("Downloading truss...")
+    with requests.get(download_url, stream=True, timeout=(10, None)) as response:
+        response.raise_for_status()
+        response.raw.decode_content = True
+
+        if out_file:
+            with open(out_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            console.print(f"Saved to {out_path}")
+        else:
+            out_path.mkdir(exist_ok=True)
+            with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
+                # filter="data" prevents path traversal; only available in 3.12+
+                if sys.version_info >= (3, 12):
+                    tar.extractall(path=out_path, filter="data")
+                else:
+                    tar.extractall(path=out_path)
+            console.print(f"Extracted to {out_path}")
+
+
+@truss_cli.command(name="model-config")
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'text' prints the original config.yaml (or the parsed config "
+        "rendered as YAML if no original is stored). 'json' emits the full response "
+        "{config, raw_config} as JSON to stdout."
+    ),
+)
+@common.common_options()
+@json_command
+def model_config(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    output_format: str = "text",
+) -> None:
+    """
+    Fetches the config of a deployed model.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    response = remote_provider.api.get_deployment_config(model_id, deployment_id)
+
+    if output_format == "json":
+        print(json.dumps(response))
+        return
+
+    raw_config = response.get("raw_config")
+    if raw_config is not None:
+        click.echo(raw_config, nl=False)
+    else:
+        parsed = TrussConfig.from_dict(response.get("config") or {})
+        click.echo(
+            yaml.safe_dump(parsed.to_dict(verbose=False), sort_keys=False), nl=False
+        )
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--config",
@@ -996,7 +1226,7 @@ def model_logs(
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to patch changes to",
+    help="Name of the remote in .trussrc to patch changes to.",
 )
 @click.option(
     "--team",
@@ -1007,9 +1237,19 @@ def model_logs(
 )
 @click.option(
     "--no-sleep",
+    type=bool,
+    default=True,
+    help="Keep the development model warm by preventing scale-to-zero while watching.",
+)
+@click.option(
+    "--hot-reload",
+    "hot_reload",
     is_flag=True,
     default=False,
-    help="Keep the development model warm by preventing scale-to-zero while watching.",
+    help=(
+        "Enable hot-reload for model code changes. "
+        "Swaps model class in-process without restarting, preserving state."
+    ),
 )
 @click.option(
     "--model-name",
@@ -1017,14 +1257,17 @@ def model_logs(
     required=False,
     help="Temporarily override the name of the model",
 )
+@click.option("--tail", is_flag=True, help="Tail logs while watching.")
 @common.common_options()
 def watch(
     target_directory: str,
     config: Optional[str],
     remote: str,
     provided_team_name: Optional[str] = None,
-    no_sleep: bool = False,
+    no_sleep: bool = True,
+    hot_reload: bool = False,
     model_name: Optional[str] = None,
+    tail: bool = False,
 ) -> None:
     """
     Seamless remote development with truss
@@ -1075,26 +1318,19 @@ def watch(
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
 
-    api_key = remote_provider._auth_service.authenticate().value
-
     common.wait_for_development_model_ready(
         model_hostname=model_hostname,
         model_id=model_id,
         dev_version_id=dev_version_id,
         remote_provider=remote_provider,
         console=console,
-        api_key=api_key,
     )
 
-    stop_event = threading.Event()
     if no_sleep:
-        console.print("💤 --no-sleep enabled: keeping development model warm")
-        keepalive_thread = threading.Thread(
-            target=common.keepalive_loop,
-            args=(model_hostname, api_key, stop_event),
-            daemon=True,
-        )
-        keepalive_thread.start()
+        common.start_keepalive(model_hostname, remote_provider.fetch_auth_header)
+
+    if tail:
+        _start_tail(remote_provider, model_id, dev_version_id, in_background=True)
 
     # Re-resolve the model to get the latest version and truss hash and latest push before watching
     resolved_model, versions = resolve_model_for_watch(
@@ -1108,6 +1344,7 @@ def watch(
         resolved_versions=versions,
         console=console,
         error_console=error_console,
+        hot_reload=hot_reload,
     )
 
 
@@ -1256,4 +1493,9 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401
+from truss.cli import (  # noqa: F401
+    chains_commands,
+    migrate_commands,
+    ssh_commands,
+    train_commands,
+)

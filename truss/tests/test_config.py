@@ -27,6 +27,7 @@ from truss.base.truss_config import (
     ModelRepoCacheInternal,
     Resources,
     Runtime,
+    TrainingArtifactReference,
     TransportKind,
     TrussConfig,
     WebsocketOptions,
@@ -224,6 +225,10 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
         ("H100_40GB", AcceleratorSpec(accelerator=Accelerator.H100_40GB, count=1)),
         ("B200", AcceleratorSpec(accelerator=Accelerator.B200, count=1)),
         ("L40S", AcceleratorSpec(accelerator=Accelerator.L40S, count=1)),
+        (
+            "RTX_PRO_6000",
+            AcceleratorSpec(accelerator=Accelerator.RTX_PRO_6000, count=1),
+        ),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
@@ -464,10 +469,10 @@ def test_docker_auth_gcp_oidc_with_aws_params_error():
 
 
 def test_default_config_not_crowded_end_to_end():
-    config = TrussConfig(python_version="py39", requirements=[])
+    config = TrussConfig(python_version="py313", requirements=[])
 
     config_yaml = """
-python_version: py39
+python_version: py313
 resources:
   accelerator: null
   cpu: '1'
@@ -496,13 +501,12 @@ def test_empty_model_cache_key():
 
 def test_cache_internal_with_models(default_config):
     config = TrussConfig(
-        python_version="py39",
         cache_internal=CacheInternal(
             [
                 ModelRepoCacheInternal(repo_id="test/model"),
                 ModelRepoCacheInternal(repo_id="test/model2"),
             ]
-        ),
+        )
     )
     new_config = default_config
     new_config["cache_internal"] = [
@@ -514,8 +518,7 @@ def test_cache_internal_with_models(default_config):
 
 def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id="test/model", use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id="test/model", use_volume=False)])
     )
 
     new_config = default_config
@@ -527,7 +530,6 @@ def test_huggingface_cache_single_model_default_revision(default_config):
 
 def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
-        python_version="py39",
         requirements=[],
         model_cache=ModelCache(
             [ModelRepo(repo_id="test/model", revision="not-main", use_volume=False)]
@@ -539,13 +541,12 @@ def test_huggingface_cache_single_model_non_default_revision_v1():
 
 def test_huggingface_cache_multiple_models_default_revision(default_config):
     config = TrussConfig(
-        python_version="py39",
         model_cache=ModelCache(
             [
                 ModelRepo(repo_id="test/model1", revision="main", use_volume=False),
                 ModelRepo(repo_id="test/model2", use_volume=False),
             ]
-        ),
+        )
     )
 
     new_config = default_config
@@ -564,7 +565,6 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
 
 def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     config = TrussConfig(
-        python_version="py39",
         model_cache=ModelCache(
             [
                 ModelRepo(repo_id="test/model1", use_volume=False),
@@ -572,7 +572,7 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
                     repo_id="test/model2", revision="not-main2", use_volume=False
                 ),
             ]
-        ),
+        )
     )
 
     new_config = default_config
@@ -588,7 +588,6 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
 
 def test_huggingface_cache_v2_use_volume(default_config):
     config = TrussConfig(
-        python_version="py39",
         requirements=[],
         model_cache=ModelCache(
             [
@@ -645,6 +644,35 @@ def test_from_yaml_empty():
         assert result.description is None
         assert result.spec_version == "2.0"
         assert result.bundled_packages_dir == "packages"
+
+
+def test_from_yaml_no_config():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        yaml_path = Path(temp_dir_path) / "config.yaml"
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(yaml_path)
+
+        print(exc_info.value.args[0])
+        assert (
+            exc_info.value.args[0]
+            == f"Expected a truss configuration file at {yaml_path}"
+        )
+
+
+def test_from_yaml_wrong_extension():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        nonexistent_path = Path(temp_dir_path) / "config.yaml"
+        existing_path = Path(temp_dir_path) / "config.yml"
+        existing_path.touch()
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(nonexistent_path)
+
+        assert (
+            exc_info.value.args[0]
+            == "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+        )
 
 
 def test_from_yaml_duplicate_keys():
@@ -717,13 +745,18 @@ def test_from_yaml_python_version():
         with pytest.raises(ValueError):
             TrussConfig.from_yaml(yaml_path)
 
-    valid_py_version_data = {"description": "this is a test", "python_version": "py39"}
+    valid_py_version_data = {"description": "this is a test", "python_version": "py313"}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
         yaml_path = Path(yaml_file.name)
         yaml.safe_dump(valid_py_version_data, yaml_file)
 
         result = TrussConfig.from_yaml(yaml_path)
-        assert result.python_version == "py39"
+        assert result.python_version == "py313"
+
+
+def test_python_version_py39_deprecation_warning():
+    with pytest.warns(FutureWarning, match="Python 3.9 is deprecated"):
+        TrussConfig(python_version="py39")
 
 
 def test_from_yaml_environment_variables():
@@ -741,6 +774,32 @@ def test_from_yaml_environment_variables():
             "bool": "true",
             "int": "0",
         }
+
+
+def test_from_yaml_reserved_environment_variables_warns(caplog):
+    data = {"environment_variables": {"PORT": "8080", "MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        config = TrussConfig.from_yaml(path)
+
+    assert "PORT" in caplog.text
+    assert "Warning: the following environment variables" in caplog.text
+    assert config.environment_variables == {"PORT": "8080", "MY_VAR": "hello"}
+
+
+def test_from_yaml_no_reserved_environment_variables_no_warning(caplog):
+    data = {"environment_variables": {"MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_yaml(path)
+
+    assert "Warning: the following environment variables" not in caplog.text
 
 
 def test_secret_to_path_mapping_correct_type(default_config):
@@ -1215,7 +1274,6 @@ def test_supported_versions_are_sorted():
 
 def test_clear_runtime_fields():
     config = TrussConfig(
-        python_version="py39",
         training_checkpoints=CheckpointList(
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
@@ -1231,7 +1289,7 @@ def test_clear_runtime_fields():
     )
 
     config.clear_runtime_fields()
-    assert config.python_version == "py39"
+    assert config.python_version == "py313"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
     assert config.weights == Weights([])
@@ -1687,7 +1745,7 @@ class TestTrussConfigWeights:
 
     def test_empty_weights_config(self, default_config):
         """Empty weights should work."""
-        config = TrussConfig(python_version="py39")
+        config = TrussConfig()
         assert config.weights.sources == []
 
     def test_weights_from_yaml(self, tmp_path):
@@ -1727,7 +1785,6 @@ class TestTrussConfigWeights:
     def test_weights_serialization_roundtrip(self, tmp_path):
         """Weights should serialize and deserialize correctly."""
         config = TrussConfig(
-            python_version="py39",
             weights=Weights(
                 [
                     WeightsSource(
@@ -1736,7 +1793,7 @@ class TestTrussConfigWeights:
                         allow_patterns=["*.safetensors"],
                     )
                 ]
-            ),
+            )
         )
 
         out_path = tmp_path / "out.yaml"
@@ -1747,3 +1804,39 @@ class TestTrussConfigWeights:
         assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
         assert config_new.weights.sources[0].mount_location == "/models/llama"
         assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
+
+
+class TestCheckpointListNoMixing:
+    """CheckpointList rejects mixing training-job and trainer checkpoint sources."""
+
+    def test_artifact_references_only_accepted(self):
+        ckpt_list = CheckpointList(
+            artifact_references=[
+                TrainingArtifactReference(
+                    training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                )
+            ]
+        )
+        assert ckpt_list.artifact_references[0].training_job_id == "tj_abc"
+        assert ckpt_list.trainer_checkpoint_ids == []
+
+    def test_trainer_checkpoint_ids_only_accepted(self):
+        ckpt_list = CheckpointList(trainer_checkpoint_ids=["tcp_xyz"])
+        assert ckpt_list.trainer_checkpoint_ids == ["tcp_xyz"]
+        assert ckpt_list.artifact_references == []
+
+    def test_mixing_raises(self):
+        with pytest.raises(pydantic.ValidationError, match="cannot mix"):
+            CheckpointList(
+                artifact_references=[
+                    TrainingArtifactReference(
+                        training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                    )
+                ],
+                trainer_checkpoint_ids=["tcp_xyz"],
+            )
+
+    def test_empty_lists_accepted(self):
+        ckpt_list = CheckpointList()
+        assert ckpt_list.artifact_references == []
+        assert ckpt_list.trainer_checkpoint_ids == []

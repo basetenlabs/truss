@@ -7,7 +7,7 @@ import threading
 import time
 import warnings
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pydantic
 import requests as requests_lib
@@ -21,8 +21,10 @@ import rich_click as click
 from rich.markup import escape
 
 import truss
-from truss.cli.cli import rich_console
 from truss.cli.utils import self_upgrade
+
+if TYPE_CHECKING:
+    from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
 from truss.remote.baseten.remote import BasetenRemote
@@ -81,7 +83,16 @@ def set_logging_level() -> None:
 def check_is_interactive() -> bool:
     """Detects if CLI is operated interactively by human, so we can ask things,
     that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        ctx = click.get_current_context(silent=True)
+        root_obj = ctx.find_root().obj if ctx else None
+        if root_obj and root_obj.get("non_interactive", False):
+            return False
+    except RuntimeError:
+        pass
+    return True
 
 
 def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
@@ -254,13 +265,13 @@ def wait_for_development_model_ready(
     dev_version_id: str,
     remote_provider: BasetenRemote,
     console: "rich_console.Console",
-    api_key: str,
 ) -> None:
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
-    headers = {"Authorization": f"Api-Key {api_key}"}
     try:
-        requests_lib.post(wake_url, headers=headers, timeout=10)
+        requests_lib.post(
+            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+        )
     except requests_lib.RequestException:
         # best effort
         pass
@@ -296,10 +307,26 @@ def wait_for_development_model_ready(
                 sys.exit(1)
 
 
+def start_keepalive(
+    model_hostname: str, header_provider: Callable[[], dict[str, str]]
+) -> threading.Event:
+    """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
+    console.print("💤 --no-sleep enabled: keeping development model warm")
+    stop_event = threading.Event()
+    keepalive_thread = threading.Thread(
+        target=keepalive_loop,
+        args=(model_hostname, header_provider, stop_event),
+        daemon=True,
+    )
+    keepalive_thread.start()
+    return stop_event
+
+
 def keepalive_loop(
-    model_hostname: str, api_key: str, stop_event: threading.Event
+    model_hostname: str,
+    header_provider: Callable[[], dict[str, str]],
+    stop_event: threading.Event,
 ) -> None:
-    headers = {"Authorization": f"Api-Key {api_key}"}
     consecutive_failures = 0
     start_time = time.time()
     keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
@@ -326,7 +353,9 @@ def keepalive_loop(
             warning_emitted = True
 
         try:
-            resp = requests_lib.get(keepalive_url, headers=headers, timeout=10)
+            resp = requests_lib.get(
+                keepalive_url, headers=header_provider(), timeout=10
+            )
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:

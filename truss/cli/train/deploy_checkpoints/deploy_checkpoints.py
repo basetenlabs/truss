@@ -40,10 +40,11 @@ def create_model_version_from_inference_template(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
     dry_run: bool,
 ) -> DeploySuccessResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id
+        checkpoint_deploy_config, remote_provider, project_id, job_id, trainer_id
     )
 
     request_data = _build_inference_template_request(
@@ -125,6 +126,17 @@ def _build_inference_template_request(
             },
         }
         weights_sources.append(weights_source)
+    for (
+        trainer_checkpoint_id
+    ) in checkpoint_deploy_config.checkpoint_details.trainer_checkpoint_ids:
+        weights_sources.append(
+            {
+                "weight_source_type": "B10_TRAINER_CHECKPOINTING",
+                "b10_trainer_checkpoint_weights_source": {
+                    "checkpoint": {"trainer_checkpoint_id": trainer_checkpoint_id}
+                },
+            }
+        )
 
     # Build environment variables
     environment_variables = []
@@ -247,22 +259,69 @@ def _get_model_name(
     ).execute()
 
 
+def _get_trainer_model_name(base_model_id: Optional[str]) -> str:
+    """Prompt for a model name in trainer-checkpoint deploys.
+
+    The CLI doesn't need to know the weight format — the server reads it
+    off the trainer-checkpoint row. We just prompt for a name with the
+    base model as a sensible default.
+    """
+    default = base_model_id.split("/")[-1] if base_model_id else ""
+    return inquirer.text(
+        message="Enter the model name.",
+        validate=lambda s: s and s.strip(),
+        default=default,
+    ).execute()
+
+
 def _hydrate_deploy_config(
     deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
+    trainer_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
-    checkpoint_details = _ensure_checkpoint_details(
-        remote_provider, deploy_config.checkpoint_details, project_id, job_id
+    trainer_id_provided = trainer_id is not None
+    job_flag_provided = bool(project_id or job_id)
+    config_has_training_job_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.checkpoints)
     )
-    model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+    config_has_trainer_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.trainer_checkpoint_ids)
+    )
+    if trainer_id_provided and config_has_training_job_checkpoints:
+        raise click.UsageError(
+            "--trainer-id cannot be combined with checkpoint_details.checkpoints "
+            "from --config (training job checkpoints). Pick one source."
+        )
+    if job_flag_provided and config_has_trainer_checkpoints:
+        raise click.UsageError(
+            "--project-id / --job-id cannot be combined with "
+            "checkpoint_details.trainer_checkpoint_ids from --config. Pick one source."
+        )
 
-    base_model_id = checkpoint_details.base_model_id
-    if deploy_config.model_name:
-        model_name = deploy_config.model_name
+    is_trainer_flow = trainer_id_provided or config_has_trainer_checkpoints
+    if is_trainer_flow:
+        checkpoint_details = _ensure_trainer_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, trainer_id
+        )
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            model_name = _get_trainer_model_name(checkpoint_details.base_model_id)
     else:
-        model_name = _get_model_name(model_weight_format, base_model_id)
+        checkpoint_details = _ensure_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, project_id, job_id
+        )
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+            model_name = _get_model_name(
+                model_weight_format, checkpoint_details.base_model_id
+            )
 
     compute = _ensure_compute_spec(deploy_config.compute, remote_provider)
 
@@ -309,6 +368,75 @@ def _ensure_checkpoint_details(
         return _prompt_user_for_checkpoint_details(
             remote_provider, checkpoint_details, project_id, job_id
         )
+
+
+def _ensure_trainer_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    trainer_id: Optional[str],
+) -> CheckpointList:
+    """Resolve a trainer checkpoint flow into a CheckpointList.
+
+    Each entry in ``trainer_checkpoint_ids`` is a TrainerServerCheckpoint PK.
+    The server resolves it to its trainer + checkpoint_name on deploy and
+    reads the actual weight format off the trainer-checkpoint row — the
+    CLI doesn't need to know it.
+    """
+    if checkpoint_details and checkpoint_details.trainer_checkpoint_ids:
+        # User-authored trainer-checkpoint IDs in --config — server
+        # resolves and validates on deploy; nothing for the CLI to enrich.
+        return checkpoint_details
+    if not trainer_id:
+        raise click.UsageError(
+            "--trainer-id is required to deploy trainer checkpoints."
+        )
+    return _prompt_user_for_trainer_checkpoint_details(
+        remote_provider, checkpoint_details, trainer_id
+    )
+
+
+def _prompt_user_for_trainer_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    trainer_id: str,
+) -> CheckpointList:
+    trainer = _resolve_trainer(remote_provider, trainer_id)
+    response = remote_provider.api.list_trainer_checkpoints(
+        trainer["session_id"], trainer["trainer_id"]
+    )
+    # Pick by checkpoint_name in the UI; map back to trainer-checkpoint
+    # database IDs for the wire so the server doesn't need to re-resolve names.
+    name_to_pk = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint["id"])
+        for checkpoint in response["checkpoints"]
+    )
+    if not name_to_pk:
+        raise click.UsageError(
+            f"No checkpoints found for trainer {trainer['trainer_id']}."
+        )
+    response_checkpoints = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint)
+        for checkpoint in response["checkpoints"]
+    )
+    selected_names = _get_checkpoint_ids_to_deploy(
+        list(name_to_pk.keys()), response_checkpoints
+    )
+
+    if not checkpoint_details:
+        checkpoint_details = CheckpointList()
+    checkpoint_details.trainer_checkpoint_ids = [
+        name_to_pk[name] for name in selected_names
+    ]
+    if checkpoint_details.base_model_id is None:
+        checkpoint_details.base_model_id = trainer["base_model"]
+    return checkpoint_details
+
+
+def _resolve_trainer(remote_provider: BasetenRemote, trainer_id: str) -> dict:
+    matches = remote_provider.api.search_trainers(trainer_id=trainer_id)
+    if not matches:
+        raise click.UsageError(f"Trainer {trainer_id} not found.")
+    return matches[0]
 
 
 def _prompt_user_for_checkpoint_details(
