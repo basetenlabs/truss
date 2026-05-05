@@ -1039,3 +1039,6 @@ class BasetenRemote(TrussRemote):
             max_seq_len=max_seq_len,
             seed=seed,
         )
+
+    def deactivate_trainer_deployment(self) -> None:
+        self._api.deactivate_trainer_deployment()

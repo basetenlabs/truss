@@ -1207,3 +1207,7 @@ class BasetenApi:
             f"v1/trainer_sessions/{session_id}/trainers", body=body
         )
         return resp_json["trainer_server"]
+
+    def deactivate_trainer_deployment(self) -> None:
+        # TODO(TRN-???): finalize endpoint path/method with backend once API is defined.
+        pass

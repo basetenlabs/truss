@@ -79,6 +79,44 @@ def push_trainer_deployment(
     )
 
 
+@loops.command(name="deactivate")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt.",
+)
+@common.common_options()
+def deactivate_trainer_deployment(
+    remote: Optional[str],
+    yes: bool,
+) -> None:
+    """Deactivate the active trainer deployment.
+
+    Shuts down the trainer server and sampling server for your active
+    trainer deployment.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if not yes:
+        click.confirm(
+            "This will shut down your active trainer deployment. Continue?",
+            abort=True,
+        )
+
+    with console.status("Deactivating trainer deployment...", spinner="dots"):
+        remote_provider.deactivate_trainer_deployment()
+
+    console.print("Trainer deployment deactivated.", style="green")
+
+
 def _poll_until_running(remote_provider: BasetenRemote, trainer_base_url: str) -> None:
     """Poll GET {trainer_base_url}/health until the trainer server is up."""
     health_url = f"{trainer_base_url}/health"
