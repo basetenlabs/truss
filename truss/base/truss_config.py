@@ -1065,6 +1065,15 @@ class DockerServer(custom_types.ConfigModel):
             raise ValueError("start_command is required when no_build is not true")
         return self
 
+    @pydantic.model_validator(mode="after")
+    def _validate_no_build_with_predict_endpoint(self) -> "DockerServer":
+        if self.no_build and self.predict_endpoint:
+            raise ValueError(
+                "predict_endpoint is not supported when no_build is true. "
+                "With no_build, your custom server must handle routing directly."
+            )
+        return self
+
 
 class TrainingArtifactReference(custom_types.ConfigModel):
     training_job_id: str = pydantic.Field(
