@@ -6,10 +6,13 @@ Tokens are returned as :class:`OAuthCredential` with an absolute Unix
 
 import logging
 import time
+import webbrowser
 from typing import Optional
 
 import pydantic
 import requests
+
+from truss.cli.utils.output import console
 
 logger = logging.getLogger(__name__)
 
@@ -127,11 +130,21 @@ def poll_device_token(
 
 
 def run_device_flow(api_url: str) -> OAuthCredential:
-    """Drive the full device flow: authorize, prompt, poll, return credential."""
+    """Drive the full device flow: authorize, open browser, poll, return credential."""
     authorization = request_device_authorization(api_url)
-    logger.info(
-        "Enter code %s at %s", authorization.user_code, authorization.verification_uri
-    )
+    target = authorization.verification_uri_complete or authorization.verification_uri
+    try:
+        webbrowser.open(target, new=2)
+    except Exception:
+        pass
+    console.print("Browser opened to authenticate...")
+    console.print()
+    console.print("If it didn't open, visit:")
+    console.print(f"  {target}")
+    console.print()
+    console.print(f"Verification code: {authorization.user_code}")
+    console.print()
+    console.print("Waiting...")
     return poll_device_token(api_url, authorization)
 
 
