@@ -11,6 +11,8 @@ from typing import Optional
 import pydantic
 import requests
 
+from truss.remote.baseten.user_agent import user_agent_header
+
 logger = logging.getLogger(__name__)
 
 CLIENT_ID = "baseten-cli"
@@ -68,6 +70,7 @@ def request_device_authorization(api_url: str) -> DeviceAuthorization:
     resp = requests.post(
         api_url.rstrip("/") + DEVICE_AUTHORIZE_PATH,
         data={"client_id": CLIENT_ID},
+        headers={"User-Agent": user_agent_header()},
         timeout=30,
     )
     if not resp.ok:
@@ -101,6 +104,7 @@ def poll_device_token(
                 "device_code": authorization.device_code,
                 "client_id": CLIENT_ID,
             },
+            headers={"User-Agent": user_agent_header()},
             timeout=30,
         )
         if resp.ok:
@@ -143,6 +147,7 @@ def refresh(api_url: str, credential: OAuthCredential) -> OAuthCredential:
             "refresh_token": credential.refresh_token,
             "client_id": CLIENT_ID,
         },
+        headers={"User-Agent": user_agent_header()},
         timeout=30,
     )
     if not resp.ok:
@@ -157,7 +162,10 @@ def revoke(api_url: str, credential: OAuthCredential) -> None:
     try:
         resp = requests.post(
             api_url.rstrip("/") + LOGOUT_PATH,
-            headers={"Authorization": f"Bearer {credential.access_token}"},
+            headers={
+                "Authorization": f"Bearer {credential.access_token}",
+                "User-Agent": user_agent_header(),
+            },
             timeout=30,
         )
     except requests.RequestException as exc:

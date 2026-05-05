@@ -43,6 +43,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService, URLConfig
+from truss.remote.baseten.user_agent import set_client_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
@@ -163,6 +164,7 @@ def _start_watch_mode(
 @common.common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
+    set_client_name("truss-cli")
     # Click "stacks" the root command and group/subcommands, to avoid running the
     # middleware twice, we don't add it via decorator to the root command, but instead
     # selective run it here inline.
