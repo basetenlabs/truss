@@ -31,12 +31,16 @@ def copy_workstation_templates(target_dir: Path) -> None:
             dest.chmod(0o755)
 
 
+ORCHESTRATOR_START_COMMANDS = {"slurm": "bash /b10/workspace/setup_slurm.sh"}
+
+
 def build_workstation_project(
     accelerator: str,
     gpu_count: int,
     project_id: str,
     base_image: str = DEFAULT_BASE_IMAGE,
     node_count: int = 1,
+    orchestrator: str = "slurm",
     enable_checkpointing: bool = False,
     checkpoint_path: Optional[str] = None,
     checkpoint_volume_size: Optional[int] = None,
@@ -61,7 +65,7 @@ def build_workstation_project(
         )
 
     if node_count > 1:
-        start_commands = ["bash /b10/workspace/setup_slurm.sh"]
+        start_commands = [ORCHESTRATOR_START_COMMANDS[orchestrator]]
     else:
         start_commands = ["sleep infinity"]
 
