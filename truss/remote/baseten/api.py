@@ -1208,5 +1208,7 @@ class BasetenApi:
         )
         return resp_json["trainer_server"]
 
-    def deactivate_trainer_deployment(self, loop_id: str) -> None:
-        self._rest_api_client.post(f"v1/loops/{loop_id}/deactivate", body={})
+    def deactivate_loop_deployment(self, model_name: str) -> None:
+        self._rest_api_client.post(
+            f"v1/loops/deployments/{model_name}/deactivate", body={}
+        )

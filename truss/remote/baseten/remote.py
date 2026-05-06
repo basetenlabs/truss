@@ -1040,5 +1040,5 @@ class BasetenRemote(TrussRemote):
             seed=seed,
         )
 
-    def deactivate_trainer_deployment(self, loop_id: str) -> None:
-        self._api.deactivate_trainer_deployment(loop_id)
+    def deactivate_loop_deployment(self, model_name: str) -> None:
+        self._api.deactivate_loop_deployment(model_name)
