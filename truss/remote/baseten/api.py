@@ -1189,21 +1189,17 @@ class BasetenApi:
         return resp_json["session"]
 
     def create_trainer_server(
-        self,
-        session_id: str,
-        model: str,
-        lora_rank: int = 16,
-        max_seq_len: int = 4096,
-        seed: Optional[int] = None,
+        self, session_id: str, base_model: str, seed: Optional[int] = None
     ) -> dict:
-        body: Dict[str, Any] = {
-            "model": model,
-            "lora_rank": lora_rank,
-            "max_seq_len": max_seq_len,
-        }
+        body: Dict[str, Any] = {"model": base_model}
         if seed is not None:
             body["seed"] = seed
         resp_json = self._rest_api_client.post(
             f"v1/trainer_sessions/{session_id}/trainers", body=body
         )
         return resp_json["trainer_server"]
+
+    def deactivate_loop_deployment(self, base_model: str) -> None:
+        self._rest_api_client.post(
+            "v1/loops/deployments/deactivate", body={"base_model": base_model}
+        )
