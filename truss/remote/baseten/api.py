@@ -1192,15 +1192,9 @@ class BasetenApi:
         self,
         session_id: str,
         model: str,
-        lora_rank: Optional[int] = None,
-        max_seq_len: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"model": model}
-        if lora_rank is not None:
-            body["lora_rank"] = lora_rank
-        if max_seq_len is not None:
-            body["max_seq_len"] = max_seq_len
         if seed is not None:
             body["seed"] = seed
         resp_json = self._rest_api_client.post(
