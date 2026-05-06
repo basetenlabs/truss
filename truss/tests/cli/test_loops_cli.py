@@ -43,7 +43,7 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123", model="Qwen/Qwen3-8B"
+        session_id="session_abc123", base_model="Qwen/Qwen3-8B"
     )
     assert "Qwen/Qwen3-8B" in result.output
 

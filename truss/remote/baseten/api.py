@@ -1191,10 +1191,10 @@ class BasetenApi:
     def create_trainer_server(
         self,
         session_id: str,
-        model: str,
+        base_model: str,
         seed: Optional[int] = None,
     ) -> dict:
-        body: Dict[str, Any] = {"model": model}
+        body: Dict[str, Any] = {"model": base_model}
         if seed is not None:
             body["seed"] = seed
         resp_json = self._rest_api_client.post(

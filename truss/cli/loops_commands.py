@@ -60,7 +60,7 @@ def push_trainer_deployment(
         spinner="dots",
     ):
         trainer_server = remote_provider.create_trainer_server(
-            session_id=session_id, model=base_model
+            session_id=session_id, base_model=base_model
         )
         trainer_base_url = trainer_server["base_url"]
         _poll_until_running(remote_provider, trainer_base_url)
