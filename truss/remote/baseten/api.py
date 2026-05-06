@@ -1176,34 +1176,3 @@ class BasetenApi:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
         )
-
-    def get_trainer_session(self, session_id: str) -> dict:
-        resp_json = self._rest_api_client.get(f"v1/trainers/sessions/{session_id}")
-        return resp_json["session"]
-
-    def create_trainer_session(self, training_project_id: Optional[str] = None) -> dict:
-        body: Dict[str, Any] = {}
-        if training_project_id is not None:
-            body["training_project_id"] = training_project_id
-        resp_json = self._rest_api_client.post("v1/trainers/sessions", body=body)
-        return resp_json["session"]
-
-    def create_trainer_server(
-        self,
-        session_id: str,
-        model: str,
-        lora_rank: int = 16,
-        max_seq_len: int = 4096,
-        seed: Optional[int] = None,
-    ) -> dict:
-        body: Dict[str, Any] = {
-            "model": model,
-            "lora_rank": lora_rank,
-            "max_seq_len": max_seq_len,
-        }
-        if seed is not None:
-            body["seed"] = seed
-        resp_json = self._rest_api_client.post(
-            f"v1/trainers/sessions/{session_id}/trainers", body=body
-        )
-        return resp_json["trainer_server"]
