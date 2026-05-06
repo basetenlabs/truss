@@ -1208,6 +1208,5 @@ class BasetenApi:
         )
         return resp_json["trainer_server"]
 
-    def deactivate_trainer_deployment(self) -> None:
-        # TODO(TRN-???): finalize endpoint path/method with backend once API is defined.
-        pass
+    def deactivate_trainer_deployment(self, loop_id: str) -> None:
+        self._rest_api_client.post(f"v1/loops/{loop_id}/deactivate", body={})

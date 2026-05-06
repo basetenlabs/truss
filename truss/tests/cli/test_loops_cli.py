@@ -180,26 +180,26 @@ def _invoke_loops_deactivate(args, mock_remote, input=None):
 
 def test_deactivate_basic(mock_remote):
     result = _invoke_loops_deactivate(
-        ["--remote", "test_remote", "--yes"], mock_remote
+        ["--id", "loop123", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_trainer_deployment.assert_called_once()
+    mock_remote.deactivate_trainer_deployment.assert_called_once_with("loop123")
     assert "deactivated" in result.output
 
 
 def test_deactivate_confirms_before_proceeding(mock_remote):
     result = _invoke_loops_deactivate(
-        ["--remote", "test_remote"], mock_remote, input="y\n"
+        ["--id", "loop123", "--remote", "test_remote"], mock_remote, input="y\n"
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_trainer_deployment.assert_called_once()
+    mock_remote.deactivate_trainer_deployment.assert_called_once_with("loop123")
 
 
 def test_deactivate_aborts_on_no_confirmation(mock_remote):
     result = _invoke_loops_deactivate(
-        ["--remote", "test_remote"], mock_remote, input="n\n"
+        ["--id", "loop123", "--remote", "test_remote"], mock_remote, input="n\n"
     )
 
     assert result.exit_code != 0
@@ -214,7 +214,7 @@ def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            runner.invoke(truss_cli, ["loops", "deactivate", "--yes"])
+            runner.invoke(truss_cli, ["loops", "deactivate", "--id", "loop123", "--yes"])
 
     mock_inquire.assert_called_once()
 
@@ -225,7 +225,17 @@ def test_deactivate_propagates_error(mock_remote):
     )
 
     result = _invoke_loops_deactivate(
+        ["--id", "loop123", "--remote", "test_remote", "--yes"], mock_remote
+    )
+
+    assert result.exit_code != 0
+
+
+def test_deactivate_requires_id(mock_remote):
+    result = _invoke_loops_deactivate(
         ["--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code != 0
+    assert "--id" in result.output
+    mock_remote.deactivate_trainer_deployment.assert_not_called()

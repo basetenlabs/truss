@@ -80,6 +80,7 @@ def push_trainer_deployment(
 
 
 @loops.command(name="deactivate")
+@click.option("--id", "loop_id", type=str, required=True, help="Loop ID to deactivate.")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes",
@@ -90,13 +91,14 @@ def push_trainer_deployment(
 )
 @common.common_options()
 def deactivate_trainer_deployment(
+    loop_id: str,
     remote: Optional[str],
     yes: bool,
 ) -> None:
-    """Deactivate the active trainer deployment.
+    """Deactivate a loop.
 
-    Shuts down the trainer server and sampling server for your active
-    trainer deployment.
+    Shuts down the trainer server and sampling server for the loop.
+    Saved checkpoints remain accessible.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -107,14 +109,14 @@ def deactivate_trainer_deployment(
 
     if not yes:
         click.confirm(
-            "This will shut down your active trainer deployment. Continue?",
+            f"This will shut down loop {loop_id}. Continue?",
             abort=True,
         )
 
-    with console.status("Deactivating trainer deployment...", spinner="dots"):
-        remote_provider.deactivate_trainer_deployment()
+    with console.status("Deactivating loop...", spinner="dots"):
+        remote_provider.deactivate_trainer_deployment(loop_id)
 
-    console.print("Trainer deployment deactivated.", style="green")
+    console.print(f"Loop {loop_id} deactivated.", style="green")
 
 
 def _poll_until_running(remote_provider: BasetenRemote, trainer_base_url: str) -> None:
