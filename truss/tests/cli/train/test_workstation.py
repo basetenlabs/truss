@@ -55,7 +55,11 @@ def test_build_workstation_project_invalid_accelerator():
 
 def test_build_workstation_project_multinode_uses_slurm():
     project = build_workstation_project(
-        accelerator="H100", gpu_count=8, project_id="test", node_count=4
+        accelerator="H100",
+        gpu_count=8,
+        project_id="test",
+        node_count=4,
+        orchestrator="slurm",
     )
     job = project.job
     assert job.compute.node_count == 4

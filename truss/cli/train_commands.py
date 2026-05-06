@@ -1135,7 +1135,7 @@ def capacity(remote: Optional[str]):
     "--gpu-count",
     type=click.IntRange(1, 8),
     default=None,
-    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --slurm-node-count.",
+    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --node-count.",
 )
 @click.option(
     "--project-id",
@@ -1144,11 +1144,17 @@ def capacity(remote: Optional[str]):
     help="Project name (default: workstation-<accelerator>).",
 )
 @click.option(
-    "--slurm-node-count",
+    "--node-count",
     "node_count",
     type=click.IntRange(1, 16),
     default=None,
-    help="Number of SLURM nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+)
+@click.option(
+    "--orchestrator",
+    type=click.Choice(["slurm"], case_sensitive=False),
+    default="slurm",
+    help="Multi-node orchestrator (default: slurm).",
 )
 @click.option(
     "--image",
@@ -1188,6 +1194,7 @@ def workstation(
     gpu_count: Optional[int],
     project_id: Optional[str],
     node_count: Optional[int],
+    orchestrator: str,
     image: Optional[str],
     enable_checkpointing: bool,
     checkpoint_path: Optional[str],
@@ -1207,9 +1214,7 @@ def workstation(
     from truss_train.public_api import push
 
     if gpu_count is not None and node_count is not None:
-        raise click.UsageError(
-            "--gpu-count and --slurm-node-count are mutually exclusive."
-        )
+        raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
 
     if node_count is not None:
         # SLURM mode: each node gets 8 GPUs
@@ -1233,6 +1238,7 @@ def workstation(
         project_id=project_id,
         base_image=base_image,
         node_count=node_count,
+        orchestrator=orchestrator,
         enable_checkpointing=enable_checkpointing,
         checkpoint_path=checkpoint_path,
         checkpoint_volume_size=checkpoint_volume_size,
