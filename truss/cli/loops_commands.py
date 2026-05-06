@@ -31,17 +31,10 @@ truss_cli.add_command(loops)
     required=False,
     help="Training project ID to associate the deployment with.",
 )
-@click.option(
-    "--max-seq-len",
-    type=int,
-    default=4096,
-    show_default=True,
-    help="Maximum sequence length for training.",
-)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_trainer_deployment(
-    base_model: str, project_id: Optional[str], max_seq_len: int, remote: Optional[str]
+    base_model: str, project_id: Optional[str], remote: Optional[str]
 ) -> None:
     """Deploy training infrastructure for a base model.
 
@@ -67,7 +60,7 @@ def push_trainer_deployment(
         spinner="dots",
     ):
         trainer_server = remote_provider.create_trainer_server(
-            session_id=session_id, model=base_model, max_seq_len=max_seq_len
+            session_id=session_id, model=base_model
         )
         trainer_base_url = trainer_server["base_url"]
         _poll_until_running(remote_provider, trainer_base_url)

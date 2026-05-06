@@ -43,7 +43,7 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=4096
+        session_id="session_abc123", model="Qwen/Qwen3-8B"
     )
     assert "Qwen/Qwen3-8B" in result.output
 
@@ -57,18 +57,6 @@ def test_push_with_project_id(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(
         training_project_id="proj_abc"
-    )
-
-
-def test_push_with_max_seq_len(mock_remote):
-    result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--max-seq-len", "32768"],
-        mock_remote,
-    )
-
-    assert result.exit_code == 0, result.output
-    mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=32768
     )
 
 
@@ -165,7 +153,6 @@ def test_push_help():
 
     assert result.exit_code == 0
     assert "--project-id" in result.output
-    assert "--max-seq-len" in result.output
 
 
 def _invoke_loops_deactivate(args, mock_remote, input=None):
