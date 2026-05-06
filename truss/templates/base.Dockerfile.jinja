@@ -76,14 +76,31 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{# Rewrite apt sources. Default uses apt's mirror method on Canonical's US country list. Override with BT_APT_MIRROR_URL: must end in '/ubuntu/' for a single mirror (e.g. https://mirrors.kernel.org/ubuntu/) or be a 'mirror://...' URL. #}
-{# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
+{# Set BT_APT_MIRROR_URL to rewrite apt sources to a single mirror; BT_APT_MIRROR_URL_FALLBACKS (whitespace-separated) retries other mirrors if apt-get update fails. Both unset = leave sources as-is. #}
+{# Source files: /etc/apt/sources.list (<=22.04), /etc/apt/sources.list.d/ubuntu.sources (24.04+). #}
 {%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
+{%- if apt_mirror_url %}
 {%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
 RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
     sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|{{ apt_mirror_url }}|g' {{ ubuntu_sources_list_file }}; \
 fi
 {%- endfor %}
+{%- if apt_mirror_url_fallbacks %}
+RUN current='{{ apt_mirror_url }}'; \
+    if apt-get update -qq; then :; else \
+        success=0; \
+        for fb in {{ apt_mirror_url_fallbacks | join(' ') }}; do \
+            echo "apt mirror $current failed; trying $fb" >&2; \
+            for sl in {{ ubuntu_sources_list_files | join(' ') }}; do \
+                [ -f "$sl" ] && sed -i "s|$current|$fb|g" "$sl"; \
+            done; \
+            current="$fb"; \
+            if apt-get update -qq; then success=1; break; fi; \
+        done; \
+        [ "$success" = "1" ] || { echo "all apt mirrors failed" >&2; exit 1; }; \
+    fi
+{%- endif %}
+{%- endif %}
 
 {% block install_tools %}
 {# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}

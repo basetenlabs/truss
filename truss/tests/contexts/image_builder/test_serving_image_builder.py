@@ -90,7 +90,32 @@ def test_apt_mirror_url_default(
         image_builder.prepare_image_build_dir(tmp_path)
         dockerfile = (tmp_path / "Dockerfile").read_text()
 
-    assert "mirror://mirrors.ubuntu.com/US.txt" in dockerfile
+    assert "sed -i.bak" not in dockerfile
+    assert "all apt mirrors failed" not in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_apt_mirror_url_fallbacks(mock_machine, custom_model_truss_dir, monkeypatch):
+    monkeypatch.setenv("BT_APT_MIRROR_URL", "http://primary.example/ubuntu/")
+    monkeypatch.setenv(
+        "BT_APT_MIRROR_URL_FALLBACKS",
+        "http://fallback1.example/ubuntu/ http://fallback2.example/ubuntu/",
+    )
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "http://primary.example/ubuntu/" in dockerfile
+    assert "http://fallback1.example/ubuntu/" in dockerfile
+    assert "http://fallback2.example/ubuntu/" in dockerfile
+    assert "for fb in" in dockerfile
+    assert "all apt mirrors failed" in dockerfile
 
 
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
