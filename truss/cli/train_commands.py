@@ -1134,14 +1134,21 @@ def capacity(remote: Optional[str]):
 @click.option(
     "--gpu-count",
     type=click.IntRange(1, 8),
-    default=1,
-    help="Number of GPUs (1-8, default: 1).",
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --slurm-node-count.",
 )
 @click.option(
     "--project-id",
     type=str,
     required=False,
     help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--slurm-node-count",
+    "node_count",
+    type=click.IntRange(1, 16),
+    default=None,
+    help="Number of SLURM nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
 )
 @click.option(
     "--image",
@@ -1178,8 +1185,9 @@ def capacity(remote: Optional[str]):
 @common.common_options()
 def workstation(
     accelerator: str,
-    gpu_count: int,
+    gpu_count: Optional[int],
     project_id: Optional[str],
+    node_count: Optional[int],
     image: Optional[str],
     enable_checkpointing: bool,
     checkpoint_path: Optional[str],
@@ -1194,8 +1202,22 @@ def workstation(
     from truss.cli.train.workstation import (
         DEFAULT_BASE_IMAGE,
         build_workstation_project,
+        copy_workstation_templates,
     )
     from truss_train.public_api import push
+
+    if gpu_count is not None and node_count is not None:
+        raise click.UsageError(
+            "--gpu-count and --slurm-node-count are mutually exclusive."
+        )
+
+    if node_count is not None:
+        # SLURM mode: each node gets 8 GPUs
+        gpu_count = 8
+    else:
+        # Single-node mode
+        gpu_count = gpu_count or 1
+        node_count = 1
 
     accelerator = accelerator.upper()
     if not project_id:
@@ -1210,32 +1232,54 @@ def workstation(
         gpu_count=gpu_count,
         project_id=project_id,
         base_image=base_image,
+        node_count=node_count,
         enable_checkpointing=enable_checkpointing,
         checkpoint_path=checkpoint_path,
         checkpoint_volume_size=checkpoint_volume_size,
         checkpoint_from_job=checkpoint_from_job,
     )
 
+    node_str = f"{node_count}x " if node_count > 1 else ""
     console.print(
         f"Launching workstation [cyan]{project_id}[/cyan] "
-        f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
+        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
     )
 
-    # Use an empty temp dir as source so we don't upload the user's cwd.
-    with tempfile.TemporaryDirectory() as empty_dir:
+    # Use a temp dir as source so we don't upload the user's cwd.
+    # For multi-node, copy the SLURM setup scripts into it.
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        if node_count > 1:
+            copy_workstation_templates(Path(tmp_dir))
         job_resp = push(
-            config=training_project, remote=remote, source_dir=Path(empty_dir)
+            config=training_project, remote=remote, source_dir=Path(tmp_dir)
         )
 
     job_id = job_resp["id"]
+    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        ssh_lines += " (leader)"
+        for i in range(1, node_count):
+            ssh_lines += (
+                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+            )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
     console.print(
         f"\n[green]Workstation created![/green]\n"
         f"\n"
         f"Once the job is running, SSH in with:\n"
-        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"{ssh_lines}\n"
         f"\n"
         f"If you haven't set up SSH yet, run:\n"
         f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
         f"\n"
         f"View logs:\n"
         f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
