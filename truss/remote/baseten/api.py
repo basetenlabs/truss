@@ -1178,14 +1178,14 @@ class BasetenApi:
         )
 
     def get_trainer_session(self, session_id: str) -> dict:
-        resp_json = self._rest_api_client.get(f"v1/trainers/sessions/{session_id}")
+        resp_json = self._rest_api_client.get(f"v1/trainer_sessions/{session_id}")
         return resp_json["session"]
 
     def create_trainer_session(self, training_project_id: Optional[str] = None) -> dict:
         body: Dict[str, Any] = {}
         if training_project_id is not None:
             body["training_project_id"] = training_project_id
-        resp_json = self._rest_api_client.post("v1/trainers/sessions", body=body)
+        resp_json = self._rest_api_client.post("v1/trainer_sessions", body=body)
         return resp_json["session"]
 
     def create_trainer_server(
@@ -1204,6 +1204,6 @@ class BasetenApi:
         if seed is not None:
             body["seed"] = seed
         resp_json = self._rest_api_client.post(
-            f"v1/trainers/sessions/{session_id}/trainers", body=body
+            f"v1/trainer_sessions/{session_id}/trainers", body=body
         )
         return resp_json["trainer_server"]
