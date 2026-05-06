@@ -1034,5 +1034,5 @@ class BasetenRemote(TrussRemote):
             session_id=session_id, model=model, seed=seed
         )
 
-    def deactivate_loop_deployment(self, model_name: str) -> None:
-        self._api.deactivate_loop_deployment(model_name)
+    def deactivate_loop_deployment(self, base_model: str) -> None:
+        self._api.deactivate_loop_deployment(base_model)

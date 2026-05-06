@@ -167,26 +167,26 @@ def _invoke_loops_deactivate(args, mock_remote, input=None):
 
 def test_deactivate_basic(mock_remote):
     result = _invoke_loops_deactivate(
-        ["qwen-3-8b", "--remote", "test_remote", "--yes"], mock_remote
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_loop_deployment.assert_called_once_with("qwen-3-8b")
+    mock_remote.deactivate_loop_deployment.assert_called_once_with("Qwen/Qwen3-8B")
     assert "deactivated" in result.output
 
 
 def test_deactivate_confirms_before_proceeding(mock_remote):
     result = _invoke_loops_deactivate(
-        ["qwen-3-8b", "--remote", "test_remote"], mock_remote, input="y\n"
+        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote, input="y\n"
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_loop_deployment.assert_called_once_with("qwen-3-8b")
+    mock_remote.deactivate_loop_deployment.assert_called_once_with("Qwen/Qwen3-8B")
 
 
 def test_deactivate_aborts_on_no_confirmation(mock_remote):
     result = _invoke_loops_deactivate(
-        ["qwen-3-8b", "--remote", "test_remote"], mock_remote, input="n\n"
+        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote, input="n\n"
     )
 
     assert result.exit_code != 0
@@ -201,7 +201,7 @@ def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            runner.invoke(truss_cli, ["loops", "deactivate", "qwen-3-8b", "--yes"])
+            runner.invoke(truss_cli, ["loops", "deactivate", "Qwen/Qwen3-8B", "--yes"])
 
     mock_inquire.assert_called_once()
 
@@ -212,13 +212,13 @@ def test_deactivate_propagates_error(mock_remote):
     )
 
     result = _invoke_loops_deactivate(
-        ["qwen-3-8b", "--remote", "test_remote", "--yes"], mock_remote
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code != 0
 
 
-def test_deactivate_requires_model_name(mock_remote):
+def test_deactivate_requires_base_model(mock_remote):
     result = _invoke_loops_deactivate(
         ["--remote", "test_remote", "--yes"], mock_remote
     )
