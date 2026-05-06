@@ -43,7 +43,7 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=4096
+        session_id="session_abc123", model="Qwen/Qwen3-8B"
     )
     assert "Qwen/Qwen3-8B" in result.output
 
@@ -57,18 +57,6 @@ def test_push_with_project_id(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_trainer_session.assert_called_once_with(
         training_project_id="proj_abc"
-    )
-
-
-def test_push_with_max_seq_len(mock_remote):
-    result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--max-seq-len", "32768"],
-        mock_remote,
-    )
-
-    assert result.exit_code == 0, result.output
-    mock_remote.create_trainer_server.assert_called_once_with(
-        session_id="session_abc123", model="Qwen/Qwen3-8B", max_seq_len=32768
     )
 
 
@@ -165,4 +153,75 @@ def test_push_help():
 
     assert result.exit_code == 0
     assert "--project-id" in result.output
-    assert "--max-seq-len" in result.output
+
+
+def _invoke_loops_deactivate(args, mock_remote, input=None):
+    runner = CliRunner()
+    with patch(
+        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
+    ):
+        return runner.invoke(
+            truss_cli, ["loops", "deactivate"] + args, input=input
+        )
+
+
+def test_deactivate_basic(mock_remote):
+    result = _invoke_loops_deactivate(
+        ["qwen-3-8b", "--remote", "test_remote", "--yes"], mock_remote
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.deactivate_loop_deployment.assert_called_once_with("qwen-3-8b")
+    assert "deactivated" in result.output
+
+
+def test_deactivate_confirms_before_proceeding(mock_remote):
+    result = _invoke_loops_deactivate(
+        ["qwen-3-8b", "--remote", "test_remote"], mock_remote, input="y\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.deactivate_loop_deployment.assert_called_once_with("qwen-3-8b")
+
+
+def test_deactivate_aborts_on_no_confirmation(mock_remote):
+    result = _invoke_loops_deactivate(
+        ["qwen-3-8b", "--remote", "test_remote"], mock_remote, input="n\n"
+    )
+
+    assert result.exit_code != 0
+    mock_remote.deactivate_loop_deployment.assert_not_called()
+
+
+def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
+    runner = CliRunner()
+    with patch(
+        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
+    ):
+        with patch(
+            "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
+        ) as mock_inquire:
+            runner.invoke(truss_cli, ["loops", "deactivate", "qwen-3-8b", "--yes"])
+
+    mock_inquire.assert_called_once()
+
+
+def test_deactivate_propagates_error(mock_remote):
+    mock_remote.deactivate_loop_deployment.side_effect = RuntimeError(
+        "deactivation failed"
+    )
+
+    result = _invoke_loops_deactivate(
+        ["qwen-3-8b", "--remote", "test_remote", "--yes"], mock_remote
+    )
+
+    assert result.exit_code != 0
+
+
+def test_deactivate_requires_model_name(mock_remote):
+    result = _invoke_loops_deactivate(
+        ["--remote", "test_remote", "--yes"], mock_remote
+    )
+
+    assert result.exit_code != 0
+    mock_remote.deactivate_loop_deployment.assert_not_called()

@@ -1030,7 +1030,7 @@ class BasetenRemote(TrussRemote):
         return self._api.create_trainer_session(training_project_id=training_project_id)
 
     def create_trainer_server(
-        self, session_id, model, lora_rank=16, max_seq_len=4096, seed=None
+        self, session_id, model, lora_rank=None, max_seq_len=None, seed=None
     ):
         return self._api.create_trainer_server(
             session_id=session_id,
@@ -1039,3 +1039,6 @@ class BasetenRemote(TrussRemote):
             max_seq_len=max_seq_len,
             seed=seed,
         )
+
+    def deactivate_loop_deployment(self, model_name: str) -> None:
+        self._api.deactivate_loop_deployment(model_name)

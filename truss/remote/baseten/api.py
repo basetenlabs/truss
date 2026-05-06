@@ -1192,18 +1192,23 @@ class BasetenApi:
         self,
         session_id: str,
         model: str,
-        lora_rank: int = 16,
-        max_seq_len: int = 4096,
+        lora_rank: Optional[int] = None,
+        max_seq_len: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> dict:
-        body: Dict[str, Any] = {
-            "model": model,
-            "lora_rank": lora_rank,
-            "max_seq_len": max_seq_len,
-        }
+        body: Dict[str, Any] = {"model": model}
+        if lora_rank is not None:
+            body["lora_rank"] = lora_rank
+        if max_seq_len is not None:
+            body["max_seq_len"] = max_seq_len
         if seed is not None:
             body["seed"] = seed
         resp_json = self._rest_api_client.post(
             f"v1/trainer_sessions/{session_id}/trainers", body=body
         )
         return resp_json["trainer_server"]
+
+    def deactivate_loop_deployment(self, model_name: str) -> None:
+        self._rest_api_client.post(
+            f"v1/loops/deployments/{model_name}/deactivate", body={}
+        )

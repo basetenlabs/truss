@@ -31,17 +31,10 @@ truss_cli.add_command(loops)
     required=False,
     help="Training project ID to associate the deployment with.",
 )
-@click.option(
-    "--max-seq-len",
-    type=int,
-    default=4096,
-    show_default=True,
-    help="Maximum sequence length for training.",
-)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_trainer_deployment(
-    base_model: str, project_id: Optional[str], max_seq_len: int, remote: Optional[str]
+    base_model: str, project_id: Optional[str], remote: Optional[str]
 ) -> None:
     """Deploy training infrastructure for a base model.
 
@@ -67,7 +60,7 @@ def push_trainer_deployment(
         spinner="dots",
     ):
         trainer_server = remote_provider.create_trainer_server(
-            session_id=session_id, model=base_model, max_seq_len=max_seq_len
+            session_id=session_id, model=base_model
         )
         trainer_base_url = trainer_server["base_url"]
         _poll_until_running(remote_provider, trainer_base_url)
@@ -77,6 +70,45 @@ def push_trainer_deployment(
         f"   Trainer server and sampling server have been provisioned.",
         style="green",
     )
+
+
+@loops.command(name="deactivate")
+@click.argument("model_name", type=str)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt.",
+)
+@common.common_options()
+def deactivate_loop_deployment(
+    model_name: str,
+    remote: Optional[str],
+    yes: bool,
+) -> None:
+    """Deactivate the active loop deployment for MODEL_NAME.
+
+    Shuts down the loop's deployment. Saved checkpoints remain accessible.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if not yes:
+        click.confirm(
+            f"This will shut down the active loop deployment for {model_name}. Continue?",
+            abort=True,
+        )
+
+    with console.status("Deactivating loop deployment...", spinner="dots"):
+        remote_provider.deactivate_loop_deployment(model_name)
+
+    console.print(f"Loop deployment for {model_name} deactivated.", style="green")
 
 
 def _poll_until_running(remote_provider: BasetenRemote, trainer_base_url: str) -> None:
