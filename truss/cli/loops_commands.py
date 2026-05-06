@@ -41,10 +41,7 @@ truss_cli.add_command(loops)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_trainer_deployment(
-    base_model: str,
-    project_id: Optional[str],
-    max_seq_len: int,
-    remote: Optional[str],
+    base_model: str, project_id: Optional[str], max_seq_len: int, remote: Optional[str]
 ) -> None:
     """Deploy training infrastructure for a base model.
 

@@ -83,7 +83,8 @@ def test_push_polls_until_running(mock_remote):
         with patch("requests.get", side_effect=responses):
             with patch("truss.cli.loops_commands.time.sleep"):
                 result = runner.invoke(
-                    truss_cli, ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"]
+                    truss_cli,
+                    ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
                 )
 
     assert result.exit_code == 0, result.output

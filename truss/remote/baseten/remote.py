@@ -1030,12 +1030,7 @@ class BasetenRemote(TrussRemote):
         return self._api.create_trainer_session(training_project_id=training_project_id)
 
     def create_trainer_server(
-        self,
-        session_id,
-        model,
-        lora_rank=16,
-        max_seq_len=4096,
-        seed=None,
+        self, session_id, model, lora_rank=16, max_seq_len=4096, seed=None
     ):
         return self._api.create_trainer_server(
             session_id=session_id,
