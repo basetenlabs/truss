@@ -1,3 +1,4 @@
+import traceback
 from unittest import mock
 
 import pytest
@@ -24,7 +25,7 @@ def _request(method: str = "GET", path: str = "/v1/models/model/loaded"):
 
 
 def _raise_chain():
-    """Raise a 3-level cause chain: ConnectError -> ProtocolError -> RuntimeError."""
+    """Raise a 3-level cause chain: ConnectionError -> OSError -> RuntimeError."""
     try:
         try:
             raise ConnectionError("dns failed")
@@ -46,6 +47,31 @@ def test_format_simple_exception_no_chain(middleware):
     assert not any(line.startswith("Caused by:") for line in lines)
     # Frame lines have no caret/squiggle markers (PEP 657).
     assert "^" not in out
+
+
+def test_format_full_output_snapshot(middleware):
+    # Snapshot the exact output an end user would see. Line numbers are pulled
+    # from the actual traceback so edits above the chain don't break this. If
+    # the *shape* of the output ever changes (frame format, "Caused by:"
+    # prefix, ordering), this test fails loudly.
+    try:
+        _raise_chain()
+    except RuntimeError as exc:
+        out = middleware._format_error(_request(), exc)
+        outer = traceback.extract_tb(exc.__traceback__)[-2:]
+        middle = traceback.extract_tb(exc.__cause__.__traceback__)[-2:]
+        inner = traceback.extract_tb(exc.__cause__.__cause__.__traceback__)[-2:]
+
+    expected = (
+        f"GET /v1/models/model/loaded: RuntimeError: outer\n"
+        f'  File "{outer[0].filename}", line {outer[0].lineno}, in {outer[0].name}\n'
+        f'  File "{outer[1].filename}", line {outer[1].lineno}, in {outer[1].name}\n'
+        f"Caused by: OSError: protocol error\n"
+        f'  File "{middle[0].filename}", line {middle[0].lineno}, in {middle[0].name}\n'
+        f"Caused by: ConnectionError: dns failed\n"
+        f'  File "{inner[0].filename}", line {inner[0].lineno}, in {inner[0].name}'
+    )
+    assert out == expected, f"\nGOT:\n{out}\n\nEXPECTED:\n{expected}"
 
 
 def test_format_walks_cause_chain(middleware):

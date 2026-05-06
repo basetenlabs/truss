@@ -64,10 +64,12 @@ class InferenceServerProcessController:
         self._inference_server_started = False
 
     def terminate_with_wait(self) -> None:
+        # Always flip the terminated flag so the non-daemon overseer thread in
+        # InferenceServerController can exit, even when no process was started.
+        self._inference_server_terminated = True
         if self._inference_server_process is None:
             return
         self._terminate_children_and_process()
-        self._inference_server_terminated = True
         termination_check_attempts = int(
             TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
         )

@@ -67,6 +67,14 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
                 )
 
     def _format_error(self, request: Request, error: Exception) -> str:
+        # Walk the exception chain outermost-to-innermost, emitting one
+        # "Caused by:" headline per cause plus a few frames each. This
+        # preserves the root-cause type and message (which Python would
+        # otherwise bury at the top of a many-screen traceback) while keeping
+        # the log entry compact. The walk is iterative so we don't hit
+        # Python's recursion limit, and `seen` cuts cycles by exception
+        # identity. Like Python's traceback module, chain depth itself is
+        # unbounded in principle; in practice real chains are <5 deep.
         lines = [
             f"{request.method} {request.url.path}: {type(error).__name__}: {error}"
         ]
