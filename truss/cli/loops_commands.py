@@ -76,17 +76,11 @@ def push_trainer_deployment(
 @click.argument("base_model", type=str)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
-    "--yes",
-    "-y",
-    is_flag=True,
-    default=False,
-    help="Skip confirmation prompt.",
+    "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
 def deactivate_loop_deployment(
-    base_model: str,
-    remote: Optional[str],
-    yes: bool,
+    base_model: str, remote: Optional[str], yes: bool
 ) -> None:
     """Deactivate the active loop deployment for BASE_MODEL.
 

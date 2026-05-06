@@ -160,9 +160,7 @@ def _invoke_loops_deactivate(args, mock_remote, input=None):
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        return runner.invoke(
-            truss_cli, ["loops", "deactivate"] + args, input=input
-        )
+        return runner.invoke(truss_cli, ["loops", "deactivate"] + args, input=input)
 
 
 def test_deactivate_basic(mock_remote):
@@ -219,9 +217,7 @@ def test_deactivate_propagates_error(mock_remote):
 
 
 def test_deactivate_requires_base_model(mock_remote):
-    result = _invoke_loops_deactivate(
-        ["--remote", "test_remote", "--yes"], mock_remote
-    )
+    result = _invoke_loops_deactivate(["--remote", "test_remote", "--yes"], mock_remote)
 
     assert result.exit_code != 0
     mock_remote.deactivate_loop_deployment.assert_not_called()

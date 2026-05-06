@@ -1189,10 +1189,7 @@ class BasetenApi:
         return resp_json["session"]
 
     def create_trainer_server(
-        self,
-        session_id: str,
-        base_model: str,
-        seed: Optional[int] = None,
+        self, session_id: str, base_model: str, seed: Optional[int] = None
     ) -> dict:
         body: Dict[str, Any] = {"model": base_model}
         if seed is not None:
