@@ -1,6 +1,7 @@
 use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
+use crate::endpoint_routing::EndpointPool;
 use crate::errors::ClientError;
 use crate::http::*;
 use std::sync::atomic::AtomicUsize;
@@ -197,6 +198,9 @@ pub struct RequestProcessingConfig {
 
     /// Extra headers to include with all requests
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Optional client-level endpoint router for primary/secondary routing.
+    pub(crate) endpoint_pool: Option<Arc<EndpointPool>>,
 }
 
 impl RequestProcessingConfig {
@@ -429,6 +433,7 @@ impl RequestProcessingConfig {
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
             extra_headers: pref.extra_headers.clone(),
+            endpoint_pool: None,
         })
     }
 
@@ -468,6 +473,37 @@ impl RequestProcessingConfig {
     /// Create individual request customer ID for a specific batch index
     pub fn create_request_customer_id(&self, batch_index: usize) -> CustomerRequestId {
         self.customer_request_id.new_request(batch_index)
+    }
+
+    pub(crate) fn with_endpoint_pool(mut self, endpoint_pool: Option<Arc<EndpointPool>>) -> Self {
+        self.endpoint_pool = endpoint_pool;
+        self
+    }
+
+    pub(crate) fn select_attempt_url(
+        &self,
+        original_url: &str,
+        attempted_endpoint_indices: &[usize],
+    ) -> Result<(String, usize), ClientError> {
+        self.endpoint_pool
+            .as_ref()
+            .map(|pool| {
+                pool.select_attempt_url(&self.base_url, original_url, attempted_endpoint_indices)
+            })
+            .unwrap_or_else(|| Ok((original_url.to_string(), 0)))
+    }
+
+    pub(crate) fn select_hedge_url(
+        &self,
+        original_url: &str,
+        original_endpoint_index: usize,
+    ) -> Result<String, ClientError> {
+        self.endpoint_pool
+            .as_ref()
+            .map(|pool| {
+                pool.select_hedge_url(&self.base_url, original_url, original_endpoint_index)
+            })
+            .unwrap_or_else(|| Ok(original_url.to_string()))
     }
 }
 
@@ -760,7 +796,7 @@ mod tests {
         for batch in &batches {
             let _total_chars: usize = batch.iter().map(|s| s.chars().count()).sum();
             // Allow some flexibility due to batching algorithm
-            assert!(batch.len() > 0, "No empty batches should be created");
+            assert!(!batch.is_empty(), "No empty batches should be created");
         }
     }
 

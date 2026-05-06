@@ -17,8 +17,12 @@ export declare class HttpClientWrapper {
   constructor(httpVersion?: number | undefined | null, proxy?: string | undefined | null)
 }
 
+export declare class EndpointPool {
+  constructor(endpointUrls: Array<string>, endpointWeights?: Array<number> | undefined | null, deepHealthUrls?: Array<string> | undefined | null, deploymentHealthPath?: string | undefined | null, healthCheckIntervalS?: number | undefined | null, healthCheckTimeoutS?: number | undefined | null, healthCheckRetries?: number | undefined | null, healthFailOnFirst?: boolean | undefined | null, deploymentTimeoutIsNoVote?: boolean | undefined | null, deepTimeoutIsNoVote?: boolean | undefined | null)
+}
+
 export declare class PerformanceClient {
-  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null)
+  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null, endpointPool?: EndpointPool | undefined | null)
   getClientWrapper(): HttpClientWrapper
   embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
   rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
