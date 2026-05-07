@@ -25,37 +25,37 @@ environment_variables:
   #
   # Recommended client-side settings for this schedule:
   # - health_check_interval_s: 2.0
-  # - health_check_timeout_s: 0.75
+  # - health_check_timeout_s: 1.25
   # - endpoint_weights: [1.0, 1.0, 1.0]
   #
   # Suggested deployment A:
   #   INTEGRATION_SERVER_NAME: window-a
   #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 0-35
+  #   HEALTH_SECONDS_UTC: 0-37
   #   SERVE_MINUTES_UTC: *
   #   SERVE_SECONDS_UTC: 0-40
-  #   SERVE_GRACE_PERIOD_S: 6
+  #   SERVE_GRACE_PERIOD_S: 3
   #
   # Suggested deployment B:
   #   INTEGRATION_SERVER_NAME: window-b
   #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 20-55
+  #   HEALTH_SECONDS_UTC: 20-57
   #   SERVE_MINUTES_UTC: *
   #   SERVE_SECONDS_UTC: 20-60
-  #   SERVE_GRACE_PERIOD_S: 6
+  #   SERVE_GRACE_PERIOD_S: 3
   #
   # Suggested deployment C:
   #   INTEGRATION_SERVER_NAME: window-c
   #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 40-60,0-15
+  #   HEALTH_SECONDS_UTC: 40-60,0-17
   #   SERVE_MINUTES_UTC: *
   #   SERVE_SECONDS_UTC: 40-60,0-20
   #   SERVE_GRACE_PERIOD_S: 6
-  INTEGRATION_SERVER_NAME: window-b
+  INTEGRATION_SERVER_NAME: window-c
   HEALTH_MINUTES_UTC: "*"
-  HEALTH_SECONDS_UTC: 20-57
+  HEALTH_SECONDS_UTC: 40-60,0-17
   SERVE_MINUTES_UTC: "*"
-  SERVE_SECONDS_UTC: 20-60
+  SERVE_SECONDS_UTC: 40-60,0-20
   SERVE_GRACE_PERIOD_S: 3
   EMBEDDING_DIM: "8"
   RESPONSE_DELAY_MS: "0"

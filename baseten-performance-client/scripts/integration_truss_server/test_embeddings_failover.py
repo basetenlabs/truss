@@ -18,7 +18,7 @@ from baseten_performance_client import (
 )
 
 DEFAULT_ENDPOINT_URLS = [
-    "https://model-3ydyzel3.api.baseten.co/deployment/wpjek0l/sync",
+    "https://model-3ydyzel3.api.baseten.co/deployment/wnp8jg0/sync",
     "https://model-3ydyzel3.api.baseten.co/deployment/wnpx071/sync",
     "https://model-3ydyzel3.api.baseten.co/deployment/wom96gn/sync",
 ]
@@ -109,7 +109,7 @@ def build_client(api_key: str, http_version: int) -> PerformanceClient:
         endpoint_weights=[1.0, 1.0, 1.0],
         deployment_health_path="/health",
         health_check_interval_s=2.0,
-        health_check_timeout_s=0.75,
+        health_check_timeout_s=1.5,
         health_check_retries=2,
         health_fail_on_first=False,
         deployment_timeout_is_no_vote=True,
