@@ -702,7 +702,7 @@ def view_loop_checkpoint_list(
     viewer = viewer_cls()
 
     label = run_id or (base_model or "")
-    raw = remote_provider.api.search_loop_checkpoints(
+    raw = remote_provider.api.list_loop_checkpoints(
         run_id=run_id, base_model=base_model
     )
     checkpoints = raw.get("checkpoints", [])

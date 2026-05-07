@@ -286,10 +286,10 @@ def test_hydrate_whisper_checkpoint():
 @pytest.fixture
 def mock_loop_remote():
     mock = MagicMock()
-    mock.api.search_loop_runs.return_value = [
+    mock.api.list_loop_runs.return_value = [
         {"run_id": "trnr_xyz", "base_model": "Qwen/Qwen3-8B"}
     ]
-    mock.api.search_loop_checkpoints.return_value = {
+    mock.api.list_loop_checkpoints.return_value = {
         "checkpoints": [
             {
                 "id": "tcp_step100",
@@ -307,11 +307,11 @@ def test_resolve_loop_run_returns_first_match(mock_loop_remote):
     result = _resolve_loop_run(mock_loop_remote, "trnr_xyz")
     assert result["run_id"] == "trnr_xyz"
     assert result["base_model"] == "Qwen/Qwen3-8B"
-    mock_loop_remote.api.search_loop_runs.assert_called_once_with(run_id="trnr_xyz")
+    mock_loop_remote.api.list_loop_runs.assert_called_once_with(run_id="trnr_xyz")
 
 
 def test_resolve_loop_run_raises_when_not_found(mock_loop_remote):
-    mock_loop_remote.api.search_loop_runs.return_value = []
+    mock_loop_remote.api.list_loop_runs.return_value = []
     with pytest.raises(click.UsageError, match="Loops run trnr_missing not found"):
         _resolve_loop_run(mock_loop_remote, "trnr_missing")
 
@@ -322,8 +322,8 @@ def test_ensure_loop_checkpoint_details_user_provided_passes_through(mock_loop_r
     result = _ensure_loop_checkpoint_details(mock_loop_remote, user_config, run_id=None)
     assert result is user_config
     # Did not hit the API since user authored the IDs.
-    mock_loop_remote.api.search_loop_runs.assert_not_called()
-    mock_loop_remote.api.search_loop_checkpoints.assert_not_called()
+    mock_loop_remote.api.list_loop_runs.assert_not_called()
+    mock_loop_remote.api.list_loop_checkpoints.assert_not_called()
 
 
 def test_ensure_loop_checkpoint_details_requires_run_id_when_unprovided(
@@ -348,7 +348,7 @@ def test_ensure_loop_checkpoint_details_picker_emits_ids_and_base_model(
     )
     assert result.trainer_checkpoint_ids == ["tcp_step100"]
     assert result.base_model_id == "Qwen/Qwen3-8B"
-    mock_loop_remote.api.search_loop_checkpoints.assert_called_once_with(
+    mock_loop_remote.api.list_loop_checkpoints.assert_called_once_with(
         run_id="trnr_xyz"
     )
 

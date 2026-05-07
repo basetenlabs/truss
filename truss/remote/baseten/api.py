@@ -892,26 +892,31 @@ class BasetenApi:
         )
         return resp_json
 
-    def search_loop_runs(
+    def list_loop_runs(
         self, run_id: Optional[str] = None, base_model: Optional[str] = None
     ):
-        body: Dict[str, Any] = {}
+        params: Dict[str, str] = {}
         if run_id is not None:
-            body["run_id"] = run_id
+            params["run_id"] = run_id
         if base_model is not None:
-            body["base_model"] = base_model
-        resp_json = self._rest_api_client.post("v1/loops/runs/search", body=body)
+            params["base_model"] = base_model
+        resp_json = self._rest_api_client.get("v1/loops/runs", url_params=params)
         return resp_json["runs"]
 
-    def search_loop_checkpoints(
-        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+    def list_loop_checkpoints(
+        self,
+        run_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+        checkpoint_path: Optional[str] = None,
     ):
-        body: Dict[str, Any] = {}
+        params: Dict[str, str] = {}
         if run_id is not None:
-            body["run_id"] = run_id
+            params["run_id"] = run_id
         if base_model is not None:
-            body["base_model"] = base_model
-        resp_json = self._rest_api_client.post("v1/loops/checkpoints/search", body=body)
+            params["base_model"] = base_model
+        if checkpoint_path is not None:
+            params["checkpoint_path"] = checkpoint_path
+        resp_json = self._rest_api_client.get("v1/loops/checkpoints", url_params=params)
         return resp_json
 
     def get_training_job_isession(self, project_id: str, job_id: str):

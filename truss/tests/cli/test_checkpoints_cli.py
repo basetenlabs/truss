@@ -20,10 +20,10 @@ from truss.cli.cli import truss_cli
 @pytest.fixture
 def mock_remote():
     remote = MagicMock()
-    remote.api.search_loop_runs.return_value = [
+    remote.api.list_loop_runs.return_value = [
         {"run_id": "trnr_xyz", "base_model": "Qwen/Qwen3-8B"}
     ]
-    remote.api.search_loop_checkpoints.return_value = {
+    remote.api.list_loop_checkpoints.return_value = {
         "checkpoints": [
             {
                 "id": "tcp_step100",
@@ -59,7 +59,7 @@ def test_checkpoints_help_lists_subcommands():
     assert "view" in result.output
 
 
-def test_view_with_run_id_calls_search_loop_checkpoints(mock_remote):
+def test_view_with_run_id_calls_list_loop_checkpoints(mock_remote):
     result = _invoke(
         [
             "checkpoints",
@@ -74,14 +74,12 @@ def test_view_with_run_id_calls_search_loop_checkpoints(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    mock_remote.api.search_loop_checkpoints.assert_called_once_with(
+    mock_remote.api.list_loop_checkpoints.assert_called_once_with(
         run_id="trnr_xyz", base_model=None
     )
 
 
-def test_view_with_model_name_calls_search_loop_checkpoints_with_base_model(
-    mock_remote,
-):
+def test_view_with_model_name_calls_list_loop_checkpoints_with_base_model(mock_remote):
     result = _invoke(
         [
             "checkpoints",
@@ -96,7 +94,7 @@ def test_view_with_model_name_calls_search_loop_checkpoints_with_base_model(
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    mock_remote.api.search_loop_checkpoints.assert_called_once_with(
+    mock_remote.api.list_loop_checkpoints.assert_called_once_with(
         run_id=None, base_model="Qwen/Qwen3-8B"
     )
 
@@ -117,7 +115,7 @@ def test_view_rejects_run_id_combined_with_model_name(mock_remote):
     )
     assert result.exit_code != 0
     assert "--run-id and --model-name cannot be combined" in result.output
-    mock_remote.api.search_loop_checkpoints.assert_not_called()
+    mock_remote.api.list_loop_checkpoints.assert_not_called()
 
 
 def test_view_rejects_run_id_combined_with_project_id(mock_remote):
@@ -139,7 +137,7 @@ def test_view_rejects_run_id_combined_with_project_id(mock_remote):
         "--run-id / --model-name cannot be combined with --project, "
         "--project-id, or --job-id" in result.output
     )
-    mock_remote.api.search_loop_checkpoints.assert_not_called()
+    mock_remote.api.list_loop_checkpoints.assert_not_called()
 
 
 def test_view_with_run_id_and_checkpoint_name_drills_into_files(mock_remote):
@@ -184,7 +182,7 @@ def test_view_with_unknown_checkpoint_name_prints_friendly_message(mock_remote):
 
 
 def test_view_with_run_id_no_checkpoints_prints_empty_message(mock_remote):
-    mock_remote.api.search_loop_checkpoints.return_value = {"checkpoints": []}
+    mock_remote.api.list_loop_checkpoints.return_value = {"checkpoints": []}
     result = _invoke(
         [
             "checkpoints",

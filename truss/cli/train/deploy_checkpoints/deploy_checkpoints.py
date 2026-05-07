@@ -402,7 +402,7 @@ def _prompt_user_for_loop_checkpoint_details(
     run_id: str,
 ) -> CheckpointList:
     run = _resolve_loop_run(remote_provider, run_id)
-    response = remote_provider.api.search_loop_checkpoints(run_id=run["run_id"])
+    response = remote_provider.api.list_loop_checkpoints(run_id=run["run_id"])
     # Pick by checkpoint_name in the UI; map back to Loops-checkpoint
     # database IDs for the wire so the server doesn't need to re-resolve names.
     name_to_pk = OrderedDict(
@@ -433,7 +433,7 @@ def _prompt_user_for_loop_checkpoint_details(
 
 
 def _resolve_loop_run(remote_provider: BasetenRemote, run_id: str) -> dict:
-    matches = remote_provider.api.search_loop_runs(run_id=run_id)
+    matches = remote_provider.api.list_loop_runs(run_id=run_id)
     if not matches:
         raise click.UsageError(f"Loops run {run_id} not found.")
     return matches[0]
