@@ -9,6 +9,7 @@ so these tests exercise that shared logic end-to-end via the new
 """
 
 import os
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,6 +48,17 @@ def _invoke(args, mock_remote):
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
         return runner.invoke(truss_cli, args)
+
+
+def _flatten(output: str) -> str:
+    """Collapse runs of whitespace (incl. newlines) so substring assertions
+    don't fail when ``rich_click`` wraps long error messages across lines.
+
+    Locally with a wide terminal the message stays on one line; in CI
+    rich's width detection ignores ``COLUMNS`` in some setups and wraps
+    the message into a panel with embedded newlines and padding.
+    """
+    return re.sub(r"\s+", " ", output)
 
 
 def test_checkpoints_help_lists_subcommands():
@@ -114,7 +126,7 @@ def test_view_rejects_run_id_combined_with_model_name(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "--run-id and --model-name cannot be combined" in result.output
+    assert "--run-id and --model-name cannot be combined" in _flatten(result.output)
     mock_remote.api.list_loop_checkpoints.assert_not_called()
 
 
@@ -135,7 +147,7 @@ def test_view_rejects_run_id_combined_with_project_id(mock_remote):
     assert result.exit_code != 0
     assert (
         "--run-id / --model-name cannot be combined with --project, "
-        "--project-id, or --job-id" in result.output
+        "--project-id, or --job-id" in _flatten(result.output)
     )
     mock_remote.api.list_loop_checkpoints.assert_not_called()
 
@@ -216,7 +228,7 @@ def test_deploy_rejects_run_id_combined_with_project_id(mock_remote):
     assert result.exit_code != 0
     assert (
         "--run-id cannot be combined with --project, --project-id, or --job-id"
-        in result.output
+        in _flatten(result.output)
     )
 
 
@@ -237,5 +249,5 @@ def test_deploy_rejects_run_id_combined_with_job_id(mock_remote):
     assert result.exit_code != 0
     assert (
         "--run-id cannot be combined with --project, --project-id, or --job-id"
-        in result.output
+        in _flatten(result.output)
     )
