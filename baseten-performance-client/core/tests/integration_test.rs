@@ -361,7 +361,7 @@ fn health_check_wrapper() -> Arc<HttpClientWrapper> {
 }
 
 #[tokio::test]
-async fn test_endpoint_pool_round_robins_across_three_endpoints() {
+async fn test_endpoint_pool_distributes_across_three_equal_weight_endpoints() {
     let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
@@ -389,10 +389,10 @@ async fn test_endpoint_pool_round_robins_across_three_endpoints() {
     let preference = single_request_preference().with_hedge_budget_pct(0.0);
 
     let mut winners = Vec::new();
-    for text in ["one", "two", "three"] {
+    for i in 0..24 {
         let (_, _, headers, _) = client
             .process_embeddings_requests(
-                vec![text.to_string()],
+                vec![format!("request-{i}")],
                 "test-model".to_string(),
                 None,
                 None,
@@ -404,17 +404,9 @@ async fn test_endpoint_pool_round_robins_across_three_endpoints() {
         winners.push(headers[0]["x-test-server"].clone());
     }
 
-    assert_eq!(
-        winners,
-        vec![
-            "endpoint-a".to_string(),
-            "endpoint-b".to_string(),
-            "endpoint-c".to_string(),
-        ]
-    );
-    assert_eq!(endpoint_a.request_count.load(Ordering::SeqCst), 1);
-    assert_eq!(endpoint_b.request_count.load(Ordering::SeqCst), 1);
-    assert_eq!(endpoint_c.request_count.load(Ordering::SeqCst), 1);
+    assert!(winners.iter().any(|winner| winner == "endpoint-a"));
+    assert!(winners.iter().any(|winner| winner == "endpoint-b"));
+    assert!(winners.iter().any(|winner| winner == "endpoint-c"));
 }
 
 #[tokio::test]
@@ -423,14 +415,17 @@ async fn test_retry_uses_alternate_endpoint_from_pool() {
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
-    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
-        vec![
-            endpoint_a.base_url.clone(),
-            endpoint_b.base_url.clone(),
-            endpoint_c.base_url.clone(),
-        ],
-        health_check_wrapper(),
-    ))
+    let endpoint_pool = EndpointPool::new(
+        EndpointPoolConfig::new(
+            vec![
+                endpoint_a.base_url.clone(),
+                endpoint_b.base_url.clone(),
+                endpoint_c.base_url.clone(),
+            ],
+            health_check_wrapper(),
+        )
+        .with_weights(vec![1.0, 0.0, 0.0]),
+    )
     .expect("endpoint pool should build");
 
     let client = PerformanceClientCore::new(
@@ -476,14 +471,17 @@ async fn test_hedge_uses_alternate_endpoint_from_pool() {
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
-    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
-        vec![
-            endpoint_a.base_url.clone(),
-            endpoint_b.base_url.clone(),
-            endpoint_c.base_url.clone(),
-        ],
-        health_check_wrapper(),
-    ))
+    let endpoint_pool = EndpointPool::new(
+        EndpointPoolConfig::new(
+            vec![
+                endpoint_a.base_url.clone(),
+                endpoint_b.base_url.clone(),
+                endpoint_c.base_url.clone(),
+            ],
+            health_check_wrapper(),
+        )
+        .with_weights(vec![1.0, 0.0, 0.0]),
+    )
     .expect("endpoint pool should build");
 
     let client = PerformanceClientCore::new(

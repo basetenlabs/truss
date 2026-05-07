@@ -329,45 +329,8 @@ impl EndpointPool {
     }
 
     fn select_from_candidates(&self, candidates: &[usize]) -> Option<EndpointSelection> {
-        if candidates.is_empty() {
-            return None;
-        }
-
         let ticket = self.round_robin_counter.fetch_add(1, Ordering::SeqCst);
-        let configured_total_weight: f64 = candidates
-            .iter()
-            .map(|&candidate| self.weights[candidate])
-            .filter(|&weight| weight > 0.0)
-            .sum();
-        let use_equal_weights = configured_total_weight <= 0.0;
-        let all_equal_positive_weights = !use_equal_weights
-            && candidates.iter().all(|&candidate| {
-                let weight = self.weights[candidate];
-                weight > 0.0 && (weight - self.weights[candidates[0]]).abs() <= f64::EPSILON
-            });
-
-        if use_equal_weights || all_equal_positive_weights {
-            let endpoint_index = candidates[ticket % candidates.len()];
-            return Some(EndpointSelection {
-                endpoint_index,
-                base_url: Arc::clone(&self.endpoints[endpoint_index].base_url),
-            });
-        }
-
-        let mut target = weighted_target(ticket as u64, configured_total_weight);
-        let mut chosen = None;
-        for &candidate in candidates {
-            let weight = self.weights[candidate];
-            if weight <= 0.0 {
-                continue;
-            }
-            chosen = Some(candidate);
-            if target < weight {
-                break;
-            }
-            target -= weight;
-        }
-        let endpoint_index = chosen?;
+        let endpoint_index = select_candidate_index(candidates, &self.weights, ticket as u64)?;
 
         Some(EndpointSelection {
             endpoint_index,
@@ -571,6 +534,38 @@ fn weighted_target(ticket: u64, total_weight: f64) -> f64 {
     unit * total_weight
 }
 
+fn select_candidate_index(candidates: &[usize], weights: &[f64], ticket: u64) -> Option<usize> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let configured_total_weight: f64 = candidates
+        .iter()
+        .map(|&candidate| weights[candidate])
+        .filter(|&weight| weight > 0.0)
+        .sum();
+    if configured_total_weight <= 0.0 {
+        let fallback_index = candidates[(splitmix64(ticket) as usize) % candidates.len()];
+        return Some(fallback_index);
+    }
+
+    let mut target = weighted_target(ticket, configured_total_weight);
+    let mut chosen = None;
+    for &candidate in candidates {
+        let weight = weights[candidate];
+        if weight <= 0.0 {
+            continue;
+        }
+        chosen = Some(candidate);
+        if target < weight {
+            break;
+        }
+        target -= weight;
+    }
+
+    chosen
+}
+
 fn splitmix64(mut x: u64) -> u64 {
     x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
     x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -697,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn test_round_robin_spreads_across_multiple_healthy_endpoints() {
+    fn test_equal_weights_use_deterministic_mixed_routing() {
         let pool = EndpointPool::new(EndpointPoolConfig::new(
             vec![
                 "https://a.example.com".to_string(),
@@ -708,13 +703,13 @@ mod tests {
         ))
         .expect("pool should be valid");
 
-        let first = pool.select_endpoint(&[]).unwrap();
-        let second = pool.select_endpoint(&[]).unwrap();
-        let third = pool.select_endpoint(&[]).unwrap();
+        let mut seen = [0usize; 3];
+        for _ in 0..48 {
+            let selected = pool.select_endpoint(&[]).unwrap();
+            seen[selected.endpoint_index] += 1;
+        }
 
-        assert_eq!(first.endpoint_index, 0);
-        assert_eq!(second.endpoint_index, 1);
-        assert_eq!(third.endpoint_index, 2);
+        assert!(seen.iter().all(|count| *count > 0));
     }
 
     #[test]
@@ -838,5 +833,63 @@ mod tests {
 
         assert!(saw_first);
         assert!(saw_second);
+    }
+
+    #[test]
+    fn test_pure_selector_is_deterministic_for_same_ticket() {
+        let candidates = vec![0usize, 1, 2];
+        let weights = vec![1.0, 3.0, 2.0];
+
+        let first = select_candidate_index(&candidates, &weights, 42);
+        let second = select_candidate_index(&candidates, &weights, 42);
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn test_pure_selector_uses_weights_across_many_tickets() {
+        let candidates = vec![0usize, 1];
+        let weights = vec![1.0, 3.0];
+
+        let mut counts = [0usize; 2];
+        for ticket in 0..4000u64 {
+            let index = select_candidate_index(&candidates, &weights, ticket).unwrap();
+            counts[index] += 1;
+        }
+
+        assert!((900..=1100).contains(&counts[0]));
+        assert!((2900..=3100).contains(&counts[1]));
+    }
+
+    #[test]
+    fn test_pure_selector_returns_none_for_empty_candidates() {
+        let candidates: Vec<usize> = vec![];
+        let weights = vec![1.0, 1.0];
+
+        assert_eq!(select_candidate_index(&candidates, &weights, 0), None);
+    }
+
+    #[test]
+    fn test_pure_selector_skips_zero_weight_candidates() {
+        let candidates = vec![0usize, 1, 2];
+        let weights = vec![0.0, 5.0, 0.0];
+
+        for ticket in 0..64u64 {
+            assert_eq!(
+                select_candidate_index(&candidates, &weights, ticket),
+                Some(1)
+            );
+        }
+    }
+
+    #[test]
+    fn test_pure_selector_falls_back_within_candidate_set_when_weights_are_zero() {
+        let candidates = vec![1usize, 2];
+        let weights = vec![1.0, 0.0, 0.0];
+
+        for ticket in 0..64u64 {
+            let selected = select_candidate_index(&candidates, &weights, ticket).unwrap();
+            assert!(candidates.contains(&selected));
+        }
     }
 }
