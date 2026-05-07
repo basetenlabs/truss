@@ -115,7 +115,10 @@ def _poll_until_healthy(health_url: str, auth_header: dict[str, str]) -> None:
     deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         try:
-            if requests.get(health_url, headers=auth_header, timeout=10).status_code == 200:
+            if (
+                requests.get(health_url, headers=auth_header, timeout=10).status_code
+                == 200
+            ):
                 return
         except requests.RequestException:
             pass
