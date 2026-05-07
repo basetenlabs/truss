@@ -1192,27 +1192,45 @@ class BasetenApi:
             f"v1/llm_models/{model_id}/deployments", body=body
         )
 
-    def get_trainer_session(self, session_id: str) -> dict:
-        resp_json = self._rest_api_client.get(f"v1/trainer_sessions/{session_id}")
-        return resp_json["session"]
-
-    def create_trainer_session(self, training_project_id: Optional[str] = None) -> dict:
+    def create_loop_session(self, training_project_id: Optional[str] = None) -> dict:
         body: Dict[str, Any] = {}
         if training_project_id is not None:
             body["training_project_id"] = training_project_id
-        resp_json = self._rest_api_client.post("v1/trainer_sessions", body=body)
+        resp_json = self._rest_api_client.post("v1/loops/sessions", body=body)
         return resp_json["session"]
 
-    def create_trainer_server(
+    def create_loop_run(
         self, session_id: str, base_model: str, seed: Optional[int] = None
     ) -> dict:
-        body: Dict[str, Any] = {"model": base_model}
+        body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
             body["seed"] = seed
-        resp_json = self._rest_api_client.post(
-            f"v1/trainer_sessions/{session_id}/trainers", body=body
-        )
-        return resp_json["trainer_server"]
+        resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
+        return resp_json["run"]
+
+    def get_loop_session(self, session_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/sessions/{session_id}")
+        return resp_json["session"]
+
+    def get_loop_run(self, run_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/runs/{run_id}")
+        return resp_json["run"]
+
+    def get_loop_sampler(self, sampler_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/samplers/{sampler_id}")
+        return resp_json["sampler"]
+
+    def list_loop_deployments(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/deployments")
+        return resp_json["deployments"]
+
+    def get_loop_deployment(self, deployment_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/deployments/{deployment_id}")
+        return resp_json["deployment"]
+
+    def list_loop_samplers(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/samplers")
+        return resp_json["samplers"]
 
     def list_loop_checkpoint_files(
         self, checkpoint_id: str, page_size: int = 1000
@@ -1240,10 +1258,6 @@ class BasetenApi:
                 checkpoint_id,
             )
         return all_presigned_urls
-
-    def list_loop_deployments(self):
-        resp_json = self._rest_api_client.get("v1/loops/deployments")
-        return resp_json["deployments"]
 
     def deactivate_loop_deployment(self, deployment_id: str) -> None:
         self._rest_api_client.post(
