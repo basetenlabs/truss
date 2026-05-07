@@ -181,7 +181,7 @@
           "title": "Artifact References",
           "type": "array"
         },
-        "trainer_checkpoint_ids": {
+        "loop_checkpoint_ids": {
           "description": "Trainer checkpoint IDs to deploy. Mutually exclusive with artifact_references.",
           "items": {
             "type": "string"
