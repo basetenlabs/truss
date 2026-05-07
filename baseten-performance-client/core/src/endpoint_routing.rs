@@ -1,3 +1,4 @@
+use crate::client::HttpClientWrapper;
 use crate::errors::ClientError;
 
 use futures::future::join_all;
@@ -69,10 +70,11 @@ pub struct EndpointPoolConfig {
     pub health_check_interval: Duration,
     pub health_check_timeout: Duration,
     pub health_check_retries: u32,
+    pub health_check_client_wrapper: Arc<HttpClientWrapper>,
 }
 
 impl EndpointPoolConfig {
-    pub fn new(urls: Vec<String>) -> Self {
+    pub fn new(urls: Vec<String>, health_check_client_wrapper: Arc<HttpClientWrapper>) -> Self {
         Self {
             urls,
             weights: None,
@@ -80,6 +82,7 @@ impl EndpointPoolConfig {
             health_check_interval: DEFAULT_HEALTH_CHECK_INTERVAL,
             health_check_timeout: DEFAULT_HEALTH_CHECK_TIMEOUT,
             health_check_retries: DEFAULT_HEALTH_CHECK_RETRIES,
+            health_check_client_wrapper,
         }
     }
 
@@ -264,6 +267,7 @@ pub struct EndpointPool {
     health_check_interval: Duration,
     health_check_timeout: Duration,
     health_check_retries: u32,
+    health_check_client_wrapper: Arc<HttpClientWrapper>,
     round_robin_counter: AtomicUsize,
     health_worker_started: AtomicBool,
 }
@@ -294,6 +298,7 @@ impl EndpointPool {
         let health_check_interval = config.health_check_interval;
         let health_check_timeout = config.health_check_timeout;
         let health_check_retries = config.health_check_retries;
+        let health_check_client_wrapper = config.health_check_client_wrapper;
 
         Ok(Arc::new(Self {
             endpoints: config
@@ -309,6 +314,7 @@ impl EndpointPool {
             health_check_interval,
             health_check_timeout,
             health_check_retries,
+            health_check_client_wrapper,
             round_robin_counter: AtomicUsize::new(0),
             health_worker_started: AtomicBool::new(false),
         }))
@@ -320,14 +326,6 @@ impl EndpointPool {
 
     pub(crate) fn primary_url(&self) -> &str {
         self.endpoints[0].base_url.as_ref()
-    }
-
-    pub(crate) fn health_check_interval(&self) -> Duration {
-        self.health_check_interval
-    }
-
-    pub(crate) fn mark_health_worker_started(&self) -> bool {
-        !self.health_worker_started.swap(true, Ordering::SeqCst)
     }
 
     fn select_from_candidates(&self, candidates: &[usize]) -> Option<EndpointSelection> {
@@ -469,20 +467,19 @@ impl EndpointPool {
         }
     }
 
-    pub(crate) async fn refresh_health(
-        &self,
-        client: &Client,
-        api_key: &str,
-    ) -> EndpointPoolHealthSnapshot {
+    pub(crate) async fn refresh_health(&self, api_key: &str) -> EndpointPoolHealthSnapshot {
+        let client_wrapper = Arc::clone(&self.health_check_client_wrapper);
         let endpoint_health = self.endpoint_health.clone();
         let health_check_timeout = self.health_check_timeout;
         let health_check_retries = self.health_check_retries;
 
         let results = join_all(self.endpoints.iter().enumerate().map(|(index, endpoint)| {
             let endpoint_health = endpoint_health[index].clone();
+            let client_wrapper = Arc::clone(&client_wrapper);
             async move {
+                let client = client_wrapper.get_client();
                 let vote = check_endpoint_health(
-                    client,
+                    &client,
                     endpoint.base_url.as_ref(),
                     &endpoint_health,
                     api_key,
@@ -508,6 +505,57 @@ impl EndpointPool {
         }
 
         self.health_snapshot()
+    }
+
+    pub(crate) fn ensure_health_worker_started(self: &Arc<Self>, api_key: &str) {
+        if self.endpoint_count() <= 1 || self.health_worker_started.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::warn!(
+                "endpoint pool configured, but no Tokio runtime is active; health worker start deferred"
+            );
+            return;
+        };
+
+        if self
+            .health_worker_started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
+        let weak_pool = Arc::downgrade(self);
+        let api_key = api_key.to_string();
+
+        let base_interval = self.health_check_interval;
+        let task = async move {
+            let mut current_interval = base_interval;
+            loop {
+                let Some(endpoint_pool) = weak_pool.upgrade() else {
+                    break;
+                };
+
+                let start_time = std::time::Instant::now();
+                endpoint_pool.refresh_health(&api_key).await;
+
+                let response_time = start_time.elapsed();
+                if response_time > current_interval / 2 {
+                    current_interval = std::cmp::min(
+                        current_interval.saturating_mul(3) / 2,
+                        base_interval.saturating_mul(10),
+                    );
+                } else {
+                    current_interval = base_interval;
+                }
+
+                tokio::time::sleep(current_interval).await;
+            }
+        };
+
+        handle.spawn(task);
     }
 }
 
@@ -631,23 +679,33 @@ fn resolve_health_check_url(base_url: &str, check: &EndpointHealthCheckConfig) -
 mod tests {
     use super::*;
 
+    fn health_check_wrapper() -> Arc<HttpClientWrapper> {
+        HttpClientWrapper::new(1, None).expect("test health-check client wrapper should build")
+    }
+
     #[test]
     fn test_endpoint_pool_validation_rejects_duplicates() {
-        let result = EndpointPool::new(EndpointPoolConfig::new(vec![
-            "https://example.com".to_string(),
-            "https://example.com/".to_string(),
-        ]));
+        let result = EndpointPool::new(EndpointPoolConfig::new(
+            vec![
+                "https://example.com".to_string(),
+                "https://example.com/".to_string(),
+            ],
+            health_check_wrapper(),
+        ));
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_round_robin_spreads_across_multiple_healthy_endpoints() {
-        let pool = EndpointPool::new(EndpointPoolConfig::new(vec![
-            "https://a.example.com".to_string(),
-            "https://b.example.com".to_string(),
-            "https://c.example.com".to_string(),
-        ]))
+        let pool = EndpointPool::new(EndpointPoolConfig::new(
+            vec![
+                "https://a.example.com".to_string(),
+                "https://b.example.com".to_string(),
+                "https://c.example.com".to_string(),
+            ],
+            health_check_wrapper(),
+        ))
         .expect("pool should be valid");
 
         let first = pool.select_endpoint(&[]).unwrap();
@@ -661,11 +719,14 @@ mod tests {
 
     #[test]
     fn test_unhealthy_endpoint_is_skipped_when_alternatives_exist() {
-        let pool = EndpointPool::new(EndpointPoolConfig::new(vec![
-            "https://a.example.com".to_string(),
-            "https://b.example.com".to_string(),
-            "https://c.example.com".to_string(),
-        ]))
+        let pool = EndpointPool::new(EndpointPoolConfig::new(
+            vec![
+                "https://a.example.com".to_string(),
+                "https://b.example.com".to_string(),
+                "https://c.example.com".to_string(),
+            ],
+            health_check_wrapper(),
+        ))
         .expect("pool should be valid");
 
         pool.set_endpoint_health(1, false);
@@ -680,11 +741,14 @@ mod tests {
     #[test]
     fn test_endpoint_health_validation_rejects_empty_checks() {
         let result = EndpointPool::new(
-            EndpointPoolConfig::new(vec!["https://a.example.com".to_string()])
-                .with_endpoint_health(vec![EndpointHealthConfig {
-                    checks: Vec::new(),
-                    fail_on_first: false,
-                }]),
+            EndpointPoolConfig::new(
+                vec!["https://a.example.com".to_string()],
+                health_check_wrapper(),
+            )
+            .with_endpoint_health(vec![EndpointHealthConfig {
+                checks: Vec::new(),
+                fail_on_first: false,
+            }]),
         );
         assert!(result.is_err());
     }
@@ -692,11 +756,14 @@ mod tests {
     #[test]
     fn test_weighted_selection_defaults_to_primary_when_others_are_zero() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-                "https://c.example.com".to_string(),
-            ])
+            EndpointPoolConfig::new(
+                vec![
+                    "https://a.example.com".to_string(),
+                    "https://b.example.com".to_string(),
+                    "https://c.example.com".to_string(),
+                ],
+                health_check_wrapper(),
+            )
             .with_weights(vec![1.0, 0.0, 0.0]),
         )
         .expect("pool should be valid");
@@ -710,11 +777,14 @@ mod tests {
     #[test]
     fn test_weight_zero_endpoint_used_when_primary_unhealthy() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-                "https://c.example.com".to_string(),
-            ])
+            EndpointPoolConfig::new(
+                vec![
+                    "https://a.example.com".to_string(),
+                    "https://b.example.com".to_string(),
+                    "https://c.example.com".to_string(),
+                ],
+                health_check_wrapper(),
+            )
             .with_weights(vec![1.0, 0.0, 0.0]),
         )
         .expect("pool should be valid");
@@ -727,10 +797,13 @@ mod tests {
     #[test]
     fn test_weight_validation_rejects_all_zero_weights() {
         let result = EndpointPool::new(
-            EndpointPoolConfig::new(vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-            ])
+            EndpointPoolConfig::new(
+                vec![
+                    "https://a.example.com".to_string(),
+                    "https://b.example.com".to_string(),
+                ],
+                health_check_wrapper(),
+            )
             .with_weights(vec![0.0, 0.0]),
         );
 
@@ -740,10 +813,13 @@ mod tests {
     #[test]
     fn test_fractional_weights_do_not_stick_to_first_endpoint() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-            ])
+            EndpointPoolConfig::new(
+                vec![
+                    "https://a.example.com".to_string(),
+                    "https://b.example.com".to_string(),
+                ],
+                health_check_wrapper(),
+            )
             .with_weights(vec![0.1, 0.9]),
         )
         .expect("pool should be valid");

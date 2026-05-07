@@ -199,6 +199,7 @@ pub struct CancellationToken {
 impl CancellationToken {
   /// Create a new cancellation token
   #[napi(constructor)]
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     Self {
       inner: CoreCancellationToken::new(false),
@@ -316,7 +317,7 @@ impl RequestProcessingPreference {
 
   #[napi(getter)]
   pub fn max_retries(&self) -> u32 {
-    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32
+    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES)
   }
 
   #[napi(getter)]
@@ -364,6 +365,7 @@ impl EndpointPool {
   #[napi(constructor)]
   pub fn new(
     endpoint_urls: Vec<String>,
+    client_wrapper: &HttpClientWrapper,
     endpoint_weights: Option<Vec<f64>>,
     deep_health_urls: Option<Vec<String>>,
     deployment_health_path: Option<String>,
@@ -378,7 +380,7 @@ impl EndpointPool {
       return Err(create_napi_error("endpoint_urls must not be empty"));
     }
 
-    let mut config = EndpointPoolConfig::new(endpoint_urls);
+    let mut config = EndpointPoolConfig::new(endpoint_urls, Arc::clone(&client_wrapper.inner));
     if let Some(weights) = endpoint_weights {
       config = config.with_weights(weights);
     }

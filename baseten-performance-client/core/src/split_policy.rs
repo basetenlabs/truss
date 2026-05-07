@@ -488,6 +488,7 @@ impl RequestProcessingConfig {
         self.endpoint_pool
             .as_ref()
             .map(|pool| {
+                pool.ensure_health_worker_started(&self.api_key_primary);
                 pool.select_attempt_url(&self.base_url, original_url, attempted_endpoint_indices)
             })
             .unwrap_or_else(|| Ok((original_url.to_string(), 0)))
@@ -501,6 +502,7 @@ impl RequestProcessingConfig {
         self.endpoint_pool
             .as_ref()
             .map(|pool| {
+                pool.ensure_health_worker_started(&self.api_key_primary);
                 pool.select_hedge_url(&self.base_url, original_url, original_endpoint_index)
             })
             .unwrap_or_else(|| Ok(original_url.to_string()))

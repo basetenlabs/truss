@@ -22,7 +22,7 @@ use tracing;
 /// - `Http2`: Pool of HTTP/2 clients for high-performance concurrent requests
 ///
 /// Sharing among multiple baseten-performance-client instances is supported and encouraged via `Arc`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum HttpClientWrapper {
     Http1(Arc<Client>),
     Http2(Arc<Vec<(Arc<AtomicUsize>, Arc<Client>)>>),
@@ -219,61 +219,7 @@ impl PerformanceClientCore {
             endpoint_pool,
         };
 
-        client.start_endpoint_health_worker();
         Ok(client)
-    }
-
-    fn start_endpoint_health_worker(&self) {
-        let Some(endpoint_pool) = &self.endpoint_pool else {
-            return;
-        };
-
-        if endpoint_pool.endpoint_count() <= 1 {
-            return;
-        }
-
-        let Ok(handle) = tokio::runtime::Handle::try_current() else {
-            tracing::warn!(
-                "endpoint pool configured, but no Tokio runtime is active; health worker was not started"
-            );
-            return;
-        };
-
-        if !endpoint_pool.mark_health_worker_started() {
-            return;
-        }
-
-        let weak_pool = Arc::downgrade(endpoint_pool);
-        let client_wrapper = Arc::clone(&self.client_wrapper);
-        let api_key = self.api_key.clone();
-
-        let base_interval = endpoint_pool.health_check_interval();
-        let task = async move {
-            let mut current_interval = base_interval;
-            loop {
-                let Some(endpoint_pool) = weak_pool.upgrade() else {
-                    break;
-                };
-
-                let client = client_wrapper.get_client();
-                let start_time = std::time::Instant::now();
-                endpoint_pool.refresh_health(&client, &api_key).await;
-
-                let response_time = start_time.elapsed();
-                if response_time > current_interval / 2 {
-                    current_interval = std::cmp::min(
-                        current_interval.saturating_mul(3) / 2,
-                        base_interval.saturating_mul(10),
-                    );
-                } else {
-                    current_interval = base_interval;
-                }
-
-                tokio::time::sleep(current_interval).await;
-            }
-        };
-
-        handle.spawn(task);
     }
 
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {

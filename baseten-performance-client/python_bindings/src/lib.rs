@@ -379,6 +379,7 @@ impl PyEndpointPool {
     #[new]
     #[pyo3(signature = (
         endpoint_urls,
+        client_wrapper,
         endpoint_weights = None,
         deep_health_urls = None,
         deployment_health_path = None,
@@ -391,6 +392,7 @@ impl PyEndpointPool {
     ))]
     fn new(
         endpoint_urls: Vec<String>,
+        client_wrapper: HttpClientWrapper,
         endpoint_weights: Option<Vec<f64>>,
         deep_health_urls: Option<Vec<String>>,
         deployment_health_path: Option<String>,
@@ -405,7 +407,7 @@ impl PyEndpointPool {
             return Err(PyValueError::new_err("endpoint_urls must not be empty"));
         }
 
-        let mut config = EndpointPoolConfig::new(endpoint_urls);
+        let mut config = EndpointPoolConfig::new(endpoint_urls, client_wrapper.inner);
         if let Some(weights) = endpoint_weights {
             config = config.with_weights(weights);
         }

@@ -356,17 +356,24 @@ fn single_request_preference() -> RequestProcessingPreference {
         .with_timeout_s(1.0)
 }
 
+fn health_check_wrapper() -> Arc<HttpClientWrapper> {
+    HttpClientWrapper::new(1, None).expect("test health-check client wrapper should build")
+}
+
 #[tokio::test]
 async fn test_endpoint_pool_round_robins_across_three_endpoints() {
     let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
-    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(vec![
-        endpoint_a.base_url.clone(),
-        endpoint_b.base_url.clone(),
-        endpoint_c.base_url.clone(),
-    ]))
+    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
+        vec![
+            endpoint_a.base_url.clone(),
+            endpoint_b.base_url.clone(),
+            endpoint_c.base_url.clone(),
+        ],
+        health_check_wrapper(),
+    ))
     .expect("endpoint pool should build");
 
     let client = PerformanceClientCore::new(
@@ -416,11 +423,14 @@ async fn test_retry_uses_alternate_endpoint_from_pool() {
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
-    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(vec![
-        endpoint_a.base_url.clone(),
-        endpoint_b.base_url.clone(),
-        endpoint_c.base_url.clone(),
-    ]))
+    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
+        vec![
+            endpoint_a.base_url.clone(),
+            endpoint_b.base_url.clone(),
+            endpoint_c.base_url.clone(),
+        ],
+        health_check_wrapper(),
+    ))
     .expect("endpoint pool should build");
 
     let client = PerformanceClientCore::new(
@@ -466,11 +476,14 @@ async fn test_hedge_uses_alternate_endpoint_from_pool() {
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
-    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(vec![
-        endpoint_a.base_url.clone(),
-        endpoint_b.base_url.clone(),
-        endpoint_c.base_url.clone(),
-    ]))
+    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
+        vec![
+            endpoint_a.base_url.clone(),
+            endpoint_b.base_url.clone(),
+            endpoint_c.base_url.clone(),
+        ],
+        health_check_wrapper(),
+    ))
     .expect("endpoint pool should build");
 
     let client = PerformanceClientCore::new(
@@ -517,11 +530,14 @@ async fn test_background_health_worker_skips_unhealthy_endpoints() {
     let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
 
     let endpoint_pool = EndpointPool::new(
-        EndpointPoolConfig::new(vec![
-            endpoint_a.base_url.clone(),
-            endpoint_b.base_url.clone(),
-            endpoint_c.base_url.clone(),
-        ])
+        EndpointPoolConfig::new(
+            vec![
+                endpoint_a.base_url.clone(),
+                endpoint_b.base_url.clone(),
+                endpoint_c.base_url.clone(),
+            ],
+            health_check_wrapper(),
+        )
         .with_health_check_interval(Duration::from_millis(100)),
     )
     .expect("endpoint pool should build");

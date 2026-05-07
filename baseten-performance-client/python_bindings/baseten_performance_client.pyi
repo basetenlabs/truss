@@ -434,6 +434,7 @@ class EndpointPool:
     def __init__(
         self,
         endpoint_urls: builtins.list[builtins.str],
+        client_wrapper: HttpClientWrapper,
         endpoint_weights: typing.Optional[builtins.list[builtins.float]] = None,
         deep_health_urls: typing.Optional[builtins.list[builtins.str]] = None,
         deployment_health_path: typing.Optional[builtins.str] = None,
@@ -447,6 +448,9 @@ class EndpointPool:
         """
         Args:
             endpoint_urls: List of deployment base URLs.
+            client_wrapper: Required HttpClientWrapper used by the endpoint pool's
+                background health-check worker. This may be shared with request clients
+                or be a dedicated transport.
             endpoint_weights: Optional per-endpoint traffic weights.
             deep_health_urls: Optional per-endpoint absolute deep health URLs.
                 When provided, each endpoint health cycle checks `/health` on the base URL
