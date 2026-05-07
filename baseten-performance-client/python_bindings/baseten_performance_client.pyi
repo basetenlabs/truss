@@ -274,6 +274,7 @@ class RequestProcessingPreference:
         max_retries: typing.Optional[int] = None,
         initial_backoff_ms: typing.Optional[int] = None,
         cancel_token: typing.Optional[CancellationToken] = None,
+        primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
     ) -> None:
         """
@@ -291,6 +292,7 @@ class RequestProcessingPreference:
             max_retries: Maximum number of HTTP retries (default: 4).
             initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
             cancel_token: Optional CancellationToken for cancelling operations.
+            primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
         """
 
@@ -306,6 +308,7 @@ class RequestProcessingPreference:
     max_retries: builtins.int
     initial_backoff_ms: builtins.int
     cancel_token: typing.Optional[CancellationToken]
+    primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
 
     @classmethod
