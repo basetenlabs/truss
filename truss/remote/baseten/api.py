@@ -892,16 +892,26 @@ class BasetenApi:
         )
         return resp_json
 
-    def search_trainers(self, trainer_id: Optional[str] = None):
-        resp_json = self._rest_api_client.post(
-            "v1/trainers/search", body={"trainer_id": trainer_id}
-        )
-        return resp_json["trainers"]
+    def search_loop_runs(
+        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+    ):
+        body: Dict[str, Any] = {}
+        if run_id is not None:
+            body["run_id"] = run_id
+        if base_model is not None:
+            body["base_model"] = base_model
+        resp_json = self._rest_api_client.post("v1/loops/runs/search", body=body)
+        return resp_json["runs"]
 
-    def list_trainer_checkpoints(self, session_id: str, trainer_id: str):
-        resp_json = self._rest_api_client.get(
-            f"v1/trainer_sessions/{session_id}/trainers/{trainer_id}/checkpoints"
-        )
+    def search_loop_checkpoints(
+        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+    ):
+        body: Dict[str, Any] = {}
+        if run_id is not None:
+            body["run_id"] = run_id
+        if base_model is not None:
+            body["base_model"] = base_model
+        resp_json = self._rest_api_client.post("v1/loops/checkpoints/search", body=body)
         return resp_json
 
     def get_training_job_isession(self, project_id: str, job_id: str):
@@ -1198,6 +1208,37 @@ class BasetenApi:
             f"v1/trainer_sessions/{session_id}/trainers", body=body
         )
         return resp_json["trainer_server"]
+
+    def list_loop_checkpoint_files(
+        self, checkpoint_id: str, page_size: int = 1000
+    ) -> List[Dict[str, str]]:
+        """Fetch all presigned URLs for files under a Loops checkpoint."""
+        all_presigned_urls: List[Dict[str, str]] = []
+        page_token: Optional[int] = 0
+        max_iterations = 1000
+        for _ in range(max_iterations):
+            params: Dict[str, str] = {"page_size": str(page_size)}
+            if page_token is not None:
+                params["page_token"] = str(page_token)
+            response = self._rest_api_client.get(
+                f"v1/loops/checkpoints/{checkpoint_id}/files", url_params=params
+            )
+            all_presigned_urls.extend(response.get("presigned_urls", []))
+            next_token = response.get("next_page_token")
+            if next_token is None:
+                break
+            try:
+                page_token = int(next_token)
+            except (TypeError, ValueError):
+                break
+        else:
+            logging.error(
+                "Reached maximum iteration limit (%d) while paginating Loops "
+                "checkpoint files for checkpoint_id=%s",
+                max_iterations,
+                checkpoint_id,
+            )
+        return all_presigned_urls
 
     def deactivate_loop_deployment(self, base_model: str) -> None:
         self._rest_api_client.post(
