@@ -337,6 +337,21 @@ impl PerformanceClientCore {
 }
 
 impl PerformanceClientCore {
+    fn maybe_pin_initial_endpoint(
+        &self,
+        config: RequestProcessingConfig,
+    ) -> Result<RequestProcessingConfig, ClientError> {
+        if !config.pin_initial_endpoint_once {
+            return Ok(config);
+        }
+
+        config
+            .endpoint_router
+            .ensure_health_worker_started(&config.api_key_primary);
+        let pinned_selection = config.endpoint_router.select_endpoint(&[])?;
+        Ok(config.with_pinned_initial_endpoint(Some(pinned_selection)))
+    }
+
     // Generic batch processing method - handles pre-batched requests for ALL API types
     // Uses JoinSetGuard for automatic cancellation on drop (RAII pattern)
     #[allow(clippy::too_many_arguments)]
@@ -559,6 +574,7 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config)?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -617,6 +633,7 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config)?;
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -686,6 +703,7 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config)?;
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
@@ -748,6 +766,7 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config)?;
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();

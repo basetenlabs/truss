@@ -1,7 +1,7 @@
 use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
-use crate::endpoint_routing::EndpointRouter;
+use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
 use std::sync::atomic::AtomicUsize;
@@ -16,6 +16,7 @@ pub struct RequestProcessingPreference {
     pub max_concurrent_requests: Option<usize>,
     pub batch_size: Option<usize>,
     pub max_chars_per_request: Option<usize>,
+    pub pin_initial_endpoint_once: Option<bool>,
     pub timeout_s: Option<f64>,
     pub hedge_delay: Option<f64>,
     pub total_timeout_s: Option<f64>,
@@ -40,6 +41,7 @@ impl RequestProcessingPreference {
             max_concurrent_requests: self.max_concurrent_requests.or(Some(DEFAULT_CONCURRENCY)),
             batch_size: self.batch_size.or(Some(DEFAULT_BATCH_SIZE)),
             max_chars_per_request: self.max_chars_per_request,
+            pin_initial_endpoint_once: self.pin_initial_endpoint_once.or(Some(false)),
             timeout_s: self.timeout_s.or(Some(DEFAULT_REQUEST_TIMEOUT_S)),
             hedge_delay: self.hedge_delay,
             total_timeout_s: self.total_timeout_s,
@@ -70,6 +72,11 @@ impl RequestProcessingPreference {
     /// Builder pattern: set max chars per request
     pub fn with_max_chars_per_request(mut self, value: usize) -> Self {
         self.max_chars_per_request = Some(value);
+        self
+    }
+
+    pub fn with_pin_initial_endpoint_once(mut self, value: bool) -> Self {
+        self.pin_initial_endpoint_once = Some(value);
         self
     }
 
@@ -173,6 +180,7 @@ pub struct RequestProcessingConfig {
     pub max_concurrent_requests: usize,
     pub batch_size: usize,
     pub max_chars_per_request: Option<usize>,
+    pub pin_initial_endpoint_once: bool,
     pub base_url: String,
 
     /// HTTP timing settings (stored as Duration consistently)
@@ -201,6 +209,7 @@ pub struct RequestProcessingConfig {
 
     /// Client-level endpoint router for single or pooled routing.
     pub(crate) endpoint_router: Arc<EndpointRouter>,
+    pub(crate) pinned_initial_endpoint: Option<EndpointSelection>,
 }
 
 impl RequestProcessingConfig {
@@ -364,6 +373,7 @@ impl RequestProcessingConfig {
         let timeout_s = pref.timeout_s.unwrap();
         let hedge_delay = pref.hedge_delay;
         let max_chars_per_request = pref.max_chars_per_request;
+        let pin_initial_endpoint_once = pref.pin_initial_endpoint_once.unwrap();
         let hedge_budget_pct = pref.hedge_budget_pct.unwrap();
         let retry_budget_pct = pref.retry_budget_pct.unwrap();
         let max_retries = pref.max_retries.unwrap();
@@ -420,6 +430,7 @@ impl RequestProcessingConfig {
             max_concurrent_requests,
             batch_size,
             max_chars_per_request,
+            pin_initial_endpoint_once,
             base_url: base_url.clone(),
             timeout: Duration::from_secs_f64(timeout_s),
             total_timeout: pref.total_timeout_s.map(Duration::from_secs_f64),
@@ -434,6 +445,7 @@ impl RequestProcessingConfig {
             api_key_primary,
             extra_headers: pref.extra_headers.clone(),
             endpoint_router: EndpointRouter::single(base_url),
+            pinned_initial_endpoint: None,
         })
     }
 
@@ -480,26 +492,47 @@ impl RequestProcessingConfig {
         self
     }
 
+    pub(crate) fn with_pinned_initial_endpoint(
+        mut self,
+        pinned_initial_endpoint: Option<EndpointSelection>,
+    ) -> Self {
+        self.pinned_initial_endpoint = pinned_initial_endpoint;
+        self
+    }
+
     pub(crate) fn select_attempt_url(
         &self,
-        original_url: &str,
+        request_suffix: &str,
         attempted_endpoint_indices: &[usize],
-    ) -> Result<(String, usize), ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         self.endpoint_router
             .ensure_health_worker_started(&self.api_key_primary);
+
+        if attempted_endpoint_indices.is_empty() {
+            if let Some(pinned_selection) = self.pinned_initial_endpoint.clone() {
+                return Ok((
+                    build_url_for_selected_endpoint(
+                        pinned_selection.base_url.as_ref(),
+                        request_suffix,
+                    ),
+                    pinned_selection,
+                ));
+            }
+        }
+
         self.endpoint_router
-            .select_attempt_url(original_url, attempted_endpoint_indices)
+            .select_attempt_url(request_suffix, attempted_endpoint_indices)
     }
 
     pub(crate) fn select_hedge_url(
         &self,
-        original_url: &str,
+        request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<String, ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         self.endpoint_router
             .ensure_health_worker_started(&self.api_key_primary);
         self.endpoint_router
-            .select_hedge_url(original_url, original_endpoint_index)
+            .select_hedge_url(request_suffix, original_endpoint_index)
     }
 }
 
@@ -997,6 +1030,7 @@ mod tests {
         assert_eq!(pref.batch_size, None);
         assert_eq!(pref.timeout_s, None);
         assert!(pref.max_chars_per_request.is_none());
+        assert_eq!(pref.pin_initial_endpoint_once, None);
         assert!(pref.hedge_delay.is_none());
         assert!(pref.total_timeout_s.is_none());
         assert_eq!(pref.hedge_budget_pct, None);
@@ -1014,6 +1048,7 @@ mod tests {
             Some(DEFAULT_REQUEST_TIMEOUT_S)
         );
         assert!(pref_with_defaults.max_chars_per_request.is_none());
+        assert_eq!(pref_with_defaults.pin_initial_endpoint_once, Some(false));
         assert!(pref_with_defaults.hedge_delay.is_none());
         assert!(pref_with_defaults.total_timeout_s.is_none());
         assert_eq!(
@@ -1031,6 +1066,7 @@ mod tests {
         let pref = RequestProcessingPreference::new()
             .with_max_concurrent_requests(64)
             .with_batch_size(32)
+            .with_pin_initial_endpoint_once(true)
             .with_timeout_s(30.0)
             .with_hedge_delay(0.5)
             .with_total_timeout_s(120.0)
@@ -1039,6 +1075,7 @@ mod tests {
 
         assert_eq!(pref.max_concurrent_requests, Some(64));
         assert_eq!(pref.batch_size, Some(32));
+        assert_eq!(pref.pin_initial_endpoint_once, Some(true));
         assert_eq!(pref.timeout_s, Some(30.0));
         assert_eq!(pref.hedge_delay, Some(0.5));
         assert_eq!(pref.total_timeout_s, Some(120.0));
@@ -1051,6 +1088,7 @@ mod tests {
         let pref = RequestProcessingPreference::new()
             .with_max_concurrent_requests(64)
             .with_batch_size(32)
+            .with_pin_initial_endpoint_once(true)
             .with_timeout_s(30.0)
             .with_hedge_delay(0.5)
             .with_hedge_budget_pct(0.20)
@@ -1066,6 +1104,7 @@ mod tests {
 
         assert_eq!(config.max_concurrent_requests, 64);
         assert_eq!(config.batch_size, 32);
+        assert!(config.pin_initial_endpoint_once);
         assert_eq!(config.timeout.as_secs_f64(), 30.0);
         assert_eq!(config.hedge_delay.map(|d| d.as_secs_f64()), Some(0.5));
         assert_eq!(config.base_url, "https://example.com");

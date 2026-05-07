@@ -466,6 +466,83 @@ async fn test_retry_uses_alternate_endpoint_from_pool() {
 }
 
 #[tokio::test]
+async fn test_pin_initial_endpoint_once_keeps_initial_batch_requests_on_one_endpoint() {
+    let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
+    let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;
+    let endpoint_c = start_test_server("endpoint-c", Duration::ZERO, 0, true).await;
+
+    let endpoint_pool = EndpointPool::new(EndpointPoolConfig::new(
+        vec![
+            endpoint_a.base_url.clone(),
+            endpoint_b.base_url.clone(),
+            endpoint_c.base_url.clone(),
+        ],
+        health_check_wrapper(),
+    ))
+    .expect("endpoint pool should build");
+
+    let client = PerformanceClientCore::new(
+        endpoint_a.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        Some(endpoint_pool),
+    )
+    .expect("client should build");
+
+    let preference = RequestProcessingPreference::new()
+        .with_max_concurrent_requests(3)
+        .with_batch_size(1)
+        .with_timeout_s(1.0)
+        .with_hedge_budget_pct(0.0)
+        .with_pin_initial_endpoint_once(true);
+
+    let mut chosen_servers = Vec::new();
+
+    for operation_index in 0..24 {
+        let (_, _, headers, _) = client
+            .process_embeddings_requests(
+                vec![
+                    format!("request-{operation_index}-1"),
+                    format!("request-{operation_index}-2"),
+                    format!("request-{operation_index}-3"),
+                ],
+                "test-model".to_string(),
+                None,
+                None,
+                None,
+                &preference,
+            )
+            .await
+            .expect("request should succeed");
+
+        assert_eq!(headers.len(), 3);
+        let first_server = headers[0]
+            .get("x-test-server")
+            .expect("response should include x-test-server")
+            .clone();
+        assert!(headers
+            .iter()
+            .all(|header| header.get("x-test-server") == Some(&first_server)));
+        chosen_servers.push(first_server);
+    }
+
+    let distinct_servers: std::collections::HashSet<_> = chosen_servers.iter().cloned().collect();
+    assert!(
+        distinct_servers.len() > 1,
+        "pinned operations should still distribute across multiple endpoints over time"
+    );
+
+    let request_counts = [
+        endpoint_a.request_count.load(Ordering::SeqCst),
+        endpoint_b.request_count.load(Ordering::SeqCst),
+        endpoint_c.request_count.load(Ordering::SeqCst),
+    ];
+    assert_eq!(request_counts.iter().sum::<usize>(), 24 * 3);
+}
+
+#[tokio::test]
 async fn test_hedge_uses_alternate_endpoint_from_pool() {
     let endpoint_a = start_test_server("endpoint-a", Duration::from_millis(600), 0, true).await;
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, true).await;

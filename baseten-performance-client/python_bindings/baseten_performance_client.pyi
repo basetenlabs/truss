@@ -220,6 +220,7 @@ class RequestProcessingPreference:
         max_concurrent_requests: Maximum number of parallel requests (default: 128).
         batch_size: Number of items per batch (default: 128).
         max_chars_per_request: Optional character-based batching limit.
+        pin_initial_endpoint_once: If True, select one endpoint for all initial requests in a top-level operation.
         timeout_s: Per-request timeout in seconds (default: 3600.0).
         hedge_delay: Optional request hedging delay in seconds.
         total_timeout_s: Optional total timeout for the entire operation in seconds.
@@ -266,6 +267,7 @@ class RequestProcessingPreference:
         max_concurrent_requests: typing.Optional[int] = None,
         batch_size: typing.Optional[int] = None,
         max_chars_per_request: typing.Optional[int] = None,
+        pin_initial_endpoint_once: typing.Optional[bool] = None,
         timeout_s: typing.Optional[float] = None,
         hedge_delay: typing.Optional[float] = None,
         total_timeout_s: typing.Optional[float] = None,
@@ -284,6 +286,7 @@ class RequestProcessingPreference:
             max_concurrent_requests: Maximum parallel requests (default: 128).
             batch_size: Number of items per batch (default: 128).
             max_chars_per_request: Optional character-based batching limit.
+            pin_initial_endpoint_once: If True, send all initial requests in one operation to a single selected endpoint.
             timeout_s: Per-request timeout in seconds (default: 3600.0).
             hedge_delay: Optional request hedging delay in seconds.
             total_timeout_s: Optional total timeout for the entire operation in seconds.
@@ -300,6 +303,7 @@ class RequestProcessingPreference:
     max_concurrent_requests: builtins.int
     batch_size: builtins.int
     max_chars_per_request: typing.Optional[builtins.int]
+    pin_initial_endpoint_once: builtins.bool
     timeout_s: builtins.float
     hedge_delay: typing.Optional[builtins.float]
     total_timeout_s: typing.Optional[builtins.float]

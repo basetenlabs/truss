@@ -396,15 +396,31 @@ impl EndpointRouter {
         }
     }
 
+    pub(crate) fn select_endpoint(
+        &self,
+        excluded_indices: &[usize],
+    ) -> Result<EndpointSelection, ClientError> {
+        match self {
+            EndpointRouter::Single(endpoint) => Ok(EndpointSelection {
+                endpoint_index: 0,
+                base_url: Arc::clone(&endpoint.base_url),
+            }),
+            EndpointRouter::Pool(pool) => pool.select_endpoint(excluded_indices),
+        }
+    }
+
     pub(crate) fn select_attempt_url(
         &self,
         request_suffix: &str,
         excluded_indices: &[usize],
-    ) -> Result<(String, usize), ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         match self {
             EndpointRouter::Single(endpoint) => Ok((
                 build_url_for_selected_endpoint(endpoint.base_url.as_ref(), request_suffix),
-                0,
+                EndpointSelection {
+                    endpoint_index: 0,
+                    base_url: Arc::clone(&endpoint.base_url),
+                },
             )),
             EndpointRouter::Pool(pool) => pool.select_attempt_url(request_suffix, excluded_indices),
         }
@@ -414,11 +430,14 @@ impl EndpointRouter {
         &self,
         request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<String, ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         match self {
-            EndpointRouter::Single(endpoint) => Ok(build_url_for_selected_endpoint(
-                endpoint.base_url.as_ref(),
-                request_suffix,
+            EndpointRouter::Single(endpoint) => Ok((
+                build_url_for_selected_endpoint(endpoint.base_url.as_ref(), request_suffix),
+                EndpointSelection {
+                    endpoint_index: 0,
+                    base_url: Arc::clone(&endpoint.base_url),
+                },
             )),
             EndpointRouter::Pool(pool) => {
                 pool.select_hedge_url(request_suffix, original_endpoint_index)
@@ -551,22 +570,23 @@ impl EndpointPool {
         &self,
         request_suffix: &str,
         excluded_indices: &[usize],
-    ) -> Result<(String, usize), ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         let selected_endpoint = self.select_endpoint(excluded_indices)?;
-        let attempt_url =
-            build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix);
-        Ok((attempt_url, selected_endpoint.endpoint_index))
+        Ok((
+            build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix),
+            selected_endpoint,
+        ))
     }
 
     pub(crate) fn select_hedge_url(
         &self,
         request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<String, ClientError> {
+    ) -> Result<(String, EndpointSelection), ClientError> {
         let selected_endpoint = self.select_hedge_endpoint(original_endpoint_index)?;
-        Ok(build_url_for_selected_endpoint(
-            selected_endpoint.base_url.as_ref(),
-            request_suffix,
+        Ok((
+            build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix),
+            selected_endpoint,
         ))
     }
 
@@ -746,7 +766,10 @@ pub(crate) fn normalize_request_suffix(path_or_suffix: &str) -> String {
     }
 }
 
-fn build_url_for_selected_endpoint(selected_base_url: &str, request_suffix: &str) -> String {
+pub(crate) fn build_url_for_selected_endpoint(
+    selected_base_url: &str,
+    request_suffix: &str,
+) -> String {
     let selected_base_url = selected_base_url.trim_end_matches('/');
     let normalized_suffix = normalize_request_suffix(request_suffix);
     format!("{}{}", selected_base_url, normalized_suffix)

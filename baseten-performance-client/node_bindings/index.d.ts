@@ -32,11 +32,12 @@ export declare class PerformanceClient {
 
 /** Provides sensible defaults and getters for all properties. */
 export declare class RequestProcessingPreference {
-  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null)
+  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, pinInitialEndpointOnce?: boolean | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null)
   get maxConcurrentRequests(): number
   get batchSize(): number
   get timeoutS(): number
   get maxCharsPerRequest(): number | null
+  get pinInitialEndpointOnce(): boolean
   get hedgeDelay(): number | null
   get totalTimeoutS(): number | null
   get hedgeBudgetPct(): number

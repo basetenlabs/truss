@@ -160,8 +160,9 @@ async fn send_request_with_retry(
 
     loop {
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
-        let (attempt_url, selected_endpoint_index) =
+        let (attempt_url, selected_endpoint) =
             config.select_attempt_url(request_suffix, &indices_vec)?;
+        let selected_endpoint_index = selected_endpoint.endpoint_index;
         attempted_endpoint_indices.insert(selected_endpoint_index);
 
         // Only hedge on the first request (retries_done <= 1)
@@ -179,8 +180,10 @@ async fn send_request_with_retry(
 
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
             let request_builder = build_request(&attempt_url);
-            let hedge_url = config.select_hedge_url(request_suffix, selected_endpoint_index)?;
+            let (hedge_url, hedge_selection) =
+                config.select_hedge_url(request_suffix, selected_endpoint_index)?;
             let hedge_builder = build_request(&hedge_url);
+            let _ = hedge_selection;
             send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {
             build_request(&attempt_url).send().await.map_err(|e| {
@@ -327,7 +330,10 @@ pub(crate) async fn send_request_with_hedging(
             // Allow hedging if we had budget before decrement (budget was > 0)
             if budget_before_decrement > 0 {
                 join_set.spawn(async move {
-                    let result = request_builder_hedge.send().await.map_err(ClientError::from);
+                    let result = request_builder_hedge
+                        .send()
+                        .await
+                        .map_err(ClientError::from);
                     tracing::debug!("hedged request faster than original");
                     result
                 });

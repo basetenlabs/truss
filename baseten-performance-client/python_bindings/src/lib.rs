@@ -477,6 +477,8 @@ pub struct RequestProcessingPreference {
     #[pyo3(get, set)]
     pub max_chars_per_request: Option<usize>,
     #[pyo3(get, set)]
+    pub pin_initial_endpoint_once: bool,
+    #[pyo3(get, set)]
     pub timeout_s: f64,
     #[pyo3(get, set)]
     pub hedge_delay: Option<f64>,
@@ -507,6 +509,7 @@ impl RequestProcessingPreference {
         batch_size = None,
         timeout_s = None,
         max_chars_per_request = None,
+        pin_initial_endpoint_once = None,
         hedge_delay = None,
         total_timeout_s = None,
         hedge_budget_pct = None,
@@ -522,6 +525,7 @@ impl RequestProcessingPreference {
         batch_size: Option<usize>,
         timeout_s: Option<f64>,
         max_chars_per_request: Option<usize>,
+        pin_initial_endpoint_once: Option<bool>,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
         hedge_budget_pct: Option<f64>,
@@ -536,6 +540,7 @@ impl RequestProcessingPreference {
             max_concurrent_requests,
             batch_size,
             max_chars_per_request,
+            pin_initial_endpoint_once,
             timeout_s,
             hedge_delay,
             total_timeout_s,
@@ -557,6 +562,7 @@ impl RequestProcessingPreference {
                 .unwrap_or(DEFAULT_CONCURRENCY),
             batch_size: complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE),
             max_chars_per_request: complete.max_chars_per_request,
+            pin_initial_endpoint_once: complete.pin_initial_endpoint_once.unwrap_or(false),
             timeout_s: complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S),
             hedge_delay: complete.hedge_delay,
             total_timeout_s: complete.total_timeout_s,
@@ -575,16 +581,17 @@ impl RequestProcessingPreference {
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
-            None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
         ))
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={})",
             self.max_concurrent_requests,
             self.batch_size,
+            self.pin_initial_endpoint_once,
             self.timeout_s,
             self.hedge_delay,
             self.total_timeout_s,

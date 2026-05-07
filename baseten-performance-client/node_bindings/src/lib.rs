@@ -234,6 +234,7 @@ impl RequestProcessingPreference {
     batch_size: Option<u32>,
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
+    pin_initial_endpoint_once: Option<bool>,
     hedge_delay: Option<f64>,
     total_timeout_s: Option<f64>,
     hedge_budget_pct: Option<f64>,
@@ -248,6 +249,7 @@ impl RequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
       batch_size: batch_size.map(|x| x as usize),
       max_chars_per_request: max_chars_per_request.map(|x| x as usize),
+      pin_initial_endpoint_once,
       timeout_s,
       hedge_delay,
       total_timeout_s,
@@ -292,6 +294,11 @@ impl RequestProcessingPreference {
   #[napi(getter)]
   pub fn hedge_delay(&self) -> Option<f64> {
     self.complete.hedge_delay
+  }
+
+  #[napi(getter)]
+  pub fn pin_initial_endpoint_once(&self) -> bool {
+    self.complete.pin_initial_endpoint_once.unwrap_or(false)
   }
 
   #[napi(getter)]
