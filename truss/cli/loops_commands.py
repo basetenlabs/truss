@@ -131,7 +131,7 @@ def _poll_until_running(remote_provider: BasetenRemote, run_base_url: str) -> No
 def view_loop_deployments(remote: Optional[str]) -> None:
     """List the caller's active Loops deployments.
 
-    Excludes deployments whose latest status is STOPPED.
+    Excludes deployments whose latest status is STOPPED (filtered server-side).
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
