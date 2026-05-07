@@ -14,7 +14,7 @@ def mock_remote():
     remote = Mock()
     remote.create_loop_session.return_value = {"id": "session_abc123"}
     remote.create_loop_run.return_value = {
-        "id": "trainer_xyz456",
+        "id": "abc123",
         "base_url": "https://trainer-xyz456.api.baseten.co/trainer",
         "sampler": {
             "id": "sampler_def789",

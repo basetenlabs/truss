@@ -259,19 +259,19 @@ def _get_model_name(
     ).execute()
 
 
-def _get_loop_run_model_name(base_model_id: Optional[str]) -> str:
-    """Prompt for a model name in Loops-checkpoint deploys.
+def _model_name_from_checkpoint_model_ref(checkpoint_model_ref: str) -> str:
+    """Derive a default model name from a checkpoint's model reference.
 
-    The CLI doesn't need to know the weight format — the server reads it
-    off the Loops-checkpoint row. We just prompt for a name with the
-    base model as a sensible default.
+    Checkpoint rows store the underlying model as a HuggingFace-style
+    identifier in their ``base_model`` field. The trailing path segment
+    is a sensible default model name to suggest to the user.
+
+    Examples:
+        "meta-llama/Llama-3.1-8B-Instruct" -> "Llama-3.1-8B-Instruct"
+        "openai/whisper-large-v3"          -> "whisper-large-v3"
+        "Llama-3.1-8B-Instruct"            -> "Llama-3.1-8B-Instruct"
     """
-    default = base_model_id.split("/")[-1] if base_model_id else ""
-    return inquirer.text(
-        message="Enter the model name.",
-        validate=lambda s: s and s.strip(),
-        default=default,
-    ).execute()
+    return checkpoint_model_ref.split("/")[-1]
 
 
 def _hydrate_deploy_config(
@@ -309,7 +309,17 @@ def _hydrate_deploy_config(
         if deploy_config.model_name:
             model_name = deploy_config.model_name
         else:
-            model_name = _get_loop_run_model_name(checkpoint_details.base_model_id)
+            checkpoint_model_ref = checkpoint_details.base_model_id
+            default = (
+                _model_name_from_checkpoint_model_ref(checkpoint_model_ref)
+                if checkpoint_model_ref
+                else ""
+            )
+            model_name = inquirer.text(
+                message="Enter the model name.",
+                validate=lambda s: s and s.strip(),
+                default=default,
+            ).execute()
     else:
         checkpoint_details = _ensure_checkpoint_details(
             remote_provider, deploy_config.checkpoint_details, project_id, job_id

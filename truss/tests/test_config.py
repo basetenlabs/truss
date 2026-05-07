@@ -1807,7 +1807,7 @@ class TestTrussConfigWeights:
 
 
 class TestCheckpointListNoMixing:
-    """CheckpointList rejects mixing training-job and trainer checkpoint sources."""
+    """CheckpointList rejects mixing training-job and loops checkpoint sources."""
 
     def test_artifact_references_only_accepted(self):
         ckpt_list = CheckpointList(
