@@ -1262,10 +1262,6 @@ class BasetenApi:
             )
         return all_presigned_urls
 
-    def list_loop_deployments(self):
-        resp_json = self._rest_api_client.get("v1/loops/deployments")
-        return resp_json["deployments"]
-
     def deactivate_loop_deployment(self, deployment_id: str) -> None:
         self._rest_api_client.post(
             f"v1/loops/deployments/{deployment_id}/deactivate", body={}
