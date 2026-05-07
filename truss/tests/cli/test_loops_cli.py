@@ -60,15 +60,20 @@ def test_push_with_project_id(mock_remote):
     )
 
 
-def test_push_polls_until_running(mock_remote):
-    # First two polls return 503, third returns 200.
-    responses = [Mock(status_code=503), Mock(status_code=503), Mock(status_code=200)]
+def test_push_polls_trainer_health(mock_remote):
+    # Trainer: 503, 503, 200. Sampler: 200 immediately.
+    responses = [
+        Mock(status_code=503),  # trainer poll 1
+        Mock(status_code=503),  # trainer poll 2
+        Mock(status_code=200),  # trainer poll 3 — healthy
+        Mock(status_code=200),  # sampler poll 1 — healthy
+    ]
 
     runner = CliRunner()
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        with patch("requests.get", side_effect=responses):
+        with patch("requests.get", side_effect=responses) as mock_get:
             with patch("truss.cli.loops_commands.time.sleep"):
                 result = runner.invoke(
                     truss_cli,
@@ -76,6 +81,32 @@ def test_push_polls_until_running(mock_remote):
                 )
 
     assert result.exit_code == 0, result.output
+    urls = [call[0][0] for call in mock_get.call_args_list]
+    assert urls[0].endswith("/health")
+    assert urls[-1].endswith("/v1/models")
+
+
+def test_push_polls_sampler_health(mock_remote):
+    # Trainer healthy immediately; sampler: 503, 200.
+    responses = [
+        Mock(status_code=200),  # trainer — healthy
+        Mock(status_code=503),  # sampler poll 1
+        Mock(status_code=200),  # sampler poll 2 — healthy
+    ]
+
+    runner = CliRunner()
+    with patch(
+        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
+    ):
+        with patch("requests.get", side_effect=responses) as mock_get:
+            with patch("truss.cli.loops_commands.time.sleep"):
+                result = runner.invoke(
+                    truss_cli,
+                    ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
+                )
+
+    assert result.exit_code == 0, result.output
+    assert mock_get.call_count == 3
 
 
 def test_push_times_out_waiting_for_health(mock_remote):
@@ -95,6 +126,7 @@ def test_push_times_out_waiting_for_health(mock_remote):
 
     assert result.exit_code != 0
     assert "Timed out" in result.output
+    assert "healthy" in result.output
 
 
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
