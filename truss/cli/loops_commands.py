@@ -53,6 +53,8 @@ def push_trainer_deployment(
         session = remote_provider.create_trainer_session(training_project_id=project_id)
     session_id = session["id"]
 
+    auth_header = remote_provider.fetch_auth_header()
+
     with console.status(
         # Trainer cold-start typically takes ~5 minutes.
         f"Deploying trainer and sampling servers for [cyan]{base_model}[/cyan]"
@@ -63,7 +65,10 @@ def push_trainer_deployment(
             session_id=session_id, base_model=base_model
         )
         trainer_base_url = trainer_server["base_url"]
-        _poll_until_running(remote_provider, trainer_base_url)
+        sampler_base_url = (trainer_server.get("sampling_server") or {}).get("base_url")
+        _poll_until_healthy(f"{trainer_base_url}/health", auth_header)
+        if sampler_base_url:
+            _poll_until_healthy(f"{sampler_base_url}/v1/models", auth_header)
 
     console.print(
         f"✨ Trainer deployment for [cyan]{base_model}[/cyan] is ready.\n"
@@ -105,20 +110,20 @@ def deactivate_loop_deployment(
     console.print(f"Loop deployment for {base_model} deactivated.", style="green")
 
 
-def _poll_until_running(remote_provider: BasetenRemote, trainer_base_url: str) -> None:
-    """Poll GET {trainer_base_url}/health until the trainer server is up."""
-    health_url = f"{trainer_base_url}/health"
-    auth_header = remote_provider.fetch_auth_header()
+def _poll_until_healthy(health_url: str, auth_header: dict[str, str]) -> None:
+    """Poll health_url until it returns HTTP 200 or the timeout expires."""
     deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         try:
-            resp = requests.get(health_url, headers=auth_header, timeout=10)
-            if resp.status_code == 200:
+            if (
+                requests.get(health_url, headers=auth_header, timeout=10).status_code
+                == 200
+            ):
                 return
         except requests.RequestException:
             pass
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise click.ClickException(
-        f"Timed out waiting for trainer deployment to become ready after"
+        f"Timed out waiting for {health_url} to become ready after"
         f" {_READY_TIMEOUT_SECONDS}s."
     )
