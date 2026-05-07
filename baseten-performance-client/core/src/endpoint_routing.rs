@@ -299,7 +299,7 @@ impl EndpointHealthState {
         };
     }
 
-    fn apply_vote(&self, vote: HealthVote) {
+    fn apply_vote(&self, vote: HealthVote) -> (bool, bool) {
         let mut transition = self
             .transition
             .lock()
@@ -312,6 +312,7 @@ impl EndpointHealthState {
                 } => {
                     *consecutive_failures = 0;
                     self.healthy.store(true, Ordering::SeqCst);
+                    (false, false)
                 }
                 EndpointTransitionState::Unhealthy {
                     consecutive_successes,
@@ -322,6 +323,9 @@ impl EndpointHealthState {
                             consecutive_failures: 0,
                         };
                         self.healthy.store(true, Ordering::SeqCst);
+                        (true, false)
+                    } else {
+                        (false, false)
                     }
                 }
             },
@@ -335,6 +339,9 @@ impl EndpointHealthState {
                             consecutive_successes: 0,
                         };
                         self.healthy.store(false, Ordering::SeqCst);
+                        (false, true)
+                    } else {
+                        (false, false)
                     }
                 }
                 EndpointTransitionState::Unhealthy {
@@ -342,9 +349,10 @@ impl EndpointHealthState {
                 } => {
                     *consecutive_successes = 0;
                     self.healthy.store(false, Ordering::SeqCst);
+                    (false, false)
                 }
             },
-            HealthVote::NoVote => {}
+            HealthVote::NoVote => (false, false),
         }
     }
 }
@@ -613,11 +621,11 @@ impl EndpointPool {
         }
     }
 
-    fn apply_health_vote(&self, endpoint_index: usize, vote: HealthVote) {
+    fn apply_health_vote(&self, endpoint_index: usize, vote: HealthVote) -> (bool, bool) {
         let Some(endpoint) = self.endpoints.get(endpoint_index) else {
-            return;
+            return (false, false);
         };
-        endpoint.health_state.apply_vote(vote);
+        endpoint.health_state.apply_vote(vote)
     }
 
     pub(crate) async fn refresh_health(&self, api_key: &str) -> EndpointPoolHealthSnapshot {
@@ -645,8 +653,30 @@ impl EndpointPool {
         }))
         .await;
 
+        let mut became_unhealthy = Vec::new();
+        let mut became_healthy = Vec::new();
+
         for (index, vote) in results {
-            self.apply_health_vote(index, vote);
+            let (restored_to_rotation, removed_from_rotation) = self.apply_health_vote(index, vote);
+            if removed_from_rotation {
+                became_unhealthy.push(self.endpoints[index].base_url.to_string());
+            }
+            if restored_to_rotation {
+                became_healthy.push(self.endpoints[index].base_url.to_string());
+            }
+        }
+
+        if !became_unhealthy.is_empty() {
+            tracing::warn!(
+                removed_endpoints = ?became_unhealthy,
+                "endpoint pool removed endpoints from healthy rotation"
+            );
+        }
+        if !became_healthy.is_empty() {
+            tracing::info!(
+                restored_endpoints = ?became_healthy,
+                "endpoint pool restored endpoints to healthy rotation"
+            );
         }
 
         self.health_snapshot()
