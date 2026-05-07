@@ -487,11 +487,8 @@ impl RequestProcessingConfig {
     ) -> Result<(String, usize), ClientError> {
         self.endpoint_router
             .ensure_health_worker_started(&self.api_key_primary);
-        self.endpoint_router.select_attempt_url(
-            &self.base_url,
-            original_url,
-            attempted_endpoint_indices,
-        )
+        self.endpoint_router
+            .select_attempt_url(original_url, attempted_endpoint_indices)
     }
 
     pub(crate) fn select_hedge_url(
@@ -502,7 +499,7 @@ impl RequestProcessingConfig {
         self.endpoint_router
             .ensure_health_worker_started(&self.api_key_primary);
         self.endpoint_router
-            .select_hedge_url(&self.base_url, original_url, original_endpoint_index)
+            .select_hedge_url(original_url, original_endpoint_index)
     }
 }
 

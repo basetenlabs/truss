@@ -14,7 +14,7 @@ use tracing;
 // Unified HTTP request helper
 pub(crate) async fn send_http_request_with_retry<T, R>(
     client: &Client,
-    url: String,
+    request_suffix: String,
     payload: T,
     api_key: String,
     request_timeout: Duration,
@@ -26,7 +26,7 @@ where
     R: serde::de::DeserializeOwned,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&url, config, |attempt_url| {
+    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
         let mut request_builder = client
             .post(attempt_url)
             .bearer_auth(&api_key)
@@ -68,7 +68,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_http_request_with_headers<T>(
     client: &Client,
-    url: String,
+    request_suffix: String,
     payload: T,
     api_key: String,
     request_timeout: Duration,
@@ -80,7 +80,7 @@ where
     T: serde::Serialize,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&url, config, |attempt_url| {
+    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
         let mut request_builder = client
             .request(method.into(), attempt_url)
             .bearer_auth(&api_key)
@@ -149,7 +149,7 @@ async fn ensure_successful_response(
 }
 
 async fn send_request_with_retry(
-    original_url: &str,
+    request_suffix: &str,
     config: &RequestProcessingConfig,
     build_request: impl Fn(&str) -> reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, ClientError> {
@@ -161,7 +161,7 @@ async fn send_request_with_retry(
     loop {
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint_index) =
-            config.select_attempt_url(original_url, &indices_vec)?;
+            config.select_attempt_url(request_suffix, &indices_vec)?;
         attempted_endpoint_indices.insert(selected_endpoint_index);
 
         // Only hedge on the first request (retries_done <= 1)
@@ -179,7 +179,7 @@ async fn send_request_with_retry(
 
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
             let request_builder = build_request(&attempt_url);
-            let hedge_url = config.select_hedge_url(original_url, selected_endpoint_index)?;
+            let hedge_url = config.select_hedge_url(request_suffix, selected_endpoint_index)?;
             let hedge_builder = build_request(&hedge_url);
             send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {

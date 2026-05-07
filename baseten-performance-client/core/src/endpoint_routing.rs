@@ -302,28 +302,30 @@ impl EndpointRouter {
 
     pub(crate) fn select_attempt_url(
         &self,
-        configured_base_url: &str,
-        original_url: &str,
+        request_suffix: &str,
         excluded_indices: &[usize],
     ) -> Result<(String, usize), ClientError> {
         match self {
-            EndpointRouter::Single(_) => Ok((original_url.to_string(), 0)),
-            EndpointRouter::Pool(pool) => {
-                pool.select_attempt_url(configured_base_url, original_url, excluded_indices)
-            }
+            EndpointRouter::Single(endpoint) => Ok((
+                build_url_for_selected_endpoint(endpoint.base_url.as_ref(), request_suffix),
+                0,
+            )),
+            EndpointRouter::Pool(pool) => pool.select_attempt_url(request_suffix, excluded_indices),
         }
     }
 
     pub(crate) fn select_hedge_url(
         &self,
-        configured_base_url: &str,
-        original_url: &str,
+        request_suffix: &str,
         original_endpoint_index: usize,
     ) -> Result<String, ClientError> {
         match self {
-            EndpointRouter::Single(_) => Ok(original_url.to_string()),
+            EndpointRouter::Single(endpoint) => Ok(build_url_for_selected_endpoint(
+                endpoint.base_url.as_ref(),
+                request_suffix,
+            )),
             EndpointRouter::Pool(pool) => {
-                pool.select_hedge_url(configured_base_url, original_url, original_endpoint_index)
+                pool.select_hedge_url(request_suffix, original_endpoint_index)
             }
         }
     }
@@ -451,30 +453,24 @@ impl EndpointPool {
 
     pub(crate) fn select_attempt_url(
         &self,
-        configured_base_url: &str,
-        original_url: &str,
+        request_suffix: &str,
         excluded_indices: &[usize],
     ) -> Result<(String, usize), ClientError> {
         let selected_endpoint = self.select_endpoint(excluded_indices)?;
-        let attempt_url = rewrite_url_for_selected_endpoint(
-            original_url,
-            configured_base_url,
-            selected_endpoint.base_url.as_ref(),
-        );
+        let attempt_url =
+            build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix);
         Ok((attempt_url, selected_endpoint.endpoint_index))
     }
 
     pub(crate) fn select_hedge_url(
         &self,
-        configured_base_url: &str,
-        original_url: &str,
+        request_suffix: &str,
         original_endpoint_index: usize,
     ) -> Result<String, ClientError> {
         let selected_endpoint = self.select_hedge_endpoint(original_endpoint_index)?;
-        Ok(rewrite_url_for_selected_endpoint(
-            original_url,
-            configured_base_url,
+        Ok(build_url_for_selected_endpoint(
             selected_endpoint.base_url.as_ref(),
+            request_suffix,
         ))
     }
 
@@ -643,32 +639,21 @@ fn splitmix64(mut x: u64) -> u64 {
     x ^ (x >> 31)
 }
 
-fn rewrite_url_for_selected_endpoint(
-    original_url: &str,
-    configured_base_url: &str,
-    selected_base_url: &str,
-) -> String {
-    let configured_base_url = configured_base_url.trim_end_matches('/');
+pub(crate) fn normalize_request_suffix(path_or_suffix: &str) -> String {
+    let trimmed = path_or_suffix.trim();
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{}", trimmed)
+    }
+}
+
+fn build_url_for_selected_endpoint(selected_base_url: &str, request_suffix: &str) -> String {
     let selected_base_url = selected_base_url.trim_end_matches('/');
-
-    if configured_base_url == selected_base_url {
-        return original_url.to_string();
-    }
-
-    if let Ok(parsed_original) = reqwest::Url::parse(original_url) {
-        if let Ok(parsed_selected) = reqwest::Url::parse(selected_base_url) {
-            let mut rewritten = parsed_selected.clone();
-            rewritten.set_path(parsed_original.path());
-            rewritten.set_query(parsed_original.query());
-            return rewritten.to_string();
-        }
-    }
-
-    if let Some(suffix) = original_url.strip_prefix(configured_base_url) {
-        return format!("{}{}", selected_base_url, suffix);
-    }
-
-    original_url.to_string()
+    let normalized_suffix = normalize_request_suffix(request_suffix);
+    format!("{}{}", selected_base_url, normalized_suffix)
 }
 
 async fn check_endpoint_health(

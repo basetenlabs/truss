@@ -1,6 +1,6 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
-use crate::endpoint_routing::{EndpointPool, EndpointRouter};
+use crate::endpoint_routing::{normalize_request_suffix, EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
@@ -400,7 +400,7 @@ impl PerformanceClientCore {
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
-            let endpoint_path = endpoint_path.clone();
+            let request_suffix = normalize_request_suffix(endpoint_path.as_ref());
 
             // Generate individual request ID for this batch
             let request_customer_id = config_clone.create_request_customer_id(batch_index);
@@ -416,11 +416,7 @@ impl PerformanceClientCore {
 
                 let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
                     &client,
-                    format!(
-                        "{}/{}",
-                        config_clone.base_url.trim_end_matches('/'),
-                        endpoint_path.trim_start_matches('/')
-                    ),
+                    request_suffix,
                     payload,
                     api_key,
                     request_timeout_duration,
@@ -769,7 +765,7 @@ impl PerformanceClientCore {
             let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
-            let url_path = url_path.clone();
+            let request_suffix = normalize_request_suffix(&url_path);
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
 
@@ -786,11 +782,7 @@ impl PerformanceClientCore {
 
                 let result_tuple = send_http_request_with_headers(
                     &client,
-                    format!(
-                        "{}/{}",
-                        config_clone.base_url.trim_end_matches('/'),
-                        url_path.trim_start_matches('/')
-                    ),
+                    request_suffix,
                     payload_item_json,
                     api_key,
                     individual_request_timeout,
