@@ -381,9 +381,7 @@ def test_hydrate_deploy_config_rejects_job_id_with_config_loop_checkpoint_ids(
 ):
     """--job-id + --config that has loop_checkpoint_ids should error."""
     deploy_config = definitions.DeployCheckpointsConfig(
-        checkpoint_details=definitions.CheckpointList(
-            loop_checkpoint_ids=["tcp_xyz"]
-        )
+        checkpoint_details=definitions.CheckpointList(loop_checkpoint_ids=["tcp_xyz"])
     )
     with pytest.raises(
         click.UsageError, match="--project-id / --job-id cannot be combined"
