@@ -1229,9 +1229,6 @@ class BasetenApi:
         return resp_json["deployment"]
 
     def list_loop_samplers(self) -> List[Dict[str, Any]]:
-        # NB: backend GET /v1/loops/samplers does not yet exist (TRN-762
-        # follow-up). The CLI surface is wired here so it lights up the
-        # moment the endpoint ships; until then, callers will hit a 404.
         resp_json = self._rest_api_client.get("v1/loops/samplers")
         return resp_json["samplers"]
 
