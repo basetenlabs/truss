@@ -14,8 +14,8 @@ def mock_remote():
     remote = Mock()
     remote.create_loop_session.return_value = {"id": "session_abc123"}
     remote.create_loop_run.return_value = {
-        "id": "trainer_xyz456",
-        "base_url": "https://trainer-xyz456.api.baseten.co/trainer",
+        "id": "abc123",
+        "base_url": "https://trainer-xyz456.api.baseten.co/loops",
         "sampler": {
             "id": "sampler_def789",
             "base_url": "https://model-def789.api.baseten.co/deployment/v1/sync",
@@ -238,7 +238,7 @@ def test_view_lists_active_deployments(mock_remote):
         {
             "id": "dep_abc",
             "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "base_url": "https://trainer-abc.api.baseten.co/loops",
             "status": {"name": "RUNNING"},
         }
     ]
