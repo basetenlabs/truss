@@ -454,18 +454,22 @@ class EndpointPool:
             client_wrapper: Required HttpClientWrapper used by the endpoint pool's
                 background health-check worker. This may be shared with request clients
                 or be a dedicated transport.
-            endpoint_weights: Optional per-endpoint traffic weights.
+            endpoint_weights: Optional per-endpoint traffic weights used for deterministic
+                weighted routing.
             deep_health_urls: Optional per-endpoint absolute deep health URLs.
-                When provided, each endpoint health cycle checks `/health` on the base URL
-                and then checks the corresponding deep health URL.
+                When provided, each endpoint health cycle evaluates both the shallow
+                deployment health path and the corresponding deep health URL.
             deployment_health_path: Optional base-url health path override (default `/health`).
             health_check_interval_s: Optional background health check interval in seconds.
             health_check_timeout_s: Optional per-health-check timeout in seconds.
-            health_check_retries: Optional number of retries for each health poll cycle.
+            health_check_retries: Optional number of retries per configured health check.
+                One successful retry is enough for that check to count as healthy.
             health_fail_on_first: If true, stop evaluating additional checks for an endpoint
-                after the first negative vote in a health cycle.
+                after the first hard failing check in a health cycle.
             deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
             deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
+                Endpoint health transitions are stabilized across refresh cycles, so one
+                transient bad sample does not immediately remove an endpoint from rotation.
         """
         ...
 

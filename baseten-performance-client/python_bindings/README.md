@@ -463,27 +463,38 @@ client = PerformanceClient(
 ```
 
 #### Endpoint Pool and Health Checks
-Route traffic across multiple deployments with weighted balancing and a background health worker:
+Route traffic across multiple deployments with deterministic weighted routing and a background health worker:
 
 ```python
-from baseten_performance_client import EndpointPool, PerformanceClient
+from baseten_performance_client import EndpointPool, HttpClientWrapper, PerformanceClient
+
+health_wrapper = HttpClientWrapper(http_version=1)
 
 endpoint_pool = EndpointPool(
     endpoint_urls=[
-        "https://deployment-a.example.com/sync",
-        "https://deployment-b.example.com/sync",
+        "https://model-AAAA.api.baseten.co/environments/production/sync",
+        "https://model-BBBB.api.baseten.co/environments/production/sync",
     ],
-    endpoint_weights=[1.0, 0.2], # weighted round robin algo
+    client_wrapper=health_wrapper,
+    endpoint_weights=[0.8, 0.2],  # deterministic weighted routing
     deployment_health_path="/health",
     deployment_timeout_is_no_vote=True,
 )
 
 client = PerformanceClient(
-    base_url="https://deployment-a.example.com/sync",
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
     api_key="your_key",
     endpoint_pool=endpoint_pool,
 )
 ```
+
+Health semantics:
+
+- Weights are deterministic weighted routing, not weighted round robin.
+- Each configured health check is retried up to `health_check_retries`, and one successful retry is enough for that check.
+- If `deep_health_urls` are configured, both the shallow deployment health path and the deep health URL are evaluated.
+- `health_fail_on_first=True` short-circuits on the first hard failing check within an endpoint refresh cycle.
+- Endpoint eviction is stabilized across refresh cycles, so a single transient bad sample does not immediately move all traffic away from an otherwise healthy deployment.
 
 ### Error Handling
 

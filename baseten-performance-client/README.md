@@ -70,6 +70,44 @@ const { PerformanceClient, HttpClientWrapper } = require('baseten-performance-cl
 const httpWrapper = new HttpClientWrapper(2); // HTTP/2
 const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrapper);
 ```
+
+### EndpointPool
+
+`EndpointPool` lets a `PerformanceClient` route requests across multiple deployment base URLs
+while sharing one health view across clients.
+
+- Weights are deterministic weighted routing, not weighted round robin.
+- Health checks run in the background from the pool itself.
+- Each configured health check is retried up to `health_check_retries`, and one successful retry is enough for that check.
+- If deep health URLs are configured, shallow and deep checks are both evaluated.
+- `health_fail_on_first=True` short-circuits on the first hard failing check for that endpoint's refresh cycle.
+- Endpoint health transitions are stabilized: one bad sample does not immediately drain traffic.
+
+Python example:
+
+```python
+from baseten_performance_client import EndpointPool, HttpClientWrapper, PerformanceClient
+
+health_wrapper = HttpClientWrapper(http_version=1)
+
+endpoint_pool = EndpointPool(
+    endpoint_urls=[
+        "https://model-AAAA.api.baseten.co/environments/production/sync",
+        "https://model-BBBB.api.baseten.co/environments/production/sync",
+    ],
+    client_wrapper=health_wrapper,
+    endpoint_weights=[0.8, 0.2],
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=True,
+)
+
+client = PerformanceClient(
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    endpoint_pool=endpoint_pool,
+)
+```
+
 ### Embeddings
 #### Python Embedding
 
