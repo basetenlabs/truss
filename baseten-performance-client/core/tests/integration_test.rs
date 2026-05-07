@@ -564,17 +564,26 @@ async fn test_background_health_worker_skips_unhealthy_endpoints() {
         .await
         .expect("request should start the health worker");
 
-    tokio::time::sleep(Duration::from_millis(450)).await;
-
-    let snapshot = endpoint_pool.health_snapshot();
-    assert_eq!(
-        snapshot
+    let unhealthy_deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let snapshot = endpoint_pool.health_snapshot();
+        let endpoint_b_healthy = snapshot
             .endpoints
             .iter()
             .find(|endpoint| endpoint.base_url == endpoint_b.base_url)
-            .map(|endpoint| endpoint.healthy),
-        Some(false)
-    );
+            .map(|endpoint| endpoint.healthy);
+
+        if endpoint_b_healthy == Some(false) {
+            break;
+        }
+
+        assert!(
+            tokio::time::Instant::now() < unhealthy_deadline,
+            "endpoint-b should become unhealthy after consecutive failed health checks"
+        );
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 
     let (_, _, second_headers, _) = client
         .process_embeddings_requests(

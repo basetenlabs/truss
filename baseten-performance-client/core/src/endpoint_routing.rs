@@ -4,7 +4,7 @@ use crate::errors::ClientError;
 use futures::future::join_all;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
@@ -14,6 +14,8 @@ const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 3;
 const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(50);
 const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(100);
+const DEFAULT_CONSECUTIVE_FAILURES_TO_MARK_UNHEALTHY: usize = 2;
+const DEFAULT_CONSECUTIVE_SUCCESSES_TO_MARK_HEALTHY: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointHealthStatus {
@@ -250,7 +252,101 @@ impl EndpointPoolConfig {
 #[derive(Debug, Clone)]
 struct ManagedEndpoint {
     base_url: Arc<str>,
-    healthy: Arc<AtomicBool>,
+    health_state: Arc<EndpointHealthState>,
+}
+
+#[derive(Debug)]
+struct EndpointHealthState {
+    healthy: AtomicBool,
+    transition: Mutex<EndpointTransitionState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EndpointTransitionState {
+    Healthy { consecutive_failures: usize },
+    Unhealthy { consecutive_successes: usize },
+}
+
+impl EndpointHealthState {
+    fn new() -> Self {
+        Self {
+            healthy: AtomicBool::new(true),
+            transition: Mutex::new(EndpointTransitionState::Healthy {
+                consecutive_failures: 0,
+            }),
+        }
+    }
+
+    fn is_healthy(&self) -> bool {
+        self.healthy.load(Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
+    fn set_for_test(&self, healthy: bool) {
+        self.healthy.store(healthy, Ordering::SeqCst);
+        let mut transition = self
+            .transition
+            .lock()
+            .expect("endpoint health transition lock should not be poisoned");
+        *transition = if healthy {
+            EndpointTransitionState::Healthy {
+                consecutive_failures: 0,
+            }
+        } else {
+            EndpointTransitionState::Unhealthy {
+                consecutive_successes: 0,
+            }
+        };
+    }
+
+    fn apply_vote(&self, vote: HealthVote) {
+        let mut transition = self
+            .transition
+            .lock()
+            .expect("endpoint health transition lock should not be poisoned");
+
+        match vote {
+            HealthVote::Healthy => match &mut *transition {
+                EndpointTransitionState::Healthy {
+                    consecutive_failures,
+                } => {
+                    *consecutive_failures = 0;
+                    self.healthy.store(true, Ordering::SeqCst);
+                }
+                EndpointTransitionState::Unhealthy {
+                    consecutive_successes,
+                } => {
+                    *consecutive_successes += 1;
+                    if *consecutive_successes >= DEFAULT_CONSECUTIVE_SUCCESSES_TO_MARK_HEALTHY {
+                        *transition = EndpointTransitionState::Healthy {
+                            consecutive_failures: 0,
+                        };
+                        self.healthy.store(true, Ordering::SeqCst);
+                    }
+                }
+            },
+            HealthVote::Unhealthy => match &mut *transition {
+                EndpointTransitionState::Healthy {
+                    consecutive_failures,
+                } => {
+                    *consecutive_failures += 1;
+                    if *consecutive_failures >= DEFAULT_CONSECUTIVE_FAILURES_TO_MARK_UNHEALTHY {
+                        *transition = EndpointTransitionState::Unhealthy {
+                            consecutive_successes: 0,
+                        };
+                        self.healthy.store(false, Ordering::SeqCst);
+                    }
+                }
+                EndpointTransitionState::Unhealthy {
+                    consecutive_successes,
+                } => {
+                    *consecutive_successes = 0;
+                    self.healthy.store(false, Ordering::SeqCst);
+                }
+            },
+            HealthVote::NoVote => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -378,7 +474,7 @@ impl EndpointPool {
                 .into_iter()
                 .map(|url| ManagedEndpoint {
                     base_url: Arc::<str>::from(url),
-                    healthy: Arc::new(AtomicBool::new(true)),
+                    health_state: Arc::new(EndpointHealthState::new()),
                 })
                 .collect(),
             weights,
@@ -415,7 +511,7 @@ impl EndpointPool {
             .iter()
             .enumerate()
             .filter(|(index, endpoint)| {
-                (!healthy_only || endpoint.healthy.load(Ordering::SeqCst))
+                (!healthy_only || endpoint.health_state.is_healthy())
                     && !excluded_indices.contains(index)
             })
             .map(|(index, _)| index)
@@ -481,19 +577,27 @@ impl EndpointPool {
                 .iter()
                 .map(|endpoint| EndpointHealthStatus {
                     base_url: endpoint.base_url.to_string(),
-                    healthy: endpoint.healthy.load(Ordering::SeqCst),
+                    healthy: endpoint.health_state.is_healthy(),
                 })
                 .collect(),
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn set_endpoint_health(&self, endpoint_index: usize, healthy: bool) -> bool {
         if let Some(endpoint) = self.endpoints.get(endpoint_index) {
-            endpoint.healthy.store(healthy, Ordering::SeqCst);
+            endpoint.health_state.set_for_test(healthy);
             true
         } else {
             false
         }
+    }
+
+    fn apply_health_vote(&self, endpoint_index: usize, vote: HealthVote) {
+        let Some(endpoint) = self.endpoints.get(endpoint_index) else {
+            return;
+        };
+        endpoint.health_state.apply_vote(vote);
     }
 
     pub(crate) async fn refresh_health(&self, api_key: &str) -> EndpointPoolHealthSnapshot {
@@ -522,15 +626,7 @@ impl EndpointPool {
         .await;
 
         for (index, vote) in results {
-            match vote {
-                HealthVote::Healthy => {
-                    self.set_endpoint_health(index, true);
-                }
-                HealthVote::Unhealthy => {
-                    self.set_endpoint_health(index, false);
-                }
-                HealthVote::NoVote => {}
-            }
+            self.apply_health_vote(index, vote);
         }
 
         self.health_snapshot()
@@ -666,31 +762,57 @@ async fn check_endpoint_health(
 ) -> HealthVote {
     let mut saw_negative_vote = false;
 
-    for attempt in 0..=retries {
-        for check in &endpoint_health.checks {
-            let health_url = resolve_health_check_url(base_url, check);
-            match client
-                .get(&health_url)
-                .bearer_auth(api_key)
-                .timeout(timeout)
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => return HealthVote::Healthy,
-                Ok(_) => {
-                    saw_negative_vote = true;
-                    if endpoint_health.fail_on_first {
-                        break;
-                    }
+    let mut saw_positive_vote = false;
+    for check in &endpoint_health.checks {
+        match run_health_check_attempts(client, base_url, check, api_key, timeout, retries).await {
+            HealthVote::Healthy => {
+                saw_positive_vote = true;
+            }
+            HealthVote::Unhealthy => {
+                saw_negative_vote = true;
+                if endpoint_health.fail_on_first {
+                    return HealthVote::Unhealthy;
                 }
-                Err(error) => {
-                    if error.is_timeout() && check.timeout_is_no_vote {
-                        continue;
-                    }
+            }
+            HealthVote::NoVote => {}
+        }
+    }
+
+    if saw_negative_vote {
+        HealthVote::Unhealthy
+    } else if saw_positive_vote {
+        HealthVote::Healthy
+    } else {
+        HealthVote::NoVote
+    }
+}
+
+async fn run_health_check_attempts(
+    client: &Client,
+    base_url: &str,
+    check: &EndpointHealthCheckConfig,
+    api_key: &str,
+    timeout: Duration,
+    retries: u32,
+) -> HealthVote {
+    let health_url = resolve_health_check_url(base_url, check);
+    let mut saw_negative_vote = false;
+
+    for attempt in 0..=retries {
+        match client
+            .get(&health_url)
+            .bearer_auth(api_key)
+            .timeout(timeout)
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => return HealthVote::Healthy,
+            Ok(_) => {
+                saw_negative_vote = true;
+            }
+            Err(error) => {
+                if !(error.is_timeout() && check.timeout_is_no_vote) {
                     saw_negative_vote = true;
-                    if endpoint_health.fail_on_first {
-                        break;
-                    }
                 }
             }
         }
@@ -728,9 +850,80 @@ fn resolve_health_check_url(base_url: &str, check: &EndpointHealthCheckConfig) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+    use std::sync::atomic::AtomicUsize;
 
     fn health_check_wrapper() -> Arc<HttpClientWrapper> {
         HttpClientWrapper::new(1, None).expect("test health-check client wrapper should build")
+    }
+
+    async fn start_health_test_server() -> String {
+        async fn healthy() -> impl IntoResponse {
+            (StatusCode::OK, "ok")
+        }
+
+        async fn unhealthy() -> impl IntoResponse {
+            (StatusCode::SERVICE_UNAVAILABLE, "unhealthy")
+        }
+
+        let app = Router::new()
+            .route("/health", get(healthy))
+            .route("/health/deep", get(unhealthy));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let addr = listener
+            .local_addr()
+            .expect("listener should have local addr");
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("health test server should stay up");
+        });
+
+        format!("http://{}", addr)
+    }
+
+    async fn start_flaky_health_test_server(failures_before_success: usize) -> String {
+        let remaining_failures = Arc::new(AtomicUsize::new(failures_before_success));
+
+        let app = Router::new().route(
+            "/health/flaky",
+            get({
+                let remaining_failures = Arc::clone(&remaining_failures);
+                move || {
+                    let remaining_failures = Arc::clone(&remaining_failures);
+                    async move {
+                        let previous = remaining_failures.fetch_update(
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                            |current| current.checked_sub(1),
+                        );
+                        match previous {
+                            Ok(_) => (StatusCode::SERVICE_UNAVAILABLE, "unhealthy").into_response(),
+                            Err(_) => (StatusCode::OK, "ok").into_response(),
+                        }
+                    }
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let addr = listener
+            .local_addr()
+            .expect("listener should have local addr");
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("flaky health test server should stay up");
+        });
+
+        format!("http://{}", addr)
     }
 
     #[test]
@@ -842,6 +1035,75 @@ mod tests {
 
         let selected = pool.select_endpoint(&[]).unwrap();
         assert_ne!(selected.endpoint_index, 0);
+    }
+
+    #[test]
+    fn test_endpoint_health_requires_two_consecutive_failures_to_mark_unhealthy() {
+        let pool = EndpointPool::new(EndpointPoolConfig::new(
+            vec!["https://a.example.com".to_string()],
+            health_check_wrapper(),
+        ))
+        .expect("pool should be valid");
+
+        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
+
+        pool.apply_health_vote(0, HealthVote::Unhealthy);
+        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
+
+        pool.apply_health_vote(0, HealthVote::Unhealthy);
+        assert_eq!(pool.health_snapshot().endpoints[0].healthy, false);
+
+        pool.apply_health_vote(0, HealthVote::Healthy);
+        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
+    }
+
+    #[tokio::test]
+    async fn test_deep_health_failure_overrides_shallow_success() {
+        let base_url = start_health_test_server().await;
+        let client = reqwest::Client::new();
+        let endpoint_health = EndpointHealthConfig {
+            checks: vec![
+                EndpointHealthCheckConfig::relative("/health".to_string()),
+                EndpointHealthCheckConfig::relative("/health/deep".to_string()),
+            ],
+            fail_on_first: false,
+        };
+
+        let vote = check_endpoint_health(
+            &client,
+            &base_url,
+            &endpoint_health,
+            "test-api-key",
+            Duration::from_secs(1),
+            0,
+        )
+        .await;
+
+        assert_eq!(vote, HealthVote::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_retry_succeeds_on_later_attempt() {
+        let base_url = start_flaky_health_test_server(1).await;
+        let client = reqwest::Client::new();
+        let endpoint_health = EndpointHealthConfig {
+            checks: vec![EndpointHealthCheckConfig::relative(
+                "/health/flaky".to_string(),
+            )],
+            fail_on_first: false,
+        };
+
+        let vote = check_endpoint_health(
+            &client,
+            &base_url,
+            &endpoint_health,
+            "test-api-key",
+            Duration::from_secs(1),
+            1,
+        )
+        .await;
+
+        assert_eq!(vote, HealthVote::Healthy);
     }
 
     #[test]
