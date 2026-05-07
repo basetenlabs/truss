@@ -1035,4 +1035,10 @@ class BasetenRemote(TrussRemote):
         )
 
     def deactivate_loop_deployment(self, base_model: str) -> None:
-        self._api.deactivate_loop_deployment(base_model)
+        deployments = self._api.list_loop_deployments()
+        match = next((d for d in deployments if d["base_model"] == base_model), None)
+        if match is None:
+            raise RemoteError(
+                f"No active Loops deployment found for base model {base_model!r}."
+            )
+        self._api.deactivate_loop_deployment(match["id"])
