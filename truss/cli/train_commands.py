@@ -931,7 +931,7 @@ def _run_view_checkpoints(
         raise click.UsageError("--run-id and --model-name cannot be combined.")
 
     if run_id or model_name:
-        # Loops checkpoints flow: backed by /v1/loops/checkpoints/search.
+        # Loops checkpoints flow: backed by GET /v1/loops/checkpoints.
         checkpoint_mod.view_loop_checkpoint_list(
             remote_provider=remote_provider,
             run_id=run_id,

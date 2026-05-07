@@ -687,8 +687,8 @@ def view_loop_checkpoint_list(
 ) -> None:
     """View Loops checkpoints filtered by run id or base model.
 
-    Backed by ``POST /v1/loops/checkpoints/search``. When ``checkpoint_name``
-    is provided, the function drills directly into the matching checkpoint's
+    Backed by ``GET /v1/loops/checkpoints``. When ``checkpoint_name`` is
+    provided, the function drills directly into the matching checkpoint's
     files via ``GET /v1/loops/checkpoints/<checkpoint_id>/files``.
     """
     viewer_factories: dict[str, type[CheckpointListViewer]] = {
