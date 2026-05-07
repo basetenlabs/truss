@@ -287,9 +287,6 @@ def _hydrate_deploy_config(
         deploy_config.checkpoint_details is not None
         and bool(deploy_config.checkpoint_details.checkpoints)
     )
-    # NB: ``trainer_checkpoint_ids`` is the on-disk Pydantic field name in
-    # truss-train. The user-facing surface (CLI flag, prose) uses the
-    # Loops-run vocabulary; only the field reference stays as-is.
     config_has_loop_checkpoints = deploy_config.checkpoint_details is not None and bool(
         deploy_config.checkpoint_details.trainer_checkpoint_ids
     )
@@ -421,9 +418,6 @@ def _prompt_user_for_loop_checkpoint_details(
 
     if not checkpoint_details:
         checkpoint_details = CheckpointList()
-    # NB: ``trainer_checkpoint_ids`` is the on-disk Pydantic field name in
-    # truss-train. Renaming it would be a breaking schema change for users
-    # with existing --config files; out of scope for TRN-749.
     checkpoint_details.trainer_checkpoint_ids = [
         name_to_pk[name] for name in selected_names
     ]
