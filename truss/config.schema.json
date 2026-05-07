@@ -186,7 +186,7 @@
           "items": {
             "type": "string"
           },
-          "title": "Trainer Checkpoint Ids",
+          "title": "Loop Checkpoint Ids",
           "type": "array"
         }
       },
