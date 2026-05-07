@@ -110,16 +110,16 @@ class TestTrainingJobWeightsAuthValidation:
         assert job.weights[0].auth is None
 
 
-class TestCheckpointListTrainerCheckpoints:
-    """truss-train CheckpointList: trainer_checkpoint_ids field, validator, to_truss_config."""
+class TestCheckpointListLoopCheckpoints:
+    """truss-train CheckpointList: loop_checkpoint_ids field, validator, to_truss_config."""
 
-    def test_trainer_checkpoint_ids_round_trip_to_truss_config(self):
+    def test_loop_checkpoint_ids_round_trip_to_truss_config(self):
         ckpt_list = CheckpointList(
-            base_model_id="Qwen/Qwen3-8B", trainer_checkpoint_ids=["tcp_a", "tcp_b"]
+            base_model_id="Qwen/Qwen3-8B", loop_checkpoint_ids=["tcp_a", "tcp_b"]
         )
         truss_ckpt_list = ckpt_list.to_truss_config()
         assert truss_ckpt_list.artifact_references == []
-        assert truss_ckpt_list.trainer_checkpoint_ids == ["tcp_a", "tcp_b"]
+        assert truss_ckpt_list.loop_checkpoint_ids == ["tcp_a", "tcp_b"]
         assert truss_ckpt_list.download_folder == ckpt_list.download_folder
 
     def test_artifact_references_round_trip_to_truss_config(self):
@@ -136,9 +136,9 @@ class TestCheckpointListTrainerCheckpoints:
         truss_ckpt_list = ckpt_list.to_truss_config()
         assert len(truss_ckpt_list.artifact_references) == 1
         assert truss_ckpt_list.artifact_references[0].training_job_id == "tj_abc"
-        assert truss_ckpt_list.trainer_checkpoint_ids == []
+        assert truss_ckpt_list.loop_checkpoint_ids == []
 
-    def test_mixing_checkpoints_and_trainer_ids_raises(self):
+    def test_mixing_checkpoints_and_loop_ids_raises(self):
         with pytest.raises(ValidationError, match="cannot mix"):
             CheckpointList(
                 checkpoints=[
@@ -148,5 +148,5 @@ class TestCheckpointListTrainerCheckpoints:
                         model_weight_format=ModelWeightsFormat.LORA,
                     )
                 ],
-                trainer_checkpoint_ids=["tcp_xyz"],
+                loop_checkpoint_ids=["tcp_xyz"],
             )
