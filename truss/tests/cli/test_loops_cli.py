@@ -257,19 +257,17 @@ def test_view_with_no_deployments_prints_friendly_message(mock_remote):
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
-    mock_remote.api.search_loop_runs.return_value = [
+    mock_remote.api.list_loop_runs.return_value = [
         {"run_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
     ]
     result = _invoke(["loops", "runs", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    mock_remote.api.search_loop_runs.assert_called_once_with(
-        run_id=None, base_model=None
-    )
+    mock_remote.api.list_loop_runs.assert_called_once_with(run_id=None, base_model=None)
     assert "trnr_xyz" in result.output
 
 
 def test_runs_view_with_run_id_filter(mock_remote):
-    mock_remote.api.search_loop_runs.return_value = [
+    mock_remote.api.list_loop_runs.return_value = [
         {"run_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
     ]
     result = _invoke(
@@ -277,13 +275,13 @@ def test_runs_view_with_run_id_filter(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    mock_remote.api.search_loop_runs.assert_called_once_with(
+    mock_remote.api.list_loop_runs.assert_called_once_with(
         run_id="trnr_xyz", base_model=None
     )
 
 
 def test_runs_view_with_model_name_filter(mock_remote):
-    mock_remote.api.search_loop_runs.return_value = []
+    mock_remote.api.list_loop_runs.return_value = []
     result = _invoke(
         [
             "loops",
@@ -297,7 +295,7 @@ def test_runs_view_with_model_name_filter(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    mock_remote.api.search_loop_runs.assert_called_once_with(
+    mock_remote.api.list_loop_runs.assert_called_once_with(
         run_id=None, base_model="Qwen/Qwen3-8B"
     )
     assert "No Loops runs found" in result.output

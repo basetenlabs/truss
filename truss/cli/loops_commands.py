@@ -169,7 +169,7 @@ def view_loop_runs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    runs = remote_provider.api.search_loop_runs(run_id=run_id, base_model=model_name)
+    runs = remote_provider.api.list_loop_runs(run_id=run_id, base_model=model_name)
     _render_loop_runs(runs)
 
 
