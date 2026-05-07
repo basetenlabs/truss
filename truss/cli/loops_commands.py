@@ -110,7 +110,7 @@ def deactivate_loop_deployment(
     console.print(f"Loop deployment for {base_model} deactivated.", style="green")
 
 
-def _poll_until_healthy(health_url: str, auth_header: dict) -> None:
+def _poll_until_healthy(health_url: str, auth_header: dict[str, str]) -> None:
     """Poll health_url until it returns HTTP 200 or the timeout expires."""
     deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
