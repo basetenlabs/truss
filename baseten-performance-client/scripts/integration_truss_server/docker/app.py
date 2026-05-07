@@ -228,7 +228,7 @@ async def health(response: Response) -> dict[str, object]:
     }
 
 
-@app.post("/v1/embeddings")
+@app.post("/v1/embeddings", response_model=None)
 async def embeddings(
     request: EmbeddingsRequest, response: Response
 ) -> dict[str, object] | JSONResponse:
