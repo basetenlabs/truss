@@ -537,36 +537,7 @@ def deploy_checkpoints(
     dry_run: bool,
     truss_config_output_dir: Optional[str],
 ):
-    """
-    Deploy a LoRA checkpoint via vLLM.
-
-    Prefer ``truss checkpoints deploy`` going forward; this alias remains
-    for one release while users migrate.
-    """
-    _run_deploy_checkpoints(
-        project_id=project_id,
-        project=project,
-        job_id=job_id,
-        run_id=run_id,
-        config=config,
-        remote=remote,
-        dry_run=dry_run,
-        truss_config_output_dir=truss_config_output_dir,
-    )
-
-
-def _run_deploy_checkpoints(
-    project_id: Optional[str],
-    project: Optional[str],
-    job_id: Optional[str],
-    run_id: Optional[str],
-    config: Optional[str],
-    remote: Optional[str],
-    dry_run: bool,
-    truss_config_output_dir: Optional[str],
-) -> None:
-    """Shared implementation for ``truss train deploy_checkpoints`` and
-    ``truss checkpoints deploy``."""
+    """Deploy a LoRA checkpoint via vLLM."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -882,66 +853,13 @@ def list_checkpoints(
     order: str,
     output_format: str,
 ):
-    """List checkpoints for a training job.
-
-    Prefer ``truss checkpoints view`` going forward; this alias remains
-    for one release while users migrate.
-    """
-    _run_view_checkpoints(
-        remote=remote,
-        project_id=project_id,
-        project=project,
-        job_id=job_id,
-        run_id=None,
-        model_name=None,
-        checkpoint_name=checkpoint_name,
-        sort=sort,
-        order=order,
-        output_format=output_format,
-    )
-
-
-def _run_view_checkpoints(
-    remote: Optional[str],
-    project_id: Optional[str],
-    project: Optional[str],
-    job_id: Optional[str],
-    run_id: Optional[str],
-    model_name: Optional[str],
-    checkpoint_name: Optional[str],
-    sort: str,
-    order: str,
-    output_format: str,
-) -> None:
-    """Shared implementation for ``truss train checkpoints list`` and
-    ``truss checkpoints view``."""
+    """List checkpoints for a training job."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-
-    if (run_id or model_name) and (project_id or project or job_id):
-        raise click.UsageError(
-            "--run-id / --model-name cannot be combined with --project, "
-            "--project-id, or --job-id."
-        )
-    if run_id and model_name:
-        raise click.UsageError("--run-id and --model-name cannot be combined.")
-
-    if run_id or model_name:
-        # Loops checkpoints flow: backed by GET /v1/loops/checkpoints.
-        checkpoint_mod.view_loop_checkpoint_list(
-            remote_provider=remote_provider,
-            run_id=run_id,
-            base_model=model_name,
-            sort_by=sort,
-            order=order,
-            output_format=output_format,
-            checkpoint_name=checkpoint_name,
-        )
-        return
 
     project_id = _maybe_resolve_project_id_from_id_or_name(
         remote_provider, project_id=project_id, project=project
