@@ -1023,14 +1023,11 @@ class BasetenRemote(TrussRemote):
     def upsert_training_project(self, training_project, team_id=None):
         return self._api.upsert_training_project(training_project, team_id=team_id)
 
-    def get_trainer_session(self, session_id):
-        return self._api.get_trainer_session(session_id)
+    def create_loop_session(self, training_project_id=None):
+        return self._api.create_loop_session(training_project_id=training_project_id)
 
-    def create_trainer_session(self, training_project_id=None):
-        return self._api.create_trainer_session(training_project_id=training_project_id)
-
-    def create_trainer_server(self, session_id, base_model, seed=None):
-        return self._api.create_trainer_server(
+    def create_loop_run(self, session_id, base_model, seed=None):
+        return self._api.create_loop_run(
             session_id=session_id, base_model=base_model, seed=seed
         )
 
