@@ -1,7 +1,7 @@
 use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
-use crate::endpoint_routing::EndpointPool;
+use crate::endpoint_routing::EndpointRouter;
 use crate::errors::ClientError;
 use crate::http::*;
 use std::sync::atomic::AtomicUsize;
@@ -199,8 +199,8 @@ pub struct RequestProcessingConfig {
     /// Extra headers to include with all requests
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
 
-    /// Optional client-level endpoint router for primary/secondary routing.
-    pub(crate) endpoint_pool: Option<Arc<EndpointPool>>,
+    /// Client-level endpoint router for single or pooled routing.
+    pub(crate) endpoint_router: Arc<EndpointRouter>,
 }
 
 impl RequestProcessingConfig {
@@ -420,7 +420,7 @@ impl RequestProcessingConfig {
             max_concurrent_requests,
             batch_size,
             max_chars_per_request,
-            base_url,
+            base_url: base_url.clone(),
             timeout: Duration::from_secs_f64(timeout_s),
             total_timeout: pref.total_timeout_s.map(Duration::from_secs_f64),
             hedge_delay: hedge_delay.map(Duration::from_secs_f64),
@@ -433,7 +433,7 @@ impl RequestProcessingConfig {
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
             extra_headers: pref.extra_headers.clone(),
-            endpoint_pool: None,
+            endpoint_router: EndpointRouter::single(base_url),
         })
     }
 
@@ -475,8 +475,8 @@ impl RequestProcessingConfig {
         self.customer_request_id.new_request(batch_index)
     }
 
-    pub(crate) fn with_endpoint_pool(mut self, endpoint_pool: Option<Arc<EndpointPool>>) -> Self {
-        self.endpoint_pool = endpoint_pool;
+    pub(crate) fn with_endpoint_router(mut self, endpoint_router: Arc<EndpointRouter>) -> Self {
+        self.endpoint_router = endpoint_router;
         self
     }
 
@@ -485,13 +485,13 @@ impl RequestProcessingConfig {
         original_url: &str,
         attempted_endpoint_indices: &[usize],
     ) -> Result<(String, usize), ClientError> {
-        self.endpoint_pool
-            .as_ref()
-            .map(|pool| {
-                pool.ensure_health_worker_started(&self.api_key_primary);
-                pool.select_attempt_url(&self.base_url, original_url, attempted_endpoint_indices)
-            })
-            .unwrap_or_else(|| Ok((original_url.to_string(), 0)))
+        self.endpoint_router
+            .ensure_health_worker_started(&self.api_key_primary);
+        self.endpoint_router.select_attempt_url(
+            &self.base_url,
+            original_url,
+            attempted_endpoint_indices,
+        )
     }
 
     pub(crate) fn select_hedge_url(
@@ -499,13 +499,10 @@ impl RequestProcessingConfig {
         original_url: &str,
         original_endpoint_index: usize,
     ) -> Result<String, ClientError> {
-        self.endpoint_pool
-            .as_ref()
-            .map(|pool| {
-                pool.ensure_health_worker_started(&self.api_key_primary);
-                pool.select_hedge_url(&self.base_url, original_url, original_endpoint_index)
-            })
-            .unwrap_or_else(|| Ok(original_url.to_string()))
+        self.endpoint_router
+            .ensure_health_worker_started(&self.api_key_primary);
+        self.endpoint_router
+            .select_hedge_url(&self.base_url, original_url, original_endpoint_index)
     }
 }
 

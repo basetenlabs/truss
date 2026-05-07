@@ -1,6 +1,6 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
-use crate::endpoint_routing::EndpointPool;
+use crate::endpoint_routing::{EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
@@ -177,7 +177,7 @@ pub struct PerformanceClientCore {
     /// be modified directly.
     pub client_wrapper: Arc<HttpClientWrapper>,
 
-    endpoint_pool: Option<Arc<EndpointPool>>,
+    endpoint_router: Arc<EndpointRouter>,
 }
 
 impl PerformanceClientCore {
@@ -207,16 +207,16 @@ impl PerformanceClientCore {
             );
         }
 
-        let base_url = endpoint_pool
-            .as_ref()
-            .map(|pool| pool.primary_url().to_string())
-            .unwrap_or(base_url);
+        let endpoint_router = endpoint_pool
+            .map(EndpointRouter::pooled)
+            .unwrap_or_else(|| EndpointRouter::single(base_url.clone()));
+        let base_url = endpoint_router.primary_url().to_string();
 
         let client = PerformanceClientCore {
             api_key,
             base_url: base_url.into(),
             client_wrapper,
-            endpoint_pool,
+            endpoint_router,
         };
 
         Ok(client)
@@ -562,7 +562,7 @@ impl PerformanceClientCore {
                 texts.len(),
                 self.api_key.clone(),
             )?
-            .with_endpoint_pool(self.endpoint_pool.clone());
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -620,7 +620,7 @@ impl PerformanceClientCore {
                 texts.len(),
                 self.api_key.clone(),
             )?
-            .with_endpoint_pool(self.endpoint_pool.clone());
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -689,7 +689,7 @@ impl PerformanceClientCore {
                 inputs.len(),
                 self.api_key.clone(),
             )?
-            .with_endpoint_pool(self.endpoint_pool.clone());
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
@@ -751,7 +751,7 @@ impl PerformanceClientCore {
                 total_payloads,
                 self.api_key.clone(),
             )?
-            .with_endpoint_pool(self.endpoint_pool.clone());
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();

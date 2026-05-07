@@ -259,6 +259,76 @@ pub(crate) struct EndpointSelection {
     pub base_url: Arc<str>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SingleEndpoint {
+    base_url: Arc<str>,
+}
+
+impl SingleEndpoint {
+    pub(crate) fn new(base_url: impl Into<Arc<str>>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum EndpointRouter {
+    Single(SingleEndpoint),
+    Pool(Arc<EndpointPool>),
+}
+
+impl EndpointRouter {
+    pub(crate) fn single(base_url: impl Into<Arc<str>>) -> Arc<Self> {
+        Arc::new(Self::Single(SingleEndpoint::new(base_url)))
+    }
+
+    pub(crate) fn pooled(endpoint_pool: Arc<EndpointPool>) -> Arc<Self> {
+        Arc::new(Self::Pool(endpoint_pool))
+    }
+
+    pub(crate) fn primary_url(&self) -> &str {
+        match self {
+            EndpointRouter::Single(endpoint) => endpoint.base_url.as_ref(),
+            EndpointRouter::Pool(pool) => pool.primary_url(),
+        }
+    }
+
+    pub(crate) fn ensure_health_worker_started(&self, api_key: &str) {
+        if let EndpointRouter::Pool(pool) = self {
+            pool.ensure_health_worker_started(api_key);
+        }
+    }
+
+    pub(crate) fn select_attempt_url(
+        &self,
+        configured_base_url: &str,
+        original_url: &str,
+        excluded_indices: &[usize],
+    ) -> Result<(String, usize), ClientError> {
+        match self {
+            EndpointRouter::Single(_) => Ok((original_url.to_string(), 0)),
+            EndpointRouter::Pool(pool) => {
+                pool.select_attempt_url(configured_base_url, original_url, excluded_indices)
+            }
+        }
+    }
+
+    pub(crate) fn select_hedge_url(
+        &self,
+        configured_base_url: &str,
+        original_url: &str,
+        original_endpoint_index: usize,
+    ) -> Result<String, ClientError> {
+        match self {
+            EndpointRouter::Single(_) => Ok(original_url.to_string()),
+            EndpointRouter::Pool(pool) => {
+                pool.select_hedge_url(configured_base_url, original_url, original_endpoint_index)
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct EndpointPool {
     endpoints: Vec<ManagedEndpoint>,
