@@ -274,14 +274,14 @@ class CheckpointList(custom_types.SafeModelNoExtra):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
-    trainer_checkpoint_ids: List[str] = []
+    loops_checkpoint_ids: List[str] = []
 
     @model_validator(mode="after")
     def _no_mixing(self) -> "CheckpointList":
-        if self.checkpoints and self.trainer_checkpoint_ids:
+        if self.checkpoints and self.loops_checkpoint_ids:
             raise ValueError(
                 "checkpoint_details cannot mix checkpoints (training job "
-                "checkpoints) and trainer_checkpoint_ids (trainer checkpoints) "
+                "checkpoints) and loops_checkpoint_ids (trainer checkpoints) "
                 "in the same deploy"
             )
         return self
@@ -293,7 +293,7 @@ class CheckpointList(custom_types.SafeModelNoExtra):
         return truss_config.CheckpointList(
             download_folder=self.download_folder,
             artifact_references=artifact_references,
-            trainer_checkpoint_ids=self.trainer_checkpoint_ids,
+            loops_checkpoint_ids=self.loops_checkpoint_ids,
         )
 
 
