@@ -676,6 +676,87 @@ def _select_checkpoint(checkpoints: list[dict], job_id: str) -> Optional[str]:
     return None
 
 
+def view_loop_checkpoint_list(
+    remote_provider: BasetenRemote,
+    run_id: Optional[str],
+    base_model: Optional[str],
+    sort_by: str = SORT_BY_CREATED,
+    order: str = SORT_ORDER_ASC,
+    output_format: str = OUTPUT_FORMAT_CLI_TABLE,
+    checkpoint_name: Optional[str] = None,
+) -> None:
+    """View Loops checkpoints filtered by run id or base model.
+
+    Backed by ``GET /v1/loops/checkpoints``. When ``checkpoint_name`` is
+    provided, the function drills directly into the matching checkpoint's
+    files via ``GET /v1/loops/checkpoints/<checkpoint_id>/files``.
+    """
+    viewer_factories: dict[str, type[CheckpointListViewer]] = {
+        OUTPUT_FORMAT_CSV: CSVCheckpointViewer,
+        OUTPUT_FORMAT_JSON: JSONCheckpointViewer,
+        OUTPUT_FORMAT_CLI_TABLE: CLITableCheckpointViewer,
+    }
+    viewer_cls = viewer_factories.get(output_format)
+    if not viewer_cls:
+        raise ValueError(f"Invalid output format: {output_format}")
+    viewer = viewer_cls()
+
+    label = run_id or (base_model or "")
+    raw = remote_provider.api.list_loop_checkpoints(
+        run_id=run_id, base_model=base_model
+    )
+    checkpoints = raw.get("checkpoints", [])
+
+    reverse = order == SORT_ORDER_DESC
+    sort_key = _get_sort_key(sort_by)
+    checkpoints.sort(key=sort_key, reverse=reverse)
+
+    if checkpoint_name:
+        match = next(
+            (c for c in checkpoints if c.get("checkpoint_id") == checkpoint_name), None
+        )
+        if not match:
+            console.print(
+                f"No checkpoint named {checkpoint_name!r} found for {label!r}.",
+                style="yellow",
+            )
+            return
+        with console.status("Fetching checkpoint files...", spinner="dots"):
+            all_files = remote_provider.api.list_loop_checkpoint_files(
+                checkpoint_id=match["id"]
+            )
+        if not all_files:
+            console.print("No files found for checkpoint.", style="yellow")
+            return
+        checkpoint_lookup = {
+            checkpoint_name: {
+                "checkpoint_type": match.get("checkpoint_type", ""),
+                "base_model": match.get("base_model", ""),
+                "size_bytes": match.get("size_bytes", 0),
+            }
+        }
+        # ``_explore_files`` keys off ``relative_file_name`` for the
+        # ``<ckpt>/<rest>`` directory layout. The Loops files endpoint
+        # returns flat per-checkpoint paths; rewrite them so the explorer
+        # treats them as living under ``<checkpoint_name>/<path>``.
+        prefixed_files = []
+        for f in all_files:
+            entry = dict(f)
+            rel = entry.get("relative_file_name", "")
+            if not rel.startswith(f"{checkpoint_name}/"):
+                entry["relative_file_name"] = f"{checkpoint_name}/{rel}".rstrip("/")
+            prefixed_files.append(entry)
+        _explore_files(
+            prefixed_files, label, checkpoint_lookup, initial_path=checkpoint_name
+        )
+        return
+
+    if not checkpoints:
+        viewer.output_no_checkpoints_message(label)
+        return
+    viewer.output_checkpoints(checkpoints, label)
+
+
 def view_checkpoint_list(
     remote_provider: BasetenRemote,
     project_id: str,

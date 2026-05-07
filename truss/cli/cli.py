@@ -79,7 +79,7 @@ click.rich_click.COMMAND_GROUPS = {
         },
         {
             "name": "Loops",
-            "commands": ["loops"],
+            "commands": ["loops", "checkpoints"],
             "table_styles": {"row_styles": ["cyan"]},  # type: ignore
         },
     ]
@@ -1502,6 +1502,7 @@ def kill_all() -> None:
 # These imports are needed to register the subcommands
 from truss.cli import (  # noqa: F401
     chains_commands,
+    checkpoints_commands,
     loops_commands,
     migrate_commands,
     ssh_commands,
