@@ -13,6 +13,7 @@ from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_service.fetch_auth_header()
+        headers = with_user_agent(self._auth_service.fetch_auth_header())
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
@@ -1174,4 +1175,31 @@ class BasetenApi:
     def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
+        )
+
+    def get_trainer_session(self, session_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/trainer_sessions/{session_id}")
+        return resp_json["session"]
+
+    def create_trainer_session(self, training_project_id: Optional[str] = None) -> dict:
+        body: Dict[str, Any] = {}
+        if training_project_id is not None:
+            body["training_project_id"] = training_project_id
+        resp_json = self._rest_api_client.post("v1/trainer_sessions", body=body)
+        return resp_json["session"]
+
+    def create_trainer_server(
+        self, session_id: str, base_model: str, seed: Optional[int] = None
+    ) -> dict:
+        body: Dict[str, Any] = {"model": base_model}
+        if seed is not None:
+            body["seed"] = seed
+        resp_json = self._rest_api_client.post(
+            f"v1/trainer_sessions/{session_id}/trainers", body=body
+        )
+        return resp_json["trainer_server"]
+
+    def deactivate_loop_deployment(self, base_model: str) -> None:
+        self._rest_api_client.post(
+            "v1/loops/deployments/deactivate", body={"base_model": base_model}
         )

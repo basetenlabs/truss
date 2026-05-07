@@ -7,7 +7,7 @@ import re
 import traceback
 from collections.abc import Awaitable
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 import httpx
 from endpoints import control_app
@@ -25,10 +25,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 SANITIZED_EXCEPTION_FRAMES = 2
 
 
-# NB(nikhil): SanitizedExceptionMiddleware will reduce the noise of control server stack frames, since
-# users often complain about the verbosity. Now, if any exceptions are explicitly raised during a proxied
-# request, we'll log the last two stack frames which should be sufficient for debugging while significantly
-# cutting down the volume.
+# NB(nikhil): SanitizedExceptionMiddleware reduces the noise of control server
+# stack frames, since users often complain about the verbosity. The headline
+# line carries the request, exception type, and message, so the actual error
+# is visible without a wall of frames. A small number of trailing frames from
+# the full exception chain (so __cause__ is preserved) follow.
 class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, num_frames: int = SANITIZED_EXCEPTION_FRAMES):
         super().__init__(app)
@@ -47,8 +48,14 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
                     {"error": str(exc)}, status_code=http.HTTPStatus.BAD_GATEWAY.value
                 )
 
-            sanitized_traceback = self._create_sanitized_traceback(exc)
-            request.app.state.logger.error(sanitized_traceback)
+            # Defensive: the error handler itself must not crash. _format_error
+            # touches str(exc) and the traceback chain, both of which can in
+            # principle raise on pathological exceptions.
+            try:
+                formatted = self._format_error(request, exc)
+            except Exception:
+                formatted = f"Unhandled control server exception: {type(exc).__name__}"
+            request.app.state.logger.error(formatted)
 
             if isinstance(exc, PatchApplicatonError):
                 error_type = _camel_to_snake_case(type(exc).__name__)
@@ -59,11 +66,47 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
                     status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR.value,
                 )
 
-    def _create_sanitized_traceback(self, error: Exception) -> str:
-        tb_lines = traceback.format_tb(error.__traceback__)
-        if tb_lines and self.num_frames > 0:
-            return "".join(tb_lines[-self.num_frames :])
-        return f"{type(error).__name__}: {error}"
+    def _format_error(self, request: Request, error: Exception) -> str:
+        # Walk the exception chain outermost-to-innermost, emitting one
+        # "Caused by:" headline per cause plus a few frames each. This
+        # preserves the root-cause type and message (which Python would
+        # otherwise bury at the top of a many-screen traceback) while keeping
+        # the log entry compact. The walk is iterative so we don't hit
+        # Python's recursion limit, and `seen` cuts cycles by exception
+        # identity. Like Python's traceback module, chain depth itself is
+        # unbounded in principle; in practice real chains are <5 deep.
+        lines = [
+            f"{request.method} {request.url.path}: {type(error).__name__}: {error}"
+        ]
+        seen: set[int] = set()
+        current: Optional[BaseException] = error
+        is_root = True
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if not is_root:
+                lines.append(f"Caused by: {type(current).__name__}: {current}")
+            lines.extend(self._format_frames(current.__traceback__))
+            # Mirror Python's own rules: prefer __cause__; otherwise __context__
+            # is shown unless explicitly suppressed (raise X from None).
+            if current.__cause__ is not None:
+                current = current.__cause__
+            elif not current.__suppress_context__:
+                current = current.__context__
+            else:
+                current = None
+            is_root = False
+        return "\n".join(lines)
+
+    def _format_frames(self, tb) -> list[str]:
+        if self.num_frames <= 0 or tb is None:
+            return []
+        # Manual formatting avoids PEP 657 caret/squiggle markers that
+        # traceback.format_list adds in Python 3.11+.
+        frames = traceback.extract_tb(tb)[-self.num_frames :]
+        out: list[str] = []
+        for f in frames:
+            out.append(f'  File "{f.filename}", line {f.lineno}, in {f.name}')
+        return out
 
 
 def create_app(base_config: dict):
@@ -105,6 +148,9 @@ def create_app(base_config: dict):
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
+        # Fire-and-forget: async_inference_server_startup_flow catches and logs
+        # its own exceptions, so the task will never raise into asyncio's
+        # "Task exception was never retrieved" handler.
         asyncio.create_task(
             async_inference_server_startup_flow(
                 app_state.inference_server_controller, app_logger
