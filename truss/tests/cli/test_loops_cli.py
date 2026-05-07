@@ -126,7 +126,7 @@ def test_push_times_out_waiting_for_health(mock_remote):
 
     assert result.exit_code != 0
     assert "Timed out" in result.output
-    assert "healthy" in result.output
+    assert "ready" in result.output
 
 
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):

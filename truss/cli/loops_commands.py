@@ -121,6 +121,6 @@ def _poll_until_healthy(health_url: str, auth_header: dict) -> None:
             pass
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise click.ClickException(
-        f"Timed out waiting for {health_url} to become healthy after"
+        f"Timed out waiting for {health_url} to become ready after"
         f" {_READY_TIMEOUT_SECONDS}s."
     )
