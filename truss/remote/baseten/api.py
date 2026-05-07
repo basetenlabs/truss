@@ -1219,22 +1219,18 @@ class BasetenApi:
     ) -> List[Dict[str, str]]:
         """Fetch all presigned URLs for files under a Loops checkpoint."""
         all_presigned_urls: List[Dict[str, str]] = []
-        page_token: Optional[int] = 0
+        page_token: Optional[str] = None
         max_iterations = 1000
         for _ in range(max_iterations):
             params: Dict[str, str] = {"page_size": str(page_size)}
-            if page_token is not None:
-                params["page_token"] = str(page_token)
+            if page_token:
+                params["page_token"] = page_token
             response = self._rest_api_client.get(
                 f"v1/loops/checkpoints/{checkpoint_id}/files", url_params=params
             )
             all_presigned_urls.extend(response.get("presigned_urls", []))
-            next_token = response.get("next_page_token")
-            if next_token is None:
-                break
-            try:
-                page_token = int(next_token)
-            except (TypeError, ValueError):
+            page_token = response.get("next_page_token")
+            if not page_token:
                 break
         else:
             logging.error(
