@@ -10,8 +10,7 @@ It is intentionally small:
 - `POST /v1/embeddings`
 
 The testing routes are controlled by UTC time windows from environment
-variables so you can deploy multiple instances with staggered health and
-serving behavior.
+variables so you can deploy multiple instances with staggered serving behavior.
 
 ## What It Is For
 
@@ -22,12 +21,12 @@ Example rollout:
 
 - server A serves requests during `0-30` seconds of each minute
 - server B serves requests during `30-60` seconds of each minute
-- server A marks itself unhealthy slightly before it stops serving
-- server B marks itself healthy slightly before it starts serving
+- `/health` follows the serve window directly
+- `/v1/embeddings` keeps accepting for a short trailing grace period
 
 That lets you verify:
 
-- health checks move traffic away before requests start failing
+- health checks move traffic away quickly enough to avoid most request failures
 - endpoint-pool failover keeps finding a healthy endpoint
 - request routing does not produce user-visible `400` responses during handoff
 
@@ -66,17 +65,14 @@ All windows are interpreted in UTC.
 - `INTEGRATION_SERVER_NAME`
   Value exposed in response headers. Useful for debugging which deployment
   answered a request.
-- `HEALTH_MINUTES_UTC`
-  Minute-of-hour window set for `/health`. Default: `*`
-- `HEALTH_SECONDS_UTC`
-  Second-of-minute window set for `/health`. Default: `*`
 - `SERVE_MINUTES_UTC`
-  Minute-of-hour window set for `/v1/embeddings`. Default: `*`
+  Minute-of-hour window set for `/health` and `/v1/embeddings`. Default: `*`
 - `SERVE_SECONDS_UTC`
-  Second-of-minute window set for `/v1/embeddings`. Default: `*`
+  Second-of-minute window set for `/health` and `/v1/embeddings`. Default: `*`
 - `SERVE_GRACE_PERIOD_S`
   Continue accepting `/v1/embeddings` requests for this many seconds after the
-  serve window turns inactive. Default: `0`
+  serve window turns inactive. `/health` does not use this grace period.
+  Default: `3`
 - `EMBEDDING_DIM`
   Fixed embedding dimension returned by the server. Default: `8`
 - `RESPONSE_DELAY_MS`
@@ -94,22 +90,20 @@ Window format:
 ### Deployment A
 
 - `INTEGRATION_SERVER_NAME=window-a`
-- `HEALTH_SECONDS_UTC=0-25`
 - `SERVE_SECONDS_UTC=0-30`
-- `SERVE_GRACE_PERIOD_S=10`
+- `SERVE_GRACE_PERIOD_S=3`
 
 ### Deployment B
 
 - `INTEGRATION_SERVER_NAME=window-b`
-- `HEALTH_SECONDS_UTC=25-60`
 - `SERVE_SECONDS_UTC=30-60`
-- `SERVE_GRACE_PERIOD_S=10`
+- `SERVE_GRACE_PERIOD_S=3`
 
 This gives you:
 
 - A serves first half of the minute
 - B serves second half of the minute
-- health flips a bit earlier than serve handoff
+- `/health` tracks the current serve window
 - requests can still be accepted briefly while traffic drains away
 
 That buffer is useful because health checks are not instantaneous.
@@ -125,8 +119,8 @@ up even when the performance-client-visible `/health` route turns unhealthy.
 
 ### `GET /health`
 
-- returns `200` when the health window is active
-- returns `503` when the health window is inactive
+- returns `200` when the serve window is active
+- returns `503` when the serve window is inactive
 
 ### `POST /v1/embeddings`
 
@@ -153,7 +147,6 @@ From `docker/`:
 docker build -t integration-truss-server:local .
 docker run --rm -p 8000:8000 \
   -e INTEGRATION_SERVER_NAME=local \
-  -e HEALTH_SECONDS_UTC='0-25' \
   -e SERVE_SECONDS_UTC='0-30' \
   integration-truss-server:local
 ```

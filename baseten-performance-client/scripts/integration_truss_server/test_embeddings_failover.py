@@ -18,9 +18,9 @@ from baseten_performance_client import (
 )
 
 DEFAULT_ENDPOINT_URLS = [
-    "https://model-3ydyzel3.api.baseten.co/deployment/wnp8jg0/sync",
-    "https://model-3ydyzel3.api.baseten.co/deployment/wnpx071/sync",
-    "https://model-3ydyzel3.api.baseten.co/deployment/wom96gn/sync",
+    "https://model-3ydyzel3.api.baseten.co/deployment/w5dkpzv/sync", # window-a
+    "https://model-3ydyzel3.api.baseten.co/deployment/32pg0e1/sync", # window-b
+    "https://model-3ydyzel3.api.baseten.co/deployment/3yd9j1v/sync", # window-c
 ]
 
 
@@ -35,6 +35,13 @@ class Scenario:
 
 SCENARIOS = [
     Scenario(
+        name="unpinned_batch_size_1",
+        texts_per_operation=9,
+        batch_size=1,
+        max_concurrent_requests=9,
+        pin_initial_endpoint_once=False,
+    ),
+    Scenario(
         name="pinned_batch_size_1",
         texts_per_operation=9,
         batch_size=1,
@@ -47,13 +54,6 @@ SCENARIOS = [
         batch_size=3,
         max_concurrent_requests=6,
         pin_initial_endpoint_once=True,
-    ),
-    Scenario(
-        name="unpinned_batch_size_1",
-        texts_per_operation=9,
-        batch_size=1,
-        max_concurrent_requests=9,
-        pin_initial_endpoint_once=False,
     ),
     Scenario(
         name="unpinned_batch_size_3",
@@ -108,11 +108,11 @@ def build_client(api_key: str, http_version: int) -> PerformanceClient:
         client_wrapper=health_wrapper,
         endpoint_weights=[1.0, 1.0, 1.0],
         deployment_health_path="/health",
-        health_check_interval_s=2.0,
-        health_check_timeout_s=1.5,
+        health_check_interval_s=1.0,
+        health_check_timeout_s=1.0,
         health_check_retries=2,
         health_fail_on_first=False,
-        deployment_timeout_is_no_vote=True,
+        deployment_timeout_is_no_vote=False,
     )
 
     return PerformanceClient(

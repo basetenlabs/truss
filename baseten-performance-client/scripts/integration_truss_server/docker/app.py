@@ -65,35 +65,48 @@ def _contains(ranges: Iterable[range], value: int) -> bool:
 
 @dataclass(frozen=True)
 class WindowConfig:
-    minutes: tuple[range, ...]
-    seconds: tuple[range, ...]
+    active_seconds_into_hour: frozenset[int]
+
+    @classmethod
+    def from_env_specs(cls, minute_spec: str, second_spec: str) -> "WindowConfig":
+        minute_ranges = _parse_window_spec(minute_spec, 60)
+        second_ranges = _parse_window_spec(second_spec, 60)
+        return cls(
+            active_seconds_into_hour=frozenset(
+                minute * 60 + second
+                for minute in range(60)
+                if _contains(minute_ranges, minute)
+                for second in range(60)
+                if _contains(second_ranges, second)
+            )
+        )
+
+    @staticmethod
+    def _seconds_into_hour(minute_utc: int, second_utc: int) -> int:
+        return minute_utc * 60 + second_utc
 
     def is_active(self, minute_utc: int, second_utc: int) -> bool:
-        return _contains(self.minutes, minute_utc) and _contains(
-            self.seconds, second_utc
+        return (
+            self._seconds_into_hour(minute_utc, second_utc)
+            in self.active_seconds_into_hour
         )
 
     def is_active_with_grace(
         self, minute_utc: int, second_utc: int, grace_seconds: int
     ) -> bool:
-        if self.is_active(minute_utc, second_utc):
-            return True
         if grace_seconds <= 0:
-            return False
+            return self.is_active(minute_utc, second_utc)
 
-        seconds_into_hour = minute_utc * 60 + second_utc
-        for delta in range(1, grace_seconds + 1):
-            prior_seconds_into_hour = (seconds_into_hour - delta) % 3600
-            prior_minute_utc, prior_second_utc = divmod(prior_seconds_into_hour, 60)
-            if self.is_active(prior_minute_utc, prior_second_utc):
-                return True
-        return False
+        seconds_into_hour = self._seconds_into_hour(minute_utc, second_utc)
+        return any(
+            (seconds_into_hour - delta) % 3600 in self.active_seconds_into_hour
+            for delta in range(grace_seconds + 1)
+        )
 
 
 @dataclass(frozen=True)
 class AppConfig:
     server_name: str
-    health_window: WindowConfig
     serve_window: WindowConfig
     embedding_dim: int
     response_delay_ms: int
@@ -120,18 +133,14 @@ def _load_config() -> AppConfig:
 
     return AppConfig(
         server_name=server_name,
-        health_window=WindowConfig(
-            minutes=_parse_window_spec(os.environ.get("HEALTH_MINUTES_UTC", "*"), 60),
-            seconds=_parse_window_spec(os.environ.get("HEALTH_SECONDS_UTC", "*"), 60),
-        ),
-        serve_window=WindowConfig(
-            minutes=_parse_window_spec(os.environ.get("SERVE_MINUTES_UTC", "*"), 60),
-            seconds=_parse_window_spec(os.environ.get("SERVE_SECONDS_UTC", "*"), 60),
+        serve_window=WindowConfig.from_env_specs(
+            os.environ.get("SERVE_MINUTES_UTC", "*"),
+            os.environ.get("SERVE_SECONDS_UTC", "*"),
         ),
         embedding_dim=embedding_dim,
         response_delay_ms=response_delay_ms,
         serve_grace_period_s=_parse_int_env(
-            "SERVE_GRACE_PERIOD_S", default=0, minimum=0
+            "SERVE_GRACE_PERIOD_S", default=3, minimum=0
         ),
     )
 
@@ -181,8 +190,8 @@ async def always_healthy() -> dict[str, object]:
 @app.get("/health")
 async def health(response: Response) -> dict[str, object]:
     minute_utc, second_utc = _now_utc()
-    health_active = CONFIG.health_window.is_active(minute_utc, second_utc)
     serve_active = CONFIG.serve_window.is_active(minute_utc, second_utc)
+    health_active = serve_active
     serve_accepting = CONFIG.serve_window.is_active_with_grace(
         minute_utc, second_utc, CONFIG.serve_grace_period_s
     )
@@ -224,8 +233,8 @@ async def embeddings(
     request: EmbeddingsRequest, response: Response
 ) -> dict[str, object] | JSONResponse:
     minute_utc, second_utc = _now_utc()
-    health_active = CONFIG.health_window.is_active(minute_utc, second_utc)
     serve_active = CONFIG.serve_window.is_active(minute_utc, second_utc)
+    health_active = serve_active
     serve_accepting = CONFIG.serve_window.is_active_with_grace(
         minute_utc, second_utc, CONFIG.serve_grace_period_s
     )

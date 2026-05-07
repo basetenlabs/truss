@@ -2,7 +2,7 @@ model_name: performance-client-integration-truss-server
 model_metadata:
   example_model_input: { "model": "voyageai/voyage-4-nano", "input": [ "hi" ] }
 base_image:
-  image: baseten/performance-client-integration-truss-server:0.1.0
+  image: baseten/performance-client-integration-truss-server:0.1.1
 
 docker_server:
   start_command: python -m uvicorn app:app --host 0.0.0.0 --port 8000
@@ -30,32 +30,24 @@ environment_variables:
   #
   # Suggested deployment A:
   #   INTEGRATION_SERVER_NAME: window-a
-  #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 0-27
-  #   SERVE_MINUTES_UTC: *
-  #   SERVE_SECONDS_UTC: 0-30
-  #   SERVE_GRACE_PERIOD_S: 3
+  #   SERVE_MINUTES_UTC: "*"
+  #   SERVE_SECONDS_UTC: 5-35
+  #   SERVE_GRACE_PERIOD_S: 5
   #
   # Suggested deployment B:
   #   INTEGRATION_SERVER_NAME: window-b
-  #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 30-57
-  #   SERVE_MINUTES_UTC: *
-  #   SERVE_SECONDS_UTC: 30-60
-  #   SERVE_GRACE_PERIOD_S: 3
+  #   SERVE_MINUTES_UTC: "*"
+  #   SERVE_SECONDS_UTC: 20-50
+  #   SERVE_GRACE_PERIOD_S: 5
   #
   # Suggested deployment C:
   #   INTEGRATION_SERVER_NAME: window-c
-  #   HEALTH_MINUTES_UTC: *
-  #   HEALTH_SECONDS_UTC: 45-60,0-12
-  #   SERVE_MINUTES_UTC: *
+  #   SERVE_MINUTES_UTC: "*"
   #   SERVE_SECONDS_UTC: 45-60,0-15
-  #   SERVE_GRACE_PERIOD_S: 3
-  INTEGRATION_SERVER_NAME: window-c
-  HEALTH_MINUTES_UTC: "*"
-  HEALTH_SECONDS_UTC: 45-60,0-12
+  #   SERVE_GRACE_PERIOD_S: 5
+  INTEGRATION_SERVER_NAME: window-a
   SERVE_MINUTES_UTC: "*"
-  SERVE_SECONDS_UTC: 45-60,0-15
+  SERVE_SECONDS_UTC: 5-35
   SERVE_GRACE_PERIOD_S: 3
   EMBEDDING_DIM: "8"
   RESPONSE_DELAY_MS: "0"
