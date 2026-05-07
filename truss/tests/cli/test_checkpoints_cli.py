@@ -50,15 +50,25 @@ def _invoke(args, mock_remote):
         return runner.invoke(truss_cli, args)
 
 
-def _flatten(output: str) -> str:
-    """Collapse runs of whitespace (incl. newlines) so substring assertions
-    don't fail when ``rich_click`` wraps long error messages across lines.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+# Box-drawing characters rich_click uses to render error panels (lines,
+# corners). We strip them so substring assertions on the human-readable
+# message work regardless of panel wrapping.
+_BOX_CHARS = "│─╭╮╰╯├┤┬┴┼"
 
-    Locally with a wide terminal the message stays on one line; in CI
-    rich's width detection ignores ``COLUMNS`` in some setups and wraps
-    the message into a panel with embedded newlines and padding.
+
+def _flatten(output: str) -> str:
+    """Normalize ``CliRunner`` output for substring assertions.
+
+    ``rich_click`` renders error messages inside an ANSI-colored, box-drawn
+    panel. In CI the terminal width detection ignores ``COLUMNS`` in some
+    setups and wraps the error onto multiple panel rows, breaking naive
+    ``"foo" in result.output`` checks. Strip ANSI escapes + box-drawing
+    chars + collapse runs of whitespace so the underlying text is matchable.
     """
-    return re.sub(r"\s+", " ", output)
+    plain = _ANSI_RE.sub("", output)
+    plain = plain.translate({ord(c): " " for c in _BOX_CHARS})
+    return re.sub(r"\s+", " ", plain)
 
 
 def test_checkpoints_help_lists_subcommands():
