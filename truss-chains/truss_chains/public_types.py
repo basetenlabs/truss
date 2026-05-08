@@ -3,6 +3,7 @@ import enum
 import logging
 import pathlib
 import traceback
+import urllib.parse
 from collections.abc import AsyncIterator
 from typing import (
     Any,
@@ -727,15 +728,33 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
-def _to_websocket_scheme(url: str) -> str:
-    """Rewrite an http(s):// URL to ws(s)://. Raises if the scheme is unknown."""
+def _to_websocket_url(url: str) -> str:
+    """Rewrite an http(s):// predict URL to its ws(s):// WS counterpart.
+
+    Two transformations:
+
+    1. Scheme: ``http`` → ``ws``, ``https`` → ``wss``.
+    2. Path: terminal ``/run_remote`` → ``/websocket`` — chains' WS endpoints
+       are routed by api-gateway via that path suffix, while the matching HTTP
+       predict path uses ``/run_remote``. Other path shapes pass through
+       unchanged so this is also useful for standalone-model URLs whose paths
+       differ.
+
+    Raises ``ValueError`` if the scheme is unknown.
+    """
     if url.startswith("https://"):
-        return "wss://" + url[len("https://") :]
-    if url.startswith("http://"):
-        return "ws://" + url[len("http://") :]
-    raise ValueError(
-        f"Cannot convert to WebSocket scheme; expected http(s):// prefix: {url!r}"
-    )
+        ws_url = "wss://" + url[len("https://") :]
+    elif url.startswith("http://"):
+        ws_url = "ws://" + url[len("http://") :]
+    else:
+        raise ValueError(
+            f"Cannot convert to WebSocket scheme; expected http(s):// prefix: {url!r}"
+        )
+
+    if ws_url.endswith("/run_remote"):
+        ws_url = ws_url[: -len("/run_remote")] + "/websocket"
+
+    return ws_url
 
 
 class DeployedServiceDescriptor(custom_types.SafeModel):
@@ -781,37 +800,41 @@ class DeployedServiceDescriptor(custom_types.SafeModel):
 
     @property
     def ws_url(self) -> Optional[str]:
-        """``predict_url`` with the http(s):// scheme rewritten to ws(s)://.
-        ``None`` when ``predict_url`` is not set."""
+        """WebSocket URL derived from ``predict_url``: scheme swapped to
+        ws(s):// and terminal ``/run_remote`` rewritten to ``/websocket``
+        (the path api-gateway routes to its WS handler). ``None`` when
+        ``predict_url`` is not set. See ``_to_websocket_url``."""
         if self.predict_url is None:
             return None
-        return _to_websocket_scheme(self.predict_url)
+        return _to_websocket_url(self.predict_url)
 
     @property
     def internal_ws_url(self) -> Optional[str]:
-        """``internal_url.gateway_run_remote_url`` with the http(s):// scheme
-        rewritten to ws(s)://. ``None`` when ``internal_url`` is not set."""
+        """Cluster-local WS URL; ``None`` if ``internal_url`` unset. Uses the
+        chain hostname as netloc (not ``gateway_run_remote_url``'s host) — the
+        ``websockets`` lib emits Host from the URL netloc, so a Host override
+        can't be used to smuggle chain-host through like HTTP does."""
         if self.internal_url is None:
             return None
-        return _to_websocket_scheme(self.internal_url.gateway_run_remote_url)
+        rewritten = _to_websocket_url(self.internal_url.gateway_run_remote_url)
+        parsed = urllib.parse.urlparse(rewritten)
+        return parsed._replace(netloc=self.internal_url.hostname).geturl()
 
     def with_auth_headers(self, api_key: str) -> dict[str, str]:
-        """Build the headers a ``StubBase`` would send for outbound calls:
-
-        * ``Authorization: Api-Key {api_key}`` — always.
-        * ``Host: {internal_url.hostname}`` — only when ``internal_url`` is set,
-          so cluster-local routing matches the chain hostname.
-
-        ``api_key`` is typically sourced from
-        ``DeploymentContext.get_baseten_api_key()`` inside a ``ChainletBase`` or
-        from the standard Truss secrets API (``baseten_chain_api_key``) for raw
-        Trusses. The helper takes the key explicitly so it can be used outside
-        a chainlet context.
-        """
+        """Headers for *HTTP* sibling calls (against ``target_url``):
+        Authorization, plus ``Host: internal_url.hostname`` when set.
+        For WS, use :py:meth:`with_ws_auth_headers` — the Host override breaks
+        the WS handshake."""
         headers = {"Authorization": f"Api-Key {api_key}"}
         if self.internal_url is not None:
             headers["Host"] = self.internal_url.hostname
         return headers
+
+    def with_ws_auth_headers(self, api_key: str) -> dict[str, str]:
+        """Headers for *WebSocket* sibling calls (against ``internal_ws_url`` /
+        ``ws_url``). Authorization-only; an explicit Host would corrupt the
+        handshake."""
+        return {"Authorization": f"Api-Key {api_key}"}
 
 
 class Environment(custom_types.SafeModel):

@@ -214,16 +214,19 @@ def test_descriptor_ws_url_http_to_ws():
 
 
 def test_descriptor_internal_ws_url():
+    """``internal_ws_url`` netloc is the chain hostname, not the gateway host
+    from ``gateway_run_remote_url`` — WS can't use a Host override to smuggle
+    the chain host (websockets lib always emits Host from URL netloc)."""
     desc = public_types.DeployedServiceDescriptor(
         name="X",
         display_name="X",
         options=public_types.RPCOptions(),
         internal_url=public_types.DeployedServiceDescriptor.InternalURL(
             gateway_run_remote_url="https://internal.example/predict",
-            hostname="public.example",
+            hostname="chain-abc.api.baseten.co",
         ),
     )
-    assert desc.internal_ws_url == "wss://internal.example/predict"
+    assert desc.internal_ws_url == "wss://chain-abc.api.baseten.co/predict"
     assert desc.ws_url is None
 
 
@@ -258,6 +261,32 @@ def test_descriptor_with_auth_headers_with_internal_url():
     }
 
 
+def test_descriptor_with_ws_auth_headers_omits_host():
+    """Authorization-only even when internal_url is set — explicit Host breaks
+    the WS handshake (websockets lib always emits its own Host from URL)."""
+    desc = public_types.DeployedServiceDescriptor(
+        name="X",
+        display_name="X",
+        options=public_types.RPCOptions(),
+        internal_url=public_types.DeployedServiceDescriptor.InternalURL(
+            gateway_run_remote_url="https://internal.example/predict",
+            hostname="chain-abc.api.baseten.co",
+        ),
+    )
+    headers = desc.with_ws_auth_headers("my-key")
+    assert headers == {"Authorization": "Api-Key my-key"}
+
+
+def test_descriptor_with_ws_auth_headers_predict_only():
+    desc = public_types.DeployedServiceDescriptor(
+        name="X",
+        display_name="X",
+        options=public_types.RPCOptions(),
+        predict_url="https://public.example/predict",
+    )
+    assert desc.with_ws_auth_headers("my-key") == {"Authorization": "Api-Key my-key"}
+
+
 def test_with_auth_headers_matches_BasetenSession():
     """Mechanically verify ``with_auth_headers`` produces the exact dict
     ``BasetenSession.__init__`` would assemble — preventing drift between the
@@ -286,6 +315,47 @@ def test_descriptor_ws_url_unknown_scheme_raises():
     )
     with pytest.raises(ValueError, match="Cannot convert to WebSocket scheme"):
         _ = desc.ws_url
+
+
+def test_descriptor_ws_url_rewrites_run_remote_path_to_websocket():
+    """Chainlet predict URLs end in ``/run_remote``; api-gateway's WS handler
+    expects ``/websocket``. ``ws_url`` swaps both scheme and terminal path."""
+    desc = public_types.DeployedServiceDescriptor(
+        name="X",
+        display_name="X",
+        options=public_types.RPCOptions(),
+        predict_url=(
+            "https://chain-abc.api.baseten.co/deployment/dep/chainlet/cl/run_remote"
+        ),
+        internal_url=public_types.DeployedServiceDescriptor.InternalURL(
+            gateway_run_remote_url=(
+                "https://wp.api.baseten.co/deployment/dep/chainlet/cl/run_remote"
+            ),
+            hostname="chain-abc.api.baseten.co",
+        ),
+    )
+    # Both URLs use the chain hostname; internal_ws_url drops the gateway host
+    # from gateway_run_remote_url (see internal_ws_url docstring for why).
+    assert (
+        desc.ws_url
+        == "wss://chain-abc.api.baseten.co/deployment/dep/chainlet/cl/websocket"
+    )
+    assert (
+        desc.internal_ws_url
+        == "wss://chain-abc.api.baseten.co/deployment/dep/chainlet/cl/websocket"
+    )
+
+
+def test_descriptor_ws_url_preserves_non_run_remote_paths():
+    """When the predict path doesn't end in ``/run_remote`` (e.g.
+    standalone-model URLs), only the scheme is swapped."""
+    desc = public_types.DeployedServiceDescriptor(
+        name="X",
+        display_name="X",
+        options=public_types.RPCOptions(),
+        predict_url="https://model.example/predict",
+    )
+    assert desc.ws_url == "wss://model.example/predict"
 
 
 def test_descriptor_type_identity_across_imports():
@@ -347,11 +417,15 @@ def test_chain_runs_locally_with_deployed_dep():
 
     desc = caller._context.get_service_descriptor("_Echo")
     assert desc.target_url == "https://wp.api.baseten.co/.../echo/run_remote"
-    assert desc.ws_url == "wss://chain-abc.api.baseten.co/.../echo/run_remote"
-    assert desc.internal_ws_url == "wss://wp.api.baseten.co/.../echo/run_remote"
+    # ws_url / internal_ws_url: chain hostname netloc + /websocket path.
+    assert desc.ws_url == "wss://chain-abc.api.baseten.co/.../echo/websocket"
+    assert desc.internal_ws_url == "wss://chain-abc.api.baseten.co/.../echo/websocket"
     assert desc.with_auth_headers("test-key") == {
         "Authorization": "Api-Key test-key",
         "Host": "chain-abc.api.baseten.co",
+    }
+    assert desc.with_ws_auth_headers("test-key") == {
+        "Authorization": "Api-Key test-key"
     }
 
 
