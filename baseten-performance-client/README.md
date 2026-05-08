@@ -98,7 +98,7 @@ endpoint_pool = EndpointPool(
     client_wrapper=health_wrapper,
     endpoint_weights=[0.8, 0.2],
     deployment_health_path="/health",
-    deployment_timeout_is_no_vote=True,
+    deployment_timeout_is_no_vote=False,
 )
 
 client = PerformanceClient(

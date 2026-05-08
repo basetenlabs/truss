@@ -449,8 +449,8 @@ class EndpointPool:
         health_check_timeout_s: typing.Optional[builtins.float] = None,
         health_check_retries: typing.Optional[builtins.int] = None,
         health_fail_on_first: builtins.bool = False,
-        deployment_timeout_is_no_vote: builtins.bool = True,
-        deep_timeout_is_no_vote: builtins.bool = True,
+        deployment_timeout_is_no_vote: builtins.bool = False,
+        deep_timeout_is_no_vote: builtins.bool = False,
     ) -> None:
         """
         Args:
@@ -471,7 +471,9 @@ class EndpointPool:
             health_fail_on_first: If true, stop evaluating additional checks for an endpoint
                 after the first hard failing check in a health cycle.
             deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
+                Defaults to false, so timeouts count as unhealthy.
             deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
+                Defaults to false, so timeouts count as unhealthy.
                 Endpoint health transitions are stabilized across refresh cycles, so one
                 transient bad sample does not immediately remove an endpoint from rotation.
         """

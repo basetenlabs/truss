@@ -2,7 +2,7 @@ model_name: performance-client-integration-truss-server
 model_metadata:
   example_model_input: { "model": "voyageai/voyage-4-nano", "input": [ "hi" ] }
 base_image:
-  image: baseten/performance-client-integration-truss-server:0.1.1
+  image: baseten/performance-client-integration-truss-server:0.1.2
 
 docker_server:
   start_command: python -m uvicorn app:app --host 0.0.0.0 --port 8000
@@ -45,9 +45,9 @@ environment_variables:
   #   SERVE_MINUTES_UTC: "*"
   #   SERVE_SECONDS_UTC: 45-60,0-15
   #   SERVE_GRACE_PERIOD_S: 6
-  INTEGRATION_SERVER_NAME: window-c
+  INTEGRATION_SERVER_NAME: window-a
   SERVE_MINUTES_UTC: "*"
-  SERVE_SECONDS_UTC: 45-60,0-15
+  SERVE_SECONDS_UTC: "5-35"
   SERVE_GRACE_PERIOD_S: 6
   EMBEDDING_DIM: "8"
   RESPONSE_DELAY_MS: "0"

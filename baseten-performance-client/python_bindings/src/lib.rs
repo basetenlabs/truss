@@ -387,8 +387,8 @@ impl PyEndpointPool {
         health_check_timeout_s = None,
         health_check_retries = None,
         health_fail_on_first = false,
-        deployment_timeout_is_no_vote = true,
-        deep_timeout_is_no_vote = true
+        deployment_timeout_is_no_vote = false,
+        deep_timeout_is_no_vote = false
     ))]
     fn new(
         endpoint_urls: Vec<String>,

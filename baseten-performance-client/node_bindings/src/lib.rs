@@ -404,8 +404,8 @@ impl EndpointPool {
       deep_health_urls,
       health_fail_on_first.unwrap_or(false),
       deployment_health_path,
-      deployment_timeout_is_no_vote.unwrap_or(true),
-      deep_timeout_is_no_vote.unwrap_or(true),
+      deployment_timeout_is_no_vote.unwrap_or(false),
+      deep_timeout_is_no_vote.unwrap_or(false),
     );
 
     let inner = CoreEndpointPool::new(config).map_err(convert_core_error_to_napi_error)?;

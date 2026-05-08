@@ -18,9 +18,9 @@ from baseten_performance_client import (
 )
 
 DEFAULT_ENDPOINT_URLS = [
-    "https://model-3ydyzel3.api.baseten.co/deployment/wom2p2v/sync",  # window-a
-    "https://model-3ydyzel3.api.baseten.co/deployment/3yd9j9k/sync",  # window-b
-    "https://model-3ydyzel3.api.baseten.co/deployment/wpj0p09/sync",  # window-c
+    "https://model-3ydyzel3.api.baseten.co/deployment/3m5md2z/sync",  # window-a
+    "https://model-3ydyzel3.api.baseten.co/deployment/wd19eve/sync",  # window-b
+    "https://model-3ydyzel3.api.baseten.co/deployment/q415pl1/sync",  # window-c
 ]
 
 

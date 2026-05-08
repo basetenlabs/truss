@@ -40,7 +40,7 @@ impl EndpointHealthCheckConfig {
         Self {
             path_or_url: path,
             extend_base_url: true,
-            timeout_is_no_vote: true,
+            timeout_is_no_vote: false,
         }
     }
 
@@ -48,7 +48,7 @@ impl EndpointHealthCheckConfig {
         Self {
             path_or_url: url,
             extend_base_url: false,
-            timeout_is_no_vote: true,
+            timeout_is_no_vote: false,
         }
     }
 
@@ -648,6 +648,11 @@ impl EndpointPool {
                     health_check_retries,
                 )
                 .await;
+                tracing::debug!(
+                    endpoint_base_url = endpoint.base_url.as_ref(),
+                    vote = ?vote,
+                    "endpoint pool health refresh vote"
+                );
                 (index, vote)
             }
         }))
@@ -706,6 +711,13 @@ impl EndpointPool {
         let api_key = api_key.to_string();
 
         let base_interval = self.health_check_interval;
+        tracing::debug!(
+            endpoint_count = self.endpoint_count(),
+            health_check_interval_s = base_interval.as_secs_f64(),
+            health_check_timeout_s = self.health_check_timeout.as_secs_f64(),
+            health_check_retries = self.health_check_retries,
+            "starting endpoint pool health worker"
+        );
         let task = async move {
             let mut current_interval = base_interval;
             loop {
@@ -859,13 +871,42 @@ async fn run_health_check_attempts(
             .send()
             .await
         {
-            Ok(response) if response.status().is_success() => return HealthVote::Healthy,
+            Ok(response) if response.status().is_success() => {
+                tracing::trace!(
+                    endpoint_base_url = base_url,
+                    health_check_url = health_url,
+                    attempt = attempt + 1,
+                    "endpoint pool health check succeeded"
+                );
+                return HealthVote::Healthy;
+            }
             Ok(_) => {
                 saw_negative_vote = true;
+                tracing::debug!(
+                    endpoint_base_url = base_url,
+                    health_check_url = health_url,
+                    attempt = attempt + 1,
+                    "endpoint pool health check returned non-success status"
+                );
             }
             Err(error) => {
-                if !(error.is_timeout() && check.timeout_is_no_vote) {
+                if error.is_timeout() && check.timeout_is_no_vote {
+                    tracing::debug!(
+                        endpoint_base_url = base_url,
+                        health_check_url = health_url,
+                        attempt = attempt + 1,
+                        "endpoint pool health check timed out and was treated as no-vote"
+                    );
+                } else {
                     saw_negative_vote = true;
+                    tracing::debug!(
+                        endpoint_base_url = base_url,
+                        health_check_url = health_url,
+                        attempt = attempt + 1,
+                        timeout = error.is_timeout(),
+                        error = %error,
+                        "endpoint pool health check request failed"
+                    );
                 }
             }
         }
