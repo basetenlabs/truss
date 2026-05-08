@@ -34,7 +34,7 @@ truss_cli.add_command(loops)
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def push_loop_deployment(
+def push_loops_deployment(
     base_model: str, project_id: Optional[str], remote: Optional[str]
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
@@ -51,7 +51,7 @@ def push_loop_deployment(
     )
 
     with console.status("Creating Loops session...", spinner="dots"):
-        session = remote_provider.create_loop_session(training_project_id=project_id)
+        session = remote_provider.create_loops_session(training_project_id=project_id)
     session_id = session["id"]
 
     with console.status(
@@ -60,7 +60,7 @@ def push_loop_deployment(
         f" (this may take ~5 minutes)...",
         spinner="dots",
     ):
-        run = remote_provider.create_loop_run(
+        run = remote_provider.create_loops_run(
             session_id=session_id, base_model=base_model
         )
         run_base_url = run["base_url"]
@@ -80,12 +80,12 @@ def push_loop_deployment(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
-def deactivate_loop_deployment(
+def deactivate_loops_deployment(
     base_model: str, remote: Optional[str], yes: bool
 ) -> None:
-    """Deactivate the active loop deployment for BASE_MODEL.
+    """Deactivate the active Loops deployment for BASE_MODEL.
 
-    Shuts down the loop's deployment. Saved checkpoints remain accessible.
+    Shuts down the Loops deployment. Saved checkpoints remain accessible.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -96,14 +96,14 @@ def deactivate_loop_deployment(
 
     if not yes:
         click.confirm(
-            f"This will shut down the active loop deployment for {base_model}. Continue?",
+            f"This will shut down the active Loops deployment for {base_model}. Continue?",
             abort=True,
         )
 
-    with console.status("Deactivating loop deployment...", spinner="dots"):
-        remote_provider.deactivate_loop_deployment(base_model)
+    with console.status("Deactivating Loops deployment...", spinner="dots"):
+        remote_provider.deactivate_loops_deployment(base_model)
 
-    console.print(f"Loop deployment for {base_model} deactivated.", style="green")
+    console.print(f"Loops deployment for {base_model} deactivated.", style="green")
 
 
 def _poll_until_running(remote_provider: BasetenRemote, run_base_url: str) -> None:
@@ -128,7 +128,7 @@ def _poll_until_running(remote_provider: BasetenRemote, run_base_url: str) -> No
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def view_loop_deployments(remote: Optional[str]) -> None:
+def view_loops_deployments(remote: Optional[str]) -> None:
     """List the caller's active Loops deployments.
 
     Excludes deployments whose latest status is STOPPED (filtered server-side).
@@ -139,23 +139,23 @@ def view_loop_deployments(remote: Optional[str]) -> None:
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    deployments = remote_provider.api.list_loop_deployments()
-    _render_loop_deployments(deployments)
+    deployments = remote_provider.api.list_loops_deployments()
+    _render_loops_deployments(deployments)
 
 
 @loops.group(name="runs")
-def loop_runs() -> None:
+def loops_runs() -> None:
     """Subcommands for working with Loops runs."""
 
 
-@loop_runs.command(name="view")
+@loops_runs.command(name="view")
 @click.option("--run-id", type=str, required=False, help="Filter by run ID.")
 @click.option(
     "--model-name", type=str, required=False, help="Filter runs by base model name."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def view_loop_runs(
+def view_loops_runs(
     run_id: Optional[str], model_name: Optional[str], remote: Optional[str]
 ) -> None:
     """List Loops runs visible to the caller.
@@ -169,19 +169,19 @@ def view_loop_runs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    runs = remote_provider.api.list_loop_runs(run_id=run_id, base_model=model_name)
-    _render_loop_runs(runs)
+    runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=model_name)
+    _render_loops_runs(runs)
 
 
 @loops.group(name="samplers")
-def loop_samplers() -> None:
+def loops_samplers() -> None:
     """Subcommands for working with Loops samplers."""
 
 
-@loop_samplers.command(name="view")
+@loops_samplers.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def view_loop_samplers(remote: Optional[str]) -> None:
+def view_loops_samplers(remote: Optional[str]) -> None:
     """List Loops samplers visible to the caller."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -189,11 +189,11 @@ def view_loop_samplers(remote: Optional[str]) -> None:
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    samplers = remote_provider.api.list_loop_samplers()
-    _render_loop_samplers(samplers)
+    samplers = remote_provider.api.list_loops_samplers()
+    _render_loops_samplers(samplers)
 
 
-def _render_loop_deployments(deployments: List[Dict[str, Any]]) -> None:
+def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     if not deployments:
         console.print("No active Loops deployments.", style="yellow")
         return
@@ -219,7 +219,7 @@ def _render_loop_deployments(deployments: List[Dict[str, Any]]) -> None:
     console.print(table)
 
 
-def _render_loop_runs(runs: List[Dict[str, Any]]) -> None:
+def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
     if not runs:
         console.print("No Loops runs found.", style="yellow")
         return
@@ -240,7 +240,7 @@ def _render_loop_runs(runs: List[Dict[str, Any]]) -> None:
     console.print(table)
 
 
-def _render_loop_samplers(samplers: List[Dict[str, Any]]) -> None:
+def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
     if not samplers:
         console.print("No Loops samplers found.", style="yellow")
         return

@@ -1088,7 +1088,7 @@ class CheckpointList(custom_types.ConfigModel):
     loops_checkpoint_ids: list[str] = pydantic.Field(
         default_factory=list,
         description=(
-            "Loop checkpoint IDs to deploy. Mutually exclusive with artifact_references."
+            "Loops checkpoint IDs to deploy. Mutually exclusive with artifact_references."
         ),
     )
 
@@ -1097,7 +1097,7 @@ class CheckpointList(custom_types.ConfigModel):
         if self.artifact_references and self.loops_checkpoint_ids:
             raise ValueError(
                 "training_checkpoints cannot mix artifact_references (training "
-                "job checkpoints) and loops_checkpoint_ids (Loop checkpoints) "
+                "job checkpoints) and loops_checkpoint_ids (Loops checkpoints) "
                 "in the same deploy"
             )
         return self

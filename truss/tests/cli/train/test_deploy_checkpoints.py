@@ -5,10 +5,10 @@ import rich_click as click
 
 import truss_train.definitions as definitions
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
-    _ensure_loop_checkpoint_details,
+    _ensure_loops_checkpoint_details,
     _get_checkpoint_ids_to_deploy,
     _hydrate_deploy_config,
-    _resolve_loop_run,
+    _resolve_loops_run,
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
@@ -284,12 +284,12 @@ def test_hydrate_whisper_checkpoint():
 
 
 @pytest.fixture
-def mock_loop_remote():
+def mock_loops_remote():
     mock = MagicMock()
-    mock.api.list_loop_runs.return_value = [
+    mock.api.list_loops_runs.return_value = [
         {"run_id": "trnr_xyz", "base_model": "Qwen/Qwen3-8B"}
     ]
-    mock.api.list_loop_checkpoints.return_value = {
+    mock.api.list_loops_checkpoints.return_value = {
         "checkpoints": [
             {
                 "id": "tcp_step100",
@@ -303,57 +303,63 @@ def mock_loop_remote():
     return mock
 
 
-def test_resolve_loop_run_returns_first_match(mock_loop_remote):
-    result = _resolve_loop_run(mock_loop_remote, "trnr_xyz")
+def test_resolve_loops_run_returns_first_match(mock_loops_remote):
+    result = _resolve_loops_run(mock_loops_remote, "trnr_xyz")
     assert result["run_id"] == "trnr_xyz"
     assert result["base_model"] == "Qwen/Qwen3-8B"
-    mock_loop_remote.api.list_loop_runs.assert_called_once_with(run_id="trnr_xyz")
+    mock_loops_remote.api.list_loops_runs.assert_called_once_with(run_id="trnr_xyz")
 
 
-def test_resolve_loop_run_raises_when_not_found(mock_loop_remote):
-    mock_loop_remote.api.list_loop_runs.return_value = []
+def test_resolve_loops_run_raises_when_not_found(mock_loops_remote):
+    mock_loops_remote.api.list_loops_runs.return_value = []
     with pytest.raises(click.UsageError, match="Loops run trnr_missing not found"):
-        _resolve_loop_run(mock_loop_remote, "trnr_missing")
+        _resolve_loops_run(mock_loops_remote, "trnr_missing")
 
 
-def test_ensure_loop_checkpoint_details_user_provided_passes_through(mock_loop_remote):
+def test_ensure_loops_checkpoint_details_user_provided_passes_through(
+    mock_loops_remote,
+):
     """When the user authored loops_checkpoint_ids in --config, return as-is."""
     user_config = definitions.CheckpointList(loops_checkpoint_ids=["tcp_step100"])
-    result = _ensure_loop_checkpoint_details(mock_loop_remote, user_config, run_id=None)
+    result = _ensure_loops_checkpoint_details(
+        mock_loops_remote, user_config, run_id=None
+    )
     assert result is user_config
     # Did not hit the API since user authored the IDs.
-    mock_loop_remote.api.list_loop_runs.assert_not_called()
-    mock_loop_remote.api.list_loop_checkpoints.assert_not_called()
+    mock_loops_remote.api.list_loops_runs.assert_not_called()
+    mock_loops_remote.api.list_loops_checkpoints.assert_not_called()
 
 
-def test_ensure_loop_checkpoint_details_requires_run_id_when_unprovided(
-    mock_loop_remote,
+def test_ensure_loops_checkpoint_details_requires_run_id_when_unprovided(
+    mock_loops_remote,
 ):
     with pytest.raises(click.UsageError, match="--run-id is required"):
-        _ensure_loop_checkpoint_details(
-            mock_loop_remote, checkpoint_details=None, run_id=None
+        _ensure_loops_checkpoint_details(
+            mock_loops_remote, checkpoint_details=None, run_id=None
         )
 
 
-def test_ensure_loop_checkpoint_details_picker_emits_ids_and_base_model(
-    mock_loop_remote,
+def test_ensure_loops_checkpoint_details_picker_emits_ids_and_base_model(
+    mock_loops_remote,
 ):
     """With --run-id set, picker selects checkpoints and we send IDs on the wire.
 
     Single checkpoint short-circuits the inquirer prompt (mirroring TJC behavior),
     so no prompt mock is needed for this case.
     """
-    result = _ensure_loop_checkpoint_details(
-        mock_loop_remote, checkpoint_details=None, run_id="trnr_xyz"
+    result = _ensure_loops_checkpoint_details(
+        mock_loops_remote, checkpoint_details=None, run_id="trnr_xyz"
     )
     assert result.loops_checkpoint_ids == ["tcp_step100"]
     assert result.base_model_id == "Qwen/Qwen3-8B"
-    mock_loop_remote.api.list_loop_checkpoints.assert_called_once_with(
+    mock_loops_remote.api.list_loops_checkpoints.assert_called_once_with(
         run_id="trnr_xyz"
     )
 
 
-def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(mock_loop_remote):
+def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(
+    mock_loops_remote,
+):
     """--run-id + --config that has training-job checkpoints should error."""
     deploy_config = definitions.DeployCheckpointsConfig(
         checkpoint_details=definitions.CheckpointList(
@@ -369,7 +375,7 @@ def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(mock_loop_
     with pytest.raises(click.UsageError, match="--run-id cannot be combined"):
         _hydrate_deploy_config(
             deploy_config,
-            mock_loop_remote,
+            mock_loops_remote,
             project_id=None,
             job_id=None,
             run_id="trnr_xyz",
@@ -377,7 +383,7 @@ def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(mock_loop_
 
 
 def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
-    mock_loop_remote,
+    mock_loops_remote,
 ):
     """--job-id + --config that has loops_checkpoint_ids should error."""
     deploy_config = definitions.DeployCheckpointsConfig(
@@ -388,7 +394,7 @@ def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
     ):
         _hydrate_deploy_config(
             deploy_config,
-            mock_loop_remote,
+            mock_loops_remote,
             project_id=None,
             job_id="tj_abc",
             run_id=None,
