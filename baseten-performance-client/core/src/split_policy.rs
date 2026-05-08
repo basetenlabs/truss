@@ -508,10 +508,7 @@ impl RequestProcessingConfig {
         if attempted_endpoint_indices.is_empty() {
             if let Some(pinned_selection) = self.pinned_initial_endpoint.clone() {
                 return Ok((
-                    build_url_for_selected_endpoint(
-                        pinned_selection.base_url.as_ref(),
-                        request_suffix,
-                    ),
+                    build_url_for_selected_endpoint(&pinned_selection.base_url, request_suffix),
                     pinned_selection,
                 ));
             }

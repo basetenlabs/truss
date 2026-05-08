@@ -193,7 +193,7 @@ impl EndpointConfig {
 struct EndpointInner {
     base_url: Arc<str>,
     health_api_key: Arc<str>,
-    health_state: Arc<EndpointHealthState>,
+    health_state: EndpointHealthState,
     endpoint_health: EndpointHealthConfig,
     health_check_interval: Duration,
     health_check_timeout: Duration,
@@ -255,7 +255,7 @@ impl Endpoint {
         let inner = Arc::new(EndpointInner {
             base_url: Arc::<str>::from(normalize_url(&config.base_url)),
             health_api_key: Arc::<str>::from(config.health_api_key),
-            health_state: Arc::new(EndpointHealthState::new()),
+            health_state: EndpointHealthState::new(),
             endpoint_health,
             health_check_interval: config.health_check_interval,
             health_check_timeout: config.health_check_timeout,
