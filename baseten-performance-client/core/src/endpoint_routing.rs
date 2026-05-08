@@ -4,18 +4,16 @@ use crate::errors::ClientError;
 use futures::future::join_all;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
 const DEFAULT_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 const DEFAULT_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(6);
-const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 1;
-const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(100);
-const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(50);
-const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(100);
-const DEFAULT_CONSECUTIVE_FAILURES_TO_MARK_UNHEALTHY: usize = 2;
-const DEFAULT_CONSECUTIVE_SUCCESSES_TO_MARK_HEALTHY: usize = 1;
+const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 2;
+const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(200);
+const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(100);
+const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointHealthStatus {
@@ -258,22 +256,12 @@ struct ManagedEndpoint {
 #[derive(Debug)]
 struct EndpointHealthState {
     healthy: AtomicBool,
-    transition: Mutex<EndpointTransitionState>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EndpointTransitionState {
-    Healthy { consecutive_failures: usize },
-    Unhealthy { consecutive_successes: usize },
 }
 
 impl EndpointHealthState {
     fn new() -> Self {
         Self {
             healthy: AtomicBool::new(true),
-            transition: Mutex::new(EndpointTransitionState::Healthy {
-                consecutive_failures: 0,
-            }),
         }
     }
 
@@ -284,74 +272,18 @@ impl EndpointHealthState {
     #[cfg(test)]
     fn set_for_test(&self, healthy: bool) {
         self.healthy.store(healthy, Ordering::SeqCst);
-        let mut transition = self
-            .transition
-            .lock()
-            .expect("endpoint health transition lock should not be poisoned");
-        *transition = if healthy {
-            EndpointTransitionState::Healthy {
-                consecutive_failures: 0,
-            }
-        } else {
-            EndpointTransitionState::Unhealthy {
-                consecutive_successes: 0,
-            }
-        };
     }
 
     fn apply_vote(&self, vote: HealthVote) -> (bool, bool) {
-        let mut transition = self
-            .transition
-            .lock()
-            .expect("endpoint health transition lock should not be poisoned");
-
         match vote {
-            HealthVote::Healthy => match &mut *transition {
-                EndpointTransitionState::Healthy {
-                    consecutive_failures,
-                } => {
-                    *consecutive_failures = 0;
-                    self.healthy.store(true, Ordering::SeqCst);
-                    (false, false)
-                }
-                EndpointTransitionState::Unhealthy {
-                    consecutive_successes,
-                } => {
-                    *consecutive_successes += 1;
-                    if *consecutive_successes >= DEFAULT_CONSECUTIVE_SUCCESSES_TO_MARK_HEALTHY {
-                        *transition = EndpointTransitionState::Healthy {
-                            consecutive_failures: 0,
-                        };
-                        self.healthy.store(true, Ordering::SeqCst);
-                        (true, false)
-                    } else {
-                        (false, false)
-                    }
-                }
-            },
-            HealthVote::Unhealthy => match &mut *transition {
-                EndpointTransitionState::Healthy {
-                    consecutive_failures,
-                } => {
-                    *consecutive_failures += 1;
-                    if *consecutive_failures >= DEFAULT_CONSECUTIVE_FAILURES_TO_MARK_UNHEALTHY {
-                        *transition = EndpointTransitionState::Unhealthy {
-                            consecutive_successes: 0,
-                        };
-                        self.healthy.store(false, Ordering::SeqCst);
-                        (false, true)
-                    } else {
-                        (false, false)
-                    }
-                }
-                EndpointTransitionState::Unhealthy {
-                    consecutive_successes,
-                } => {
-                    *consecutive_successes = 0;
-                    self.healthy.store(false, Ordering::SeqCst);
-                    (false, false)
-                }
-            },
+            HealthVote::Healthy => {
+                let was_healthy = self.healthy.swap(true, Ordering::SeqCst);
+                (!was_healthy, false)
+            }
+            HealthVote::Unhealthy => {
+                let was_healthy = self.healthy.swap(false, Ordering::SeqCst);
+                (false, was_healthy)
+            }
             HealthVote::NoVote => (false, false),
         }
     }
@@ -1135,16 +1067,13 @@ mod tests {
     }
 
     #[test]
-    fn test_endpoint_health_requires_two_consecutive_failures_to_mark_unhealthy() {
+    fn test_endpoint_health_flips_immediately_on_unhealthy_vote() {
         let pool = EndpointPool::new(EndpointPoolConfig::new(
             vec!["https://a.example.com".to_string()],
             health_check_wrapper(),
         ))
         .expect("pool should be valid");
 
-        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
-
-        pool.apply_health_vote(0, HealthVote::Unhealthy);
         assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
 
         pool.apply_health_vote(0, HealthVote::Unhealthy);
