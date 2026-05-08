@@ -182,7 +182,7 @@
           "type": "array"
         },
         "loops_checkpoint_ids": {
-          "description": "Loop checkpoint IDs to deploy. Mutually exclusive with artifact_references.",
+          "description": "Loops checkpoint IDs to deploy. Mutually exclusive with artifact_references.",
           "items": {
             "type": "string"
           },

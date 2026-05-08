@@ -110,7 +110,7 @@ class TestTrainingJobWeightsAuthValidation:
         assert job.weights[0].auth is None
 
 
-class TestCheckpointListLoopCheckpoints:
+class TestCheckpointListLoopsCheckpoints:
     """truss-train CheckpointList: loops_checkpoint_ids field, validator, to_truss_config."""
 
     def test_loops_checkpoint_ids_round_trip_to_truss_config(self):
@@ -138,7 +138,7 @@ class TestCheckpointListLoopCheckpoints:
         assert truss_ckpt_list.artifact_references[0].training_job_id == "tj_abc"
         assert truss_ckpt_list.loops_checkpoint_ids == []
 
-    def test_mixing_checkpoints_and_loop_ids_raises(self):
+    def test_mixing_checkpoints_and_loops_ids_raises(self):
         with pytest.raises(ValidationError, match="cannot mix"):
             CheckpointList(
                 checkpoints=[

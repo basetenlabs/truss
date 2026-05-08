@@ -287,23 +287,24 @@ def _hydrate_deploy_config(
         deploy_config.checkpoint_details is not None
         and bool(deploy_config.checkpoint_details.checkpoints)
     )
-    config_has_loop_checkpoints = deploy_config.checkpoint_details is not None and bool(
-        deploy_config.checkpoint_details.loops_checkpoint_ids
+    config_has_loops_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.loops_checkpoint_ids)
     )
     if run_id_provided and config_has_training_job_checkpoints:
         raise click.UsageError(
             "--run-id cannot be combined with checkpoint_details.checkpoints "
             "from --config (training job checkpoints). Pick one source."
         )
-    if job_flag_provided and config_has_loop_checkpoints:
+    if job_flag_provided and config_has_loops_checkpoints:
         raise click.UsageError(
             "--project-id / --job-id cannot be combined with "
             "checkpoint_details.loops_checkpoint_ids from --config. Pick one source."
         )
 
-    is_loop_flow = run_id_provided or config_has_loop_checkpoints
-    if is_loop_flow:
-        checkpoint_details = _ensure_loop_checkpoint_details(
+    is_loops_flow = run_id_provided or config_has_loops_checkpoints
+    if is_loops_flow:
+        checkpoint_details = _ensure_loops_checkpoint_details(
             remote_provider, deploy_config.checkpoint_details, run_id
         )
         if deploy_config.model_name:
@@ -379,7 +380,7 @@ def _ensure_checkpoint_details(
         )
 
 
-def _ensure_loop_checkpoint_details(
+def _ensure_loops_checkpoint_details(
     remote_provider: BasetenRemote,
     checkpoint_details: Optional[CheckpointList],
     run_id: Optional[str],
@@ -396,18 +397,18 @@ def _ensure_loop_checkpoint_details(
         return checkpoint_details
     if not run_id:
         raise click.UsageError("--run-id is required to deploy Loops checkpoints.")
-    return _prompt_user_for_loop_checkpoint_details(
+    return _prompt_user_for_loops_checkpoint_details(
         remote_provider, checkpoint_details, run_id
     )
 
 
-def _prompt_user_for_loop_checkpoint_details(
+def _prompt_user_for_loops_checkpoint_details(
     remote_provider: BasetenRemote,
     checkpoint_details: Optional[CheckpointList],
     run_id: str,
 ) -> CheckpointList:
-    run = _resolve_loop_run(remote_provider, run_id)
-    response = remote_provider.api.list_loop_checkpoints(run_id=run["run_id"])
+    run = _resolve_loops_run(remote_provider, run_id)
+    response = remote_provider.api.list_loops_checkpoints(run_id=run["run_id"])
     # Pick by checkpoint_name in the UI; map back to Loops-checkpoint
     # database IDs for the wire so the server doesn't need to re-resolve names.
     name_to_pk = OrderedDict(
@@ -434,8 +435,8 @@ def _prompt_user_for_loop_checkpoint_details(
     return checkpoint_details
 
 
-def _resolve_loop_run(remote_provider: BasetenRemote, run_id: str) -> dict:
-    matches = remote_provider.api.list_loop_runs(run_id=run_id)
+def _resolve_loops_run(remote_provider: BasetenRemote, run_id: str) -> dict:
+    matches = remote_provider.api.list_loops_runs(run_id=run_id)
     if not matches:
         raise click.UsageError(f"Loops run {run_id} not found.")
     return matches[0]

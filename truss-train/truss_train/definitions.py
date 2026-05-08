@@ -281,7 +281,7 @@ class CheckpointList(custom_types.SafeModelNoExtra):
         if self.checkpoints and self.loops_checkpoint_ids:
             raise ValueError(
                 "checkpoint_details cannot mix checkpoints (training job "
-                "checkpoints) and loops_checkpoint_ids (Loop checkpoints) "
+                "checkpoints) and loops_checkpoint_ids (Loops checkpoints) "
                 "in the same deploy"
             )
         return self
