@@ -14,7 +14,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-version = "0.1.6rc0"
+version = "0.1.6rc1"
 dependencies = [
   "requests"
 ]
