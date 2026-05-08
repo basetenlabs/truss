@@ -23,6 +23,7 @@ uuid = { version = "1.19.0", features = ["v4"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ctor = { workspace = true }
+nonempty = { workspace = true }
 
 [features]
 default = ["rustls"]

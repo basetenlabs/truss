@@ -1,6 +1,7 @@
 use crate::client::HttpClientWrapper;
 use crate::errors::ClientError;
 
+use nonempty::NonEmpty;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -336,7 +337,7 @@ impl EndpointPoolConfig {
         self
     }
 
-    fn validate(&self) -> Result<(), ClientError> {
+    fn resolve(self) -> Result<ResolvedEndpointPoolConfig, ClientError> {
         if self.endpoints.is_empty() {
             return Err(ClientError::InvalidParameter(
                 "endpoint pool must contain at least one endpoint".to_string(),
@@ -378,8 +379,21 @@ impl EndpointPoolConfig {
             }
         }
 
-        Ok(())
+        let endpoints = NonEmpty::from_vec(self.endpoints).ok_or_else(|| {
+            ClientError::InvalidParameter(
+                "endpoint pool must contain at least one endpoint".to_string(),
+            )
+        })?;
+        let weights = self.weights.unwrap_or_else(|| vec![1.0; endpoints.len()]);
+
+        Ok(ResolvedEndpointPoolConfig { endpoints, weights })
     }
+}
+
+#[derive(Debug)]
+struct ResolvedEndpointPoolConfig {
+    endpoints: NonEmpty<Endpoint>,
+    weights: Vec<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -472,7 +486,7 @@ impl EndpointRouter {
 
 #[derive(Debug)]
 pub struct EndpointPool {
-    endpoints: Vec<Endpoint>,
+    endpoints: NonEmpty<Endpoint>,
     weights: Vec<f64>,
     round_robin_counter: AtomicUsize,
 }
@@ -486,13 +500,11 @@ enum HealthVote {
 
 impl EndpointPool {
     pub fn new(config: EndpointPoolConfig) -> Result<Arc<Self>, ClientError> {
-        config.validate()?;
-        let endpoint_count = config.endpoints.len();
-        let weights = config.weights.unwrap_or_else(|| vec![1.0; endpoint_count]);
+        let resolved = config.resolve()?;
 
         Ok(Arc::new(Self {
-            endpoints: config.endpoints,
-            weights,
+            endpoints: resolved.endpoints,
+            weights: resolved.weights,
             round_robin_counter: AtomicUsize::new(0),
         }))
     }
@@ -536,10 +548,6 @@ impl EndpointPool {
             }
         }
 
-        debug_assert!(
-            !candidate_tiers[3].is_empty(),
-            "endpoint pool must contain at least one endpoint, otherwise config validation should not allow empty pools"
-        );
         self.select_from_candidates(&candidate_tiers[3])
             .expect("endpoint pool must always be able to select a fallback endpoint")
     }
