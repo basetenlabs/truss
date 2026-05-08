@@ -505,9 +505,6 @@ impl RequestProcessingConfig {
         request_suffix: &str,
         attempted_endpoint_indices: &[usize],
     ) -> Result<(String, EndpointSelection), ClientError> {
-        self.endpoint_router
-            .ensure_health_worker_started(&self.api_key_primary);
-
         if attempted_endpoint_indices.is_empty() {
             if let Some(pinned_selection) = self.pinned_initial_endpoint.clone() {
                 return Ok((
@@ -529,8 +526,6 @@ impl RequestProcessingConfig {
         request_suffix: &str,
         original_endpoint_index: usize,
     ) -> Result<(String, EndpointSelection), ClientError> {
-        self.endpoint_router
-            .ensure_health_worker_started(&self.api_key_primary);
         self.endpoint_router
             .select_hedge_url(request_suffix, original_endpoint_index)
     }

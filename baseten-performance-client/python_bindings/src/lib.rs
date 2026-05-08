@@ -4,7 +4,8 @@ use baseten_performance_client_core::{
     CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
-    EndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
+    Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
+    EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
     DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE,
     INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
@@ -369,19 +370,20 @@ impl HttpClientWrapper {
     }
 }
 
-#[pyclass(name = "EndpointPool")]
-struct PyEndpointPool {
-    inner: Arc<EndpointPool>,
+#[pyclass(name = "Endpoint")]
+#[derive(Clone)]
+struct PyEndpoint {
+    inner: CoreEndpoint,
 }
 
 #[pymethods]
-impl PyEndpointPool {
+impl PyEndpoint {
     #[new]
     #[pyo3(signature = (
-        endpoint_urls,
+        base_url,
+        api_key,
         client_wrapper,
-        endpoint_weights = None,
-        deep_health_urls = None,
+        deep_health_url = None,
         deployment_health_path = None,
         health_check_interval_s = None,
         health_check_timeout_s = None,
@@ -391,10 +393,10 @@ impl PyEndpointPool {
         deep_timeout_is_no_vote = false
     ))]
     fn new(
-        endpoint_urls: Vec<String>,
+        base_url: String,
+        api_key: String,
         client_wrapper: HttpClientWrapper,
-        endpoint_weights: Option<Vec<f64>>,
-        deep_health_urls: Option<Vec<String>>,
+        deep_health_url: Option<String>,
         deployment_health_path: Option<String>,
         health_check_interval_s: Option<f64>,
         health_check_timeout_s: Option<f64>,
@@ -403,14 +405,7 @@ impl PyEndpointPool {
         deployment_timeout_is_no_vote: bool,
         deep_timeout_is_no_vote: bool,
     ) -> PyResult<Self> {
-        if endpoint_urls.is_empty() {
-            return Err(PyValueError::new_err("endpoint_urls must not be empty"));
-        }
-
-        let mut config = EndpointPoolConfig::new(endpoint_urls, client_wrapper.inner);
-        if let Some(weights) = endpoint_weights {
-            config = config.with_weights(weights);
-        }
+        let mut config = CoreEndpointConfig::new(base_url, api_key, client_wrapper.inner);
         if let Some(interval_s) = health_check_interval_s {
             config =
                 config.with_health_check_interval(std::time::Duration::from_secs_f64(interval_s));
@@ -423,14 +418,51 @@ impl PyEndpointPool {
             config = config.with_health_check_retries(retries);
         }
         config = config.with_standard_health_checks(
-            deep_health_urls,
+            deep_health_url,
             health_fail_on_first,
             deployment_health_path,
             deployment_timeout_is_no_vote,
             deep_timeout_is_no_vote,
         );
 
-        let inner = EndpointPool::new(config).map_err(|e| {
+        let inner = CoreEndpoint::new(config)
+            .map_err(|e| PyValueError::new_err(format!("Invalid endpoint configuration: {}", e)))?;
+        Ok(Self { inner })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Endpoint(base_url={:?})", self.inner.base_url())
+    }
+}
+
+#[pyclass(name = "EndpointPool")]
+struct PyEndpointPool {
+    inner: Arc<CoreEndpointPool>,
+}
+
+#[pymethods]
+impl PyEndpointPool {
+    #[new]
+    #[pyo3(signature = (
+        endpoints,
+        endpoint_weights = None
+    ))]
+    fn new(endpoints: Vec<PyEndpoint>, endpoint_weights: Option<Vec<f64>>) -> PyResult<Self> {
+        if endpoints.is_empty() {
+            return Err(PyValueError::new_err("endpoints must not be empty"));
+        }
+
+        let mut config = EndpointPoolConfig::new(
+            endpoints
+                .into_iter()
+                .map(|endpoint| endpoint.inner)
+                .collect(),
+        );
+        if let Some(weights) = endpoint_weights {
+            config = config.with_weights(weights);
+        }
+
+        let inner = CoreEndpointPool::new(config).map_err(|e| {
             PyValueError::new_err(format!("Invalid endpoint pool configuration: {}", e))
         })?;
         Ok(Self { inner })
@@ -1247,6 +1279,7 @@ impl PerformanceClient {
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
     m.add_class::<HttpClientWrapper>()?;
+    m.add_class::<PyEndpoint>()?;
     m.add_class::<PyEndpointPool>()?;
     m.add_class::<RequestProcessingPreference>()?;
     m.add_class::<CancellationToken>()?;

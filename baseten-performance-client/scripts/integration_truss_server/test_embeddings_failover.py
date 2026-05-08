@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import requests
 from baseten_performance_client import (
+    Endpoint,
     EndpointPool,
     HttpClientWrapper,
     PerformanceClient,
@@ -22,6 +23,13 @@ DEFAULT_ENDPOINT_URLS = [
     "https://model-3ydyzel3.api.baseten.co/deployment/wd19eve/sync",  # window-b
     "https://model-3ydyzel3.api.baseten.co/deployment/q415pl1/sync",  # window-c
 ]
+DEFAULT_ENDPOINT_WEIGHTS = [1.0, 1.0, 1.0]
+DEPLOYMENT_HEALTH_PATH = "/true_health"
+HEALTH_CHECK_INTERVAL_S = 1.0
+HEALTH_CHECK_TIMEOUT_S = 1.0
+HEALTH_CHECK_RETRIES = 1
+HEALTH_FAIL_ON_FIRST = True
+STARTUP_SETTLE_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -102,27 +110,34 @@ def parse_args() -> argparse.Namespace:
 def build_client(api_key: str, http_version: int) -> PerformanceClient:
     request_wrapper = HttpClientWrapper(http_version=http_version)
     health_wrapper = HttpClientWrapper(http_version=http_version)
+    endpoints = [
+        Endpoint(
+            base_url=url,
+            api_key=api_key,
+            client_wrapper=health_wrapper,
+            deployment_health_path=DEPLOYMENT_HEALTH_PATH,
+            health_check_interval_s=HEALTH_CHECK_INTERVAL_S,
+            health_check_timeout_s=HEALTH_CHECK_TIMEOUT_S,
+            health_check_retries=HEALTH_CHECK_RETRIES,
+            health_fail_on_first=HEALTH_FAIL_ON_FIRST,
+            deployment_timeout_is_no_vote=False,
+        )
+        for url in DEFAULT_ENDPOINT_URLS
+    ]
 
     endpoint_pool = EndpointPool(
-        endpoint_urls=DEFAULT_ENDPOINT_URLS,
-        client_wrapper=health_wrapper,
-        endpoint_weights=[1.0, 1.0, 1.0],
-        deployment_health_path="/true_health",
-        health_check_interval_s=0.75,
-        health_check_timeout_s=0.5,
-        health_check_retries=0,
-        health_fail_on_first=True,
-        deployment_timeout_is_no_vote=False,
+        endpoints=endpoints, endpoint_weights=DEFAULT_ENDPOINT_WEIGHTS
     )
-    time.sleep(10.0)  # Wait a moment for the servers to be healthy before starting
 
-    return PerformanceClient(
+    client = PerformanceClient(
         base_url=DEFAULT_ENDPOINT_URLS[0],
         api_key=api_key,
         http_version=http_version,
         client_wrapper=request_wrapper,
         endpoint_pool=endpoint_pool,
     )
+    time.sleep(STARTUP_SETTLE_S)
+    return client
 
 
 def build_preference(scenario: Scenario) -> RequestProcessingPreference:
@@ -248,10 +263,13 @@ def main() -> int:
         print(f"  - {endpoint_url}")
     print(
         "Shared client settings: "
-        "health_check_interval_s=2.0 "
-        "health_check_timeout_s=0.75 "
-        "health_check_retries=2 "
-        "endpoint_weights=[1.0, 1.0, 1.0]"
+        f"deployment_health_path={DEPLOYMENT_HEALTH_PATH} "
+        f"health_check_interval_s={HEALTH_CHECK_INTERVAL_S} "
+        f"health_check_timeout_s={HEALTH_CHECK_TIMEOUT_S} "
+        f"health_check_retries={HEALTH_CHECK_RETRIES} "
+        f"health_fail_on_first={HEALTH_FAIL_ON_FIRST} "
+        f"endpoint_weights={DEFAULT_ENDPOINT_WEIGHTS} "
+        f"startup_settle_s={STARTUP_SETTLE_S}"
     )
 
     total_failures = 0

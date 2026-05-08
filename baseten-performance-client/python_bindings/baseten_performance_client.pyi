@@ -432,18 +432,17 @@ class HttpClientWrapper:
         """
         ...
 
-class EndpointPool:
+class Endpoint:
     """
-    Endpoint pool configuration used by PerformanceClient for weighted endpoint routing
-    and background health monitoring.
+    Reusable endpoint configuration with its own shared health state and background health worker.
     """
 
     def __init__(
         self,
-        endpoint_urls: builtins.list[builtins.str],
+        base_url: builtins.str,
+        api_key: builtins.str,
         client_wrapper: HttpClientWrapper,
-        endpoint_weights: typing.Optional[builtins.list[builtins.float]] = None,
-        deep_health_urls: typing.Optional[builtins.list[builtins.str]] = None,
+        deep_health_url: typing.Optional[builtins.str] = None,
         deployment_health_path: typing.Optional[builtins.str] = None,
         health_check_interval_s: typing.Optional[builtins.float] = None,
         health_check_timeout_s: typing.Optional[builtins.float] = None,
@@ -454,28 +453,41 @@ class EndpointPool:
     ) -> None:
         """
         Args:
-            endpoint_urls: List of deployment base URLs.
-            client_wrapper: Required HttpClientWrapper used by the endpoint pool's
-                background health-check worker. This may be shared with request clients
-                or be a dedicated transport.
-            endpoint_weights: Optional per-endpoint traffic weights used for deterministic
-                weighted routing.
-            deep_health_urls: Optional per-endpoint absolute deep health URLs.
-                When provided, each endpoint health cycle evaluates both the shallow
-                deployment health path and the corresponding deep health URL.
+            base_url: Deployment base URL.
+            api_key: API key used by this endpoint's background health worker.
+            client_wrapper: Required HttpClientWrapper used by this endpoint's background
+                health-check worker. Reuse the same Endpoint instance across multiple pools
+                to avoid duplicate probes.
+            deep_health_url: Optional absolute deep health URL for this endpoint.
             deployment_health_path: Optional base-url health path override (default `/health`).
             health_check_interval_s: Optional background health check interval in seconds.
             health_check_timeout_s: Optional per-health-check timeout in seconds.
             health_check_retries: Optional number of retries per configured health check.
                 One successful retry is enough for that check to count as healthy.
-            health_fail_on_first: If true, stop evaluating additional checks for an endpoint
-                after the first hard failing check in a health cycle.
+            health_fail_on_first: If true, stop evaluating additional checks after the first
+                hard failing check in an endpoint refresh cycle.
             deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
                 Defaults to false, so timeouts count as unhealthy.
             deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
                 Defaults to false, so timeouts count as unhealthy.
-                Endpoint health transitions are stabilized across refresh cycles, so one
-                transient bad sample does not immediately remove an endpoint from rotation.
+        """
+        ...
+
+class EndpointPool:
+    """
+    Endpoint pool configuration used by PerformanceClient for weighted endpoint routing.
+    """
+
+    def __init__(
+        self,
+        endpoints: builtins.list[Endpoint],
+        endpoint_weights: typing.Optional[builtins.list[builtins.float]] = None,
+    ) -> None:
+        """
+        Args:
+            endpoints: List of reusable Endpoint objects.
+            endpoint_weights: Optional per-endpoint traffic weights used for deterministic
+                weighted routing.
         """
         ...
 

@@ -1,7 +1,6 @@
 use crate::client::HttpClientWrapper;
 use crate::errors::ClientError;
 
-use futures::future::join_all;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -63,21 +62,25 @@ pub struct EndpointHealthConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct EndpointPoolConfig {
-    pub urls: Vec<String>,
-    pub weights: Option<Vec<f64>>,
-    pub endpoint_health: Option<Vec<EndpointHealthConfig>>,
+pub struct EndpointConfig {
+    pub base_url: String,
+    pub health_api_key: String,
+    pub endpoint_health: Option<EndpointHealthConfig>,
     pub health_check_interval: Duration,
     pub health_check_timeout: Duration,
     pub health_check_retries: u32,
     pub health_check_client_wrapper: Arc<HttpClientWrapper>,
 }
 
-impl EndpointPoolConfig {
-    pub fn new(urls: Vec<String>, health_check_client_wrapper: Arc<HttpClientWrapper>) -> Self {
+impl EndpointConfig {
+    pub fn new(
+        base_url: String,
+        health_api_key: String,
+        health_check_client_wrapper: Arc<HttpClientWrapper>,
+    ) -> Self {
         Self {
-            urls,
-            weights: None,
+            base_url,
+            health_api_key,
             endpoint_health: None,
             health_check_interval: DEFAULT_HEALTH_CHECK_INTERVAL,
             health_check_timeout: DEFAULT_HEALTH_CHECK_TIMEOUT,
@@ -101,19 +104,14 @@ impl EndpointPoolConfig {
         self
     }
 
-    pub fn with_weights(mut self, weights: Vec<f64>) -> Self {
-        self.weights = Some(weights);
-        self
-    }
-
-    pub fn with_endpoint_health(mut self, endpoint_health: Vec<EndpointHealthConfig>) -> Self {
+    pub fn with_endpoint_health(mut self, endpoint_health: EndpointHealthConfig) -> Self {
         self.endpoint_health = Some(endpoint_health);
         self
     }
 
     pub fn with_standard_health_checks(
         mut self,
-        deep_health_urls: Option<Vec<String>>,
+        deep_health_url: Option<String>,
         fail_on_first: bool,
         deployment_health_path: Option<String>,
         deployment_timeout_is_no_vote: bool,
@@ -121,62 +119,35 @@ impl EndpointPoolConfig {
     ) -> Self {
         let deployment_health_path =
             deployment_health_path.unwrap_or_else(|| DEFAULT_HEALTH_CHECK_PATH.to_string());
-        let endpoint_count = self.urls.len();
-        self.endpoint_health = Some(match deep_health_urls {
-            Some(deep_health_urls) => deep_health_urls
-                .into_iter()
-                .map(|deep_url| EndpointHealthConfig {
-                    checks: vec![
-                        EndpointHealthCheckConfig::relative(deployment_health_path.clone())
-                            .with_timeout_is_no_vote(deployment_timeout_is_no_vote),
-                        EndpointHealthCheckConfig::absolute(deep_url)
-                            .with_timeout_is_no_vote(deep_timeout_is_no_vote),
-                    ],
-                    fail_on_first,
-                })
-                .collect(),
-            None => (0..endpoint_count)
-                .map(|_| EndpointHealthConfig {
-                    checks: vec![EndpointHealthCheckConfig::relative(
-                        deployment_health_path.clone(),
-                    )
+        self.endpoint_health = Some(match deep_health_url {
+            Some(deep_url) => EndpointHealthConfig {
+                checks: vec![
+                    EndpointHealthCheckConfig::relative(deployment_health_path)
+                        .with_timeout_is_no_vote(deployment_timeout_is_no_vote),
+                    EndpointHealthCheckConfig::absolute(deep_url)
+                        .with_timeout_is_no_vote(deep_timeout_is_no_vote),
+                ],
+                fail_on_first,
+            },
+            None => EndpointHealthConfig {
+                checks: vec![EndpointHealthCheckConfig::relative(deployment_health_path)
                     .with_timeout_is_no_vote(deployment_timeout_is_no_vote)],
-                    fail_on_first,
-                })
-                .collect(),
+                fail_on_first,
+            },
         });
         self
     }
 
-    pub fn primary_url(&self) -> Option<&str> {
-        self.urls.first().map(String::as_str)
-    }
-
     fn validate(&self) -> Result<(), ClientError> {
-        if self.urls.is_empty() {
+        if self.base_url.trim().is_empty() {
             return Err(ClientError::InvalidParameter(
-                "endpoint pool must contain at least one URL".to_string(),
+                "endpoint base_url cannot be empty".to_string(),
             ));
         }
-
-        let mut normalized_urls = Vec::with_capacity(self.urls.len());
-        for url in &self.urls {
-            if url.trim().is_empty() {
-                return Err(ClientError::InvalidParameter(
-                    "endpoint pool URLs cannot be empty".to_string(),
-                ));
-            }
-
-            let normalized = normalize_url(url);
-            if normalized_urls
-                .iter()
-                .any(|existing| existing == &normalized)
-            {
-                return Err(ClientError::InvalidParameter(
-                    "endpoint pool URLs must be unique".to_string(),
-                ));
-            }
-            normalized_urls.push(normalized);
+        if self.health_api_key.trim().is_empty() {
+            return Err(ClientError::InvalidParameter(
+                "endpoint health_api_key cannot be empty".to_string(),
+            ));
         }
 
         if self.health_check_timeout < MIN_HEALTH_CHECK_TIMEOUT {
@@ -193,52 +164,23 @@ impl EndpointPoolConfig {
             )));
         }
 
-        if let Some(weights) = &self.weights {
-            if weights.len() != self.urls.len() {
-                return Err(ClientError::InvalidParameter(
-                    "endpoint pool weights length must match urls length".to_string(),
-                ));
-            }
-            if weights
-                .iter()
-                .any(|weight| !weight.is_finite() || *weight < 0.0)
-            {
-                return Err(ClientError::InvalidParameter(
-                    "endpoint pool weights must be finite and non-negative".to_string(),
-                ));
-            }
-            if weights.iter().all(|weight| *weight == 0.0) {
-                return Err(ClientError::InvalidParameter(
-                    "endpoint pool weights cannot all be zero".to_string(),
-                ));
-            }
-        }
-
         if let Some(endpoint_health) = &self.endpoint_health {
-            if endpoint_health.len() != self.urls.len() {
+            if endpoint_health.checks.is_empty() {
                 return Err(ClientError::InvalidParameter(
-                    "endpoint_health length must match urls length".to_string(),
+                    "endpoint_health checks cannot be empty".to_string(),
                 ));
             }
 
-            for health_cfg in endpoint_health {
-                if health_cfg.checks.is_empty() {
+            for check in &endpoint_health.checks {
+                if check.path_or_url.trim().is_empty() {
                     return Err(ClientError::InvalidParameter(
-                        "endpoint_health checks cannot be empty".to_string(),
+                        "endpoint_health check path_or_url cannot be empty".to_string(),
                     ));
                 }
-
-                for check in &health_cfg.checks {
-                    if check.path_or_url.trim().is_empty() {
-                        return Err(ClientError::InvalidParameter(
-                            "endpoint_health check path_or_url cannot be empty".to_string(),
-                        ));
-                    }
-                    if !check.extend_base_url && reqwest::Url::parse(&check.path_or_url).is_err() {
-                        return Err(ClientError::InvalidParameter(
-                            "absolute endpoint_health check URLs must be valid".to_string(),
-                        ));
-                    }
+                if !check.extend_base_url && reqwest::Url::parse(&check.path_or_url).is_err() {
+                    return Err(ClientError::InvalidParameter(
+                        "absolute endpoint_health check URLs must be valid".to_string(),
+                    ));
                 }
             }
         }
@@ -247,10 +189,21 @@ impl EndpointPoolConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-struct ManagedEndpoint {
+#[derive(Debug)]
+struct EndpointInner {
     base_url: Arc<str>,
+    health_api_key: Arc<str>,
     health_state: Arc<EndpointHealthState>,
+    endpoint_health: EndpointHealthConfig,
+    health_check_interval: Duration,
+    health_check_timeout: Duration,
+    health_check_retries: u32,
+    health_check_client_wrapper: Arc<HttpClientWrapper>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Endpoint {
+    inner: Arc<EndpointInner>,
 }
 
 #[derive(Debug)]
@@ -286,6 +239,146 @@ impl EndpointHealthState {
             }
             HealthVote::NoVote => (false, false),
         }
+    }
+}
+
+impl Endpoint {
+    pub fn new(config: EndpointConfig) -> Result<Self, ClientError> {
+        config.validate()?;
+        let endpoint_health = config
+            .endpoint_health
+            .unwrap_or_else(|| EndpointHealthConfig {
+                checks: build_default_health_checks(),
+                fail_on_first: false,
+            });
+
+        let inner = Arc::new(EndpointInner {
+            base_url: Arc::<str>::from(normalize_url(&config.base_url)),
+            health_api_key: Arc::<str>::from(config.health_api_key),
+            health_state: Arc::new(EndpointHealthState::new()),
+            endpoint_health,
+            health_check_interval: config.health_check_interval,
+            health_check_timeout: config.health_check_timeout,
+            health_check_retries: config.health_check_retries,
+            health_check_client_wrapper: config.health_check_client_wrapper,
+        });
+        start_endpoint_health_worker(&inner)?;
+        Ok(Self { inner })
+    }
+
+    pub fn base_url(&self) -> &str {
+        self.inner.base_url.as_ref()
+    }
+
+    fn is_healthy(&self) -> bool {
+        self.inner.health_state.is_healthy()
+    }
+
+    #[cfg(test)]
+    fn set_healthy_for_test(&self, healthy: bool) {
+        self.inner.health_state.set_for_test(healthy);
+    }
+
+    fn apply_health_vote(&self, vote: HealthVote) -> (bool, bool) {
+        self.inner.health_state.apply_vote(vote)
+    }
+
+    async fn refresh_health(&self) {
+        let client = self.inner.health_check_client_wrapper.get_client();
+        let vote = check_endpoint_health(
+            &client,
+            self.base_url(),
+            &self.inner.endpoint_health,
+            self.inner.health_api_key.as_ref(),
+            self.inner.health_check_timeout,
+            self.inner.health_check_retries,
+        )
+        .await;
+
+        tracing::debug!(
+            endpoint_base_url = self.base_url(),
+            vote = ?vote,
+            "endpoint health refresh vote"
+        );
+
+        let (restored_to_rotation, removed_from_rotation) = self.apply_health_vote(vote);
+        if removed_from_rotation {
+            tracing::warn!(
+                endpoint_base_url = self.base_url(),
+                "endpoint marked as unhealthy"
+            );
+        }
+        if restored_to_rotation {
+            tracing::info!(
+                endpoint_base_url = self.base_url(),
+                "endpoint restored as healthy"
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EndpointPoolConfig {
+    pub endpoints: Vec<Endpoint>,
+    pub weights: Option<Vec<f64>>,
+}
+
+impl EndpointPoolConfig {
+    pub fn new(endpoints: Vec<Endpoint>) -> Self {
+        Self {
+            endpoints,
+            weights: None,
+        }
+    }
+
+    pub fn with_weights(mut self, weights: Vec<f64>) -> Self {
+        self.weights = Some(weights);
+        self
+    }
+
+    fn validate(&self) -> Result<(), ClientError> {
+        if self.endpoints.is_empty() {
+            return Err(ClientError::InvalidParameter(
+                "endpoint pool must contain at least one endpoint".to_string(),
+            ));
+        }
+
+        let mut normalized_urls = Vec::with_capacity(self.endpoints.len());
+        for endpoint in &self.endpoints {
+            let normalized = normalize_url(endpoint.base_url());
+            if normalized_urls
+                .iter()
+                .any(|existing| existing == &normalized)
+            {
+                return Err(ClientError::InvalidParameter(
+                    "endpoint pool endpoints must be unique".to_string(),
+                ));
+            }
+            normalized_urls.push(normalized);
+        }
+
+        if let Some(weights) = &self.weights {
+            if weights.len() != self.endpoints.len() {
+                return Err(ClientError::InvalidParameter(
+                    "endpoint pool weights length must match endpoints length".to_string(),
+                ));
+            }
+            if weights
+                .iter()
+                .any(|weight| !weight.is_finite() || *weight < 0.0)
+            {
+                return Err(ClientError::InvalidParameter(
+                    "endpoint pool weights must be finite and non-negative".to_string(),
+                ));
+            }
+            if weights.iter().all(|weight| *weight == 0.0) {
+                return Err(ClientError::InvalidParameter(
+                    "endpoint pool weights cannot all be zero".to_string(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -327,12 +420,6 @@ impl EndpointRouter {
         match self {
             EndpointRouter::Single(endpoint) => endpoint.base_url.as_ref(),
             EndpointRouter::Pool(pool) => pool.primary_url(),
-        }
-    }
-
-    pub(crate) fn ensure_health_worker_started(&self, api_key: &str) {
-        if let EndpointRouter::Pool(pool) = self {
-            pool.ensure_health_worker_started(api_key);
         }
     }
 
@@ -388,15 +475,9 @@ impl EndpointRouter {
 
 #[derive(Debug)]
 pub struct EndpointPool {
-    endpoints: Vec<ManagedEndpoint>,
+    endpoints: Vec<Endpoint>,
     weights: Vec<f64>,
-    endpoint_health: Vec<EndpointHealthConfig>,
-    health_check_interval: Duration,
-    health_check_timeout: Duration,
-    health_check_retries: u32,
-    health_check_client_wrapper: Arc<HttpClientWrapper>,
     round_robin_counter: AtomicUsize,
-    health_worker_started: AtomicBool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -409,50 +490,18 @@ enum HealthVote {
 impl EndpointPool {
     pub fn new(config: EndpointPoolConfig) -> Result<Arc<Self>, ClientError> {
         config.validate()?;
-        let endpoint_count = config.urls.len();
-        let weights = config
-            .weights
-            .clone()
-            .unwrap_or_else(|| vec![1.0; endpoint_count]);
-        let endpoint_health = config.endpoint_health.clone().unwrap_or_else(|| {
-            (0..endpoint_count)
-                .map(|_| EndpointHealthConfig {
-                    checks: build_default_health_checks(),
-                    fail_on_first: false,
-                })
-                .collect()
-        });
-        let health_check_interval = config.health_check_interval;
-        let health_check_timeout = config.health_check_timeout;
-        let health_check_retries = config.health_check_retries;
-        let health_check_client_wrapper = config.health_check_client_wrapper;
+        let endpoint_count = config.endpoints.len();
+        let weights = config.weights.unwrap_or_else(|| vec![1.0; endpoint_count]);
 
         Ok(Arc::new(Self {
-            endpoints: config
-                .urls
-                .into_iter()
-                .map(|url| ManagedEndpoint {
-                    base_url: Arc::<str>::from(url),
-                    health_state: Arc::new(EndpointHealthState::new()),
-                })
-                .collect(),
+            endpoints: config.endpoints,
             weights,
-            endpoint_health,
-            health_check_interval,
-            health_check_timeout,
-            health_check_retries,
-            health_check_client_wrapper,
             round_robin_counter: AtomicUsize::new(0),
-            health_worker_started: AtomicBool::new(false),
         }))
     }
 
-    pub(crate) fn endpoint_count(&self) -> usize {
-        self.endpoints.len()
-    }
-
     pub(crate) fn primary_url(&self) -> &str {
-        self.endpoints[0].base_url.as_ref()
+        self.endpoints[0].base_url()
     }
 
     fn select_from_candidates(&self, candidates: &[usize]) -> Option<EndpointSelection> {
@@ -461,7 +510,7 @@ impl EndpointPool {
 
         Some(EndpointSelection {
             endpoint_index,
-            base_url: Arc::clone(&self.endpoints[endpoint_index].base_url),
+            base_url: Arc::clone(&self.endpoints[endpoint_index].inner.base_url),
         })
     }
 
@@ -470,8 +519,7 @@ impl EndpointPool {
             .iter()
             .enumerate()
             .filter(|(index, endpoint)| {
-                (!healthy_only || endpoint.health_state.is_healthy())
-                    && !excluded_indices.contains(index)
+                (!healthy_only || endpoint.is_healthy()) && !excluded_indices.contains(index)
             })
             .map(|(index, _)| index)
             .collect()
@@ -536,8 +584,8 @@ impl EndpointPool {
                 .endpoints
                 .iter()
                 .map(|endpoint| EndpointHealthStatus {
-                    base_url: endpoint.base_url.to_string(),
-                    healthy: endpoint.health_state.is_healthy(),
+                    base_url: endpoint.base_url().to_string(),
+                    healthy: endpoint.is_healthy(),
                 })
                 .collect(),
         }
@@ -546,135 +594,88 @@ impl EndpointPool {
     #[cfg(test)]
     pub(crate) fn set_endpoint_health(&self, endpoint_index: usize, healthy: bool) -> bool {
         if let Some(endpoint) = self.endpoints.get(endpoint_index) {
-            endpoint.health_state.set_for_test(healthy);
+            endpoint.set_healthy_for_test(healthy);
             true
         } else {
             false
         }
     }
+}
 
-    fn apply_health_vote(&self, endpoint_index: usize, vote: HealthVote) -> (bool, bool) {
-        let Some(endpoint) = self.endpoints.get(endpoint_index) else {
-            return (false, false);
-        };
-        endpoint.health_state.apply_vote(vote)
-    }
+fn start_endpoint_health_worker(inner: &Arc<EndpointInner>) -> Result<(), ClientError> {
+    let weak_endpoint = Arc::downgrade(inner);
+    let endpoint_base_url = inner.base_url.to_string();
+    let base_interval = inner.health_check_interval;
+    let health_check_timeout_s = inner.health_check_timeout.as_secs_f64();
+    let health_check_retries = inner.health_check_retries;
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
 
-    pub(crate) async fn refresh_health(&self, api_key: &str) -> EndpointPoolHealthSnapshot {
-        let client_wrapper = Arc::clone(&self.health_check_client_wrapper);
-        let endpoint_health = self.endpoint_health.clone();
-        let health_check_timeout = self.health_check_timeout;
-        let health_check_retries = self.health_check_retries;
+    std::thread::Builder::new()
+        .name(format!(
+            "bpclient-health-{}",
+            splitmix64(endpoint_base_url.len() as u64)
+        ))
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            match runtime {
+                Ok(runtime) => {
+                    let _ = started_tx.send(Ok(()));
+                    runtime.block_on(async move {
+                        tracing::debug!(
+                            endpoint_base_url,
+                            health_check_interval_s = base_interval.as_secs_f64(),
+                            health_check_timeout_s,
+                            health_check_retries,
+                            "starting endpoint health worker"
+                        );
 
-        let results = join_all(self.endpoints.iter().enumerate().map(|(index, endpoint)| {
-            let endpoint_health = endpoint_health[index].clone();
-            let client_wrapper = Arc::clone(&client_wrapper);
-            async move {
-                let client = client_wrapper.get_client();
-                let vote = check_endpoint_health(
-                    &client,
-                    endpoint.base_url.as_ref(),
-                    &endpoint_health,
-                    api_key,
-                    health_check_timeout,
-                    health_check_retries,
-                )
-                .await;
-                tracing::debug!(
-                    endpoint_base_url = endpoint.base_url.as_ref(),
-                    vote = ?vote,
-                    "endpoint pool health refresh vote"
-                );
-                (index, vote)
-            }
-        }))
-        .await;
+                        let mut current_interval = base_interval;
+                        loop {
+                            let Some(inner) = weak_endpoint.upgrade() else {
+                                break;
+                            };
+                            let endpoint = Endpoint { inner };
+                            let start_time = std::time::Instant::now();
+                            endpoint.refresh_health().await;
 
-        let mut became_unhealthy = Vec::new();
-        let mut became_healthy = Vec::new();
+                            let response_time = start_time.elapsed();
+                            if response_time > current_interval / 2 {
+                                current_interval = std::cmp::min(
+                                    current_interval.saturating_mul(3) / 2,
+                                    base_interval.saturating_mul(10),
+                                );
+                            } else {
+                                current_interval = base_interval;
+                            }
 
-        for (index, vote) in results {
-            let (restored_to_rotation, removed_from_rotation) = self.apply_health_vote(index, vote);
-            if removed_from_rotation {
-                became_unhealthy.push(self.endpoints[index].base_url.to_string());
-            }
-            if restored_to_rotation {
-                became_healthy.push(self.endpoints[index].base_url.to_string());
-            }
-        }
-
-        if !became_unhealthy.is_empty() {
-            tracing::warn!(
-                removed_endpoints = ?became_unhealthy,
-                "endpoint pool removed endpoints from healthy rotation"
-            );
-        }
-        if !became_healthy.is_empty() {
-            tracing::info!(
-                restored_endpoints = ?became_healthy,
-                "endpoint pool restored endpoints to healthy rotation"
-            );
-        }
-
-        self.health_snapshot()
-    }
-
-    pub(crate) fn ensure_health_worker_started(self: &Arc<Self>, api_key: &str) {
-        if self.endpoint_count() <= 1 || self.health_worker_started.load(Ordering::SeqCst) {
-            return;
-        }
-
-        let Ok(handle) = tokio::runtime::Handle::try_current() else {
-            tracing::warn!(
-                "endpoint pool configured, but no Tokio runtime is active; health worker start deferred"
-            );
-            return;
-        };
-
-        if self
-            .health_worker_started
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return;
-        }
-
-        let weak_pool = Arc::downgrade(self);
-        let api_key = api_key.to_string();
-
-        let base_interval = self.health_check_interval;
-        tracing::debug!(
-            endpoint_count = self.endpoint_count(),
-            health_check_interval_s = base_interval.as_secs_f64(),
-            health_check_timeout_s = self.health_check_timeout.as_secs_f64(),
-            health_check_retries = self.health_check_retries,
-            "starting endpoint pool health worker"
-        );
-        let task = async move {
-            let mut current_interval = base_interval;
-            loop {
-                let Some(endpoint_pool) = weak_pool.upgrade() else {
-                    break;
-                };
-
-                let start_time = std::time::Instant::now();
-                endpoint_pool.refresh_health(&api_key).await;
-
-                let response_time = start_time.elapsed();
-                if response_time > current_interval / 2 {
-                    current_interval = std::cmp::min(
-                        current_interval.saturating_mul(3) / 2,
-                        base_interval.saturating_mul(10),
-                    );
-                } else {
-                    current_interval = base_interval;
+                            tokio::time::sleep(current_interval).await;
+                        }
+                    });
                 }
-
-                tokio::time::sleep(current_interval).await;
+                Err(error) => {
+                    let _ = started_tx.send(Err(error.to_string()));
+                }
             }
-        };
+        })
+        .map_err(|error| {
+            ClientError::Connect(format!(
+                "Failed to spawn endpoint health worker thread: {}",
+                error
+            ))
+        })?;
 
-        handle.spawn(task);
+    match started_rx.recv() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(ClientError::Connect(format!(
+            "Failed to start endpoint health worker runtime: {}",
+            error
+        ))),
+        Err(error) => Err(ClientError::Connect(format!(
+            "Failed to receive endpoint health worker startup signal: {}",
+            error
+        ))),
     }
 }
 
@@ -886,6 +887,15 @@ mod tests {
         HttpClientWrapper::new(1, None).expect("test health-check client wrapper should build")
     }
 
+    fn endpoint(base_url: &str) -> Endpoint {
+        Endpoint::new(EndpointConfig::new(
+            base_url.to_string(),
+            "test-api-key".to_string(),
+            health_check_wrapper(),
+        ))
+        .expect("endpoint should be valid")
+    }
+
     async fn start_health_test_server() -> String {
         async fn healthy() -> impl IntoResponse {
             (StatusCode::OK, "ok")
@@ -957,27 +967,21 @@ mod tests {
 
     #[test]
     fn test_endpoint_pool_validation_rejects_duplicates() {
-        let result = EndpointPool::new(EndpointPoolConfig::new(
-            vec![
-                "https://example.com".to_string(),
-                "https://example.com/".to_string(),
-            ],
-            health_check_wrapper(),
-        ));
+        let result = EndpointPool::new(EndpointPoolConfig::new(vec![
+            endpoint("https://example.com"),
+            endpoint("https://example.com/"),
+        ]));
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_equal_weights_use_deterministic_mixed_routing() {
-        let pool = EndpointPool::new(EndpointPoolConfig::new(
-            vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-                "https://c.example.com".to_string(),
-            ],
-            health_check_wrapper(),
-        ))
+        let pool = EndpointPool::new(EndpointPoolConfig::new(vec![
+            endpoint("https://a.example.com"),
+            endpoint("https://b.example.com"),
+            endpoint("https://c.example.com"),
+        ]))
         .expect("pool should be valid");
 
         let mut seen = [0usize; 3];
@@ -991,14 +995,11 @@ mod tests {
 
     #[test]
     fn test_unhealthy_endpoint_is_skipped_when_alternatives_exist() {
-        let pool = EndpointPool::new(EndpointPoolConfig::new(
-            vec![
-                "https://a.example.com".to_string(),
-                "https://b.example.com".to_string(),
-                "https://c.example.com".to_string(),
-            ],
-            health_check_wrapper(),
-        ))
+        let pool = EndpointPool::new(EndpointPoolConfig::new(vec![
+            endpoint("https://a.example.com"),
+            endpoint("https://b.example.com"),
+            endpoint("https://c.example.com"),
+        ]))
         .expect("pool should be valid");
 
         pool.set_endpoint_health(1, false);
@@ -1012,15 +1013,16 @@ mod tests {
 
     #[test]
     fn test_endpoint_health_validation_rejects_empty_checks() {
-        let result = EndpointPool::new(
-            EndpointPoolConfig::new(
-                vec!["https://a.example.com".to_string()],
+        let result = Endpoint::new(
+            EndpointConfig::new(
+                "https://a.example.com".to_string(),
+                "test-api-key".to_string(),
                 health_check_wrapper(),
             )
-            .with_endpoint_health(vec![EndpointHealthConfig {
+            .with_endpoint_health(EndpointHealthConfig {
                 checks: Vec::new(),
                 fail_on_first: false,
-            }]),
+            }),
         );
         assert!(result.is_err());
     }
@@ -1028,14 +1030,11 @@ mod tests {
     #[test]
     fn test_weighted_selection_defaults_to_primary_when_others_are_zero() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(
-                vec![
-                    "https://a.example.com".to_string(),
-                    "https://b.example.com".to_string(),
-                    "https://c.example.com".to_string(),
-                ],
-                health_check_wrapper(),
-            )
+            EndpointPoolConfig::new(vec![
+                endpoint("https://a.example.com"),
+                endpoint("https://b.example.com"),
+                endpoint("https://c.example.com"),
+            ])
             .with_weights(vec![1.0, 0.0, 0.0]),
         )
         .expect("pool should be valid");
@@ -1049,14 +1048,11 @@ mod tests {
     #[test]
     fn test_weight_zero_endpoint_used_when_primary_unhealthy() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(
-                vec![
-                    "https://a.example.com".to_string(),
-                    "https://b.example.com".to_string(),
-                    "https://c.example.com".to_string(),
-                ],
-                health_check_wrapper(),
-            )
+            EndpointPoolConfig::new(vec![
+                endpoint("https://a.example.com"),
+                endpoint("https://b.example.com"),
+                endpoint("https://c.example.com"),
+            ])
             .with_weights(vec![1.0, 0.0, 0.0]),
         )
         .expect("pool should be valid");
@@ -1068,19 +1064,15 @@ mod tests {
 
     #[test]
     fn test_endpoint_health_flips_immediately_on_unhealthy_vote() {
-        let pool = EndpointPool::new(EndpointPoolConfig::new(
-            vec!["https://a.example.com".to_string()],
-            health_check_wrapper(),
-        ))
-        .expect("pool should be valid");
+        let endpoint = endpoint("https://a.example.com");
 
-        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
+        assert!(endpoint.is_healthy());
 
-        pool.apply_health_vote(0, HealthVote::Unhealthy);
-        assert_eq!(pool.health_snapshot().endpoints[0].healthy, false);
+        endpoint.apply_health_vote(HealthVote::Unhealthy);
+        assert!(!endpoint.is_healthy());
 
-        pool.apply_health_vote(0, HealthVote::Healthy);
-        assert_eq!(pool.health_snapshot().endpoints[0].healthy, true);
+        endpoint.apply_health_vote(HealthVote::Healthy);
+        assert!(endpoint.is_healthy());
     }
 
     #[tokio::test]
@@ -1135,13 +1127,10 @@ mod tests {
     #[test]
     fn test_weight_validation_rejects_all_zero_weights() {
         let result = EndpointPool::new(
-            EndpointPoolConfig::new(
-                vec![
-                    "https://a.example.com".to_string(),
-                    "https://b.example.com".to_string(),
-                ],
-                health_check_wrapper(),
-            )
+            EndpointPoolConfig::new(vec![
+                endpoint("https://a.example.com"),
+                endpoint("https://b.example.com"),
+            ])
             .with_weights(vec![0.0, 0.0]),
         );
 
@@ -1151,13 +1140,10 @@ mod tests {
     #[test]
     fn test_fractional_weights_do_not_stick_to_first_endpoint() {
         let pool = EndpointPool::new(
-            EndpointPoolConfig::new(
-                vec![
-                    "https://a.example.com".to_string(),
-                    "https://b.example.com".to_string(),
-                ],
-                health_check_wrapper(),
-            )
+            EndpointPoolConfig::new(vec![
+                endpoint("https://a.example.com"),
+                endpoint("https://b.example.com"),
+            ])
             .with_weights(vec![0.1, 0.9]),
         )
         .expect("pool should be valid");

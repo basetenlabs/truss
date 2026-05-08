@@ -17,8 +17,12 @@ export declare class HttpClientWrapper {
   constructor(httpVersion?: number | undefined | null, proxy?: string | undefined | null)
 }
 
+export declare class Endpoint {
+  constructor(baseUrl: string, apiKey: string, clientWrapper: HttpClientWrapper, deepHealthUrl?: string | undefined | null, deploymentHealthPath?: string | undefined | null, healthCheckIntervalS?: number | undefined | null, healthCheckTimeoutS?: number | undefined | null, healthCheckRetries?: number | undefined | null, healthFailOnFirst?: boolean | undefined | null, deploymentTimeoutIsNoVote?: boolean | undefined | null, deepTimeoutIsNoVote?: boolean | undefined | null)
+}
+
 export declare class EndpointPool {
-  constructor(endpointUrls: Array<string>, clientWrapper: HttpClientWrapper, endpointWeights?: Array<number> | undefined | null, deepHealthUrls?: Array<string> | undefined | null, deploymentHealthPath?: string | undefined | null, healthCheckIntervalS?: number | undefined | null, healthCheckTimeoutS?: number | undefined | null, healthCheckRetries?: number | undefined | null, healthFailOnFirst?: boolean | undefined | null, deploymentTimeoutIsNoVote?: boolean | undefined | null, deepTimeoutIsNoVote?: boolean | undefined | null)
+  constructor(endpoints: Array<Endpoint>, endpointWeights?: Array<number> | undefined | null)
 }
 
 export declare class PerformanceClient {

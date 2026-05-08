@@ -345,9 +345,6 @@ impl PerformanceClientCore {
             return Ok(config);
         }
 
-        config
-            .endpoint_router
-            .ensure_health_worker_started(&config.api_key_primary);
         let pinned_selection = config.endpoint_router.select_endpoint(&[])?;
         Ok(config.with_pinned_initial_endpoint(Some(pinned_selection)))
     }

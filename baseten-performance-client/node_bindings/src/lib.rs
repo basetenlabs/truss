@@ -2,11 +2,12 @@
 
 use baseten_performance_client_core::{
   CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
-  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse,
-  EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
-  PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE,
-  INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse, Endpoint as CoreEndpoint,
+  EndpointConfig as CoreEndpointConfig, EndpointPool as CoreEndpointPool, EndpointPoolConfig,
+  HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+  RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
+  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
+  MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use napi_derive::napi;
@@ -363,18 +364,18 @@ impl HttpClientWrapper {
 }
 
 #[napi]
-pub struct EndpointPool {
-  inner: Arc<CoreEndpointPool>,
+pub struct Endpoint {
+  inner: CoreEndpoint,
 }
 
 #[napi]
-impl EndpointPool {
+impl Endpoint {
   #[napi(constructor)]
   pub fn new(
-    endpoint_urls: Vec<String>,
+    base_url: String,
+    api_key: String,
     client_wrapper: &HttpClientWrapper,
-    endpoint_weights: Option<Vec<f64>>,
-    deep_health_urls: Option<Vec<String>>,
+    deep_health_url: Option<String>,
     deployment_health_path: Option<String>,
     health_check_interval_s: Option<f64>,
     health_check_timeout_s: Option<f64>,
@@ -383,14 +384,7 @@ impl EndpointPool {
     deployment_timeout_is_no_vote: Option<bool>,
     deep_timeout_is_no_vote: Option<bool>,
   ) -> napi::Result<Self> {
-    if endpoint_urls.is_empty() {
-      return Err(create_napi_error("endpoint_urls must not be empty"));
-    }
-
-    let mut config = EndpointPoolConfig::new(endpoint_urls, Arc::clone(&client_wrapper.inner));
-    if let Some(weights) = endpoint_weights {
-      config = config.with_weights(weights);
-    }
+    let mut config = CoreEndpointConfig::new(base_url, api_key, Arc::clone(&client_wrapper.inner));
     if let Some(interval_s) = health_check_interval_s {
       config = config.with_health_check_interval(std::time::Duration::from_secs_f64(interval_s));
     }
@@ -401,12 +395,40 @@ impl EndpointPool {
       config = config.with_health_check_retries(retries);
     }
     config = config.with_standard_health_checks(
-      deep_health_urls,
+      deep_health_url,
       health_fail_on_first.unwrap_or(false),
       deployment_health_path,
       deployment_timeout_is_no_vote.unwrap_or(false),
       deep_timeout_is_no_vote.unwrap_or(false),
     );
+
+    let inner = CoreEndpoint::new(config).map_err(convert_core_error_to_napi_error)?;
+    Ok(Self { inner })
+  }
+}
+
+#[napi]
+pub struct EndpointPool {
+  inner: Arc<CoreEndpointPool>,
+}
+
+#[napi]
+impl EndpointPool {
+  #[napi(constructor)]
+  pub fn new(endpoints: Vec<&Endpoint>, endpoint_weights: Option<Vec<f64>>) -> napi::Result<Self> {
+    if endpoints.is_empty() {
+      return Err(create_napi_error("endpoints must not be empty"));
+    }
+
+    let mut config = EndpointPoolConfig::new(
+      endpoints
+        .into_iter()
+        .map(|endpoint| endpoint.inner.clone())
+        .collect(),
+    );
+    if let Some(weights) = endpoint_weights {
+      config = config.with_weights(weights);
+    }
 
     let inner = CoreEndpointPool::new(config).map_err(convert_core_error_to_napi_error)?;
     Ok(Self { inner })

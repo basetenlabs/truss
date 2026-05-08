@@ -14,8 +14,8 @@ pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
 pub use endpoint_routing::{
-    EndpointHealthCheckConfig, EndpointHealthConfig, EndpointHealthStatus, EndpointPool,
-    EndpointPoolConfig, EndpointPoolHealthSnapshot,
+    Endpoint, EndpointConfig, EndpointHealthCheckConfig, EndpointHealthConfig,
+    EndpointHealthStatus, EndpointPool, EndpointPoolConfig, EndpointPoolHealthSnapshot,
 };
 pub use errors::ClientError;
 pub use http::*;

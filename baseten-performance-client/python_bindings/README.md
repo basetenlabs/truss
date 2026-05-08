@@ -463,22 +463,32 @@ client = PerformanceClient(
 ```
 
 #### Endpoint Pool and Health Checks
-Route traffic across multiple deployments with deterministic weighted routing and a background health worker:
+Route traffic across reusable endpoints with deterministic weighted routing. Each `Endpoint`
+owns its own health worker, so the same endpoint object can be shared across many pools
+without duplicate probes:
 
 ```python
-from baseten_performance_client import EndpointPool, HttpClientWrapper, PerformanceClient
+from baseten_performance_client import Endpoint, EndpointPool, HttpClientWrapper, PerformanceClient
 
 health_wrapper = HttpClientWrapper(http_version=1)
-
-endpoint_pool = EndpointPool(
-    endpoint_urls=[
-        "https://model-AAAA.api.baseten.co/environments/production/sync",
-        "https://model-BBBB.api.baseten.co/environments/production/sync",
-    ],
+endpoint_a = Endpoint(
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
+    api_key="your_key",
     client_wrapper=health_wrapper,
-    endpoint_weights=[0.8, 0.2],  # deterministic weighted routing
     deployment_health_path="/health",
     deployment_timeout_is_no_vote=False,
+)
+endpoint_b = Endpoint(
+    base_url="https://model-BBBB.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    client_wrapper=health_wrapper,
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=False,
+)
+
+endpoint_pool = EndpointPool(
+    endpoints=[endpoint_a, endpoint_b],
+    endpoint_weights=[0.8, 0.2],  # deterministic weighted routing
 )
 
 client = PerformanceClient(
@@ -492,9 +502,8 @@ Health semantics:
 
 - Weights are deterministic weighted routing, not weighted round robin.
 - Each configured health check is retried up to `health_check_retries`, and one successful retry is enough for that check.
-- If `deep_health_urls` are configured, both the shallow deployment health path and the deep health URL are evaluated.
+- If an endpoint has `deep_health_url` configured, both the shallow deployment health path and the deep health URL are evaluated.
 - `health_fail_on_first=True` short-circuits on the first hard failing check within an endpoint refresh cycle.
-- Endpoint eviction is stabilized across refresh cycles, so a single transient bad sample does not immediately move all traffic away from an otherwise healthy deployment.
 
 ### Error Handling
 

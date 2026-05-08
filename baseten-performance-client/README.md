@@ -73,32 +73,40 @@ const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrappe
 
 ### EndpointPool
 
-`EndpointPool` lets a `PerformanceClient` route requests across multiple deployment base URLs
-while sharing one health view across clients.
+`EndpointPool` lets a `PerformanceClient` route requests across reusable `Endpoint` objects.
+Each `Endpoint` owns its own health worker and health state, so the same endpoint can be
+shared across many pools without duplicate probes.
 
 - Weights are deterministic weighted routing, not weighted round robin.
-- Health checks run in the background from the pool itself.
+- Health checks run in the background from each `Endpoint`.
 - Each configured health check is retried up to `health_check_retries`, and one successful retry is enough for that check.
-- If deep health URLs are configured, shallow and deep checks are both evaluated.
+- If an endpoint has `deep_health_url` configured, shallow and deep checks are both evaluated.
 - `health_fail_on_first=True` short-circuits on the first hard failing check for that endpoint's refresh cycle.
-- Endpoint health transitions are stabilized: one bad sample does not immediately drain traffic.
 
 Python example:
 
 ```python
-from baseten_performance_client import EndpointPool, HttpClientWrapper, PerformanceClient
+from baseten_performance_client import Endpoint, EndpointPool, HttpClientWrapper, PerformanceClient
 
 health_wrapper = HttpClientWrapper(http_version=1)
-
-endpoint_pool = EndpointPool(
-    endpoint_urls=[
-        "https://model-AAAA.api.baseten.co/environments/production/sync",
-        "https://model-BBBB.api.baseten.co/environments/production/sync",
-    ],
+endpoint_a = Endpoint(
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
+    api_key="your_key",
     client_wrapper=health_wrapper,
-    endpoint_weights=[0.8, 0.2],
     deployment_health_path="/health",
     deployment_timeout_is_no_vote=False,
+)
+endpoint_b = Endpoint(
+    base_url="https://model-BBBB.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    client_wrapper=health_wrapper,
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=False,
+)
+
+endpoint_pool = EndpointPool(
+    endpoints=[endpoint_a, endpoint_b],
+    endpoint_weights=[0.8, 0.2],
 )
 
 client = PerformanceClient(
