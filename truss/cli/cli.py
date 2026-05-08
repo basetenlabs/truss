@@ -276,18 +276,16 @@ def whoami(remote: Optional[str], show_oidc: bool):
 
 @truss_cli.command()
 def configure():
-    # Read the original file content
-    with open(USER_TRUSSRC_PATH, "r") as f:
-        original_content = f.read()
+    original_content = (
+        USER_TRUSSRC_PATH.read_text() if USER_TRUSSRC_PATH.exists() else ""
+    )
 
-    # Open the editor and get the modified content
     edited_content = click.edit(original_content)
 
-    # If the content was modified, save it
     if edited_content is not None and edited_content != original_content:
-        with open(USER_TRUSSRC_PATH, "w") as f:
-            f.write(edited_content)
-            click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
+        USER_TRUSSRC_PATH.parent.mkdir(parents=True, exist_ok=True)
+        USER_TRUSSRC_PATH.write_text(edited_content)
+        click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
     else:
         click.echo("No changes made.")
 
