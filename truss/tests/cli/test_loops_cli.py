@@ -1,12 +1,15 @@
 """Tests for truss loops CLI commands."""
 
 import os
+import re
 from unittest.mock import Mock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+
+_LOCALIZED_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
 
 @pytest.fixture
@@ -328,3 +331,111 @@ def test_samplers_view_no_samplers_prints_friendly_message(mock_remote):
     )
     assert result.exit_code == 0, result.output
     assert "No Loops samplers found" in result.output
+
+
+def test_runs_view_renders_base_url_and_localized_created_at(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        {
+            "id": "trnr_xyz",
+            "session_id": "sess_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-xyz.api.baseten.co/trainer",
+            "created_at": "2026-05-07T12:34:56Z",
+        }
+    ]
+    result = _invoke(["loops", "runs", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "trainer-xyz.api.baseten.co" in result.output
+    # The raw ISO suffix should be replaced by the localized format.
+    assert "2026-05-07T12:34:56Z" not in result.output
+    assert _LOCALIZED_TIMESTAMP_RE.search(result.output) is not None
+
+
+def test_runs_view_default_puts_newest_at_bottom(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        {
+            "id": "trnr_old",
+            "session_id": "sess_a",
+            "base_model": "Qwen/Qwen3-8B",
+            "created_at": "2026-05-01T00:00:00Z",
+        },
+        {
+            "id": "trnr_new",
+            "session_id": "sess_b",
+            "base_model": "Qwen/Qwen3-8B",
+            "created_at": "2026-05-07T00:00:00Z",
+        },
+    ]
+    result = _invoke(["loops", "runs", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert result.output.index("trnr_old") < result.output.index("trnr_new")
+
+
+def test_runs_view_reverse_puts_newest_first(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        {
+            "id": "trnr_old",
+            "session_id": "sess_a",
+            "base_model": "Qwen/Qwen3-8B",
+            "created_at": "2026-05-01T00:00:00Z",
+        },
+        {
+            "id": "trnr_new",
+            "session_id": "sess_b",
+            "base_model": "Qwen/Qwen3-8B",
+            "created_at": "2026-05-07T00:00:00Z",
+        },
+    ]
+    result = _invoke(
+        ["loops", "runs", "view", "--remote", "test_remote", "--reverse"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.index("trnr_new") < result.output.index("trnr_old")
+
+
+def test_samplers_view_default_puts_newest_at_bottom(mock_remote):
+    mock_remote.api.list_loops_samplers.return_value = [
+        {
+            "id": "sampler_old",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://model-old.api.baseten.co/deployment/v1/sync",
+            "created_at": "2026-05-01T00:00:00Z",
+        },
+        {
+            "id": "sampler_new",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://model-new.api.baseten.co/deployment/v1/sync",
+            "created_at": "2026-05-07T00:00:00Z",
+        },
+    ]
+    result = _invoke(
+        ["loops", "samplers", "view", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.index("sampler_old") < result.output.index("sampler_new")
+    # Verify localized timestamp formatting (ISO suffix replaced).
+    assert "2026-05-01T00:00:00Z" not in result.output
+    assert _LOCALIZED_TIMESTAMP_RE.search(result.output) is not None
+
+
+def test_samplers_view_reverse_puts_newest_first(mock_remote):
+    mock_remote.api.list_loops_samplers.return_value = [
+        {
+            "id": "sampler_old",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://model-old.api.baseten.co/deployment/v1/sync",
+            "created_at": "2026-05-01T00:00:00Z",
+        },
+        {
+            "id": "sampler_new",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://model-new.api.baseten.co/deployment/v1/sync",
+            "created_at": "2026-05-07T00:00:00Z",
+        },
+    ]
+    result = _invoke(
+        ["loops", "samplers", "view", "--remote", "test_remote", "--reverse"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.index("sampler_new") < result.output.index("sampler_old")
