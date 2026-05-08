@@ -2,8 +2,9 @@ import configparser
 from unittest import mock
 
 import pytest
+from click.testing import CliRunner
 
-from truss.cli import proxy_command
+from truss.cli import proxy_command, ssh_commands
 from truss.cli import ssh as ssh_mod
 from truss.cli.proxy_command import (
     WORKLOAD_MODEL,
@@ -23,6 +24,7 @@ from truss.cli.ssh import (
     is_setup_complete,
     setup_ssh_config,
 )
+from truss.cli.train_commands import _format_ssh_commands
 
 
 class TestParseHostname:
@@ -427,3 +429,115 @@ class TestIsSetupComplete:
     def test_returns_false_without_key(self, tmp_path):
         (tmp_path / "proxy-command.py").touch()
         assert is_setup_complete(tmp_path) is False
+
+
+class TestFormatSSHCommands:
+    def test_single_node(self):
+        out = _format_ssh_commands("wgvj7gw", node_count=1)
+        assert out == "  [cyan]ssh training-job-wgvj7gw-0.ssh.baseten.co[/cyan]"
+        assert "(leader)" not in out
+
+    def test_multi_node(self):
+        out = _format_ssh_commands("wgvj7gw", node_count=3)
+        assert "ssh training-job-wgvj7gw-0.ssh.baseten.co[/cyan] (leader)" in out
+        assert "ssh training-job-wgvj7gw-1.ssh.baseten.co" in out
+        assert "ssh training-job-wgvj7gw-2.ssh.baseten.co" in out
+        # No -3 line.
+        assert "training-job-wgvj7gw-3" not in out
+
+
+class _FakePoller:
+    """Minimal stand-in for TrainingPollerMixin used in tests."""
+
+    next_status = "TRAINING_JOB_RUNNING"
+
+    def __init__(self, api, project_id, job_id):
+        self.api = api
+        self.project_id = project_id
+        self.job_id = job_id
+        self._current_status = mock.Mock(status=self.next_status, error_message=None)
+
+    def before_polling(self):
+        return None
+
+
+class TestSSHTrainingJobCommand:
+    def _api_with_node_count(self, node_count=2):
+        api = mock.Mock()
+        api.get_training_job.return_value = {
+            "training_job": {
+                "current_status": "TRAINING_JOB_RUNNING",
+                "instance_type": {"name": "fake", "node_count": node_count},
+            }
+        }
+        return api
+
+    def _invoke(self, *, args, api, poller_status="TRAINING_JOB_RUNNING"):
+        remote_provider = mock.Mock()
+        remote_provider.api = api
+
+        class _StatusPoller(_FakePoller):
+            next_status = poller_status
+
+        runner = CliRunner()
+        with (
+            mock.patch.object(ssh_commands, "is_setup_complete", return_value=True),
+            mock.patch.object(
+                ssh_commands.RemoteFactory, "create", return_value=remote_provider
+            ),
+            mock.patch.object(
+                ssh_commands, "get_most_recent_job", return_value=("proj_id", "wgvj7gw")
+            ),
+            mock.patch.object(ssh_commands, "TrainingPollerMixin", _StatusPoller),
+            mock.patch.object(ssh_commands.os, "execvp") as mock_exec,
+        ):
+            result = runner.invoke(ssh_commands.ssh, args)
+        return result, mock_exec
+
+    def test_exec_ssh_with_correct_hostname(self):
+        result, mock_exec = self._invoke(
+            args=["--training-job-id", "wgvj7gw", "--node-id", "1", "--remote", "dev"],
+            api=self._api_with_node_count(node_count=2),
+        )
+        assert result.exit_code == 0, result.output
+        mock_exec.assert_called_once_with(
+            "ssh", ["ssh", "training-job-wgvj7gw-1.ssh.baseten.co"]
+        )
+
+    def test_default_node_id_is_zero(self):
+        result, mock_exec = self._invoke(
+            args=["--training-job-id", "wgvj7gw", "--remote", "dev"],
+            api=self._api_with_node_count(node_count=1),
+        )
+        assert result.exit_code == 0, result.output
+        mock_exec.assert_called_once_with(
+            "ssh", ["ssh", "training-job-wgvj7gw-0.ssh.baseten.co"]
+        )
+
+    def test_exits_when_setup_incomplete(self):
+        runner = CliRunner()
+        with mock.patch.object(ssh_commands, "is_setup_complete", return_value=False):
+            result = runner.invoke(
+                ssh_commands.ssh, ["--training-job-id", "wgvj7gw", "--remote", "dev"]
+            )
+        assert result.exit_code == 1
+        assert "truss ssh setup" in result.output
+
+    def test_node_id_out_of_range(self):
+        result, mock_exec = self._invoke(
+            args=["--training-job-id", "wgvj7gw", "--node-id", "5", "--remote", "dev"],
+            api=self._api_with_node_count(node_count=2),
+        )
+        assert result.exit_code != 0
+        assert "out of range" in result.output
+        mock_exec.assert_not_called()
+
+    def test_errors_when_job_not_running(self):
+        result, mock_exec = self._invoke(
+            args=["--training-job-id", "wgvj7gw", "--remote", "dev"],
+            api=self._api_with_node_count(node_count=1),
+            poller_status="TRAINING_JOB_FAILED",
+        )
+        assert result.exit_code == 1
+        assert "Cannot SSH" in result.output
+        mock_exec.assert_not_called()
