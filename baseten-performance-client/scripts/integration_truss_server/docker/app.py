@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -183,56 +183,47 @@ app = FastAPI(title="Integration Truss Server")
 
 
 @app.get("/always_healthy")
-async def always_healthy() -> dict[str, object]:
-    return {"status": "healthy", "server_name": CONFIG.server_name}
+async def always_healthy() -> JSONResponse:
+    return JSONResponse(
+        status_code=200,
+        content={"status": "healthy", "server_name": CONFIG.server_name},
+    )
 
 
-@app.get("/health")
-@app.get("/true_health")
-async def health(response: Response) -> dict[str, object]:
+@app.get("/health", response_model=None)
+@app.get("/true_health", response_model=None)
+async def health() -> JSONResponse:
     minute_utc, second_utc = _now_utc()
     serve_active = CONFIG.serve_window.is_active(minute_utc, second_utc)
     health_active = serve_active
     serve_accepting = CONFIG.serve_window.is_active_with_grace(
         minute_utc, second_utc, CONFIG.serve_grace_period_s
     )
-
-    response.headers.update(
-        _apply_debug_headers(
-            config=CONFIG,
-            minute_utc=minute_utc,
-            second_utc=second_utc,
-            health_active=health_active,
-            serve_active=serve_active,
-            serve_accepting=serve_accepting,
-        )
+    debug_headers = _apply_debug_headers(
+        config=CONFIG,
+        minute_utc=minute_utc,
+        second_utc=second_utc,
+        health_active=health_active,
+        serve_active=serve_active,
+        serve_accepting=serve_accepting,
     )
 
-    if not health_active:
-        response.status_code = 503
-        return {
-            "status": "unhealthy",
+    return JSONResponse(
+        status_code=200 if health_active else 503,
+        headers=debug_headers,
+        content={
+            "status": "healthy" if health_active else "unhealthy",
             "server_name": CONFIG.server_name,
             "minute_utc": minute_utc,
             "second_utc": second_utc,
             "serve_active": serve_active,
             "serve_accepting": serve_accepting,
-        }
-
-    return {
-        "status": "healthy",
-        "server_name": CONFIG.server_name,
-        "minute_utc": minute_utc,
-        "second_utc": second_utc,
-        "serve_active": serve_active,
-        "serve_accepting": serve_accepting,
-    }
+        },
+    )
 
 
 @app.post("/v1/embeddings", response_model=None)
-async def embeddings(
-    request: EmbeddingsRequest, response: Response
-) -> dict[str, object] | JSONResponse:
+async def embeddings(request: EmbeddingsRequest) -> JSONResponse:
     minute_utc, second_utc = _now_utc()
     serve_active = CONFIG.serve_window.is_active(minute_utc, second_utc)
     health_active = serve_active
@@ -248,7 +239,6 @@ async def embeddings(
         serve_active=serve_active,
         serve_accepting=serve_accepting,
     )
-    response.headers.update(debug_headers)
 
     if CONFIG.response_delay_ms > 0:
         await asyncio.sleep(CONFIG.response_delay_ms / 1000.0)
@@ -281,12 +271,16 @@ async def embeddings(
             }
         )
 
-    return {
-        "object": "list",
-        "data": data,
-        "model": request.model,
-        "usage": {
-            "prompt_tokens": len(request.input),
-            "total_tokens": len(request.input),
+    return JSONResponse(
+        status_code=200,
+        headers=debug_headers,
+        content={
+            "object": "list",
+            "data": data,
+            "model": request.model,
+            "usage": {
+                "prompt_tokens": len(request.input),
+                "total_tokens": len(request.input),
+            },
         },
-    }
+    )
