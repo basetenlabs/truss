@@ -9,8 +9,8 @@ use std::time::Duration;
 
 const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
 const DEFAULT_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
-const DEFAULT_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
-const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 3;
+const DEFAULT_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(6);
+const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 1;
 const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(50);
 const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(100);
@@ -879,6 +879,7 @@ async fn run_health_check_attempts(
                     attempt = attempt + 1,
                     "endpoint pool health check succeeded"
                 );
+                // escape hatch: a healthy vote will override any negative votes.
                 return HealthVote::Healthy;
             }
             Ok(response) => {
