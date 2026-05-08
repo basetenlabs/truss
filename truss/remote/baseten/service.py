@@ -3,13 +3,12 @@ import logging
 import time
 import urllib.parse
 import warnings
-from typing import Any, Dict, Iterator, NamedTuple, Optional
+from typing import Any, Callable, Dict, Iterator, NamedTuple, Optional
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
 
 from truss.remote.baseten.api import BasetenApi
-from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import ModelVersionHandle
 from truss.remote.truss_remote import TrussService
 from truss.truss_handle.truss_handle import TrussHandle
@@ -37,6 +36,7 @@ class URLConfig(enum.Enum):
         app_endpoint: str
 
     MODEL = Data("model", "predict", "models")
+    BIS_LLM = Data("model", "sync/v1/chat/completions", "models")
     CHAIN = Data("chain", "run_remote", "chains")
 
     @staticmethod
@@ -90,16 +90,18 @@ class BasetenService(TrussService):
         self,
         model_version_handle: ModelVersionHandle,
         is_draft: bool,
-        api_key: str,
+        header_provider: Callable[[], Dict[str, str]],
         service_url: str,
         api: BasetenApi,
         truss_handle: Optional[TrussHandle] = None,
+        url_config: URLConfig = URLConfig.MODEL,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_version_handle = model_version_handle
-        self._auth_service = AuthService(api_key=api_key)
+        self._header_provider = header_provider
         self._api = api
         self._truss_handle = truss_handle
+        self._url_config = url_config
 
     def is_live(self) -> bool:
         raise NotImplementedError
@@ -140,7 +142,7 @@ class BasetenService(TrussService):
         return response.json()
 
     def authenticate(self) -> dict:
-        return self._auth_service.authenticate().header()
+        return self._header_provider()
 
     @property
     def logs_url(self) -> str:
@@ -154,7 +156,7 @@ class BasetenService(TrussService):
 
         return URLConfig.invoke_url(
             hostname=handle.hostname,
-            config=URLConfig.MODEL,
+            config=self._url_config,
             entity_version_id=handle.version_id,
             is_draft=self.is_draft,
         )
@@ -163,15 +165,17 @@ class BasetenService(TrussService):
     def _fetch_deployment(self) -> Any:
         return self._api.get_deployment(self.model_id, self.model_version_id)
 
-    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
-        """
-        Wait for the service to be deployed.
-        """
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[Dict[str, Any]]:
+        """Poll for deployment, yielding the full deployment dict."""
         while True:
             time.sleep(sleep_secs)
             try:
-                deployment = self._fetch_deployment()
-                yield deployment["status"]
+                yield self._fetch_deployment()
             except requests.exceptions.RequestException:
                 logger.warning("Network error, unable to reach Baseten. Retrying...")
                 continue
+
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
+        """Poll for deployment status, yielding only the status string."""
+        for deployment in self.poll_deployment(sleep_secs):
+            yield deployment["status"]

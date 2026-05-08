@@ -265,13 +265,13 @@ def wait_for_development_model_ready(
     dev_version_id: str,
     remote_provider: BasetenRemote,
     console: "rich_console.Console",
-    api_key: str,
 ) -> None:
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
-    headers = {"Authorization": f"Api-Key {api_key}"}
     try:
-        requests_lib.post(wake_url, headers=headers, timeout=10)
+        requests_lib.post(
+            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+        )
     except requests_lib.RequestException:
         # best effort
         pass
@@ -307,21 +307,26 @@ def wait_for_development_model_ready(
                 sys.exit(1)
 
 
-def start_keepalive(model_hostname: str, api_key: str) -> threading.Event:
+def start_keepalive(
+    model_hostname: str, header_provider: Callable[[], dict[str, str]]
+) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
     console.print("💤 --no-sleep enabled: keeping development model warm")
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(
-        target=keepalive_loop, args=(model_hostname, api_key, stop_event), daemon=True
+        target=keepalive_loop,
+        args=(model_hostname, header_provider, stop_event),
+        daemon=True,
     )
     keepalive_thread.start()
     return stop_event
 
 
 def keepalive_loop(
-    model_hostname: str, api_key: str, stop_event: threading.Event
+    model_hostname: str,
+    header_provider: Callable[[], dict[str, str]],
+    stop_event: threading.Event,
 ) -> None:
-    headers = {"Authorization": f"Api-Key {api_key}"}
     consecutive_failures = 0
     start_time = time.time()
     keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
@@ -348,7 +353,9 @@ def keepalive_loop(
             warning_emitted = True
 
         try:
-            resp = requests_lib.get(keepalive_url, headers=headers, timeout=10)
+            resp = requests_lib.get(
+                keepalive_url, headers=header_provider(), timeout=10
+            )
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:

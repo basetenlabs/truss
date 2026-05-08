@@ -105,6 +105,12 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
+_DEFAULT_APT_MIRROR_URL = "mirror://mirrors.ubuntu.com/US.txt"
+
+
+def _resolve_apt_mirror_url() -> str:
+    return os.getenv("BT_APT_MIRROR_URL") or _DEFAULT_APT_MIRROR_URL
+
 
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
@@ -787,6 +793,13 @@ class ServingImageBuilder(ImageBuilder):
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
+        if config.runtime.remote_ssh.enabled:
+            self._copy_into_build_dir(
+                TEMPLATES_DIR / "baseten-ssh-server.sh",
+                build_dir,
+                "baseten-ssh-server.sh",
+            )
+
         # Copy constraints file to bound versions for user-overridden packages.
         self._copy_into_build_dir(
             SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,
@@ -898,6 +911,7 @@ class ServingImageBuilder(ImageBuilder):
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
+        should_install_openssh_server = config.runtime.remote_ssh.enabled
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
@@ -926,6 +940,7 @@ class ServingImageBuilder(ImageBuilder):
             min_supported_python_minor_version_in_custom_base_image=min_py_version.minor,
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
+            should_install_openssh_server=should_install_openssh_server,
             should_install_requirements=should_install_python_requirements,
             requirements_file_type=config.requirements_file_type.value,
             config=config,
@@ -953,6 +968,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             run_as_user_id=run_as_user_id,
+            apt_mirror_url=_resolve_apt_mirror_url(),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.

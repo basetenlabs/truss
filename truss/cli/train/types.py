@@ -17,6 +17,7 @@ class DeployCheckpointArgs:
     dry_run: bool
     project_id: Optional[str]
     job_id: Optional[str]
+    run_id: Optional[str]
     deploy_config_path: Optional[str]
 
 
@@ -39,6 +40,7 @@ class DeploySuccessModelVersion(BaseModel):
 
     name: str
     id: str
+    model_id: str
 
 
 class DeploySuccessResult(BaseModel):

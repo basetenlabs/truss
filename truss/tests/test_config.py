@@ -27,6 +27,7 @@ from truss.base.truss_config import (
     ModelRepoCacheInternal,
     Resources,
     Runtime,
+    TrainingArtifactReference,
     TransportKind,
     TrussConfig,
     WebsocketOptions,
@@ -224,6 +225,10 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
         ("H100_40GB", AcceleratorSpec(accelerator=Accelerator.H100_40GB, count=1)),
         ("B200", AcceleratorSpec(accelerator=Accelerator.B200, count=1)),
         ("L40S", AcceleratorSpec(accelerator=Accelerator.L40S, count=1)),
+        (
+            "RTX_PRO_6000",
+            AcceleratorSpec(accelerator=Accelerator.RTX_PRO_6000, count=1),
+        ),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
@@ -1799,3 +1804,39 @@ class TestTrussConfigWeights:
         assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
         assert config_new.weights.sources[0].mount_location == "/models/llama"
         assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
+
+
+class TestCheckpointListNoMixing:
+    """CheckpointList rejects mixing training-job and loops checkpoint sources."""
+
+    def test_artifact_references_only_accepted(self):
+        ckpt_list = CheckpointList(
+            artifact_references=[
+                TrainingArtifactReference(
+                    training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                )
+            ]
+        )
+        assert ckpt_list.artifact_references[0].training_job_id == "tj_abc"
+        assert ckpt_list.loops_checkpoint_ids == []
+
+    def test_loops_checkpoint_ids_only_accepted(self):
+        ckpt_list = CheckpointList(loops_checkpoint_ids=["tcp_xyz"])
+        assert ckpt_list.loops_checkpoint_ids == ["tcp_xyz"]
+        assert ckpt_list.artifact_references == []
+
+    def test_mixing_raises(self):
+        with pytest.raises(pydantic.ValidationError, match="Cannot mix"):
+            CheckpointList(
+                artifact_references=[
+                    TrainingArtifactReference(
+                        training_job_id="tj_abc", paths=["rank-0/step-1/"]
+                    )
+                ],
+                loops_checkpoint_ids=["tcp_xyz"],
+            )
+
+    def test_empty_lists_accepted(self):
+        ckpt_list = CheckpointList()
+        assert ckpt_list.artifact_references == []
+        assert ckpt_list.loops_checkpoint_ids == []

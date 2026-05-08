@@ -858,6 +858,7 @@ def _gen_truss_config(
     config.runtime.streaming_read_timeout = remote_config.options.streaming_read_timeout
     config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
     config.environment_variables = dict(remote_config.options.env_variables)
+    config.build_commands = list(remote_config.build_commands)
 
     if remote_config.docker_image.truss_server_version_override:
         config.runtime.truss_server_version_override = (
@@ -866,6 +867,9 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
+        # Enables BDN weight mirroring for engine builder checkpoints.
+        if assets.weights:
+            config.weights = truss_config.Weights(assets.weights)
         truss_config.TrussConfig.model_validate(config)
         return config
 

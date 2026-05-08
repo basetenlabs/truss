@@ -323,7 +323,7 @@ def push_chain(
             remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
+        include_git_info = user_config.get_settings().include_git_info
 
     # Resolve team if not in dryrun mode
     team_id = None

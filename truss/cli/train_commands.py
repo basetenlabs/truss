@@ -87,7 +87,13 @@ def _handle_post_create_logic(
     project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
     project_name = job_resp["training_project"]["name"]
 
-    if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+    if job_resp.get("current_status") == "TRAINING_JOB_PENDING":
+        console.print(
+            f"🟡 Training job is pending — waiting for GPU capacity. "
+            f"Check status: 'truss train view --job-id={job_id}'.",
+            style="yellow",
+        )
+    elif job_resp.get("current_status") == "TRAINING_JOB_QUEUED":
         console.print(
             f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
             style="green",
@@ -164,6 +170,12 @@ def _resolve_team_name(
 )
 @click.option("--node-count", type=int, required=False, help="Number of compute nodes")
 @click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
+@click.option(
+    "--priority",
+    type=int,
+    required=False,
+    help="Job priority (higher values run first when capacity frees up).",
+)
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -176,6 +188,7 @@ def push_training_job(
     accelerator: Optional[str],
     node_count: Optional[int],
     entrypoint: Optional[str],
+    priority: Optional[int],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -212,6 +225,7 @@ def push_training_job(
                 accelerator=accelerator,
                 node_count=node_count,
                 entrypoint=entrypoint,
+                priority=priority,
             )
 
     # Note: This post create logic needs to happen outside the context
@@ -491,6 +505,12 @@ def get_job_metrics(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
+    "--run-id",
+    type=str,
+    required=False,
+    help="Loops run ID. Use to deploy checkpoints from a Loops run instead of a training job.",
+)
+@click.option(
     "--config",
     type=str,
     required=False,
@@ -511,29 +531,33 @@ def deploy_checkpoints(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
+    run_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
     truss_config_output_dir: Optional[str],
 ):
-    """
-    Deploy a LoRA checkpoint via vLLM.
-    """
-
+    """Deploy a LoRA checkpoint via vLLM."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
-    )
+    if run_id and (project_id or project or job_id):
+        raise click.UsageError(
+            "--run-id cannot be combined with --project, --project-id, or --job-id."
+        )
+    if not run_id:
+        project_id = _maybe_resolve_project_id_from_id_or_name(
+            remote_provider, project_id=project_id, project=project
+        )
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
+            run_id=run_id,
             deploy_config_path=config,
             dry_run=dry_run,
         ),
@@ -829,7 +853,7 @@ def list_checkpoints(
     order: str,
     output_format: str,
 ):
-    """List checkpoints for a training job"""
+    """List checkpoints for a training job."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -1082,3 +1106,196 @@ def _patch_sessions(
         sys.exit(1)
 
     return messages
+
+
+@train.command(name="capacity")
+@common.common_options()
+@click.option("--remote", type=str, required=False, help="Name of the remote to use")
+def capacity(remote: Optional[str]):
+    """Show GPU capacity limits and current usage for the organization."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.display_training_capacity(remote_provider)
+
+
+@train.command(name="workstation")
+@click.option(
+    "--accelerator",
+    type=click.Choice(["H100", "H200"], case_sensitive=False),
+    default="H100",
+    help="GPU accelerator type (default: H100).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --node-count.",
+)
+@click.option(
+    "--project-id",
+    type=str,
+    required=False,
+    help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--node-count",
+    "node_count",
+    type=click.IntRange(1, 16),
+    default=None,
+    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+)
+@click.option(
+    "--orchestrator",
+    type=click.Choice(["slurm"], case_sensitive=False),
+    default="slurm",
+    help="Multi-node orchestrator (default: slurm).",
+)
+@click.option(
+    "--image",
+    type=str,
+    required=False,
+    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+)
+@click.option(
+    "--enable-checkpointing",
+    is_flag=True,
+    default=False,
+    help="Enable checkpoint storage.",
+)
+@click.option(
+    "--checkpoint-path",
+    type=str,
+    required=False,
+    help="Path inside the container to save checkpoints.",
+)
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    required=False,
+    help="Checkpoint volume size in GiB.",
+)
+@click.option(
+    "--checkpoint-from-job",
+    type=str,
+    required=False,
+    help="Job ID to load the latest checkpoint from.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@common.common_options()
+def workstation(
+    accelerator: str,
+    gpu_count: Optional[int],
+    project_id: Optional[str],
+    node_count: Optional[int],
+    orchestrator: str,
+    image: Optional[str],
+    enable_checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    checkpoint_from_job: Optional[str],
+    remote: Optional[str],
+    tail: bool,
+):
+    """Spin up an SSH workstation on Baseten training infrastructure."""
+    import tempfile
+
+    from truss.cli.train.workstation import (
+        DEFAULT_BASE_IMAGE,
+        build_workstation_project,
+        copy_workstation_templates,
+    )
+    from truss_train.public_api import push
+
+    if gpu_count is not None and node_count is not None:
+        raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
+
+    if node_count is not None:
+        # SLURM mode: each node gets 8 GPUs
+        gpu_count = 8
+    else:
+        # Single-node mode
+        gpu_count = gpu_count or 1
+        node_count = 1
+
+    accelerator = accelerator.upper()
+    if not project_id:
+        project_id = f"workstation-{accelerator}"
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    base_image = image or DEFAULT_BASE_IMAGE
+    training_project = build_workstation_project(
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        project_id=project_id,
+        base_image=base_image,
+        node_count=node_count,
+        orchestrator=orchestrator,
+        enable_checkpointing=enable_checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+        checkpoint_from_job=checkpoint_from_job,
+    )
+
+    node_str = f"{node_count}x " if node_count > 1 else ""
+    console.print(
+        f"Launching workstation [cyan]{project_id}[/cyan] "
+        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
+    )
+
+    # Use a temp dir as source so we don't upload the user's cwd.
+    # For multi-node, copy the SLURM setup scripts into it.
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        if node_count > 1:
+            copy_workstation_templates(Path(tmp_dir))
+        job_resp = push(
+            config=training_project, remote=remote, source_dir=Path(tmp_dir)
+        )
+
+    job_id = job_resp["id"]
+    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        ssh_lines += " (leader)"
+        for i in range(1, node_count):
+            ssh_lines += (
+                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+            )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
+    console.print(
+        f"\n[green]Workstation created![/green]\n"
+        f"\n"
+        f"Once the job is running, SSH in with:\n"
+        f"{ssh_lines}\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+    if tail:
+        remote_provider: BasetenRemote = cast(
+            BasetenRemote, RemoteFactory.create(remote=remote)
+        )
+        project_resp_id = job_resp["training_project"]["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)

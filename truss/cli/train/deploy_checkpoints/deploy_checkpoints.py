@@ -13,8 +13,10 @@ from truss.cli.train.types import (
     DeploySuccessModelVersion,
     DeploySuccessResult,
 )
+from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.baseten.service import URLConfig
 from truss_train.definitions import (
     Checkpoint,
     CheckpointList,
@@ -40,10 +42,11 @@ def create_model_version_from_inference_template(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
+    run_id: Optional[str],
     dry_run: bool,
 ) -> DeploySuccessResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id
+        checkpoint_deploy_config, remote_provider, project_id, job_id, run_id
     )
 
     request_data = _build_inference_template_request(
@@ -70,6 +73,12 @@ def create_model_version_from_inference_template(
             )
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
+            )
+            logs_url = URLConfig.model_logs_url(
+                remote_provider.remote_url, model_version.model_id, model_version.id
+            )
+            console.print(
+                f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
             )
         elif not dry_run:
             console.print(
@@ -125,6 +134,17 @@ def _build_inference_template_request(
             },
         }
         weights_sources.append(weights_source)
+    for (
+        loops_checkpoint_id
+    ) in checkpoint_deploy_config.checkpoint_details.loops_checkpoint_ids:
+        weights_sources.append(
+            {
+                "weight_source_type": "B10_LOOPS_CHECKPOINTING",
+                "b10_loops_checkpoint_weights_source": {
+                    "checkpoint": {"loops_checkpoint_id": loops_checkpoint_id}
+                },
+            }
+        )
 
     # Build environment variables
     environment_variables = []
@@ -247,22 +267,79 @@ def _get_model_name(
     ).execute()
 
 
+def _model_name_from_checkpoint_model_ref(checkpoint_model_ref: str) -> str:
+    """Derive a default model name from a checkpoint's model reference.
+
+    Checkpoint rows store the underlying model as a HuggingFace-style
+    identifier in their ``base_model`` field. The trailing path segment
+    is a sensible default model name to suggest to the user.
+
+    Examples:
+        "meta-llama/Llama-3.1-8B-Instruct" -> "Llama-3.1-8B-Instruct"
+        "openai/whisper-large-v3"          -> "whisper-large-v3"
+        "Llama-3.1-8B-Instruct"            -> "Llama-3.1-8B-Instruct"
+    """
+    return checkpoint_model_ref.split("/")[-1]
+
+
 def _hydrate_deploy_config(
     deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
+    run_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
-    checkpoint_details = _ensure_checkpoint_details(
-        remote_provider, deploy_config.checkpoint_details, project_id, job_id
+    run_id_provided = run_id is not None
+    job_flag_provided = bool(project_id or job_id)
+    config_has_training_job_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.checkpoints)
     )
-    model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+    config_has_loops_checkpoints = (
+        deploy_config.checkpoint_details is not None
+        and bool(deploy_config.checkpoint_details.loops_checkpoint_ids)
+    )
+    if run_id_provided and config_has_training_job_checkpoints:
+        raise click.UsageError(
+            "--run-id cannot be combined with checkpoint_details.checkpoints "
+            "from --config (training job checkpoints). Pick one source."
+        )
+    if job_flag_provided and config_has_loops_checkpoints:
+        raise click.UsageError(
+            "--project-id / --job-id cannot be combined with "
+            "checkpoint_details.loops_checkpoint_ids from --config. Pick one source."
+        )
 
-    base_model_id = checkpoint_details.base_model_id
-    if deploy_config.model_name:
-        model_name = deploy_config.model_name
+    is_loops_flow = run_id_provided or config_has_loops_checkpoints
+    if is_loops_flow:
+        checkpoint_details = _ensure_loops_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, run_id
+        )
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            checkpoint_model_ref = checkpoint_details.base_model_id
+            default = (
+                _model_name_from_checkpoint_model_ref(checkpoint_model_ref)
+                if checkpoint_model_ref
+                else ""
+            )
+            model_name = inquirer.text(
+                message="Enter the model name.",
+                validate=lambda s: s and s.strip(),
+                default=default,
+            ).execute()
     else:
-        model_name = _get_model_name(model_weight_format, base_model_id)
+        checkpoint_details = _ensure_checkpoint_details(
+            remote_provider, deploy_config.checkpoint_details, project_id, job_id
+        )
+        if deploy_config.model_name:
+            model_name = deploy_config.model_name
+        else:
+            model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+            model_name = _get_model_name(
+                model_weight_format, checkpoint_details.base_model_id
+            )
 
     compute = _ensure_compute_spec(deploy_config.compute, remote_provider)
 
@@ -309,6 +386,68 @@ def _ensure_checkpoint_details(
         return _prompt_user_for_checkpoint_details(
             remote_provider, checkpoint_details, project_id, job_id
         )
+
+
+def _ensure_loops_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    run_id: Optional[str],
+) -> CheckpointList:
+    """Resolve a Loops-checkpoint flow into a CheckpointList.
+
+    Each entry in ``loops_checkpoint_ids`` is a Loops-checkpoint PK. The
+    server resolves it to its run + checkpoint_name on deploy and reads
+    the actual weight format off the row — the CLI doesn't need to know it.
+    """
+    if checkpoint_details and checkpoint_details.loops_checkpoint_ids:
+        # User-authored Loops-checkpoint IDs in --config — server
+        # resolves and validates on deploy; nothing for the CLI to enrich.
+        return checkpoint_details
+    if not run_id:
+        raise click.UsageError("--run-id is required to deploy Loops checkpoints.")
+    return _prompt_user_for_loops_checkpoint_details(
+        remote_provider, checkpoint_details, run_id
+    )
+
+
+def _prompt_user_for_loops_checkpoint_details(
+    remote_provider: BasetenRemote,
+    checkpoint_details: Optional[CheckpointList],
+    run_id: str,
+) -> CheckpointList:
+    run = _resolve_loops_run(remote_provider, run_id)
+    response = remote_provider.api.list_loops_checkpoints(run_id=run["id"])
+    # Pick by checkpoint_name in the UI; map back to Loops-checkpoint
+    # database IDs for the wire so the server doesn't need to re-resolve names.
+    name_to_pk = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint["id"])
+        for checkpoint in response["checkpoints"]
+    )
+    if not name_to_pk:
+        raise click.UsageError(f"No checkpoints found for Loops run {run['id']}.")
+    response_checkpoints = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint)
+        for checkpoint in response["checkpoints"]
+    )
+    selected_names = _get_checkpoint_ids_to_deploy(
+        list(name_to_pk.keys()), response_checkpoints
+    )
+
+    if not checkpoint_details:
+        checkpoint_details = CheckpointList()
+    checkpoint_details.loops_checkpoint_ids = [
+        name_to_pk[name] for name in selected_names
+    ]
+    if checkpoint_details.base_model_id is None:
+        checkpoint_details.base_model_id = run["base_model"]
+    return checkpoint_details
+
+
+def _resolve_loops_run(remote_provider: BasetenRemote, run_id: str) -> dict:
+    matches = remote_provider.api.list_loops_runs(run_id=run_id)
+    if not matches:
+        raise click.UsageError(f"Loops run {run_id} not found.")
+    return matches[0]
 
 
 def _prompt_user_for_checkpoint_details(

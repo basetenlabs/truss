@@ -91,6 +91,7 @@ class Accelerator(str, enum.Enum):
     H100_40GB = "H100_40GB"
     B200 = "B200"
     L40S = "L40S"
+    RTX_PRO_6000 = "RTX_PRO_6000"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -149,11 +150,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        schema = handler(core_schema)
-        schema.update(type="string")
-        schema.pop("properties", None)
-        schema.pop("required", None)
-        return schema
+        return {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
 
 class ModelRepoSourceKind(str, enum.Enum):
@@ -543,6 +540,33 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+class AutoscalingMetric(pydantic.BaseModel):
+    name: str
+    target: float
+
+
+class AdditionalAutoscalingConfig(pydantic.BaseModel):
+    """Additional autoscaling configuration for in-flight token metrics."""
+
+    metrics: list[AutoscalingMetric] = pydantic.Field(
+        ..., description="List of metric targets for autoscaling."
+    )
+
+
+class BISLLM(custom_types.ConfigModel):
+    """Configuration options for BIS LLM deployments."""
+
+    config: Optional[dict[str, Any]] = pydantic.Field(
+        default=None, description="Configuration options for BIS LLM deployments."
+    )
+    version: str = pydantic.Field(
+        default="", description="The version of the BIS LLM deployment stack."
+    )
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = (
+        pydantic.Field(default=None, description="Additional autoscaling configuration")
+    )
+
+
 class HealthChecks(custom_types.ConfigModel):
     """Custom health check configuration for your deployments."""
 
@@ -590,6 +614,15 @@ Transport = Annotated[
 ]
 
 
+class RemoteSSH(custom_types.ConfigModel):
+    """Configuration for SSH access to running model instances."""
+
+    enabled: bool = pydantic.Field(
+        default=False,
+        description="If true, enables SSH access to running model instances.",
+    )
+
+
 class Runtime(custom_types.ConfigModel):
     """Runtime settings for your model instance."""
 
@@ -619,6 +652,10 @@ class Runtime(custom_types.ConfigModel):
     health_checks: HealthChecks = pydantic.Field(
         default_factory=HealthChecks,
         description="Custom health check configuration for your deployments.",
+    )
+    remote_ssh: RemoteSSH = pydantic.Field(
+        default_factory=RemoteSSH,
+        description="Configuration for SSH access to running model instances.",
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
@@ -1048,6 +1085,22 @@ class CheckpointList(custom_types.ConfigModel):
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
     )
+    loops_checkpoint_ids: list[str] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Loops checkpoint IDs to deploy. Mutually exclusive with artifact_references."
+        ),
+    )
+
+    @pydantic.model_validator(mode="after")
+    def _no_mixing(self) -> "CheckpointList":
+        if self.artifact_references and self.loops_checkpoint_ids:
+            raise ValueError(
+                "Cannot mix training job checkpoints and loops checkpoints in "
+                "the same deploy. Use either artifact_references / checkpoints "
+                "or loops_checkpoint_ids, not both."
+            )
+        return self
 
 
 # TODO: remove just use normal python version instead of this.
@@ -1166,6 +1219,11 @@ class TrussConfig(custom_types.ConfigModel):
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
         default=None,
         description="Configuration for deploying from training checkpoints.",
+    )
+
+    bis_llm: Optional[BISLLM] = pydantic.Field(
+        default=None,
+        description="Configuration options for BIS LLM deployments. This field may change in the future.",
     )
 
     # Internal / Legacy.
@@ -1328,6 +1386,20 @@ class TrussConfig(custom_types.ConfigModel):
                 stacklevel=2,
             )
         return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_remote_ssh(self) -> "TrussConfig":
+        if (
+            self.runtime.remote_ssh.enabled
+            and self.docker_server is not None
+            and self.docker_server.run_as_user_id is not None
+        ):
+            raise ValueError(
+                "remote_ssh.enabled is not compatible with "
+                "docker_server.run_as_user_id. SSH requires the default "
+                "'app' user (uid 60000)."
+            )
+        return self
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":

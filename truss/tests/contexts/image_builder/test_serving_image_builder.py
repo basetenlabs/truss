@@ -54,6 +54,45 @@ def test_serving_image_dockerfile_from_user_base_image(
         assert gen_docker_lines == server_docker_lines
 
 
+@patch("platform.machine", return_value="amd")
+def test_apt_mirror_url_override(mock_machine, custom_model_truss_dir, monkeypatch):
+    monkeypatch.setenv("BT_APT_MIRROR_URL", "mirror://mirrors.ubuntu.com/JP.txt")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "mirror://mirrors.ubuntu.com/JP.txt" in dockerfile
+    assert "mirror://mirrors.ubuntu.com/US.txt" not in dockerfile
+
+
+@pytest.mark.parametrize("env_value", [None, ""])
+@patch("platform.machine", return_value="amd")
+def test_apt_mirror_url_default(
+    mock_machine, custom_model_truss_dir, monkeypatch, env_value
+):
+    if env_value is None:
+        monkeypatch.delenv("BT_APT_MIRROR_URL", raising=False)
+    else:
+        monkeypatch.setenv("BT_APT_MIRROR_URL", env_value)
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "mirror://mirrors.ubuntu.com/US.txt" in dockerfile
+
+
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_python_requirement("numpy")

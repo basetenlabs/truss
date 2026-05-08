@@ -115,10 +115,10 @@ def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) 
 
 
 def notify_if_outdated(current_version: str) -> None:
-    if not user_config.settings.check_for_updates:
+    if not user_config.get_settings().check_for_updates:
         return
 
-    update_info = user_config.state.should_notify_upgrade(current_version)
+    update_info = user_config.get_state().should_notify_upgrade(current_version)
     if not update_info:
         return
 
