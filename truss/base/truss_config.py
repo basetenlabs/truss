@@ -1096,9 +1096,9 @@ class CheckpointList(custom_types.ConfigModel):
     def _no_mixing(self) -> "CheckpointList":
         if self.artifact_references and self.loops_checkpoint_ids:
             raise ValueError(
-                "training_checkpoints cannot mix artifact_references (training "
-                "job checkpoints) and loops_checkpoint_ids (Loops checkpoints) "
-                "in the same deploy"
+                "Cannot mix training job checkpoints and loops checkpoints in "
+                "the same deploy. Use either artifact_references / checkpoints "
+                "or loops_checkpoint_ids, not both."
             )
         return self
 

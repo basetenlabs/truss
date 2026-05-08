@@ -139,7 +139,7 @@ class TestCheckpointListLoopsCheckpoints:
         assert truss_ckpt_list.loops_checkpoint_ids == []
 
     def test_mixing_checkpoints_and_loops_ids_raises(self):
-        with pytest.raises(ValidationError, match="cannot mix"):
+        with pytest.raises(ValidationError, match="Cannot mix"):
             CheckpointList(
                 checkpoints=[
                     LoRACheckpoint(
