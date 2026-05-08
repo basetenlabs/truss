@@ -351,7 +351,7 @@ def test_runs_view_renders_base_url_and_localized_created_at(mock_remote):
     assert _LOCALIZED_TIMESTAMP_RE.search(result.output) is not None
 
 
-def test_runs_view_sort_order_asc_puts_newest_at_bottom(mock_remote):
+def test_runs_view_default_puts_newest_at_bottom(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         {
             "id": "trnr_old",
@@ -371,7 +371,7 @@ def test_runs_view_sort_order_asc_puts_newest_at_bottom(mock_remote):
     assert result.output.index("trnr_old") < result.output.index("trnr_new")
 
 
-def test_runs_view_sort_order_desc_puts_newest_first(mock_remote):
+def test_runs_view_reverse_puts_newest_first(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         {
             "id": "trnr_old",
@@ -387,14 +387,13 @@ def test_runs_view_sort_order_desc_puts_newest_first(mock_remote):
         },
     ]
     result = _invoke(
-        ["loops", "runs", "view", "--remote", "test_remote", "--sort-order", "desc"],
-        mock_remote,
+        ["loops", "runs", "view", "--remote", "test_remote", "--reverse"], mock_remote
     )
     assert result.exit_code == 0, result.output
     assert result.output.index("trnr_new") < result.output.index("trnr_old")
 
 
-def test_samplers_view_sort_order_asc_puts_newest_at_bottom(mock_remote):
+def test_samplers_view_default_puts_newest_at_bottom(mock_remote):
     mock_remote.api.list_loops_samplers.return_value = [
         {
             "id": "sampler_old",
@@ -419,7 +418,7 @@ def test_samplers_view_sort_order_asc_puts_newest_at_bottom(mock_remote):
     assert _LOCALIZED_TIMESTAMP_RE.search(result.output) is not None
 
 
-def test_samplers_view_sort_order_desc_puts_newest_first(mock_remote):
+def test_samplers_view_reverse_puts_newest_first(mock_remote):
     mock_remote.api.list_loops_samplers.return_value = [
         {
             "id": "sampler_old",
@@ -435,15 +434,7 @@ def test_samplers_view_sort_order_desc_puts_newest_first(mock_remote):
         },
     ]
     result = _invoke(
-        [
-            "loops",
-            "samplers",
-            "view",
-            "--remote",
-            "test_remote",
-            "--sort-order",
-            "desc",
-        ],
+        ["loops", "samplers", "view", "--remote", "test_remote", "--reverse"],
         mock_remote,
     )
     assert result.exit_code == 0, result.output

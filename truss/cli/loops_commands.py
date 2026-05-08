@@ -154,18 +154,18 @@ def loops_runs() -> None:
     "--model-name", type=str, required=False, help="Filter runs by base model name."
 )
 @click.option(
-    "--sort-order",
-    type=click.Choice(["asc", "desc"]),
-    default="asc",
-    show_default=True,
-    help="Sort order by created_at. asc puts the most recent run at the bottom.",
+    "--reverse",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Reverse the default order (oldest first) so the most recent run is shown first.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_loops_runs(
     run_id: Optional[str],
     model_name: Optional[str],
-    sort_order: str,
+    reverse: bool,
     remote: Optional[str],
 ) -> None:
     """List Loops runs visible to the caller.
@@ -180,9 +180,7 @@ def view_loops_runs(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=model_name)
-    runs = sorted(
-        runs, key=lambda r: r.get("created_at") or "", reverse=(sort_order == "desc")
-    )
+    runs = sorted(runs, key=lambda r: r.get("created_at") or "", reverse=reverse)
     _render_loops_runs(runs)
 
 
@@ -193,15 +191,15 @@ def loops_samplers() -> None:
 
 @loops_samplers.command(name="view")
 @click.option(
-    "--sort-order",
-    type=click.Choice(["asc", "desc"]),
-    default="asc",
-    show_default=True,
-    help="Sort order by created_at. asc puts the most recent sampler at the bottom.",
+    "--reverse",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Reverse the default order (oldest first) so the most recent sampler is shown first.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def view_loops_samplers(sort_order: str, remote: Optional[str]) -> None:
+def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     """List Loops samplers visible to the caller."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -211,9 +209,7 @@ def view_loops_samplers(sort_order: str, remote: Optional[str]) -> None:
     )
     samplers = remote_provider.api.list_loops_samplers()
     samplers = sorted(
-        samplers,
-        key=lambda s: s.get("created_at") or "",
-        reverse=(sort_order == "desc"),
+        samplers, key=lambda s: s.get("created_at") or "", reverse=reverse
     )
     _render_loops_samplers(samplers)
 
