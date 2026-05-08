@@ -8,7 +8,7 @@ from helpers.context_managers import current_directory
 from shared.util import kill_child_processes
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
-TERMINATION_TIMEOUT_SECS = 120.0
+TERMINATION_TIMEOUT_SECS = 3600.0
 TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
