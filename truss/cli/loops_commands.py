@@ -192,9 +192,16 @@ def loops_samplers() -> None:
 
 
 @loops_samplers.command(name="view")
+@click.option(
+    "--sort-order",
+    type=click.Choice(["asc", "desc"]),
+    default="asc",
+    show_default=True,
+    help="Sort order by created_at. asc puts the most recent sampler at the bottom.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def view_loops_samplers(remote: Optional[str]) -> None:
+def view_loops_samplers(sort_order: str, remote: Optional[str]) -> None:
     """List Loops samplers visible to the caller."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -203,6 +210,11 @@ def view_loops_samplers(remote: Optional[str]) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     samplers = remote_provider.api.list_loops_samplers()
+    samplers = sorted(
+        samplers,
+        key=lambda s: s.get("created_at") or "",
+        reverse=(sort_order == "desc"),
+    )
     _render_loops_samplers(samplers)
 
 
@@ -219,8 +231,8 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     )
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Base URL", style="dim")
-    table.add_column("Deployment URL", style="dim")
+    table.add_column("Base URL", style="blue")
+    table.add_column("Deployment URL", style="blue")
     for deployment in deployments:
         sampler = deployment.get("sampler") or {}
         sampler_url = sampler.get("base_url", "") if isinstance(sampler, dict) else ""
@@ -247,13 +259,17 @@ def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
     table.add_column("Run ID", style="cyan")
     table.add_column("Session ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Created At", style="dim")
+    table.add_column("Base URL", style="blue")
+    table.add_column("Created At")
     for run in runs:
+        created_at = run.get("created_at") or ""
+        created_str = common.format_localized_time(created_at) if created_at else ""
         table.add_row(
             run.get("id", ""),
             run.get("session_id", ""),
             run.get("base_model", ""),
-            run.get("created_at", "") or "",
+            run.get("base_url", ""),
+            created_str,
         )
     console.print(table)
 
@@ -270,7 +286,16 @@ def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
         border_style="blue",
     )
     table.add_column("Sampler ID", style="cyan")
-    table.add_column("Base URL", style="dim")
+    table.add_column("Base Model", style="green")
+    table.add_column("Base URL", style="blue")
+    table.add_column("Created At")
     for sampler in samplers:
-        table.add_row(sampler.get("id", ""), sampler.get("base_url", ""))
+        created_at = sampler.get("created_at") or ""
+        created_str = common.format_localized_time(created_at) if created_at else ""
+        table.add_row(
+            sampler.get("id", ""),
+            sampler.get("base_model", ""),
+            sampler.get("base_url", ""),
+            created_str,
+        )
     console.print(table)
