@@ -63,6 +63,7 @@ def _fill_trt_llm_versions(
                 Accelerator.V100: "turing-",
                 Accelerator.B200: "blackwell-",
                 Accelerator.RTX_PRO_6000: "blackwell-",
+                Accelerator.B300: "blackwell-",
                 None: "unsupported none please upgrade truss",
             }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
             if docker_image_suffix.startswith("unsupported"):
