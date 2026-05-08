@@ -250,7 +250,7 @@ def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
     table.add_column("Created At", style="dim")
     for run in runs:
         table.add_row(
-            run.get("run_id", ""),
+            run.get("id", ""),
             run.get("session_id", ""),
             run.get("base_model", ""),
             run.get("created_at", "") or "",

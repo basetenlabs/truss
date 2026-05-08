@@ -261,7 +261,7 @@ def test_view_with_no_deployments_prints_friendly_message(mock_remote):
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
-        {"run_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
+        {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
     ]
     result = _invoke(["loops", "runs", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
@@ -273,7 +273,7 @@ def test_runs_view_no_filters_calls_search_with_none(mock_remote):
 
 def test_runs_view_with_run_id_filter(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
-        {"run_id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
+        {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
     ]
     result = _invoke(
         ["loops", "runs", "view", "--remote", "test_remote", "--run-id", "trnr_xyz"],

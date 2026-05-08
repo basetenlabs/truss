@@ -287,7 +287,7 @@ def test_hydrate_whisper_checkpoint():
 def mock_loops_remote():
     mock = MagicMock()
     mock.api.list_loops_runs.return_value = [
-        {"run_id": "trnr_xyz", "base_model": "Qwen/Qwen3-8B"}
+        {"id": "trnr_xyz", "base_model": "Qwen/Qwen3-8B"}
     ]
     mock.api.list_loops_checkpoints.return_value = {
         "checkpoints": [
@@ -305,7 +305,7 @@ def mock_loops_remote():
 
 def test_resolve_loops_run_returns_first_match(mock_loops_remote):
     result = _resolve_loops_run(mock_loops_remote, "trnr_xyz")
-    assert result["run_id"] == "trnr_xyz"
+    assert result["id"] == "trnr_xyz"
     assert result["base_model"] == "Qwen/Qwen3-8B"
     mock_loops_remote.api.list_loops_runs.assert_called_once_with(run_id="trnr_xyz")
 

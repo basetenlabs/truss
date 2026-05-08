@@ -408,7 +408,7 @@ def _prompt_user_for_loops_checkpoint_details(
     run_id: str,
 ) -> CheckpointList:
     run = _resolve_loops_run(remote_provider, run_id)
-    response = remote_provider.api.list_loops_checkpoints(run_id=run["run_id"])
+    response = remote_provider.api.list_loops_checkpoints(run_id=run["id"])
     # Pick by checkpoint_name in the UI; map back to Loops-checkpoint
     # database IDs for the wire so the server doesn't need to re-resolve names.
     name_to_pk = OrderedDict(
@@ -416,7 +416,7 @@ def _prompt_user_for_loops_checkpoint_details(
         for checkpoint in response["checkpoints"]
     )
     if not name_to_pk:
-        raise click.UsageError(f"No checkpoints found for Loops run {run['run_id']}.")
+        raise click.UsageError(f"No checkpoints found for Loops run {run['id']}.")
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
         for checkpoint in response["checkpoints"]
