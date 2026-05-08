@@ -504,13 +504,13 @@ impl RequestProcessingConfig {
         &self,
         request_suffix: &str,
         attempted_endpoint_indices: &[usize],
-    ) -> Result<(String, EndpointSelection), ClientError> {
+    ) -> (String, EndpointSelection) {
         if attempted_endpoint_indices.is_empty() {
             if let Some(pinned_selection) = self.pinned_initial_endpoint.clone() {
-                return Ok((
+                return (
                     build_url_for_selected_endpoint(&pinned_selection.base_url, request_suffix),
                     pinned_selection,
-                ));
+                );
             }
         }
 
@@ -522,7 +522,7 @@ impl RequestProcessingConfig {
         &self,
         request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<(String, EndpointSelection), ClientError> {
+    ) -> (String, EndpointSelection) {
         self.endpoint_router
             .select_hedge_url(request_suffix, original_endpoint_index)
     }

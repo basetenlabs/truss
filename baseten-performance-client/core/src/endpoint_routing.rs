@@ -423,15 +423,12 @@ impl EndpointRouter {
         }
     }
 
-    pub(crate) fn select_endpoint(
-        &self,
-        excluded_indices: &[usize],
-    ) -> Result<EndpointSelection, ClientError> {
+    pub(crate) fn select_endpoint(&self, excluded_indices: &[usize]) -> EndpointSelection {
         match self {
-            EndpointRouter::Single(endpoint) => Ok(EndpointSelection {
+            EndpointRouter::Single(endpoint) => EndpointSelection {
                 endpoint_index: 0,
                 base_url: Arc::clone(&endpoint.base_url),
-            }),
+            },
             EndpointRouter::Pool(pool) => pool.select_endpoint(excluded_indices),
         }
     }
@@ -440,15 +437,15 @@ impl EndpointRouter {
         &self,
         request_suffix: &str,
         excluded_indices: &[usize],
-    ) -> Result<(String, EndpointSelection), ClientError> {
+    ) -> (String, EndpointSelection) {
         match self {
-            EndpointRouter::Single(endpoint) => Ok((
+            EndpointRouter::Single(endpoint) => (
                 build_url_for_selected_endpoint(endpoint.base_url.as_ref(), request_suffix),
                 EndpointSelection {
                     endpoint_index: 0,
                     base_url: Arc::clone(&endpoint.base_url),
                 },
-            )),
+            ),
             EndpointRouter::Pool(pool) => pool.select_attempt_url(request_suffix, excluded_indices),
         }
     }
@@ -457,15 +454,15 @@ impl EndpointRouter {
         &self,
         request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<(String, EndpointSelection), ClientError> {
+    ) -> (String, EndpointSelection) {
         match self {
-            EndpointRouter::Single(endpoint) => Ok((
+            EndpointRouter::Single(endpoint) => (
                 build_url_for_selected_endpoint(endpoint.base_url.as_ref(), request_suffix),
                 EndpointSelection {
                     endpoint_index: 0,
                     base_url: Arc::clone(&endpoint.base_url),
                 },
-            )),
+            ),
             EndpointRouter::Pool(pool) => {
                 pool.select_hedge_url(request_suffix, original_endpoint_index)
             }
@@ -525,10 +522,7 @@ impl EndpointPool {
             .collect()
     }
 
-    pub(crate) fn select_endpoint(
-        &self,
-        excluded_indices: &[usize],
-    ) -> Result<EndpointSelection, ClientError> {
+    pub(crate) fn select_endpoint(&self, excluded_indices: &[usize]) -> EndpointSelection {
         let candidate_tiers = [
             self.candidate_indices(excluded_indices, true),
             self.candidate_indices(&[], true),
@@ -536,21 +530,24 @@ impl EndpointPool {
             self.candidate_indices(&[], false),
         ];
 
-        for candidates in &candidate_tiers {
+        for candidates in &candidate_tiers[..3] {
             if let Some(selection) = self.select_from_candidates(candidates) {
-                return Ok(selection);
+                return selection;
             }
         }
 
-        Err(ClientError::Network(
-            "No endpoints available for selection".to_string(),
-        ))
+        debug_assert!(
+            !candidate_tiers[3].is_empty(),
+            "endpoint pool must contain at least one endpoint, otherwise config validation should not allow empty pools"
+        );
+        self.select_from_candidates(&candidate_tiers[3])
+            .expect("endpoint pool must always be able to select a fallback endpoint")
     }
 
     pub(crate) fn select_hedge_endpoint(
         &self,
         original_endpoint_index: usize,
-    ) -> Result<EndpointSelection, ClientError> {
+    ) -> EndpointSelection {
         self.select_endpoint(&[original_endpoint_index])
     }
 
@@ -558,24 +555,24 @@ impl EndpointPool {
         &self,
         request_suffix: &str,
         excluded_indices: &[usize],
-    ) -> Result<(String, EndpointSelection), ClientError> {
-        let selected_endpoint = self.select_endpoint(excluded_indices)?;
-        Ok((
+    ) -> (String, EndpointSelection) {
+        let selected_endpoint = self.select_endpoint(excluded_indices);
+        (
             build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix),
             selected_endpoint,
-        ))
+        )
     }
 
     pub(crate) fn select_hedge_url(
         &self,
         request_suffix: &str,
         original_endpoint_index: usize,
-    ) -> Result<(String, EndpointSelection), ClientError> {
-        let selected_endpoint = self.select_hedge_endpoint(original_endpoint_index)?;
-        Ok((
+    ) -> (String, EndpointSelection) {
+        let selected_endpoint = self.select_hedge_endpoint(original_endpoint_index);
+        (
             build_url_for_selected_endpoint(selected_endpoint.base_url.as_ref(), request_suffix),
             selected_endpoint,
-        ))
+        )
     }
 
     pub fn health_snapshot(&self) -> EndpointPoolHealthSnapshot {
@@ -986,7 +983,7 @@ mod tests {
 
         let mut seen = [0usize; 3];
         for _ in 0..48 {
-            let selected = pool.select_endpoint(&[]).unwrap();
+            let selected = pool.select_endpoint(&[]);
             seen[selected.endpoint_index] += 1;
         }
 
@@ -1004,8 +1001,8 @@ mod tests {
 
         pool.set_endpoint_health(1, false);
 
-        let first = pool.select_endpoint(&[]).unwrap();
-        let second = pool.select_endpoint(&[]).unwrap();
+        let first = pool.select_endpoint(&[]);
+        let second = pool.select_endpoint(&[]);
 
         assert_ne!(first.endpoint_index, 1);
         assert_ne!(second.endpoint_index, 1);
@@ -1040,7 +1037,7 @@ mod tests {
         .expect("pool should be valid");
 
         for _ in 0..5 {
-            let selected = pool.select_endpoint(&[]).unwrap();
+            let selected = pool.select_endpoint(&[]);
             assert_eq!(selected.endpoint_index, 0);
         }
     }
@@ -1058,7 +1055,7 @@ mod tests {
         .expect("pool should be valid");
         pool.set_endpoint_health(0, false);
 
-        let selected = pool.select_endpoint(&[]).unwrap();
+        let selected = pool.select_endpoint(&[]);
         assert_ne!(selected.endpoint_index, 0);
     }
 
@@ -1151,7 +1148,7 @@ mod tests {
         let mut saw_first = false;
         let mut saw_second = false;
         for _ in 0..64 {
-            let selected = pool.select_endpoint(&[]).unwrap();
+            let selected = pool.select_endpoint(&[]);
             if selected.endpoint_index == 0 {
                 saw_first = true;
             }

@@ -345,7 +345,7 @@ impl PerformanceClientCore {
             return Ok(config);
         }
 
-        let pinned_selection = config.endpoint_router.select_endpoint(&[])?;
+        let pinned_selection = config.endpoint_router.select_endpoint(&[]);
         Ok(config.with_pinned_initial_endpoint(Some(pinned_selection)))
     }
 

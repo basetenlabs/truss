@@ -161,7 +161,7 @@ async fn send_request_with_retry(
     loop {
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint) =
-            config.select_attempt_url(request_suffix, &indices_vec)?;
+            config.select_attempt_url(request_suffix, &indices_vec);
         let selected_endpoint_index = selected_endpoint.endpoint_index;
         attempted_endpoint_indices.insert(selected_endpoint_index);
 
@@ -181,7 +181,7 @@ async fn send_request_with_retry(
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
             let request_builder = build_request(&attempt_url);
             let (hedge_url, hedge_selection) =
-                config.select_hedge_url(request_suffix, selected_endpoint_index)?;
+                config.select_hedge_url(request_suffix, selected_endpoint_index);
             let hedge_builder = build_request(&hedge_url);
             let _ = hedge_selection;
             send_request_with_hedging(request_builder, hedge_builder, config).await
