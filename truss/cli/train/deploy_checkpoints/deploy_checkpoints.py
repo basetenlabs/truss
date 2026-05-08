@@ -127,13 +127,13 @@ def _build_inference_template_request(
         }
         weights_sources.append(weights_source)
     for (
-        loop_checkpoint_id
-    ) in checkpoint_deploy_config.checkpoint_details.loop_checkpoint_ids:
+        loops_checkpoint_id
+    ) in checkpoint_deploy_config.checkpoint_details.loops_checkpoint_ids:
         weights_sources.append(
             {
-                "weight_source_type": "B10_LOOP_CHECKPOINTING",
-                "b10_loop_checkpoint_weights_source": {
-                    "checkpoint": {"loop_checkpoint_id": loop_checkpoint_id}
+                "weight_source_type": "B10_LOOPS_CHECKPOINTING",
+                "b10_loops_checkpoint_weights_source": {
+                    "checkpoint": {"loops_checkpoint_id": loops_checkpoint_id}
                 },
             }
         )
@@ -288,7 +288,7 @@ def _hydrate_deploy_config(
         and bool(deploy_config.checkpoint_details.checkpoints)
     )
     config_has_loop_checkpoints = deploy_config.checkpoint_details is not None and bool(
-        deploy_config.checkpoint_details.loop_checkpoint_ids
+        deploy_config.checkpoint_details.loops_checkpoint_ids
     )
     if run_id_provided and config_has_training_job_checkpoints:
         raise click.UsageError(
@@ -298,7 +298,7 @@ def _hydrate_deploy_config(
     if job_flag_provided and config_has_loop_checkpoints:
         raise click.UsageError(
             "--project-id / --job-id cannot be combined with "
-            "checkpoint_details.loop_checkpoint_ids from --config. Pick one source."
+            "checkpoint_details.loops_checkpoint_ids from --config. Pick one source."
         )
 
     is_loop_flow = run_id_provided or config_has_loop_checkpoints
@@ -386,11 +386,11 @@ def _ensure_loop_checkpoint_details(
 ) -> CheckpointList:
     """Resolve a Loops-checkpoint flow into a CheckpointList.
 
-    Each entry in ``loop_checkpoint_ids`` is a Loops-checkpoint PK. The
+    Each entry in ``loops_checkpoint_ids`` is a Loops-checkpoint PK. The
     server resolves it to its run + checkpoint_name on deploy and reads
     the actual weight format off the row — the CLI doesn't need to know it.
     """
-    if checkpoint_details and checkpoint_details.loop_checkpoint_ids:
+    if checkpoint_details and checkpoint_details.loops_checkpoint_ids:
         # User-authored Loops-checkpoint IDs in --config — server
         # resolves and validates on deploy; nothing for the CLI to enrich.
         return checkpoint_details
@@ -426,7 +426,7 @@ def _prompt_user_for_loop_checkpoint_details(
 
     if not checkpoint_details:
         checkpoint_details = CheckpointList()
-    checkpoint_details.loop_checkpoint_ids = [
+    checkpoint_details.loops_checkpoint_ids = [
         name_to_pk[name] for name in selected_names
     ]
     if checkpoint_details.base_model_id is None:

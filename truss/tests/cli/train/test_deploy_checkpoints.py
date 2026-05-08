@@ -317,8 +317,8 @@ def test_resolve_loop_run_raises_when_not_found(mock_loop_remote):
 
 
 def test_ensure_loop_checkpoint_details_user_provided_passes_through(mock_loop_remote):
-    """When the user authored loop_checkpoint_ids in --config, return as-is."""
-    user_config = definitions.CheckpointList(loop_checkpoint_ids=["tcp_step100"])
+    """When the user authored loops_checkpoint_ids in --config, return as-is."""
+    user_config = definitions.CheckpointList(loops_checkpoint_ids=["tcp_step100"])
     result = _ensure_loop_checkpoint_details(mock_loop_remote, user_config, run_id=None)
     assert result is user_config
     # Did not hit the API since user authored the IDs.
@@ -346,7 +346,7 @@ def test_ensure_loop_checkpoint_details_picker_emits_ids_and_base_model(
     result = _ensure_loop_checkpoint_details(
         mock_loop_remote, checkpoint_details=None, run_id="trnr_xyz"
     )
-    assert result.loop_checkpoint_ids == ["tcp_step100"]
+    assert result.loops_checkpoint_ids == ["tcp_step100"]
     assert result.base_model_id == "Qwen/Qwen3-8B"
     mock_loop_remote.api.list_loop_checkpoints.assert_called_once_with(
         run_id="trnr_xyz"
@@ -376,12 +376,12 @@ def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(mock_loop_
         )
 
 
-def test_hydrate_deploy_config_rejects_job_id_with_config_loop_checkpoint_ids(
+def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
     mock_loop_remote,
 ):
-    """--job-id + --config that has loop_checkpoint_ids should error."""
+    """--job-id + --config that has loops_checkpoint_ids should error."""
     deploy_config = definitions.DeployCheckpointsConfig(
-        checkpoint_details=definitions.CheckpointList(loop_checkpoint_ids=["tcp_xyz"])
+        checkpoint_details=definitions.CheckpointList(loops_checkpoint_ids=["tcp_xyz"])
     )
     with pytest.raises(
         click.UsageError, match="--project-id / --job-id cannot be combined"
