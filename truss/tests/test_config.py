@@ -1826,7 +1826,7 @@ class TestCheckpointListNoMixing:
         assert ckpt_list.artifact_references == []
 
     def test_mixing_raises(self):
-        with pytest.raises(pydantic.ValidationError, match="cannot mix"):
+        with pytest.raises(pydantic.ValidationError, match="Cannot mix"):
             CheckpointList(
                 artifact_references=[
                     TrainingArtifactReference(
