@@ -7,7 +7,6 @@ import os
 import statistics
 import time
 from collections import Counter
-import time
 from dataclasses import dataclass
 
 import requests
