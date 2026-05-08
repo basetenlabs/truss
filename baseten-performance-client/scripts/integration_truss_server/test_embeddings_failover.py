@@ -18,9 +18,9 @@ from baseten_performance_client import (
 )
 
 DEFAULT_ENDPOINT_URLS = [
-    "https://model-3ydyzel3.api.baseten.co/deployment/w5dkpzv/sync", # window-a
-    "https://model-3ydyzel3.api.baseten.co/deployment/32pg0e1/sync", # window-b
-    "https://model-3ydyzel3.api.baseten.co/deployment/3yd9j1v/sync", # window-c
+    "https://model-3ydyzel3.api.baseten.co/deployment/3m5mdy2/sync",  # window-a
+    "https://model-3ydyzel3.api.baseten.co/deployment/wd19eym/sync",  # window-b
+    "https://model-3ydyzel3.api.baseten.co/deployment/qjd1ey2/sync",  # window-c
 ]
 
 
@@ -108,10 +108,10 @@ def build_client(api_key: str, http_version: int) -> PerformanceClient:
         client_wrapper=health_wrapper,
         endpoint_weights=[1.0, 1.0, 1.0],
         deployment_health_path="/health",
-        health_check_interval_s=1.0,
+        health_check_interval_s=0.75,
         health_check_timeout_s=1.0,
-        health_check_retries=2,
-        health_fail_on_first=False,
+        health_check_retries=0,
+        health_fail_on_first=True,
         deployment_timeout_is_no_vote=False,
     )
 

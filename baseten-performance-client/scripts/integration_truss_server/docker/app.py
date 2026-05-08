@@ -188,6 +188,7 @@ async def always_healthy() -> dict[str, object]:
 
 
 @app.get("/health")
+@app.get("/true_health")
 async def health(response: Response) -> dict[str, object]:
     minute_utc, second_utc = _now_utc()
     serve_active = CONFIG.serve_window.is_active(minute_utc, second_utc)
