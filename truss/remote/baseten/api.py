@@ -1088,6 +1088,7 @@ class BasetenApi:
                 model_version {
                     id
                     name
+                    model_id
                 }
                 truss_config
             }

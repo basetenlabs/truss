@@ -40,6 +40,7 @@ class DeploySuccessModelVersion(BaseModel):
 
     name: str
     id: str
+    model_id: Optional[str] = None
 
 
 class DeploySuccessResult(BaseModel):
