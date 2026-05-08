@@ -283,6 +283,19 @@ async fn send_request_with_retry(
     }
 }
 
+fn spawn_hedged_request_cleanup(
+    mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>>,
+) {
+    join_set.abort_all();
+    tokio::spawn(async move {
+        while let Some(result) = join_set.join_next().await {
+            if let Ok(Ok(response)) = result {
+                let _ = response.bytes().await;
+            }
+        }
+    });
+}
+
 pub(crate) async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
     request_builder_hedge: reqwest::RequestBuilder,
@@ -310,7 +323,7 @@ pub(crate) async fn send_request_with_hedging(
     // Wait for hedge delay
     let hedge_timer = tokio::time::sleep(hedge_delay);
 
-    tokio::select! {
+    let response_result = tokio::select! {
         biased;
 
         // Original request completed before hedge delay
@@ -354,8 +367,10 @@ pub(crate) async fn send_request_with_hedging(
                 }
             }
         }
-    }
-    // JoinSetGuard drops here, aborting any remaining tasks
+    };
+
+    spawn_hedged_request_cleanup(join_set);
+    response_result
 }
 
 /// Determine if an HTTP status code is retryable

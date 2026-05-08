@@ -7,6 +7,7 @@ import os
 import statistics
 import time
 from collections import Counter
+import time
 from dataclasses import dataclass
 
 import requests
@@ -114,6 +115,7 @@ def build_client(api_key: str, http_version: int) -> PerformanceClient:
         health_fail_on_first=True,
         deployment_timeout_is_no_vote=False,
     )
+    time.sleep(10.0)  # Wait a moment for the servers to be healthy before starting
 
     return PerformanceClient(
         base_url=DEFAULT_ENDPOINT_URLS[0],
