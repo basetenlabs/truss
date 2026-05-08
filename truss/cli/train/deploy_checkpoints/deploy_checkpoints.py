@@ -13,8 +13,10 @@ from truss.cli.train.types import (
     DeploySuccessModelVersion,
     DeploySuccessResult,
 )
+from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.baseten.service import URLConfig
 from truss_train.definitions import (
     Checkpoint,
     CheckpointList,
@@ -71,6 +73,12 @@ def create_model_version_from_inference_template(
             )
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
+            )
+            logs_url = URLConfig.model_logs_url(
+                remote_provider.remote_url, model_version.model_id, model_version.id
+            )
+            console.print(
+                f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
             )
         elif not dry_run:
             console.print(
