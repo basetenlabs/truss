@@ -872,6 +872,7 @@ async fn run_health_check_attempts(
             .await
         {
             Ok(response) if response.status().is_success() => {
+                let _ = response.bytes().await;
                 tracing::trace!(
                     endpoint_base_url = base_url,
                     health_check_url = health_url,
@@ -880,7 +881,8 @@ async fn run_health_check_attempts(
                 );
                 return HealthVote::Healthy;
             }
-            Ok(_) => {
+            Ok(response) => {
+                let _ = response.bytes().await;
                 saw_negative_vote = true;
                 tracing::debug!(
                     endpoint_base_url = base_url,
