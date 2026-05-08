@@ -74,13 +74,12 @@ def create_model_version_from_inference_template(
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
             )
-            if model_version.model_id:
-                logs_url = URLConfig.model_logs_url(
-                    remote_provider.remote_url, model_version.model_id, model_version.id
-                )
-                console.print(
-                    f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
-                )
+            logs_url = URLConfig.model_logs_url(
+                remote_provider.remote_url, model_version.model_id, model_version.id
+            )
+            console.print(
+                f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
+            )
         elif not dry_run:
             console.print(
                 "Warning: Unexpected response format from server", style="yellow"
