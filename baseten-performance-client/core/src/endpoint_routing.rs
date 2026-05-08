@@ -13,7 +13,7 @@ const DEFAULT_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(6);
 const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 2;
 const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(200);
 const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(100);
-const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointHealthStatus {
