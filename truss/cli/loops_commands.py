@@ -153,10 +153,20 @@ def loops_runs() -> None:
 @click.option(
     "--model-name", type=str, required=False, help="Filter runs by base model name."
 )
+@click.option(
+    "--sort-order",
+    type=click.Choice(["asc", "desc"]),
+    default="asc",
+    show_default=True,
+    help="Sort order by created_at. asc puts the most recent run at the bottom.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_loops_runs(
-    run_id: Optional[str], model_name: Optional[str], remote: Optional[str]
+    run_id: Optional[str],
+    model_name: Optional[str],
+    sort_order: str,
+    remote: Optional[str],
 ) -> None:
     """List Loops runs visible to the caller.
 
@@ -170,6 +180,9 @@ def view_loops_runs(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=model_name)
+    runs = sorted(
+        runs, key=lambda r: r.get("created_at") or "", reverse=(sort_order == "desc")
+    )
     _render_loops_runs(runs)
 
 
@@ -206,15 +219,16 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     )
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Status", style="yellow")
     table.add_column("Base URL", style="dim")
+    table.add_column("Sampler URL", style="dim")
     for deployment in deployments:
-        status = deployment.get("status") or {}
+        sampler = deployment.get("sampler") or {}
+        sampler_url = sampler.get("base_url", "") if isinstance(sampler, dict) else ""
         table.add_row(
             deployment.get("id", ""),
             deployment.get("base_model", "") or "",
-            status.get("name", "") if isinstance(status, dict) else "",
             deployment.get("base_url", ""),
+            sampler_url,
         )
     console.print(table)
 
@@ -233,9 +247,13 @@ def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
     table.add_column("Run ID", style="cyan")
     table.add_column("Session ID", style="cyan")
     table.add_column("Base Model", style="green")
+    table.add_column("Created At", style="dim")
     for run in runs:
         table.add_row(
-            run.get("run_id", ""), run.get("session_id", ""), run.get("base_model", "")
+            run.get("run_id", ""),
+            run.get("session_id", ""),
+            run.get("base_model", ""),
+            run.get("created_at", "") or "",
         )
     console.print(table)
 
