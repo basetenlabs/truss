@@ -11,6 +11,7 @@ const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
 const DEFAULT_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 const DEFAULT_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(6);
 const DEFAULT_HEALTH_CHECK_RETRIES: u32 = 2;
+pub const DEFAULT_TIMEOUT_IS_NO_VOTE: bool = true;
 const HEALTH_CHECK_RETRY_DELAY: Duration = Duration::from_millis(200);
 const MIN_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(100);
 const MIN_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(100);
@@ -38,7 +39,7 @@ impl EndpointHealthCheckConfig {
         Self {
             path_or_url: path,
             extend_base_url: true,
-            timeout_is_no_vote: false,
+            timeout_is_no_vote: DEFAULT_TIMEOUT_IS_NO_VOTE,
         }
     }
 
@@ -46,7 +47,7 @@ impl EndpointHealthCheckConfig {
         Self {
             path_or_url: url,
             extend_base_url: false,
-            timeout_is_no_vote: false,
+            timeout_is_no_vote: DEFAULT_TIMEOUT_IS_NO_VOTE,
         }
     }
 

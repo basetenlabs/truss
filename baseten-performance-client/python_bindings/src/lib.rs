@@ -7,8 +7,9 @@ use baseten_performance_client_core::{
     Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE,
-    INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+    RETRY_BUDGET_PERCENTAGE,
 };
 
 use ndarray::Array2;
@@ -389,8 +390,8 @@ impl PyEndpoint {
         health_check_timeout_s = None,
         health_check_retries = None,
         health_fail_on_first = false,
-        deployment_timeout_is_no_vote = false,
-        deep_timeout_is_no_vote = false
+        deployment_timeout_is_no_vote = None,
+        deep_timeout_is_no_vote = None
     ))]
     fn new(
         base_url: String,
@@ -402,8 +403,8 @@ impl PyEndpoint {
         health_check_timeout_s: Option<f64>,
         health_check_retries: Option<u32>,
         health_fail_on_first: bool,
-        deployment_timeout_is_no_vote: bool,
-        deep_timeout_is_no_vote: bool,
+        deployment_timeout_is_no_vote: Option<bool>,
+        deep_timeout_is_no_vote: Option<bool>,
     ) -> PyResult<Self> {
         let mut config = CoreEndpointConfig::new(base_url, api_key, client_wrapper.inner);
         if let Some(interval_s) = health_check_interval_s {
@@ -421,8 +422,8 @@ impl PyEndpoint {
             deep_health_url,
             health_fail_on_first,
             deployment_health_path,
-            deployment_timeout_is_no_vote,
-            deep_timeout_is_no_vote,
+            deployment_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+            deep_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
         );
 
         let inner = CoreEndpoint::new(config)

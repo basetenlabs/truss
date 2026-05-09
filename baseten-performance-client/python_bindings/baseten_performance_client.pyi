@@ -448,8 +448,8 @@ class Endpoint:
         health_check_timeout_s: typing.Optional[builtins.float] = None,
         health_check_retries: typing.Optional[builtins.int] = None,
         health_fail_on_first: builtins.bool = False,
-        deployment_timeout_is_no_vote: builtins.bool = False,
-        deep_timeout_is_no_vote: builtins.bool = False,
+        deployment_timeout_is_no_vote: typing.Optional[builtins.bool] = None,
+        deep_timeout_is_no_vote: typing.Optional[builtins.bool] = None,
     ) -> None:
         """
         Args:
@@ -467,9 +467,9 @@ class Endpoint:
             health_fail_on_first: If true, stop evaluating additional checks after the first
                 hard failing check in an endpoint refresh cycle.
             deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
-                Defaults to false, so timeouts count as unhealthy.
+                Defaults to the library-wide timeout policy.
             deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
-                Defaults to false, so timeouts count as unhealthy.
+                Defaults to the library-wide timeout policy.
         """
         ...
 

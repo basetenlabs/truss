@@ -6,8 +6,8 @@ use baseten_performance_client_core::{
   EndpointConfig as CoreEndpointConfig, EndpointPool as CoreEndpointPool, EndpointPoolConfig,
   HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-  MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE,
+  HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use napi_derive::napi;
@@ -398,8 +398,8 @@ impl Endpoint {
       deep_health_url,
       health_fail_on_first.unwrap_or(false),
       deployment_health_path,
-      deployment_timeout_is_no_vote.unwrap_or(false),
-      deep_timeout_is_no_vote.unwrap_or(false),
+      deployment_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+      deep_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
     );
 
     let inner = CoreEndpoint::new(config).map_err(convert_core_error_to_napi_error)?;
