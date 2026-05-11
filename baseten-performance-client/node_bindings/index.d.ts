@@ -17,8 +17,16 @@ export declare class HttpClientWrapper {
   constructor(httpVersion?: number | undefined | null, proxy?: string | undefined | null)
 }
 
+export declare class Endpoint {
+  constructor(baseUrl: string, apiKey: string, clientWrapper: HttpClientWrapper, deepHealthUrl?: string | undefined | null, deploymentHealthPath?: string | undefined | null, healthCheckIntervalS?: number | undefined | null, healthCheckTimeoutS?: number | undefined | null, healthCheckRetries?: number | undefined | null, healthFailOnFirst?: boolean | undefined | null, deploymentTimeoutIsNoVote?: boolean | undefined | null, deepTimeoutIsNoVote?: boolean | undefined | null)
+}
+
+export declare class EndpointPool {
+  constructor(endpoints: Array<Endpoint>, endpointWeights?: Array<number> | undefined | null)
+}
+
 export declare class PerformanceClient {
-  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null)
+  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null, endpointPool?: EndpointPool | undefined | null)
   getClientWrapper(): HttpClientWrapper
   embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
   rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
@@ -28,11 +36,12 @@ export declare class PerformanceClient {
 
 /** Provides sensible defaults and getters for all properties. */
 export declare class RequestProcessingPreference {
-  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null)
+  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, pinInitialEndpointOnce?: boolean | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null)
   get maxConcurrentRequests(): number
   get batchSize(): number
   get timeoutS(): number
   get maxCharsPerRequest(): number | null
+  get pinInitialEndpointOnce(): boolean
   get hedgeDelay(): number | null
   get totalTimeoutS(): number | null
   get hedgeBudgetPct(): number
