@@ -71,6 +71,37 @@ def test_apt_mirror_url_override(mock_machine, custom_model_truss_dir, monkeypat
     assert "mirror://mirrors.ubuntu.com/US.txt" not in dockerfile
 
 
+@patch("platform.machine", return_value="amd")
+def test_clean_uv_env_passes_proxy_and_ca_vars(mock_machine, custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.live_reload(True)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    uv_env_lines = [
+        line for line in dockerfile.splitlines() if "env -i" in line and " uv " in line
+    ]
+    assert uv_env_lines, (
+        "expected `env -i ... uv ...` lines for live_reload control env"
+    )
+    for line in uv_env_lines:
+        for var in (
+            'HTTP_PROXY="$HTTP_PROXY"',
+            'HTTPS_PROXY="$HTTPS_PROXY"',
+            'NO_PROXY="$NO_PROXY"',
+            'SSL_CERT_FILE="$SSL_CERT_FILE"',
+            'REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE"',
+            'PIP_CERT="$PIP_CERT"',
+        ):
+            assert var in line, f"{var} missing from: {line}"
+
+
 @pytest.mark.parametrize("env_value", [None, ""])
 @patch("platform.machine", return_value="amd")
 def test_apt_mirror_url_default(
