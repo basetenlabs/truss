@@ -76,19 +76,14 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 %}
 
 {#
-  BuildKit cache mounts. When `cache_mount_id` is set (via the TRUSS_CACHE_MOUNT_ID
-  env var at render time), `apt_cache_mount` / `pip_cache_mount` / `uv_cache_mount`
-  are non-empty `--mount=type=cache,...` fragments (with trailing space) computed
-  by the Python builder, and `py_no_cache_dir` is empty. Otherwise, the mount vars
-  are empty and `py_no_cache_dir` is ` --no-cache-dir` (with leading space) so the
-  rendered Dockerfile is byte-identical to the previous behavior.
+  BuildKit cache mount fragments (`apt_cache_mount` / `pip_cache_mount` /
+  `uv_cache_mount`) and `py_no_cache_dir` are computed in the Python builder
+  from `TRUSS_CACHE_MOUNT_ID`; when unset, the rendered Dockerfile is
+  byte-identical to the previous behavior.
 
-  NB: BuildKit does not expand env/build args inside `--mount` `id=` fields, so the
-  id must be baked in at render time.
-
-  `clean_uv_env` is extended in the cache-on case to pass UV_CACHE_DIR /
-  PIP_CACHE_DIR through `env -i`, otherwise uv invocations wrapped in
-  clean_uv_env would not see the pinned cache dirs.
+  In the cache-on case, `clean_uv_env` is extended below to pass UV_CACHE_DIR /
+  PIP_CACHE_DIR through its `env -i` boundary so uv invocations wrapped in
+  clean_uv_env still see the pinned cache dirs.
 #}
 {%- if cache_mount_id %}
 {%- set clean_uv_env = clean_uv_env + ' UV_CACHE_DIR="$UV_CACHE_DIR" PIP_CACHE_DIR="$PIP_CACHE_DIR"' %}
