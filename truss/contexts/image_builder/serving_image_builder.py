@@ -107,13 +107,31 @@ HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
 _DEFAULT_APT_MIRROR_URL = "mirror://mirrors.ubuntu.com/US.txt"
 
+_CACHE_MOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
 
 def _resolve_apt_mirror_url() -> str:
     return os.getenv("BT_APT_MIRROR_URL") or _DEFAULT_APT_MIRROR_URL
 
 
 def _resolve_cache_mount_id() -> Optional[str]:
-    return os.getenv("TRUSS_CACHE_MOUNT_ID") or None
+    """Return the BuildKit cache mount id from `TRUSS_CACHE_MOUNT_ID`, or None.
+
+    Callers (typically the platform build orchestrator) are expected to set
+    this to a value that namespaces the cache appropriately (e.g. per-org or
+    per-tenant) so cache mounts don't collide across unrelated builds. We
+    restrict the value to `[A-Za-z0-9_-]+` because it's interpolated into
+    `--mount=type=cache,id=...` flags; permitting commas, spaces, or `=`
+    would allow injection of additional mount options.
+    """
+    raw = os.getenv("TRUSS_CACHE_MOUNT_ID") or None
+    if raw is None:
+        return None
+    if not _CACHE_MOUNT_ID_RE.match(raw):
+        raise ValueError(
+            f"TRUSS_CACHE_MOUNT_ID must match {_CACHE_MOUNT_ID_RE.pattern}, got {raw!r}"
+        )
+    return raw
 
 
 def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str, str]:
@@ -124,7 +142,9 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
     unset, returns empty fragments and ` --no-cache-dir` so the rendered
     Dockerfile is byte-identical to the pre-caching behavior. The cache id
     is baked in here because BuildKit does not expand env/build args inside
-    `--mount` `id=` fields.
+    `--mount` `id=` fields. Each non-empty fragment includes a trailing
+    space so callers can splice them immediately before the next token, eg
+    `RUN {{ apt_cache_mount }}apt-get ...`.
     """
     if not cache_mount_id:
         return {
@@ -140,7 +160,8 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
         f"target=/var/lib/apt,sharing=locked "
     )
     pip_mount = (
-        f"--mount=type=cache,id=truss-pip-{cache_mount_id},target=/root/.cache/pip "
+        f"--mount=type=cache,id=truss-pip-{cache_mount_id},"
+        f"target=/root/.cache/pip,sharing=locked "
     )
     uv_mount = (
         f"--mount=type=cache,id=truss-uv-{cache_mount_id},target=/root/.cache/uv "

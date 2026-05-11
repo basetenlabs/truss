@@ -10,10 +10,17 @@ import pytest
 import yaml
 
 from truss.base.constants import TRTLLM_PREDICT_CONCURRENCY, TRTLLM_TRUSS_DIR
-from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
+from truss.base.truss_config import (
+    DockerServer,
+    ModelCache,
+    ModelRepo,
+    RemoteSSH,
+    TrussConfig,
+)
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
+    _resolve_cache_mount_id,
     generate_docker_server_nginx_config,
     get_files_to_model_cache_v1,
 )
@@ -153,6 +160,100 @@ def test_cache_mount_id_enabled(mock_machine, custom_model_truss_dir, monkeypatc
     # uv/pip cache dirs pinned for deterministic mount targets.
     assert "ENV UV_CACHE_DIR=/root/.cache/uv" in dockerfile
     assert "ENV PIP_CACHE_DIR=/root/.cache/pip" in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_enabled_with_system_pkgs_ssh_and_docker_server(
+    mock_machine, custom_model_truss_dir, monkeypatch
+):
+    """Exercise the conditional apt-cleanup branches that the basic
+    enabled-state test doesn't cover: system_packages, openssh, and
+    docker_server (which also wraps uv installs in `clean_uv_env`). These
+    paths each have a distinct shape for the conditional trailing `\\`,
+    so we want at least one render that proves all three are well-formed
+    and free of orphaned line continuations when caching is on.
+    """
+    monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", "combo")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_system_package("ffmpeg")
+    th.add_python_requirement("numpy")
+    th._update_config(
+        runtime=th.spec.config.runtime.model_copy(
+            update={"remote_ssh": RemoteSSH(enabled=True)}
+        ),
+        docker_server=DockerServer(
+            start_command='sh -c "python -m http.server 8000"',
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        ),
+    )
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    # System packages install gets the apt cache mount and skips list cleanup.
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update && apt-get install --yes --no-install-recommends "
+        "$(cat system_packages.txt)"
+    ) in dockerfile
+    # openssh install gets the apt cache mount; the trailing `\` chain must
+    # still flow into `chmod +x` (no orphaned `\` if the conditional skipped).
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update && apt-get install --yes --no-install-recommends openssh-server \\"
+    ) in dockerfile
+    assert "chmod +x /usr/local/bin/baseten-ssh-server.sh" in dockerfile
+    # docker_server apt install: nginx + curl with apt mount, no list cleanup.
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update -y && apt-get install -y --no-install-recommends "
+    ) in dockerfile
+    # docker_server uv install must combine the uv cache mount with
+    # `clean_uv_env`, which was extended to forward UV_CACHE_DIR / PIP_CACHE_DIR.
+    assert (
+        "--mount=type=cache,id=truss-uv-combo,target=/root/.cache/uv "
+        'env -i PATH="$PATH" HOME="$HOME" '
+        'UV_CACHE_DIR="$UV_CACHE_DIR" PIP_CACHE_DIR="$PIP_CACHE_DIR" '
+        "uv pip install --python /docker_server/.venv/bin/python "
+        "-r /app/docker_server_requirements.txt"
+    ) in dockerfile
+    # Sanity: no --no-cache-dir anywhere, no list cleanup anywhere, no
+    # orphaned ` \\\n\\s+&&` followed by `chmod` (i.e. no broken continuations).
+    assert "--no-cache-dir" not in dockerfile
+    assert "rm -rf /var/lib/apt/lists/*" not in dockerfile
+
+
+def test_resolve_cache_mount_id_rejects_invalid_chars(monkeypatch):
+    """Unsanitized characters in TRUSS_CACHE_MOUNT_ID could inject extra
+    `--mount` flags via the `id=` field, so we reject them at resolve time."""
+    for bad in [
+        "has space",
+        "comma,injection",
+        "equals=sign",
+        "with/slash",
+        "semi;colon",
+    ]:
+        monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", bad)
+        with pytest.raises(ValueError, match="TRUSS_CACHE_MOUNT_ID"):
+            _resolve_cache_mount_id()
+
+    for ok in ["abc", "abc-123", "abc_123", "ABC", "0"]:
+        monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", ok)
+        assert _resolve_cache_mount_id() == ok
+
+    monkeypatch.delenv("TRUSS_CACHE_MOUNT_ID", raising=False)
+    assert _resolve_cache_mount_id() is None
 
 
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
