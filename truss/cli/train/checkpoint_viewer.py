@@ -66,13 +66,18 @@ def _get_sort_key(sort_by: str) -> Callable[[dict], Any]:
 class CheckpointListViewer(ABC):
     """Base class for checkpoint list viewers that output in different formats."""
 
+    def __init__(self, scope_kind: str = "job"):
+        # "job" for training-job checkpoints, "run" for Loops checkpoints.
+        # Controls labels in titles, messages, and the JSON id key.
+        self.scope_kind = scope_kind
+
     @abstractmethod
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         """Output the checkpoint list in the viewer's format."""
         pass
 
     @abstractmethod
-    def output_no_checkpoints_message(self, job_id: str) -> None:
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
         """Output message when no checkpoints are found."""
         pass
 
@@ -80,9 +85,9 @@ class CheckpointListViewer(ABC):
 class CLITableCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list as a styled CLI table."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         table = rich.table.Table(
-            title=f"Checkpoints for job: {job_id}",
+            title=f"Checkpoints for {self.scope_kind}: {scope_id}",
             show_header=True,
             header_style="bold magenta",
             box=rich.table.box.ROUNDED,
@@ -109,14 +114,16 @@ class CLITableCheckpointViewer(CheckpointListViewer):
 
         console.print(table)
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
-        console.print(f"No checkpoints found for job: {job_id}.", style="yellow")
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
+        console.print(
+            f"No checkpoints found for {self.scope_kind}: {scope_id}.", style="yellow"
+        )
 
 
 class CSVCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in CSV format."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
         writer.writerow(
             [
@@ -144,7 +151,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
                 ]
             )
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
         writer.writerow(
             [
@@ -161,7 +168,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
 class JSONCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in JSON format."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         checkpoints_data = []
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
@@ -181,14 +188,18 @@ class JSONCheckpointViewer(CheckpointListViewer):
             checkpoints_data.append(entry)
 
         output = {
-            "job_id": job_id,
+            f"{self.scope_kind}_id": scope_id,
             "total_checkpoints": len(checkpoints),
             "checkpoints": checkpoints_data,
         }
         print(json.dumps(output, indent=2))
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
-        output = {"job_id": job_id, "total_checkpoints": 0, "checkpoints": []}
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
+        output = {
+            f"{self.scope_kind}_id": scope_id,
+            "total_checkpoints": 0,
+            "checkpoints": [],
+        }
         print(json.dumps(output, indent=2))
 
 

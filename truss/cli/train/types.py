@@ -19,6 +19,7 @@ class DeployCheckpointArgs:
     job_id: Optional[str]
     run_id: Optional[str]
     deploy_config_path: Optional[str]
+    is_loops_command: bool = False
 
 
 class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):

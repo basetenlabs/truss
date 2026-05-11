@@ -5,8 +5,11 @@ import requests
 import rich.table
 import rich_click as click
 
+import truss.cli.train.core as train_cli
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
+from truss.cli.loops_checkpoint_viewer import resolve_run_id, view_loops_checkpoint_list
+from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.utils import common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
@@ -295,3 +298,150 @@ def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
             created_str,
         )
     console.print(table)
+
+
+@loops.group(name="checkpoints")
+def loops_checkpoints() -> None:
+    """Subcommands for working with Loops checkpoints."""
+
+
+@loops_checkpoints.command(name="view")
+@click.option("--run-id", type=str, required=False, help="Loops run ID.")
+@click.option(
+    "--model-name",
+    type=str,
+    required=False,
+    help="Base model name. Resolves to the most recent Loops run for that model.",
+)
+@click.option(
+    "--sort",
+    type=click.Choice(
+        [
+            checkpoint_mod.SORT_BY_CHECKPOINT_ID,
+            checkpoint_mod.SORT_BY_SIZE,
+            checkpoint_mod.SORT_BY_CREATED,
+            checkpoint_mod.SORT_BY_TYPE,
+        ]
+    ),
+    default=checkpoint_mod.SORT_BY_CREATED,
+    help="Sort checkpoints by checkpoint-id, size, created date, or type.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([checkpoint_mod.SORT_ORDER_ASC, checkpoint_mod.SORT_ORDER_DESC]),
+    default=checkpoint_mod.SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [
+            checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+            checkpoint_mod.OUTPUT_FORMAT_CSV,
+            checkpoint_mod.OUTPUT_FORMAT_JSON,
+        ]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def view_loops_checkpoints(
+    run_id: Optional[str],
+    model_name: Optional[str],
+    sort: str,
+    order: str,
+    output_format: str,
+    remote: Optional[str],
+) -> None:
+    """List checkpoints for a Loops run.
+
+    Identify the run with --run-id, or pass --model-name to pick the most
+    recent run for that base model.
+    """
+    if run_id and model_name:
+        raise click.UsageError("Pass either --run-id or --model-name, not both.")
+    if not run_id and not model_name:
+        raise click.UsageError("Pass --run-id or --model-name to identify a Loops run.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    try:
+        resolved_run_id = resolve_run_id(remote_provider, run_id, model_name)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+
+    view_loops_checkpoint_list(
+        remote_provider=remote_provider,
+        run_id=resolved_run_id,
+        sort_by=sort,
+        order=order,
+        output_format=output_format,
+    )
+
+
+@loops_checkpoints.command(name="deploy")
+@click.option("--run-id", type=str, required=False, help="Loops run ID.")
+@click.option(
+    "--config",
+    type=str,
+    required=False,
+    help="path to a python file that defines a DeployCheckpointsConfig",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Generate a truss config without deploying"
+)
+@click.option(
+    "--truss-config-output-dir",
+    type=str,
+    required=False,
+    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def deploy_loops_checkpoints(
+    run_id: Optional[str],
+    config: Optional[str],
+    dry_run: bool,
+    truss_config_output_dir: Optional[str],
+    remote: Optional[str],
+) -> None:
+    """Deploy checkpoints from a Loops run via vLLM."""
+    if not run_id and not config:
+        raise click.UsageError(
+            "Pass --run-id or --config (with loops_checkpoint_ids) to deploy "
+            "Loops checkpoints."
+        )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    result = train_cli.create_model_version_from_inference_template(
+        remote_provider,
+        train_cli.DeployCheckpointArgs(
+            project_id=None,
+            job_id=None,
+            run_id=run_id,
+            deploy_config_path=config,
+            dry_run=dry_run,
+            is_loops_command=True,
+        ),
+    )
+
+    if dry_run:
+        console.print("did not deploy because --dry-run flag provided", style="yellow")
+
+    train_cli.write_truss_config(result, truss_config_output_dir, dry_run)
+
+    if not dry_run:
+        train_cli.print_deploy_checkpoints_success_message(result.deploy_config)

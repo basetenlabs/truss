@@ -382,15 +382,14 @@ def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(
         )
 
 
-def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
-    mock_loops_remote,
-):
-    """--job-id + --config that has loops_checkpoint_ids should error."""
+def test_hydrate_deploy_config_train_rejects_loops_checkpoint_ids(mock_loops_remote):
+    """`truss train deploy_checkpoints` must refuse a config with loops_checkpoint_ids."""
     deploy_config = definitions.DeployCheckpointsConfig(
         checkpoint_details=definitions.CheckpointList(loops_checkpoint_ids=["tcp_xyz"])
     )
     with pytest.raises(
-        click.UsageError, match="--project-id / --job-id cannot be combined"
+        click.UsageError,
+        match="`truss train deploy_checkpoints` does not accept Loops checkpoints",
     ):
         _hydrate_deploy_config(
             deploy_config,
@@ -398,4 +397,34 @@ def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
             project_id=None,
             job_id="tj_abc",
             run_id=None,
+            is_loops_command=False,
+        )
+
+
+def test_hydrate_deploy_config_loops_rejects_training_job_checkpoints(
+    mock_loops_remote,
+):
+    """`truss loops checkpoints deploy` must refuse a config with training-job checkpoints."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="tj_abc",
+                    checkpoint_name="step-1",
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                )
+            ]
+        )
+    )
+    with pytest.raises(
+        click.UsageError,
+        match="`truss loops checkpoints deploy` does not accept training-job",
+    ):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_loops_remote,
+            project_id=None,
+            job_id=None,
+            run_id="trnr_xyz",
+            is_loops_command=True,
         )
