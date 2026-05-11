@@ -13,6 +13,7 @@ from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_service.fetch_auth_header()
+        headers = with_user_agent(self._auth_service.fetch_auth_header())
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
@@ -891,16 +892,31 @@ class BasetenApi:
         )
         return resp_json
 
-    def search_trainers(self, trainer_id: Optional[str] = None):
-        resp_json = self._rest_api_client.post(
-            "v1/trainers/search", body={"trainer_id": trainer_id}
-        )
-        return resp_json["trainers"]
+    def list_loops_runs(
+        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+    ):
+        params: Dict[str, str] = {}
+        if run_id is not None:
+            params["run_id"] = run_id
+        if base_model is not None:
+            params["base_model"] = base_model
+        resp_json = self._rest_api_client.get("v1/loops/runs", url_params=params)
+        return resp_json["runs"]
 
-    def list_trainer_checkpoints(self, session_id: str, trainer_id: str):
-        resp_json = self._rest_api_client.get(
-            f"v1/trainer_sessions/{session_id}/trainers/{trainer_id}/checkpoints"
-        )
+    def list_loops_checkpoints(
+        self,
+        run_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+        checkpoint_path: Optional[str] = None,
+    ):
+        params: Dict[str, str] = {}
+        if run_id is not None:
+            params["run_id"] = run_id
+        if base_model is not None:
+            params["base_model"] = base_model
+        if checkpoint_path is not None:
+            params["checkpoint_path"] = checkpoint_path
+        resp_json = self._rest_api_client.get("v1/loops/checkpoints", url_params=params)
         return resp_json
 
     def get_training_job_isession(self, project_id: str, job_id: str):
@@ -1072,6 +1088,7 @@ class BasetenApi:
                 model_version {
                     id
                     name
+                    model_id
                 }
                 truss_config
             }
@@ -1174,4 +1191,76 @@ class BasetenApi:
     def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
+        )
+
+    def create_loops_session(self, training_project_id: Optional[str] = None) -> dict:
+        body: Dict[str, Any] = {}
+        if training_project_id is not None:
+            body["training_project_id"] = training_project_id
+        resp_json = self._rest_api_client.post("v1/loops/sessions", body=body)
+        return resp_json["session"]
+
+    def create_loops_run(
+        self, session_id: str, base_model: str, seed: Optional[int] = None
+    ) -> dict:
+        body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
+        if seed is not None:
+            body["seed"] = seed
+        resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
+        return resp_json["run"]
+
+    def get_loops_session(self, session_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/sessions/{session_id}")
+        return resp_json["session"]
+
+    def get_loops_run(self, run_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/runs/{run_id}")
+        return resp_json["run"]
+
+    def get_loops_sampler(self, sampler_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/samplers/{sampler_id}")
+        return resp_json["sampler"]
+
+    def list_loops_deployments(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/deployments")
+        return resp_json["deployments"]
+
+    def get_loops_deployment(self, deployment_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/deployments/{deployment_id}")
+        return resp_json["deployment"]
+
+    def list_loops_samplers(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/samplers")
+        return resp_json["samplers"]
+
+    def list_loops_checkpoint_files(
+        self, checkpoint_id: str, page_size: int = 1000
+    ) -> List[Dict[str, str]]:
+        """Fetch all presigned URLs for files under a Loops checkpoint."""
+        all_presigned_urls: List[Dict[str, str]] = []
+        page_token: Optional[str] = None
+        max_iterations = 1000
+        for _ in range(max_iterations):
+            params: Dict[str, str] = {"page_size": str(page_size)}
+            if page_token:
+                params["page_token"] = page_token
+            response = self._rest_api_client.get(
+                f"v1/loops/checkpoints/{checkpoint_id}/files", url_params=params
+            )
+            all_presigned_urls.extend(response.get("presigned_urls", []))
+            page_token = response.get("next_page_token")
+            if not page_token:
+                break
+        else:
+            logging.error(
+                "Reached maximum iteration limit (%d) while paginating Loops "
+                "checkpoint files for checkpoint_id=%s",
+                max_iterations,
+                checkpoint_id,
+            )
+        return all_presigned_urls
+
+    def deactivate_loops_deployment(self, deployment_id: str) -> None:
+        self._rest_api_client.post(
+            f"v1/loops/deployments/{deployment_id}/deactivate", body={}
         )

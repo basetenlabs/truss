@@ -48,7 +48,7 @@ from starlette.responses import Response
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
-TIMEOUT_GRACEFUL_SHUTDOWN = 120
+TIMEOUT_GRACEFUL_SHUTDOWN = 3600
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 
 # Hardcoded 100MiB message maximum on websocket connections.

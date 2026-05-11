@@ -505,10 +505,10 @@ def get_job_metrics(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
-    "--trainer-id",
+    "--run-id",
     type=str,
     required=False,
-    help="Trainer ID. Use to deploy checkpoints from a trainer instead of a training job.",
+    help="Loops run ID. Use to deploy checkpoints from a Loops run instead of a training job.",
 )
 @click.option(
     "--config",
@@ -531,27 +531,24 @@ def deploy_checkpoints(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
-    trainer_id: Optional[str],
+    run_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
     truss_config_output_dir: Optional[str],
 ):
-    """
-    Deploy a LoRA checkpoint via vLLM.
-    """
-
+    """Deploy a LoRA checkpoint via vLLM."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    if trainer_id and (project_id or project or job_id):
+    if run_id and (project_id or project or job_id):
         raise click.UsageError(
-            "--trainer-id cannot be combined with --project, --project-id, or --job-id."
+            "--run-id cannot be combined with --project, --project-id, or --job-id."
         )
-    if not trainer_id:
+    if not run_id:
         project_id = _maybe_resolve_project_id_from_id_or_name(
             remote_provider, project_id=project_id, project=project
         )
@@ -560,7 +557,7 @@ def deploy_checkpoints(
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
-            trainer_id=trainer_id,
+            run_id=run_id,
             deploy_config_path=config,
             dry_run=dry_run,
         ),
@@ -856,7 +853,7 @@ def list_checkpoints(
     order: str,
     output_format: str,
 ):
-    """List checkpoints for a training job"""
+    """List checkpoints for a training job."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -1134,14 +1131,27 @@ def capacity(remote: Optional[str]):
 @click.option(
     "--gpu-count",
     type=click.IntRange(1, 8),
-    default=1,
-    help="Number of GPUs (1-8, default: 1).",
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --node-count.",
 )
 @click.option(
     "--project-id",
     type=str,
     required=False,
     help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--node-count",
+    "node_count",
+    type=click.IntRange(1, 16),
+    default=None,
+    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+)
+@click.option(
+    "--orchestrator",
+    type=click.Choice(["slurm"], case_sensitive=False),
+    default="slurm",
+    help="Multi-node orchestrator (default: slurm).",
 )
 @click.option(
     "--image",
@@ -1178,8 +1188,10 @@ def capacity(remote: Optional[str]):
 @common.common_options()
 def workstation(
     accelerator: str,
-    gpu_count: int,
+    gpu_count: Optional[int],
     project_id: Optional[str],
+    node_count: Optional[int],
+    orchestrator: str,
     image: Optional[str],
     enable_checkpointing: bool,
     checkpoint_path: Optional[str],
@@ -1194,8 +1206,20 @@ def workstation(
     from truss.cli.train.workstation import (
         DEFAULT_BASE_IMAGE,
         build_workstation_project,
+        copy_workstation_templates,
     )
     from truss_train.public_api import push
+
+    if gpu_count is not None and node_count is not None:
+        raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
+
+    if node_count is not None:
+        # SLURM mode: each node gets 8 GPUs
+        gpu_count = 8
+    else:
+        # Single-node mode
+        gpu_count = gpu_count or 1
+        node_count = 1
 
     accelerator = accelerator.upper()
     if not project_id:
@@ -1210,32 +1234,55 @@ def workstation(
         gpu_count=gpu_count,
         project_id=project_id,
         base_image=base_image,
+        node_count=node_count,
+        orchestrator=orchestrator,
         enable_checkpointing=enable_checkpointing,
         checkpoint_path=checkpoint_path,
         checkpoint_volume_size=checkpoint_volume_size,
         checkpoint_from_job=checkpoint_from_job,
     )
 
+    node_str = f"{node_count}x " if node_count > 1 else ""
     console.print(
         f"Launching workstation [cyan]{project_id}[/cyan] "
-        f"with [cyan]{gpu_count}x {accelerator}[/cyan]..."
+        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
     )
 
-    # Use an empty temp dir as source so we don't upload the user's cwd.
-    with tempfile.TemporaryDirectory() as empty_dir:
+    # Use a temp dir as source so we don't upload the user's cwd.
+    # For multi-node, copy the SLURM setup scripts into it.
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        if node_count > 1:
+            copy_workstation_templates(Path(tmp_dir))
         job_resp = push(
-            config=training_project, remote=remote, source_dir=Path(empty_dir)
+            config=training_project, remote=remote, source_dir=Path(tmp_dir)
         )
 
     job_id = job_resp["id"]
+    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        ssh_lines += " (leader)"
+        for i in range(1, node_count):
+            ssh_lines += (
+                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+            )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
     console.print(
         f"\n[green]Workstation created![/green]\n"
         f"\n"
         f"Once the job is running, SSH in with:\n"
-        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"{ssh_lines}\n"
         f"\n"
         f"If you haven't set up SSH yet, run:\n"
         f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
         f"\n"
         f"View logs:\n"
         f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"

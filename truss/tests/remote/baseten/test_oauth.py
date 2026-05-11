@@ -195,7 +195,11 @@ def test_revoke_swallows_errors(caplog):
     assert any("revoke" in r.message.lower() for r in caplog.records)
 
 
-def test_run_device_flow_end_to_end():
+def test_run_device_flow_end_to_end(monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr(
+        oauth.webbrowser, "open", lambda url, new=0: opened.append(url) or True
+    )
     with requests_mock.Mocker() as m:
         m.post(DEVICE_AUTHORIZE_URL, json=_device_authorize_body())
         m.post(
@@ -204,3 +208,25 @@ def test_run_device_flow_end_to_end():
         )
         cred = oauth.run_device_flow(API_URL)
     assert cred.access_token == "at"
+    assert opened == ["https://login.baseten.co/device?user_code=USER"]
+    out = capsys.readouterr().out
+    assert "https://login.baseten.co/device?user_code=USER" in out
+    assert "USER" in out
+
+
+def test_run_device_flow_browser_open_failure_still_prints(monkeypatch, capsys):
+    def _raise(url, new=0):
+        raise RuntimeError("no browser")
+
+    monkeypatch.setattr(oauth.webbrowser, "open", _raise)
+    with requests_mock.Mocker() as m:
+        m.post(DEVICE_AUTHORIZE_URL, json=_device_authorize_body())
+        m.post(
+            DEVICE_TOKEN_URL,
+            json={"access_token": "at", "refresh_token": "rt", "expires_in": 3600},
+        )
+        cred = oauth.run_device_flow(API_URL)
+    assert cred.access_token == "at"
+    out = capsys.readouterr().out
+    assert "https://login.baseten.co/device?user_code=USER" in out
+    assert "USER" in out

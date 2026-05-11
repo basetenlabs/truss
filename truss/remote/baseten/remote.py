@@ -1022,3 +1022,20 @@ class BasetenRemote(TrussRemote):
 
     def upsert_training_project(self, training_project, team_id=None):
         return self._api.upsert_training_project(training_project, team_id=team_id)
+
+    def create_loops_session(self, training_project_id=None):
+        return self._api.create_loops_session(training_project_id=training_project_id)
+
+    def create_loops_run(self, session_id, base_model, seed=None):
+        return self._api.create_loops_run(
+            session_id=session_id, base_model=base_model, seed=seed
+        )
+
+    def deactivate_loops_deployment(self, base_model: str) -> None:
+        deployments = self._api.list_loops_deployments()
+        match = next((d for d in deployments if d["base_model"] == base_model), None)
+        if match is None:
+            raise RemoteError(
+                f"No active Loops deployment found for base model {base_model!r}."
+            )
+        self._api.deactivate_loops_deployment(match["id"])
