@@ -93,6 +93,68 @@ def test_apt_mirror_url_default(
     assert "mirror://mirrors.ubuntu.com/US.txt" in dockerfile
 
 
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_disabled(mock_machine, custom_model_truss_dir, monkeypatch):
+    """When TRUSS_CACHE_MOUNT_ID is unset, the Dockerfile keeps --no-cache-dir
+    and apt cleanup, and contains no BuildKit cache mounts."""
+    monkeypatch.delenv("TRUSS_CACHE_MOUNT_ID", raising=False)
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "--mount=type=cache" not in dockerfile
+    assert "--no-cache-dir" in dockerfile
+    assert "rm -rf /var/lib/apt/lists/*" in dockerfile
+    assert "/etc/apt/apt.conf.d/docker-clean" not in dockerfile
+    assert "UV_CACHE_DIR" not in dockerfile
+    assert "PIP_CACHE_DIR" not in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_enabled(mock_machine, custom_model_truss_dir, monkeypatch):
+    """When TRUSS_CACHE_MOUNT_ID is set, the Dockerfile injects BuildKit cache
+    mounts with the provided id, drops --no-cache-dir, defeats apt's
+    docker-clean config, and stops removing the apt list cache."""
+    monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", "test123")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_python_requirement("numpy")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    # apt, pip, and uv cache mounts with the right id
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-test123,target=/var/cache/apt,sharing=locked"
+        in dockerfile
+    )
+    assert (
+        "--mount=type=cache,id=truss-apt-lib-test123,target=/var/lib/apt,sharing=locked"
+        in dockerfile
+    )
+    assert "--mount=type=cache,id=truss-uv-test123,target=/root/.cache/uv" in dockerfile
+    # No --no-cache-dir flags should remain.
+    assert "--no-cache-dir" not in dockerfile
+    # docker-clean must be removed and keep-cache configured.
+    assert "rm -f /etc/apt/apt.conf.d/docker-clean" in dockerfile
+    assert "Keep-Downloaded-Packages" in dockerfile
+    # apt list cleanup must NOT run when cache mounts are active.
+    assert "rm -rf /var/lib/apt/lists/*" not in dockerfile
+    # uv/pip cache dirs pinned for deterministic mount targets.
+    assert "ENV UV_CACHE_DIR=/root/.cache/uv" in dockerfile
+    assert "ENV PIP_CACHE_DIR=/root/.cache/pip" in dockerfile
+
+
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_python_requirement("numpy")

@@ -13,14 +13,16 @@
 ENV PYTHONUNBUFFERED="True"
 
 {# Install common dependencies #}
-RUN apt update && \
-    apt install -y bash build-essential git curl ca-certificates \
+RUN {{ apt_cache_mount }}apt update && \
+    apt install -y bash build-essential git curl ca-certificates
+        {%- if not cache_mount_id %} \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
+        {%- endif %}
 
 COPY --chown={{ default_owner }} ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --no-cache-dir
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ base_server_requirements_filename }}{{ py_no_cache_dir }}
     {%- endif %} {#- endif not config.docker_server #}
 
     {%- if requires_live_reload %}
@@ -38,7 +40,7 @@ RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
 COPY --chown={{ default_owner }} ./{{ server_requirements_filename }} {{ server_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ server_requirements_filename }} --no-cache-dir
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ server_requirements_filename }}{{ py_no_cache_dir }}
     {%- endif %} {#- endif should_install_server_requirements #}
 {{ super() }}
 {% endblock %} {#- endblock install_requirements #}
@@ -88,7 +90,7 @@ RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
 RUN {{ clean_uv_env }} uv venv /control/.env --python {{ control_python_version }}
 
 COPY --chown={{ default_owner }} ./control /control
-RUN {{ clean_uv_env }} uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
+RUN {{ uv_cache_mount }}{{ clean_uv_env }} uv pip install -r /control/requirements.txt --python /control/.env/bin/python{{ py_no_cache_dir }}
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
@@ -115,14 +117,14 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- endif %} {#- endif build_commands #}
 
 {%- if config.docker_server %}
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-        curl nginx && rm -rf /var/lib/apt/lists/*
+RUN {{ apt_cache_mount }}apt-get update -y && apt-get install -y --no-install-recommends \
+        curl nginx{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %}
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
 RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
 RUN {{ clean_uv_env }} uv venv /docker_server/.venv --python {{ control_python_version }}
-RUN {{ clean_uv_env }} uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
+RUN {{ uv_cache_mount }}{{ clean_uv_env }} uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt{{ py_no_cache_dir }}
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_server_url = "http://localhost:8080" %}
