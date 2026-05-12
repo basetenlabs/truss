@@ -652,6 +652,48 @@ def test_checkpoints_deploy_with_checkpoint_ids_parses_and_forwards(mock_remote)
     assert deploy_args.deploy_config_path is None
 
 
+def test_checkpoints_deploy_rejects_checkpoint_ids_with_run_id(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoint-ids",
+                "tcp_step100",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_rejects_whitespace_only_checkpoint_ids(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--checkpoint-ids",
+                " , ,",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
 def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_path):
     config_path = tmp_path / "deploy.py"
     config_path.write_text("")

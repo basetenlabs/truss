@@ -1,3 +1,4 @@
+import sys
 from typing import Optional
 
 from truss.cli.train.checkpoint_viewer import (
@@ -53,7 +54,12 @@ def view_loops_checkpoint_list(
         else:
             viewer.output_checkpoints(checkpoints, run_id)
     except Exception as e:
-        console.print(f"Error fetching checkpoints: {e}", style="red")
+        # Keep stdout clean for json/csv consumers (jq pipelines, spreadsheets);
+        # only the CLI table format gets a styled error.
+        if output_format in (OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON):
+            print(f"Error fetching checkpoints: {e}", file=sys.stderr)
+        else:
+            console.print(f"Error fetching checkpoints: {e}", style="red")
         raise
 
 

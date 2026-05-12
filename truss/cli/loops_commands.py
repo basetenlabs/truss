@@ -431,12 +431,25 @@ def deploy_loops_checkpoints(
             "--checkpoint-ids cannot be combined with --config. "
             "Pick one source of checkpoint identifiers."
         )
+    if checkpoint_ids and run_id:
+        # Server resolves checkpoint PKs directly and ignores run_id when both
+        # are present — silently dropping the run_id would mislead users into
+        # thinking we validated their pairing.
+        raise click.UsageError(
+            "--checkpoint-ids cannot be combined with --run-id. "
+            "Loops checkpoint IDs are globally unique, so the run is implicit."
+        )
 
     parsed_checkpoint_ids = (
         [s.strip() for s in checkpoint_ids.split(",") if s.strip()]
         if checkpoint_ids
         else []
     )
+    if checkpoint_ids and not parsed_checkpoint_ids:
+        raise click.UsageError(
+            "--checkpoint-ids parsed to an empty list. Provide one or more "
+            "comma-separated Loops checkpoint IDs."
+        )
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
