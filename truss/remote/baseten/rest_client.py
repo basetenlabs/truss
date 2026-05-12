@@ -4,6 +4,11 @@ import requests
 
 from truss.remote.baseten.user_agent import with_user_agent
 
+# (connect, read) timeout in seconds. Without a timeout, a stalled socket
+# (e.g. NAT or LB silently dropping a keep-alive) hangs requests forever, and
+# tenacity's stop_after_delay only fires between attempts, never mid-attempt.
+_DEFAULT_TIMEOUT_SEC = (10, 60)
+
 
 class RestAPIClient:
     base_url: str
@@ -28,26 +33,39 @@ class RestAPIClient:
 
     def get(self, path: str, url_params: dict[str, str] = {}):
         resp = requests.get(
-            f"{self.base_url}/{path}", headers=self._headers(), params=url_params
+            f"{self.base_url}/{path}",
+            headers=self._headers(),
+            params=url_params,
+            timeout=_DEFAULT_TIMEOUT_SEC,
         )
         self._handle_error(resp)
         return resp.json()
 
     def post(self, path: str, body: Any):
         resp = requests.post(
-            f"{self.base_url}/{path}", headers=self._headers(), json=body
+            f"{self.base_url}/{path}",
+            headers=self._headers(),
+            json=body,
+            timeout=_DEFAULT_TIMEOUT_SEC,
         )
         self._handle_error(resp)
         return resp.json()
 
     def delete(self, path: str):
-        resp = requests.delete(f"{self.base_url}/{path}", headers=self._headers())
+        resp = requests.delete(
+            f"{self.base_url}/{path}",
+            headers=self._headers(),
+            timeout=_DEFAULT_TIMEOUT_SEC,
+        )
         self._handle_error(resp)
         return resp.json()
 
     def patch(self, path: str, body: Any):
         resp = requests.patch(
-            f"{self.base_url}/{path}", headers=self._headers(), json=body
+            f"{self.base_url}/{path}",
+            headers=self._headers(),
+            json=body,
+            timeout=_DEFAULT_TIMEOUT_SEC,
         )
         self._handle_error(resp)
         return resp.json()
