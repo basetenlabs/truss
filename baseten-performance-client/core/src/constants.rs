@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
@@ -26,8 +24,8 @@ pub const MAX_HTTP_RETRIES: u32 = 6;
 pub const INITIAL_BACKOFF_MS: u64 = 125;
 pub(crate) const MIN_BACKOFF_MS: u64 = 50;
 pub(crate) const MAX_BACKOFF_MS: u64 = 45000; // 45 seconds
-pub(crate) const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(90);
-pub const DEFAULT_RATE_LIMIT_RETRY_SEMAPHORE: usize = 32;
+pub const DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT: usize = 64;
+pub(crate) const MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT: usize = 4;
 
 pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
 pub const RETRY_BUDGET_PERCENTAGE: f64 = 0.05;

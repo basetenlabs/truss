@@ -1,4 +1,7 @@
 use crate::client::HttpClientWrapper;
+use crate::constants::{
+    DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT, MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT,
+};
 use crate::errors::ClientError;
 
 use nonempty::NonEmpty;
@@ -6,6 +9,7 @@ use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
 const DEFAULT_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
@@ -72,6 +76,7 @@ pub struct EndpointConfig {
     pub health_check_timeout: Duration,
     pub health_check_retries: u32,
     pub health_check_client_wrapper: Arc<HttpClientWrapper>,
+    pub retry_attempt_concurrency_limit: usize,
 }
 
 impl EndpointConfig {
@@ -88,6 +93,7 @@ impl EndpointConfig {
             health_check_timeout: DEFAULT_HEALTH_CHECK_TIMEOUT,
             health_check_retries: DEFAULT_HEALTH_CHECK_RETRIES,
             health_check_client_wrapper,
+            retry_attempt_concurrency_limit: DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT,
         }
     }
 
@@ -108,6 +114,11 @@ impl EndpointConfig {
 
     pub fn with_endpoint_health(mut self, endpoint_health: EndpointHealthConfig) -> Self {
         self.endpoint_health = Some(endpoint_health);
+        self
+    }
+
+    pub fn with_retry_attempt_concurrency_limit(mut self, limit: usize) -> Self {
+        self.retry_attempt_concurrency_limit = limit;
         self
     }
 
@@ -187,6 +198,13 @@ impl EndpointConfig {
             }
         }
 
+        if self.retry_attempt_concurrency_limit < MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT {
+            return Err(ClientError::InvalidParameter(format!(
+                "retry_attempt_concurrency_limit must be at least {}",
+                MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT
+            )));
+        }
+
         Ok(())
     }
 }
@@ -201,6 +219,7 @@ struct EndpointInner {
     health_check_timeout: Duration,
     health_check_retries: u32,
     health_check_client_wrapper: Arc<HttpClientWrapper>,
+    retry_attempt_semaphore: Arc<Semaphore>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +273,9 @@ impl Endpoint {
                 fail_on_first: false,
             });
 
+        let retry_attempt_semaphore =
+            Arc::new(Semaphore::new(config.retry_attempt_concurrency_limit));
+
         let inner = Arc::new(EndpointInner {
             base_url: Arc::<str>::from(normalize_url(&config.base_url)),
             health_api_key: config.health_api_key,
@@ -263,6 +285,7 @@ impl Endpoint {
             health_check_timeout: config.health_check_timeout,
             health_check_retries: config.health_check_retries,
             health_check_client_wrapper: config.health_check_client_wrapper,
+            retry_attempt_semaphore,
         });
         start_endpoint_health_worker(&inner)?;
         Ok(Self { inner })
@@ -270,6 +293,10 @@ impl Endpoint {
 
     pub fn base_url(&self) -> &str {
         self.inner.base_url.as_ref()
+    }
+
+    pub fn retry_attempt_semaphore(&self) -> Arc<Semaphore> {
+        self.inner.retry_attempt_semaphore.clone()
     }
 
     fn is_healthy(&self) -> bool {
@@ -401,17 +428,22 @@ struct ResolvedEndpointPoolConfig {
 pub(crate) struct EndpointSelection {
     pub endpoint_index: usize,
     pub base_url: Arc<str>,
+    pub retry_attempt_semaphore: Arc<Semaphore>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct SingleEndpoint {
     base_url: Arc<str>,
+    retry_attempt_semaphore: Arc<Semaphore>,
 }
 
 impl SingleEndpoint {
     pub(crate) fn new(base_url: impl Into<Arc<str>>) -> Self {
         Self {
             base_url: base_url.into(),
+            retry_attempt_semaphore: Arc::new(Semaphore::new(
+                DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT,
+            )),
         }
     }
 }
@@ -443,6 +475,7 @@ impl EndpointRouter {
             EndpointRouter::Single(endpoint) => EndpointSelection {
                 endpoint_index: 0,
                 base_url: Arc::clone(&endpoint.base_url),
+                retry_attempt_semaphore: endpoint.retry_attempt_semaphore.clone(),
             },
             EndpointRouter::Pool(pool) => pool.select_endpoint(excluded_indices),
         }
@@ -459,6 +492,7 @@ impl EndpointRouter {
                 EndpointSelection {
                     endpoint_index: 0,
                     base_url: Arc::clone(&endpoint.base_url),
+                    retry_attempt_semaphore: endpoint.retry_attempt_semaphore.clone(),
                 },
             ),
             EndpointRouter::Pool(pool) => pool.select_attempt_url(request_suffix, excluded_indices),
@@ -476,6 +510,7 @@ impl EndpointRouter {
                 EndpointSelection {
                     endpoint_index: 0,
                     base_url: Arc::clone(&endpoint.base_url),
+                    retry_attempt_semaphore: endpoint.retry_attempt_semaphore.clone(),
                 },
             ),
             EndpointRouter::Pool(pool) => {
@@ -521,6 +556,7 @@ impl EndpointPool {
         Some(EndpointSelection {
             endpoint_index,
             base_url: Arc::clone(&self.endpoints[endpoint_index].inner.base_url),
+            retry_attempt_semaphore: self.endpoints[endpoint_index].retry_attempt_semaphore(),
         })
     }
 
@@ -1031,6 +1067,37 @@ mod tests {
             }),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_endpoint_uses_default_retry_attempt_concurrency_limit() {
+        let endpoint = endpoint("https://a.example.com");
+
+        assert_eq!(
+            endpoint.retry_attempt_semaphore().available_permits(),
+            DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT
+        );
+    }
+
+    #[test]
+    fn test_retry_attempt_concurrency_limit_validation_rejects_too_small_values() {
+        let result = Endpoint::new(
+            EndpointConfig::new(
+                "https://a.example.com".to_string(),
+                "test-api-key".to_string(),
+                health_check_wrapper(),
+            )
+            .with_retry_attempt_concurrency_limit(
+                MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT.saturating_sub(1),
+            ),
+        );
+
+        match result {
+            Err(ClientError::InvalidParameter(message)) => {
+                assert!(message.contains("retry_attempt_concurrency_limit must be at least"));
+            }
+            other => panic!("expected invalid parameter error, got {other:?}"),
+        }
     }
 
     #[test]
