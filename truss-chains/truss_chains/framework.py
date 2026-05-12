@@ -994,13 +994,15 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
 
     if is_truss_chainlet(cls):
         # TrussChainlet declarations don't have remote_config / run_remote /
-        # health_check / dependencies. Validate the truss_dir + display_name,
-        # build a descriptor with a sentinel endpoint, register, and exit early.
+        # health_check. Validate the truss_dir + display_name + the optional
+        # ``deps`` class attribute, build a descriptor with a sentinel
+        # endpoint, register, and exit early.
         _validate_display_name(cls, location)
         _validate_truss_chainlet_cls(cls, src_path, location)
+        truss_chainlet_deps = _validate_truss_chainlet_deps(cls, location)
         chainlet_descriptor = private_types.ChainletAPIDescriptor(
             chainlet_cls=cls,
-            dependencies={},
+            dependencies=truss_chainlet_deps,
             has_context=False,
             endpoint=_DUMMY_ENDPOINT_DESCRIPTOR,
             src_path=src_path,
@@ -1084,6 +1086,84 @@ def _validate_truss_chainlet_cls(
     if not truss_dir.is_absolute():
         truss_dir = (src_dir / truss_dir).resolve()
     cls._resolved_truss_dir = truss_dir
+
+
+def _validate_truss_chainlet_deps(
+    cls: Type["TrussChainlet"], location: _ErrorLocation
+) -> Mapping[str, private_types.DependencyDescriptor]:
+    """Validate ``cls.deps`` (a class-attribute list of chainlet classes) and
+    return the resulting ``{display_name: DependencyDescriptor}`` mapping.
+    """
+    deps_attr = getattr(cls, "deps", None) or []
+    if not isinstance(deps_attr, (list, tuple)):
+        _collect_error(
+            f"`TrussChainlet.{cls.__name__}.deps` must be a list of chainlet "
+            f"classes, got `{type(deps_attr).__name__}`.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return {}
+
+    used: set[Type[private_types.ABCChainlet]] = set()
+    dependencies: dict[str, private_types.DependencyDescriptor] = {}
+    for dep_cls in deps_attr:
+        if not isinstance(dep_cls, type):
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` entries must be chainlet "
+                f"classes, got `{dep_cls!r}`.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        if not (
+            utils.issubclass_safe(dep_cls, ChainletBase)
+            or utils.issubclass_safe(dep_cls, TrussChainlet)
+        ):
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` entry `{dep_cls.__name__}` "
+                "is not a `ChainletBase` or `TrussChainlet` subclass.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        if dep_cls is cls:
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` cannot reference itself.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        if dep_cls in used:
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` contains duplicate "
+                f"`{dep_cls.__name__}`.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        if dep_cls not in _global_chainlet_registry._chainlets:
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` references `{dep_cls.__name__}` "
+                "before it was registered. Define the dep before the chainlet "
+                "that uses it.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        if get_descriptor(dep_cls).endpoint.is_websocket:
+            _collect_error(
+                f"`TrussChainlet.{cls.__name__}.deps` entry `{dep_cls.__name__}` "
+                "uses a websocket. WebSockets can only be used in the entrypoint, "
+                "not in 'inner' chainlets.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+            continue
+        dependencies[dep_cls.__name__] = private_types.DependencyDescriptor(
+            chainlet_cls=dep_cls, options=public_types.RPCOptions()
+        )
+        used.add(dep_cls)
+    return dependencies
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1493,13 +1573,23 @@ class _ABCImporter(abc.ABC):
         pass
 
     @classmethod
+    def _is_target_cls(cls, candidate: Any) -> bool:
+        """Whether ``candidate`` is a class this importer should pick up.
+
+        Default: any subclass of ``_target_cls_type()``. Subclasses can override
+        to widen acceptance to multiple base classes (e.g., ``ChainletImporter``
+        accepts both ``ChainletBase`` and ``TrussChainlet``).
+        """
+        return utils.issubclass_safe(candidate, cls._target_cls_type())
+
+    @classmethod
     def _get_chainlets(
         cls, symbols
     ) -> tuple[
         set[Type[private_types.ABCChainlet]], set[Type[private_types.ABCChainlet]]
     ]:
         chainlets: set[Type[private_types.ABCChainlet]] = {
-            sym for sym in symbols if utils.issubclass_safe(sym, cls._target_cls_type())
+            sym for sym in symbols if cls._is_target_cls(sym)
         }
         entrypoints: set[Type[private_types.ABCChainlet]] = {
             chainlet for chainlet in chainlets if chainlet.meta_data.is_entrypoint
@@ -1603,7 +1693,7 @@ class _ABCImporter(abc.ABC):
                         f"Target class `{target_name}` not found "
                         f"in `{resolved_module_path}`."
                     )
-                if not utils.issubclass_safe(target_cls, cls._target_cls_type()):
+                if not cls._is_target_cls(target_cls):
                     raise TypeError(
                         f"Target `{target_cls}` is not a {cls._target_cls_type()}."
                     )
@@ -1653,6 +1743,15 @@ class ChainletImporter(_ABCImporter):
     @classmethod
     def _target_cls_type(cls) -> Type[private_types.ABCChainlet]:
         return ChainletBase
+
+    @classmethod
+    def _is_target_cls(cls, candidate: Any) -> bool:
+        """Chains accept ``ChainletBase`` *or* ``TrussChainlet`` subclasses as
+        chainlets (and as entrypoints). ``TrussChainlet`` doesn't subclass
+        ``ChainletBase`` so we have to test both branches explicitly."""
+        return utils.issubclass_safe(candidate, ChainletBase) or utils.issubclass_safe(
+            candidate, TrussChainlet
+        )
 
 
 class ModelImporter(_ABCImporter):
@@ -1795,6 +1894,22 @@ class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
                 self._url = whisper.target_url
                 self._headers = whisper.with_auth_headers(
                     context.get_baseten_api_key())
+
+    May also be marked as the chain entrypoint via ``@chains.mark_entrypoint``,
+    in which case it serves as the polyglot front door. Declare the deps the
+    entrypoint pod needs to discover via the ``deps`` class attribute::
+
+        @chains.mark_entrypoint("Polyglot Front Door")
+        class VoiceAgentEntry(chains.TrussChainlet):
+            truss_dir = "./voice-agent-rust"
+            deps = [LLM, TTS]
+
+    The framework deploys ``LLM`` + ``TTS`` and writes their URLs into the
+    entrypoint pod's ``dynamic_chainlet_config`` ConfigMap. The entrypoint's
+    custom server reads them at runtime (e.g., via
+    :mod:`truss_chains.runtime` from Python or a native HTTP client from
+    other languages) and calls them with its own client. No framework Python
+    runs in the entrypoint pod's data path.
     """
 
     truss_dir: ClassVar[str]
@@ -1802,6 +1917,9 @@ class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
     # `_resolved_truss_dir` is set by `__init_subclass__` after path resolution
     # and validation. Codegen reads it to locate the user's Truss directory.
     _resolved_truss_dir: ClassVar[Optional[pathlib.Path]] = None
+
+    # Deps for a TrussChainlet entrypoint. Bare chainlet class references
+    deps: ClassVar[list[type[private_types.ABCChainlet]]] = []
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)

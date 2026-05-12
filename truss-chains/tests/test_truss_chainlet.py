@@ -515,3 +515,223 @@ def test_truss_chainlet_artifact_chain_api_key_idempotent(tmp_path):
         dst_config["secrets"][public_types.CHAIN_API_KEY_SECRET_NAME]
         != public_types.SECRET_DUMMY
     )
+
+
+# ---- Project 3: TrussChainlet as the chain entrypoint -----------------------
+
+
+def test_truss_chainlet_can_be_entrypoint(truss_dir_path):
+    """A `TrussChainlet` decorated with `@chains.mark_entrypoint` registers
+    as a valid entrypoint candidate. The `ChainletImporter._is_target_cls`
+    override is what unlocks this; without it the importer skips
+    TrussChainlets at discovery time."""
+    truss_dir_str = str(truss_dir_path)
+
+    @chains.mark_entrypoint("Polyglot Front Door")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Entry)
+    assert descriptor.chainlet_cls.meta_data.is_entrypoint is True
+    assert descriptor.chainlet_cls.meta_data.chain_name == "Polyglot Front Door"
+    assert descriptor.is_truss_chainlet is True
+    # `ChainletImporter._is_target_cls` accepts this class.
+    assert framework.ChainletImporter._is_target_cls(_Entry)
+
+
+def test_truss_chainlet_deps_class_attr_parses(truss_dir_path):
+    """A `TrussChainlet` with `deps = [SomeDep]` populates the
+    `dependencies` map on its descriptor — same shape ChainletBase produces
+    from `__init__` deps."""
+    truss_dir_str = str(truss_dir_path)
+
+    class _Sibling(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        async def run_remote(self, text: str) -> str:
+            return text
+
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+        deps = [_Sibling]
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Entry)
+    assert "_Sibling" in descriptor.dependencies
+    assert descriptor.dependencies["_Sibling"].chainlet_cls is _Sibling
+
+
+def test_truss_chainlet_entrypoint_with_mixed_deps(truss_dir_path, tmp_path):
+    """Entrypoint TrussChainlet can declare deps that are a mix of
+    `ChainletBase` and other `TrussChainlet` types — both shapes are valid
+    sibling targets."""
+    cb_sibling_truss_dir = str(truss_dir_path)
+    tc_sibling_truss_dir = tmp_path / "tc_sibling"
+    tc_sibling_truss_dir.mkdir()
+    (tc_sibling_truss_dir / "config.yaml").write_text(VALID_TRUSS_CONFIG_YAML)
+    (tc_sibling_truss_dir / "model").mkdir()
+    (tc_sibling_truss_dir / "model" / "model.py").write_text(VALID_MODEL_PY)
+
+    class _CBSibling(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        async def run_remote(self, text: str) -> str:
+            return text
+
+    class _TCSibling(chains.TrussChainlet):
+        truss_dir = str(tc_sibling_truss_dir)
+
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = cb_sibling_truss_dir
+        deps = [_CBSibling, _TCSibling]
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Entry)
+    assert set(descriptor.dependencies.keys()) == {"_CBSibling", "_TCSibling"}
+    assert descriptor.dependencies["_CBSibling"].chainlet_cls is _CBSibling
+    assert descriptor.dependencies["_TCSibling"].chainlet_cls is _TCSibling
+
+
+def test_truss_chainlet_entrypoint_duplicate_dep_rejected(truss_dir_path):
+    truss_dir_str = str(truss_dir_path)
+
+    class _Sibling(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        async def run_remote(self, text: str) -> str:
+            return text
+
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+        deps = [_Sibling, _Sibling]
+
+    with pytest.raises(public_types.ChainsUsageError, match="duplicate"):
+        framework.raise_validation_errors()
+
+
+def test_truss_chainlet_entrypoint_self_dep_rejected(truss_dir_path):
+    truss_dir_str = str(truss_dir_path)
+
+    # Self-reference via a forward declaration: a TrussChainlet that lists
+    # itself as a dep. We construct this by patching `deps` post-class.
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    # Clear what the class declaration registered (since `deps = []` passed),
+    # then re-validate with self-reference.
+    framework._global_error_collector.clear()
+    framework._global_chainlet_registry.unregister_chainlet("_Entry")
+    _Entry.deps = [_Entry]
+    framework.validate_and_register_cls(_Entry)
+    with pytest.raises(public_types.ChainsUsageError, match="cannot reference itself"):
+        framework.raise_validation_errors()
+
+
+def test_truss_chainlet_entrypoint_non_chainlet_dep_rejected(truss_dir_path):
+    """A non-chainlet class in `deps` is rejected with a clear error."""
+    truss_dir_str = str(truss_dir_path)
+
+    class _NotAChainlet:
+        pass
+
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+        deps = [_NotAChainlet]
+
+    with pytest.raises(
+        public_types.ChainsUsageError, match="not a `ChainletBase` or `TrussChainlet`"
+    ):
+        framework.raise_validation_errors()
+
+
+def test_truss_chainlet_entrypoint_deps_must_be_list(truss_dir_path):
+    """`deps` must be a list or tuple — anything else is a clear type error."""
+    truss_dir_str = str(truss_dir_path)
+
+    @chains.mark_entrypoint("Entry")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+        deps = "not a list"  # type: ignore[assignment]
+
+    with pytest.raises(public_types.ChainsUsageError, match="must be a list"):
+        framework.raise_validation_errors()
+
+
+def test_truss_chainlet_entrypoint_codegen_preserves_truss_dir(
+    truss_dir_path, tmp_path
+):
+    """When a TrussChainlet *is* the entrypoint, codegen still uses the
+    `_prepare_truss_chainlet_artifact` path (not the framework-generated
+    `model.py` path). The user's `truss_dir` is copied byte-for-byte, with
+    only `model_metadata.chains_metadata` injected."""
+    from truss_chains.deployment import code_gen
+
+    truss_dir_str = str(truss_dir_path)
+
+    @chains.mark_entrypoint("Polyglot")
+    class _Entry(chains.TrussChainlet):
+        truss_dir = truss_dir_str
+
+    framework.raise_validation_errors()
+    descriptor = framework.get_descriptor(_Entry)
+    chainlet_dir = code_gen.gen_truss_chainlet(
+        chain_root=tmp_path,
+        chain_name="codegen-test",
+        chainlet_descriptor=descriptor,
+        model_name="_Entry-abc12345",
+    )
+
+    # User's model.py is preserved.
+    assert (chainlet_dir / "model" / "model.py").read_text() == VALID_MODEL_PY
+    # config.yaml carries the uniquified model_name + chains_metadata.
+    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
+    assert dst_config["model_name"] == "_Entry-abc12345"
+    assert private_types.TRUSS_CONFIG_CHAINS_KEY in (
+        dst_config.get("model_metadata") or {}
+    )
+
+
+def test_chainletbase_ws_as_sibling_rejected():
+    """WebSocket `ChainletBase` chainlets can only be entrypoints, not
+    siblings. The validator at `framework.py:_validate_dependencies` checks
+    `endpoint.is_websocket` on each dep. Locks in that behavior for the
+    Project 3 work — `TrussChainlet` entrypoints with a `ChainletBase`+WS
+    dep should also be blocked via the same predicate (we route
+    `_validate_truss_chainlet_deps` through the same check)."""
+
+    class _WSChainlet(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        async def run_remote(self, websocket: public_types.WebSocketProtocol) -> None:
+            pass
+
+    class _CallerCB(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        def __init__(self, ws: _WSChainlet = chains.depends(_WSChainlet)) -> None:
+            self._ws = ws
+
+        async def run_remote(self, text: str) -> str:
+            return text
+
+    with pytest.raises(
+        public_types.ChainsUsageError,
+        match="websockets can only be used in the entrypoint",
+    ):
+        framework.raise_validation_errors()
