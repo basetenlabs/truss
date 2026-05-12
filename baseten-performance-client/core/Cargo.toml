@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "High performance HTTP client for Baseten.co and other APIs"
 license = "MIT"
@@ -23,8 +23,12 @@ uuid = { version = "1.19.0", features = ["v4"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ctor = { workspace = true }
+nonempty = { workspace = true }
 
 [features]
 default = ["rustls"]
 native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
 rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
+
+[dev-dependencies]
+axum = { version = "0.7", features = ["http2", "tokio"] }

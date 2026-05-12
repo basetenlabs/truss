@@ -8,10 +8,16 @@ WORKDIR ${APP_HOME}
 ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
 {% endif %}
 
-RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
+{%- if cache_mount_id %}
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+    && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+ENV PIP_CACHE_DIR=/root/.cache/pip
+{%- endif %}
+
+RUN {{ apt_cache_mount }}apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS="${APP_HOME}/b10cp"
 COPY --chown={{ default_owner }} ./cache_requirements.txt ${APP_HOME}/cache_requirements.txt
-RUN pip install -r ${APP_HOME}/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ pip_cache_mount }}pip install -r ${APP_HOME}/cache_requirements.txt{{ py_no_cache_dir }}{% if not cache_mount_id %} && rm -rf /root/.cache/pip{% endif %}
 COPY --chown={{ default_owner }} ./cache_warmer.py /cache_warmer.py
 
 {% for credential in credentials_to_cache  %}

@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Optional
 
-from truss.cli.utils.output import console
+from truss.cli.utils.output import console, stderr_console
 from truss.util import user_config
 
 
@@ -123,14 +123,14 @@ def notify_if_outdated(current_version: str) -> None:
         return
 
     latest = update_info.latest_version
-    console.print(
+    stderr_console.print(
         f"▪▪▪▪ There's a new version of truss available, {latest} "
         f"(you are currently on {current_version})!"
     )
-    console.print(
+    stderr_console.print(
         "▪▪▪▪ To upgrade to the latest version, run: [bold cyan]truss upgrade[/bold cyan]"
     )
     settings_path = user_config._SettingsWrapper.path()
-    console.print(
+    stderr_console.print(
         f"▪▪▪▪ To disable this check, set `check_for_updates` to false in {settings_path}"
     )

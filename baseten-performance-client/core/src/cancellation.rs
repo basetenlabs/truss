@@ -83,14 +83,6 @@ impl<T: 'static> JoinSetGuard<T> {
         }
         self.join_set.abort_all();
     }
-
-    pub(crate) fn len(&self) -> usize {
-        self.join_set.len()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.join_set.is_empty()
-    }
 }
 
 impl<T: 'static> Default for JoinSetGuard<T> {
@@ -101,9 +93,6 @@ impl<T: 'static> Default for JoinSetGuard<T> {
 
 impl<T: 'static> Drop for JoinSetGuard<T> {
     fn drop(&mut self) {
-        if let Some(ref token) = self.cancel_token {
-            token.cancel();
-        }
-        self.join_set.abort_all();
+        self.abort_all();
     }
 }

@@ -23,6 +23,7 @@ rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]
 
 
 console = Console()
+stderr_console = Console(stderr=True)
 error_console = Console(stderr=True, style="bold red")
 
 
