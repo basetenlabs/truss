@@ -163,7 +163,17 @@ async fn send_request_with_retry(
         let (attempt_url, selected_endpoint) =
             config.select_attempt_url(request_suffix, &indices_vec);
         let selected_endpoint_index = selected_endpoint.endpoint_index;
+        let retry_semaphore = selected_endpoint.retry_attempt_semaphore.clone();
         attempted_endpoint_indices.insert(selected_endpoint_index);
+
+        // Acquire a permit for the primary retry attempt before issuing the request.
+        // Retries may still hedge when hedge budget is available; that behavior is
+        // intentional, and this semaphore only limits the selected retry attempt.
+        let maybe_retry_permit = if retries_done > 0 {
+            retry_semaphore.acquire_owned().await.ok()
+        } else {
+            None
+        };
 
         // Only hedge on the first request (retries_done <= 1)
         let should_hedge = retries_done <= 1
@@ -275,9 +285,13 @@ async fn send_request_with_retry(
 
         // If we got here, we are retrying this iteration.
         retries_done += 1;
+
+        // Drop permit before backoff sleep
+        drop(maybe_retry_permit);
+
         let jitter = rand::rng().random_range(0..100);
-        let backoff_duration =
-            current_backoff.min(MAX_BACKOFF_DURATION) + Duration::from_millis(jitter);
+        let backoff_duration = current_backoff.min(Duration::from_millis(MAX_BACKOFF_MS))
+            + Duration::from_millis(jitter);
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
     }

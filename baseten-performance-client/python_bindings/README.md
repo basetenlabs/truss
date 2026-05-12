@@ -314,7 +314,7 @@ preference = RequestProcessingPreference(
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)
     retry_budget_pct=0.08,            # Retry budget percentage (default: 0.05)
-    max_retries=3,                    # Maximum HTTP retries (default: 4)
+    max_retries=5,                    # Maximum HTTP retries (default: 5)
     initial_backoff_ms=250,           # Initial backoff in milliseconds (default: 125)
     total_timeout_s=300.0              # Total operation timeout (default: None)
 )
@@ -363,7 +363,7 @@ response = client.embed(
 - Maximum allowed: 300% for both budgets
 
 **Retry Configuration:**
-- `max_retries`: Maximum number of HTTP retries (default: 4, max: 4)
+- `max_retries`: Maximum number of HTTP retries (default: 5, max: 6)
 - `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
 - Backoff uses exponential backoff with jitter
 
