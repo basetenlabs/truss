@@ -7,6 +7,7 @@ from truss.cli.train.checkpoint_viewer import (
     SORT_BY_CREATED,
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
+    CheckpointListViewer,
     CLITableCheckpointViewer,
     CSVCheckpointViewer,
     JSONCheckpointViewer,
@@ -29,15 +30,15 @@ def view_loops_checkpoint_list(
     checkpoint endpoint. Interactive file drill-down is not yet supported
     because Loops files are listed per-checkpoint rather than per-run.
     """
-    viewer_factories = {
-        OUTPUT_FORMAT_CSV: CSVCheckpointViewer,
-        OUTPUT_FORMAT_JSON: JSONCheckpointViewer,
-        OUTPUT_FORMAT_CLI_TABLE: CLITableCheckpointViewer,
-    }
-    viewer_cls = viewer_factories.get(output_format)
-    if not viewer_cls:
+    viewer: CheckpointListViewer
+    if output_format == OUTPUT_FORMAT_CSV:
+        viewer = CSVCheckpointViewer(scope_kind="run")
+    elif output_format == OUTPUT_FORMAT_JSON:
+        viewer = JSONCheckpointViewer(scope_kind="run")
+    elif output_format == OUTPUT_FORMAT_CLI_TABLE:
+        viewer = CLITableCheckpointViewer(scope_kind="run")
+    else:
         raise ValueError(f"Invalid output format: {output_format}")
-    viewer = viewer_cls(scope_kind="run")
 
     try:
         raw = remote_provider.api.list_loops_checkpoints(run_id=run_id)

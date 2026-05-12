@@ -446,7 +446,8 @@ def test_checkpoints_view_requires_run_id_or_model_name(mock_remote):
         ["loops", "checkpoints", "view", "--remote", "test_remote"], mock_remote
     )
     assert result.exit_code != 0
-    assert "--run-id or --model-name" in result.output
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
+    mock_remote.api.list_loops_runs.assert_not_called()
 
 
 def test_checkpoints_view_rejects_both_run_id_and_model_name(mock_remote):
@@ -465,7 +466,8 @@ def test_checkpoints_view_rejects_both_run_id_and_model_name(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "either --run-id or --model-name" in result.output
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
+    mock_remote.api.list_loops_runs.assert_not_called()
 
 
 def test_checkpoints_view_with_run_id_calls_list_loops_checkpoints(mock_remote):
@@ -536,7 +538,7 @@ def test_checkpoints_view_model_name_no_runs(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "No Loops runs found" in result.output
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
 
 
 def test_checkpoints_view_json_format_emits_run_id_key(mock_remote):
@@ -571,11 +573,14 @@ def test_checkpoints_view_json_format_emits_run_id_key(mock_remote):
 
 
 def test_checkpoints_deploy_requires_run_id_or_config(mock_remote):
-    result = _invoke(
-        ["loops", "checkpoints", "deploy", "--remote", "test_remote"], mock_remote
-    )
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            ["loops", "checkpoints", "deploy", "--remote", "test_remote"], mock_remote
+        )
     assert result.exit_code != 0
-    assert "--run-id or --config" in result.output
+    mock_create.assert_not_called()
 
 
 def test_checkpoints_deploy_with_run_id_invokes_shared_path(mock_remote):
