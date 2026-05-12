@@ -21,11 +21,13 @@ pub(crate) const MAX_BATCH_SIZE: usize = 1024;
 pub const DEFAULT_BATCH_SIZE: usize = 128;
 
 // Retry constants
-pub const MAX_HTTP_RETRIES: u32 = 4;
+pub const DEFAULT_MAX_RETRIES: u32 = 5;
+pub const MAX_HTTP_RETRIES: u32 = 6;
 pub const INITIAL_BACKOFF_MS: u64 = 125;
 pub(crate) const MIN_BACKOFF_MS: u64 = 50;
-pub(crate) const MAX_BACKOFF_MS: u64 = 30000; // 30 seconds
-pub(crate) const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60);
+pub(crate) const MAX_BACKOFF_MS: u64 = 45000; // 45 seconds
+pub(crate) const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(90);
+pub const DEFAULT_RATE_LIMIT_RETRY_SEMAPHORE: usize = 32;
 
 pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
 pub const RETRY_BUDGET_PERCENTAGE: f64 = 0.05;

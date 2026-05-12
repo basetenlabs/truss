@@ -7,7 +7,7 @@ use baseten_performance_client_core::{
     Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
     DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
     RETRY_BUDGET_PERCENTAGE,
 };
@@ -601,7 +601,7 @@ impl RequestProcessingPreference {
             total_timeout_s: complete.total_timeout_s,
             hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(HEDGE_BUDGET_PERCENTAGE),
             retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
-            max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES),
+            max_retries: complete.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             cancel_token,
             primary_api_key_override: complete.primary_api_key_override,
