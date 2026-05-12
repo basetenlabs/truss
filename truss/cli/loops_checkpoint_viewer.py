@@ -58,23 +58,23 @@ def view_loops_checkpoint_list(
 
 
 def resolve_run_id(
-    remote_provider: BasetenRemote, run_id: Optional[str], model_name: Optional[str]
+    remote_provider: BasetenRemote, run_id: Optional[str], base_model: Optional[str]
 ) -> str:
-    """Resolve a Loops run from --run-id or --model-name.
+    """Resolve a Loops run from --run-id or --base-model.
 
     With --run-id, returns it as-is (existence is validated server-side
-    on the next call). With --model-name, picks the most recently created
+    on the next call). With --base-model, picks the most recently created
     run for that base model.
     """
-    if run_id and model_name:
-        raise ValueError("Pass either --run-id or --model-name, not both.")
+    if run_id and base_model:
+        raise ValueError("Pass either --run-id or --base-model, not both.")
     if run_id:
         return run_id
-    if not model_name:
-        raise ValueError("Pass --run-id or --model-name to identify a Loops run.")
+    if not base_model:
+        raise ValueError("Pass --run-id or --base-model to identify a Loops run.")
 
-    runs = remote_provider.api.list_loops_runs(base_model=model_name)
+    runs = remote_provider.api.list_loops_runs(base_model=base_model)
     if not runs:
-        raise ValueError(f"No Loops runs found for base model: {model_name}")
+        raise ValueError(f"No Loops runs found for base model: {base_model}")
     runs = sorted(runs, key=lambda r: r.get("created_at") or "", reverse=True)
     return runs[0]["id"]

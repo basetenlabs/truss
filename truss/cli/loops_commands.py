@@ -154,7 +154,7 @@ def loops_runs() -> None:
 @loops_runs.command(name="view")
 @click.option("--run-id", type=str, required=False, help="Filter by run ID.")
 @click.option(
-    "--model-name", type=str, required=False, help="Filter runs by base model name."
+    "--base-model", type=str, required=False, help="Filter runs by base model name."
 )
 @click.option(
     "--reverse",
@@ -167,7 +167,7 @@ def loops_runs() -> None:
 @common.common_options()
 def view_loops_runs(
     run_id: Optional[str],
-    model_name: Optional[str],
+    base_model: Optional[str],
     reverse: bool,
     remote: Optional[str],
 ) -> None:
@@ -182,7 +182,7 @@ def view_loops_runs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=model_name)
+    runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=base_model)
     runs = sorted(runs, key=lambda r: r.get("created_at") or "", reverse=reverse)
     _render_loops_runs(runs)
 
@@ -308,7 +308,7 @@ def loops_checkpoints() -> None:
 @loops_checkpoints.command(name="view")
 @click.option("--run-id", type=str, required=False, help="Loops run ID.")
 @click.option(
-    "--model-name",
+    "--base-model",
     type=str,
     required=False,
     help="Base model name. Resolves to the most recent Loops run for that model.",
@@ -349,7 +349,7 @@ def loops_checkpoints() -> None:
 @common.common_options()
 def view_loops_checkpoints(
     run_id: Optional[str],
-    model_name: Optional[str],
+    base_model: Optional[str],
     sort: str,
     order: str,
     output_format: str,
@@ -357,13 +357,13 @@ def view_loops_checkpoints(
 ) -> None:
     """List checkpoints for a Loops run.
 
-    Identify the run with --run-id, or pass --model-name to pick the most
+    Identify the run with --run-id, or pass --base-model to pick the most
     recent run for that base model.
     """
-    if run_id and model_name:
-        raise click.UsageError("Pass either --run-id or --model-name, not both.")
-    if not run_id and not model_name:
-        raise click.UsageError("Pass --run-id or --model-name to identify a Loops run.")
+    if run_id and base_model:
+        raise click.UsageError("Pass either --run-id or --base-model, not both.")
+    if not run_id and not base_model:
+        raise click.UsageError("Pass --run-id or --base-model to identify a Loops run.")
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -373,7 +373,7 @@ def view_loops_checkpoints(
     )
 
     try:
-        resolved_run_id = resolve_run_id(remote_provider, run_id, model_name)
+        resolved_run_id = resolve_run_id(remote_provider, run_id, base_model)
     except ValueError as e:
         raise click.UsageError(str(e))
 
@@ -388,6 +388,13 @@ def view_loops_checkpoints(
 
 @loops_checkpoints.command(name="deploy")
 @click.option("--run-id", type=str, required=False, help="Loops run ID.")
+@click.option(
+    "--checkpoint-ids",
+    type=str,
+    required=False,
+    help="Comma-separated Loops checkpoint IDs (e.g. tcp_step100,tcp_step200). "
+    "Bypasses the interactive picker. Use `truss loops checkpoints view` to find IDs.",
+)
 @click.option(
     "--config",
     type=str,
@@ -407,17 +414,29 @@ def view_loops_checkpoints(
 @common.common_options()
 def deploy_loops_checkpoints(
     run_id: Optional[str],
+    checkpoint_ids: Optional[str],
     config: Optional[str],
     dry_run: bool,
     truss_config_output_dir: Optional[str],
     remote: Optional[str],
 ) -> None:
     """Deploy checkpoints from a Loops run via vLLM."""
-    if not run_id and not config:
+    if not run_id and not checkpoint_ids and not config:
         raise click.UsageError(
-            "Pass --run-id or --config (with loops_checkpoint_ids) to deploy "
-            "Loops checkpoints."
+            "Pass --run-id, --checkpoint-ids, or --config (with "
+            "loops_checkpoint_ids) to deploy Loops checkpoints."
         )
+    if checkpoint_ids and config:
+        raise click.UsageError(
+            "--checkpoint-ids cannot be combined with --config. "
+            "Pick one source of checkpoint identifiers."
+        )
+
+    parsed_checkpoint_ids = (
+        [s.strip() for s in checkpoint_ids.split(",") if s.strip()]
+        if checkpoint_ids
+        else []
+    )
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -435,6 +454,7 @@ def deploy_loops_checkpoints(
             deploy_config_path=config,
             dry_run=dry_run,
             is_loops_command=True,
+            checkpoint_ids=parsed_checkpoint_ids,
         ),
     )
 
