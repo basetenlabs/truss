@@ -8,7 +8,7 @@ use baseten_performance_client_core::{
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
     DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
-    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
     RETRY_BUDGET_PERCENTAGE,
 };
 
