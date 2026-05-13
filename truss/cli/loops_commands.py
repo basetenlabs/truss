@@ -402,7 +402,7 @@ def view_loops_checkpoints(
     "--checkpoint-ids",
     type=str,
     required=False,
-    help="Comma-separated Loops checkpoint IDs (e.g. tcp_step100,tcp_step200). "
+    help="Comma-separated Loops checkpoint IDs (e.g. vL3pQrS8,wK4tUvW9). "
     "Bypasses the interactive picker. Use `truss loops checkpoints view` to find IDs.",
 )
 @click.option(

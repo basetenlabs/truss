@@ -102,19 +102,14 @@ class CLITableCheckpointViewer(CheckpointListViewer):
             box=rich.table.box.ROUNDED,
             border_style="blue",
         )
-        is_loops = self.scope_kind == ScopeKind.RUN
-        if is_loops:
-            # Loops has both a DB-PK (`id`, used by `loops_checkpoint_ids` in
-            # configs) and a human step-name (`checkpoint_id`, used as the
-            # `model` request param). Show both, plus the parent run.
-            table.add_column("Run ID", style="cyan")
-            table.add_column("Checkpoint ID", style="cyan")
-            table.add_column("Checkpoint Name", style="cyan")
-        else:
-            # Train checkpoints have only one identifier (`checkpoint_id` =
-            # the name, e.g. `checkpoint-100`); show that and the parent job.
-            table.add_column("Job ID", style="cyan")
-            table.add_column("Checkpoint ID", style="cyan")
+        # Both train and loops checkpoints have a DB-PK (`id`, alphanumeric
+        # no-underscore, e.g. `vL3pQrS8`) and a human step-name
+        # (`checkpoint_id`, e.g. `checkpoint-100` / `step-100`). Show the
+        # parent scope, then both identifiers.
+        scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
+        table.add_column(scope_column, style="cyan")
+        table.add_column("Checkpoint ID", style="cyan")
+        table.add_column("Checkpoint Name", style="cyan")
         table.add_column("Type")
         table.add_column("Base Model", style="yellow")
         table.add_column("Size", style="green")
@@ -125,13 +120,10 @@ class CLITableCheckpointViewer(CheckpointListViewer):
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            id_cells = (
-                (scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", ""))
-                if is_loops
-                else (scope_id, ckpt.get("checkpoint_id", ""))
-            )
             table.add_row(
-                *id_cells,
+                scope_id,
+                ckpt.get("id", ""),
+                ckpt.get("checkpoint_id", ""),
                 ckpt.get("checkpoint_type", ""),
                 ckpt.get("base_model", "") or "",
                 size_str,
@@ -151,20 +143,11 @@ class CSVCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in CSV format."""
 
     def _header(self) -> list[str]:
-        if self.scope_kind == ScopeKind.RUN:
-            return [
-                "Run ID",
-                "Checkpoint ID",
-                "Checkpoint Name",
-                "Type",
-                "Base Model",
-                "Size (bytes)",
-                "Size (human readable)",
-                "Created At",
-            ]
+        scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
         return [
-            "Job ID",
+            scope_column,
             "Checkpoint ID",
+            "Checkpoint Name",
             "Type",
             "Base Model",
             "Size (bytes)",
@@ -175,20 +158,16 @@ class CSVCheckpointViewer(CheckpointListViewer):
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
         writer.writerow(self._header())
-        is_loops = self.scope_kind == ScopeKind.RUN
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            id_cells = (
-                [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
-                if is_loops
-                else [scope_id, ckpt.get("checkpoint_id", "")]
-            )
             writer.writerow(
                 [
-                    *id_cells,
+                    scope_id,
+                    ckpt.get("id", ""),
+                    ckpt.get("checkpoint_id", ""),
                     ckpt.get("checkpoint_type", ""),
                     ckpt.get("base_model", "") or "",
                     str(ckpt.get("size_bytes", 0)),
@@ -206,29 +185,23 @@ class JSONCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in JSON format."""
 
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
-        is_loops = self.scope_kind == ScopeKind.RUN
+        scope_id_key = f"{self.scope_kind.value}_id"
         checkpoints_data = []
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            entry: dict[str, Any] = {}
-            if is_loops:
-                entry["run_id"] = scope_id
-                entry["id"] = ckpt.get("id", "")
-            else:
-                entry["job_id"] = scope_id
-            entry.update(
-                {
-                    "checkpoint_id": ckpt.get("checkpoint_id", ""),
-                    "checkpoint_type": ckpt.get("checkpoint_type", ""),
-                    "base_model": ckpt.get("base_model", "") or "",
-                    "size_bytes": ckpt.get("size_bytes", 0),
-                    "size_human_readable": size_str,
-                    "created_at": created_str,
-                }
-            )
+            entry: dict[str, Any] = {
+                scope_id_key: scope_id,
+                "id": ckpt.get("id", ""),
+                "checkpoint_id": ckpt.get("checkpoint_id", ""),
+                "checkpoint_type": ckpt.get("checkpoint_type", ""),
+                "base_model": ckpt.get("base_model", "") or "",
+                "size_bytes": ckpt.get("size_bytes", 0),
+                "size_human_readable": size_str,
+                "created_at": created_str,
+            }
             if ckpt.get("lora_adapter_config"):
                 entry["lora_adapter_config"] = ckpt["lora_adapter_config"]
             checkpoints_data.append(entry)

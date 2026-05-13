@@ -474,7 +474,7 @@ def test_checkpoints_view_with_run_id_calls_list_loops_checkpoints(mock_remote):
     mock_remote.api.list_loops_checkpoints.return_value = {
         "checkpoints": [
             {
-                "id": "tcp_step100",
+                "id": "vL3pQrS8",
                 "checkpoint_id": "step-100",
                 "checkpoint_type": "lora",
                 "base_model": "Qwen/Qwen3-8B",
@@ -498,7 +498,7 @@ def test_checkpoints_view_with_run_id_calls_list_loops_checkpoints(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.api.list_loops_checkpoints.assert_called_once_with(run_id="trnr_xyz")
     assert "step-100" in result.output  # checkpoint name
-    assert "tcp_step100" in result.output  # Loops checkpoint PK
+    assert "vL3pQrS8" in result.output  # Loops checkpoint PK
     assert "trnr_xyz" in result.output  # table title shows the run id
 
 
@@ -547,7 +547,7 @@ def test_checkpoints_view_json_format_emits_run_id_key(mock_remote):
     mock_remote.api.list_loops_checkpoints.return_value = {
         "checkpoints": [
             {
-                "id": "tcp_step100",
+                "id": "vL3pQrS8",
                 "checkpoint_id": "step-100",
                 "checkpoint_type": "lora",
                 "base_model": "Qwen/Qwen3-8B",
@@ -573,7 +573,7 @@ def test_checkpoints_view_json_format_emits_run_id_key(mock_remote):
     assert result.exit_code == 0, result.output
     assert '"run_id": "trnr_xyz"' in result.output
     assert '"job_id"' not in result.output
-    assert '"id": "tcp_step100"' in result.output
+    assert '"id": "vL3pQrS8"' in result.output
 
 
 def test_checkpoints_deploy_requires_run_id_or_config(mock_remote):
@@ -638,14 +638,14 @@ def test_checkpoints_deploy_with_checkpoint_ids_parses_and_forwards(mock_remote)
                 "--remote",
                 "test_remote",
                 "--checkpoint-ids",
-                "tcp_step100, tcp_step200 ,tcp_step300",
+                "vL3pQrS8, wK4tUvW9 ,xM5yZaB0",
                 "--dry-run",
             ],
             mock_remote,
         )
     assert result.exit_code == 0, result.output
     deploy_args = mock_create.call_args[0][1]
-    assert deploy_args.checkpoint_ids == ["tcp_step100", "tcp_step200", "tcp_step300"]
+    assert deploy_args.checkpoint_ids == ["vL3pQrS8", "wK4tUvW9", "xM5yZaB0"]
     assert deploy_args.run_id is None
     assert deploy_args.deploy_config_path is None
 
@@ -664,7 +664,7 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_run_id(mock_remote):
                 "--run-id",
                 "trnr_xyz",
                 "--checkpoint-ids",
-                "tcp_step100",
+                "vL3pQrS8",
             ],
             mock_remote,
         )
@@ -706,7 +706,7 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
                 "--remote",
                 "test_remote",
                 "--checkpoint-ids",
-                "tcp_step100",
+                "vL3pQrS8",
                 "--config",
                 str(config_path),
             ],
