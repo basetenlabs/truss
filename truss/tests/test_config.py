@@ -1822,8 +1822,8 @@ class TestCheckpointListNoMixing:
         assert ckpt_list.loops_checkpoint_ids == []
 
     def test_loops_checkpoint_ids_only_accepted(self):
-        ckpt_list = CheckpointList(loops_checkpoint_ids=["tcp_xyz"])
-        assert ckpt_list.loops_checkpoint_ids == ["tcp_xyz"]
+        ckpt_list = CheckpointList(loops_checkpoint_ids=["vL3pQrS8"])
+        assert ckpt_list.loops_checkpoint_ids == ["vL3pQrS8"]
         assert ckpt_list.artifact_references == []
 
     def test_mixing_raises(self):
@@ -1834,7 +1834,7 @@ class TestCheckpointListNoMixing:
                         training_job_id="tj_abc", paths=["rank-0/step-1/"]
                     )
                 ],
-                loops_checkpoint_ids=["tcp_xyz"],
+                loops_checkpoint_ids=["vL3pQrS8"],
             )
 
     def test_empty_lists_accepted(self):

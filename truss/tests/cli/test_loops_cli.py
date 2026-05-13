@@ -288,7 +288,7 @@ def test_runs_view_with_run_id_filter(mock_remote):
     )
 
 
-def test_runs_view_with_model_name_filter(mock_remote):
+def test_runs_view_with_base_model_filter(mock_remote):
     mock_remote.api.list_loops_runs.return_value = []
     result = _invoke(
         [
@@ -297,7 +297,7 @@ def test_runs_view_with_model_name_filter(mock_remote):
             "view",
             "--remote",
             "test_remote",
-            "--model-name",
+            "--base-model",
             "Qwen/Qwen3-8B",
         ],
         mock_remote,
@@ -439,3 +439,278 @@ def test_samplers_view_reverse_puts_newest_first(mock_remote):
     )
     assert result.exit_code == 0, result.output
     assert result.output.index("sampler_new") < result.output.index("sampler_old")
+
+
+def test_checkpoints_view_requires_run_id_or_base_model(mock_remote):
+    result = _invoke(
+        ["loops", "checkpoints", "view", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code != 0
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
+    mock_remote.api.list_loops_runs.assert_not_called()
+
+
+def test_checkpoints_view_rejects_both_run_id_and_base_model(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "view",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
+    mock_remote.api.list_loops_runs.assert_not_called()
+
+
+def test_checkpoints_view_with_run_id_calls_list_loops_checkpoints(mock_remote):
+    mock_remote.api.list_loops_checkpoints.return_value = {
+        "checkpoints": [
+            {
+                "id": "vL3pQrS8",
+                "checkpoint_id": "step-100",
+                "checkpoint_type": "lora",
+                "base_model": "Qwen/Qwen3-8B",
+                "size_bytes": 1234,
+                "created_at": "2026-05-07T12:34:56Z",
+            }
+        ]
+    }
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "view",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_checkpoints.assert_called_once_with(run_id="trnr_xyz")
+    assert "step-100" in result.output  # checkpoint name
+    assert "vL3pQrS8" in result.output  # Loops checkpoint PK
+    assert "trnr_xyz" in result.output  # table title shows the run id
+
+
+def test_checkpoints_view_with_base_model_picks_most_recent_run(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        {"id": "trnr_old", "created_at": "2026-05-01T00:00:00Z"},
+        {"id": "trnr_new", "created_at": "2026-05-07T00:00:00Z"},
+    ]
+    mock_remote.api.list_loops_checkpoints.return_value = {"checkpoints": []}
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "view",
+            "--remote",
+            "test_remote",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_runs.assert_called_once_with(base_model="Qwen/Qwen3-8B")
+    mock_remote.api.list_loops_checkpoints.assert_called_once_with(run_id="trnr_new")
+
+
+def test_checkpoints_view_base_model_no_runs(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = []
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "view",
+            "--remote",
+            "test_remote",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    mock_remote.api.list_loops_checkpoints.assert_not_called()
+
+
+def test_checkpoints_view_json_format_emits_run_id_key(mock_remote):
+    mock_remote.api.list_loops_checkpoints.return_value = {
+        "checkpoints": [
+            {
+                "id": "vL3pQrS8",
+                "checkpoint_id": "step-100",
+                "checkpoint_type": "lora",
+                "base_model": "Qwen/Qwen3-8B",
+                "size_bytes": 1234,
+                "created_at": "2026-05-07T12:34:56Z",
+            }
+        ]
+    }
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "view",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert '"run_id": "trnr_xyz"' in result.output
+    assert '"job_id"' not in result.output
+    assert '"id": "vL3pQrS8"' in result.output
+
+
+def test_checkpoints_deploy_requires_run_id_or_config(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            ["loops", "checkpoints", "deploy", "--remote", "test_remote"], mock_remote
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_with_run_id_invokes_shared_path(mock_remote):
+    with (
+        patch(
+            "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+        ) as mock_create,
+        patch(
+            "truss.cli.loops_commands.train_cli.print_deploy_checkpoints_success_message"
+        ),
+    ):
+        mock_create.return_value = Mock(deploy_config=Mock(), truss_config=None)
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--dry-run",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code == 0, result.output
+    args = mock_create.call_args
+    deploy_args = args[0][1]
+    assert deploy_args.run_id == "trnr_xyz"
+    assert deploy_args.project_id is None
+    assert deploy_args.job_id is None
+    assert deploy_args.is_loops_command is True
+    assert deploy_args.dry_run is True
+
+
+def test_checkpoints_deploy_with_checkpoint_ids_parses_and_forwards(mock_remote):
+    with (
+        patch(
+            "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+        ) as mock_create,
+        patch(
+            "truss.cli.loops_commands.train_cli.print_deploy_checkpoints_success_message"
+        ),
+    ):
+        mock_create.return_value = Mock(deploy_config=Mock(), truss_config=None)
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--checkpoint-ids",
+                "vL3pQrS8, wK4tUvW9 ,xM5yZaB0",
+                "--dry-run",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code == 0, result.output
+    deploy_args = mock_create.call_args[0][1]
+    assert deploy_args.checkpoint_ids == ["vL3pQrS8", "wK4tUvW9", "xM5yZaB0"]
+    assert deploy_args.run_id is None
+    assert deploy_args.deploy_config_path is None
+
+
+def test_checkpoints_deploy_rejects_checkpoint_ids_with_run_id(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoint-ids",
+                "vL3pQrS8",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_rejects_whitespace_only_checkpoint_ids(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--checkpoint-ids",
+                " , ,",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_path):
+    config_path = tmp_path / "deploy.py"
+    config_path.write_text("")
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--checkpoint-ids",
+                "vL3pQrS8",
+                "--config",
+                str(config_path),
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()

@@ -44,9 +44,15 @@ def create_model_version_from_inference_template(
     job_id: Optional[str],
     run_id: Optional[str],
     dry_run: bool,
+    is_loops_command: bool = False,
 ) -> DeploySuccessResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id, run_id
+        checkpoint_deploy_config,
+        remote_provider,
+        project_id,
+        job_id,
+        run_id,
+        is_loops_command,
     )
 
     request_data = _build_inference_template_request(
@@ -288,6 +294,7 @@ def _hydrate_deploy_config(
     project_id: Optional[str],
     job_id: Optional[str],
     run_id: Optional[str],
+    is_loops_command: bool = False,
 ) -> DeployCheckpointsConfigComplete:
     run_id_provided = run_id is not None
     job_flag_provided = bool(project_id or job_id)
@@ -299,6 +306,17 @@ def _hydrate_deploy_config(
         deploy_config.checkpoint_details is not None
         and bool(deploy_config.checkpoint_details.loops_checkpoint_ids)
     )
+    if is_loops_command and config_has_training_job_checkpoints:
+        raise click.UsageError(
+            "`truss loops checkpoints deploy` does not accept training-job "
+            "checkpoints. Remove checkpoint_details.checkpoints from --config "
+            "or use `truss train deploy_checkpoints`."
+        )
+    if not is_loops_command and config_has_loops_checkpoints:
+        raise click.UsageError(
+            "`truss train deploy_checkpoints` does not accept Loops checkpoints. "
+            "Use `truss loops checkpoints deploy` instead."
+        )
     if run_id_provided and config_has_training_job_checkpoints:
         raise click.UsageError(
             "--run-id cannot be combined with checkpoint_details.checkpoints "
