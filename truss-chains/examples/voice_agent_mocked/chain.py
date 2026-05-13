@@ -8,8 +8,10 @@ behavior end-to-end without the cost of GPU model deploys. Same shape as
 - ``LLMMock``     (``TrussChainlet``, HTTP):       ``{"prompt"}`` ``→`` ``{"completion": "echo: ..."}``
 - ``TTSMock``     (``TrussChainlet``, WS-fronted): text  ``→`` ``text.encode()``
 - ``Orchestrator`` (``ChainletBase``, WS entrypoint): a single round-trip wires
-  STT ``→`` LLM ``→`` TTS using the same descriptor / runtime patterns the FDE
-  chain uses (GraphQL oracle-id resolution + proxy-env strip).
+  STT ``→`` LLM ``→`` TTS using the framework-injected ``DeployedServiceDescriptor``
+  URLs and helpers — ``internal_ws_url`` / ``target_url`` for the URL,
+  ``with_ws_auth_headers`` / ``with_auth_headers`` for headers. No GraphQL, no
+  hardcoded hostnames.
 
 Iteration loop:
 
@@ -22,9 +24,6 @@ fixture for any baseten-local change that touches chain-internal routing.
 
 import json
 import logging
-from urllib.parse import urlparse
-
-import requests
 
 import truss_chains as chains
 
@@ -50,103 +49,20 @@ class TTSMock(chains.TrussChainlet):
     truss_dir = "./tts_mock"
 
 
-# ----- URL resolution (workaround for the platform routing gap) --------------
-#
-# Same approach as the FDE chain: query the dashboard GraphQL with the
-# user-supplied baseten_api_key to map chainlet name -> oracle.id, then build
-# `model-<oracle.id>.api.baseten.co/...` URLs. Replace with the descriptor's
-# native fields once the platform fix lands.
-
-_GRAPHQL_QUERY = (
-    "query Chain($id: String!) {\n"
-    "  chain(id: $id) {\n"
-    "    deployments {\n"
-    "      id\n"
-    "      chainlets {\n"
-    "        name oracle { id } oracle_version { id transport_kind }\n"
-    "      }\n"
-    "    }\n"
-    "  }\n"
-    "}"
-)
-
-
-def _chain_id_from_descriptor(desc: chains.DeployedServiceDescriptor) -> str:
-    """Extract chain id from ``internal_url.hostname`` (``chain-<id>...``)."""
-    assert desc.internal_url is not None, (
-        "internal_url is always populated for sibling DeployedServiceDescriptor at runtime"
-    )
-    hostname = desc.internal_url.hostname
-    first = hostname.split(".", 1)[0]
-    if not first.startswith("chain-"):
-        raise RuntimeError(f"Unexpected internal_url hostname shape: {hostname!r}")
-    return first[len("chain-") :]
-
-
-def _chain_deployment_id_from_descriptor(desc: chains.DeployedServiceDescriptor) -> str:
-    """Extract chain deployment id from the descriptor's gateway URL path."""
-    assert desc.internal_url is not None, (
-        "internal_url is always populated for sibling DeployedServiceDescriptor at runtime"
-    )
-    parts = urlparse(desc.internal_url.gateway_run_remote_url).path.split("/")
-    # Path: /deployment/<chain_dep_id>/chainlet/<chainlet_id>/run_remote
-    return parts[parts.index("deployment") + 1]
-
-
-def _resolve_oracles(
-    api_key: str, chain_id: str, chain_deployment_id: str
-) -> dict[str, dict]:
-    r = requests.post(
-        "https://app.baseten.co/graphql/",
-        headers={
-            "Authorization": f"Api-Key {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={"query": _GRAPHQL_QUERY, "variables": {"id": chain_id}},
-        timeout=10,
-    )
-    r.raise_for_status()
-    payload = r.json()
-    chain_data = (payload.get("data") or {}).get("chain") or {}
-    deployments = chain_data.get("deployments") or []
-    target = next((d for d in deployments if d["id"] == chain_deployment_id), None)
-    if target is None:
-        raise RuntimeError(
-            f"GraphQL has no deployment {chain_deployment_id} on chain {chain_id}"
-        )
-    return {
-        c["name"]: {
-            "oracle_id": c["oracle"]["id"],
-            "oracle_version_id": c["oracle_version"]["id"],
-            "transport": c["oracle_version"]["transport_kind"],
-        }
-        for c in target["chainlets"]
-    }
-
-
-def _model_url(oracle_id: str, oracle_version_id: str, scheme: str, path: str) -> str:
-    """Build a per-chainlet sibling URL using the published-deployment shape.
-
-    ``<scheme>://model-<oracle_id>.api.baseten.co/deployment/<oracle_version_id>/<path>``
-
-    Cluster-internally this shape works for both draft and published chainlets
-    (verified empirically on chain ``2328913l``); the equivalent
-    ``/development/<path>`` alias is unnecessary. Using the deployment shape
-    uniformly keeps URLs stable across draft → published lifecycles.
-    """
-    return (
-        f"{scheme}://model-{oracle_id}.api.baseten.co"
-        f"/deployment/{oracle_version_id}/{path}"
-    )
-
-
 # ----- Orchestrator: WebSocket entrypoint ------------------------------------
 
 
 @chains.mark_entrypoint("VoiceAgentMocked")
 class Orchestrator(chains.ChainletBase):
     """Single-round-trip WS entrypoint: bytes in -> bytes out, exercising the
-    same STT/LLM/TTS sibling-call patterns as the FDE chain."""
+    same STT/LLM/TTS sibling-call patterns as the FDE chain.
+
+    Sibling URLs come straight from the framework-injected ``DeployedServiceDescriptor``
+    objects — ``desc.ws_url`` / ``desc.target_url`` are populated by the runtime
+    layer from the platform's dynamic chainlet config. No GraphQL oracle-id
+    resolution, no hardcoded ``api.*.baseten.co`` host: the descriptor knows
+    where to go.
+    """
 
     remote_config = chains.RemoteConfig(
         compute=chains.Compute(cpu_count=1, memory="512Mi"),
@@ -173,45 +89,43 @@ class Orchestrator(chains.ChainletBase):
         os.environ["NO_PROXY"] = "*"
 
         try:
-            user_api_key = context.secrets["baseten_api_key"]
+            user_api_key = context.secrets["baseten_chain_api_key"]
         except KeyError as e:
             raise RuntimeError(
                 "baseten_api_key secret is missing. Set it in the workspace and"
-                " re-deploy. Used to resolve sibling oracle IDs via dashboard"
-                " GraphQL until the platform exposes them via dynamic_chainlet_config."
+                " re-deploy. Used in the Authorization header for sibling calls."
             ) from e
         if not user_api_key or user_api_key == "***":
             raise RuntimeError("baseten_api_key secret is empty/placeholder.")
 
-        chain_id = _chain_id_from_descriptor(stt)
-        chain_deployment_id = _chain_deployment_id_from_descriptor(stt)
-        oracles = _resolve_oracles(user_api_key, chain_id, chain_deployment_id)
-        log.warning(
-            "Resolved oracle map for chain=%s deployment=%s: %s",
-            chain_id,
-            chain_deployment_id,
-            oracles,
-        )
+        # WS sibling URLs: prefer the cluster-local internal_ws_url (chain
+        # hostname + cluster routing); fall back to ws_url. WS auth headers
+        # are Authorization-only — see with_ws_auth_headers docstring for why
+        # an explicit Host override breaks WS handshakes.
+        stt_url = stt.internal_ws_url or stt.ws_url
+        tts_url = tts.internal_ws_url or tts.ws_url
+        if stt_url is None or tts_url is None:
+            raise RuntimeError(
+                "STT/TTS sibling chainlets must expose a WS URL "
+                f"(stt_url={stt_url!r}, tts_url={tts_url!r})."
+            )
+        self._stt_url = stt_url
+        self._tts_url = tts_url
+        self._headers_stt = stt.with_ws_auth_headers(user_api_key)
+        self._headers_tts = tts.with_ws_auth_headers(user_api_key)
 
-        self._stt_url = _model_url(
-            oracles["STTMock"]["oracle_id"],
-            oracles["STTMock"]["oracle_version_id"],
-            "wss",
-            "websocket",
+        # HTTP sibling URL: target_url uses the workload-plane gateway hostname
+        # for cluster-local routing; with_auth_headers adds the Host override
+        # api-gateway needs to map gateway-host requests onto the chain.
+        self._llm_url = llm.target_url
+        self._headers_llm = llm.with_auth_headers(user_api_key)
+
+        log.warning(
+            "Resolved sibling URLs: stt=%s llm=%s tts=%s",
+            self._stt_url,
+            self._llm_url,
+            self._tts_url,
         )
-        self._llm_url = _model_url(
-            oracles["LLMMock"]["oracle_id"],
-            oracles["LLMMock"]["oracle_version_id"],
-            "https",
-            "predict",
-        )
-        self._tts_url = _model_url(
-            oracles["TTSMock"]["oracle_id"],
-            oracles["TTSMock"]["oracle_version_id"],
-            "wss",
-            "websocket",
-        )
-        self._headers = {"Authorization": f"Api-Key {user_api_key}"}
 
     async def run_remote(self, websocket: chains.WebSocketProtocol) -> None:
         import httpx
@@ -222,7 +136,7 @@ class Orchestrator(chains.ChainletBase):
 
             # 1. STT: bytes -> text
             async with ws_client.connect(
-                self._stt_url, additional_headers=self._headers
+                self._stt_url, additional_headers=self._headers_stt
             ) as sws:
                 await sws.send(audio_in)
                 resp = await sws.recv()
@@ -230,7 +144,7 @@ class Orchestrator(chains.ChainletBase):
                 log.warning("STTMock returned: %s", text)
 
             # 2. LLM: text -> completion
-            async with httpx.AsyncClient(timeout=30, headers=self._headers) as http:
+            async with httpx.AsyncClient(timeout=30, headers=self._headers_llm) as http:
                 r = await http.post(self._llm_url, json={"prompt": text})
                 r.raise_for_status()
                 completion = r.json()["completion"]
@@ -238,7 +152,7 @@ class Orchestrator(chains.ChainletBase):
 
             # 3. TTS: text -> bytes
             async with ws_client.connect(
-                self._tts_url, additional_headers=self._headers
+                self._tts_url, additional_headers=self._headers_tts
             ) as tws:
                 await tws.send(json.dumps({}))  # mock config frame, ignored
                 await tws.send(completion)
