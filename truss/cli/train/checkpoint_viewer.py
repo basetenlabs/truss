@@ -37,6 +37,7 @@ class ScopeKind(str, Enum):
     JOB = "job"
     RUN = "run"
 
+
 # Sort constants
 SORT_BY_CHECKPOINT_ID = "checkpoint-id"
 SORT_BY_CREATED = "created"
