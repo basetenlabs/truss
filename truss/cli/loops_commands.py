@@ -4,11 +4,15 @@ from typing import Any, Dict, List, Optional, cast
 import requests
 import rich.table
 import rich_click as click
+import yaml
 
 import truss.cli.train.core as train_cli
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
-from truss.cli.loops_checkpoint_viewer import resolve_run_id, view_loops_checkpoint_list
+from truss.cli.loops_checkpoint_viewer import (
+    resolve_most_recent_run_for_base_model,
+    view_loops_checkpoint_list,
+)
 from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.utils import common
 from truss.cli.utils.output import console
@@ -372,10 +376,16 @@ def view_loops_checkpoints(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    try:
-        resolved_run_id = resolve_run_id(remote_provider, run_id, base_model)
-    except ValueError as e:
-        raise click.UsageError(str(e))
+    if run_id:
+        resolved_run_id = run_id
+    else:
+        try:
+            assert base_model is not None  # narrowed by the validation above
+            resolved_run_id = resolve_most_recent_run_for_base_model(
+                remote_provider, base_model
+            )
+        except ValueError as e:
+            raise click.UsageError(str(e))
 
     view_loops_checkpoint_list(
         remote_provider=remote_provider,
@@ -402,13 +412,9 @@ def view_loops_checkpoints(
     help="path to a python file that defines a DeployCheckpointsConfig",
 )
 @click.option(
-    "--dry-run", is_flag=True, help="Generate a truss config without deploying"
-)
-@click.option(
-    "--truss-config-output-dir",
-    type=str,
-    required=False,
-    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
+    "--dry-run",
+    is_flag=True,
+    help="Render the generated truss config to stdout without deploying.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
@@ -417,7 +423,6 @@ def deploy_loops_checkpoints(
     checkpoint_ids: Optional[str],
     config: Optional[str],
     dry_run: bool,
-    truss_config_output_dir: Optional[str],
     remote: Optional[str],
 ) -> None:
     """Deploy checkpoints from a Loops run via vLLM."""
@@ -473,8 +478,9 @@ def deploy_loops_checkpoints(
 
     if dry_run:
         console.print("did not deploy because --dry-run flag provided", style="yellow")
-
-    train_cli.write_truss_config(result, truss_config_output_dir, dry_run)
-
-    if not dry_run:
+        if result.truss_config:
+            # Render to stdout so the user can pipe / inspect without
+            # us littering the filesystem with truss_configs/ folders.
+            print(yaml.safe_dump(result.truss_config.to_dict()))
+    else:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)

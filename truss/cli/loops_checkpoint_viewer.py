@@ -1,5 +1,4 @@
 import sys
-from typing import Optional
 
 from truss.cli.train.checkpoint_viewer import (
     OUTPUT_FORMAT_CLI_TABLE,
@@ -12,6 +11,7 @@ from truss.cli.train.checkpoint_viewer import (
     CLITableCheckpointViewer,
     CSVCheckpointViewer,
     JSONCheckpointViewer,
+    ScopeKind,
     _get_sort_key,
 )
 from truss.cli.utils.output import console
@@ -33,11 +33,11 @@ def view_loops_checkpoint_list(
     """
     viewer: CheckpointListViewer
     if output_format == OUTPUT_FORMAT_CSV:
-        viewer = CSVCheckpointViewer(scope_kind="run")
+        viewer = CSVCheckpointViewer(scope_kind=ScopeKind.RUN)
     elif output_format == OUTPUT_FORMAT_JSON:
-        viewer = JSONCheckpointViewer(scope_kind="run")
+        viewer = JSONCheckpointViewer(scope_kind=ScopeKind.RUN)
     elif output_format == OUTPUT_FORMAT_CLI_TABLE:
-        viewer = CLITableCheckpointViewer(scope_kind="run")
+        viewer = CLITableCheckpointViewer(scope_kind=ScopeKind.RUN)
     else:
         raise ValueError(f"Invalid output format: {output_format}")
 
@@ -63,22 +63,10 @@ def view_loops_checkpoint_list(
         raise
 
 
-def resolve_run_id(
-    remote_provider: BasetenRemote, run_id: Optional[str], base_model: Optional[str]
+def resolve_most_recent_run_for_base_model(
+    remote_provider: BasetenRemote, base_model: str
 ) -> str:
-    """Resolve a Loops run from --run-id or --base-model.
-
-    With --run-id, returns it as-is (existence is validated server-side
-    on the next call). With --base-model, picks the most recently created
-    run for that base model.
-    """
-    if run_id and base_model:
-        raise ValueError("Pass either --run-id or --base-model, not both.")
-    if run_id:
-        return run_id
-    if not base_model:
-        raise ValueError("Pass --run-id or --base-model to identify a Loops run.")
-
+    """Return the most recently created Loops run for the given base model."""
     runs = remote_provider.api.list_loops_runs(base_model=base_model)
     if not runs:
         raise ValueError(f"No Loops runs found for base model: {base_model}")

@@ -592,7 +592,6 @@ def test_checkpoints_deploy_with_run_id_invokes_shared_path(mock_remote):
         patch(
             "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
         ) as mock_create,
-        patch("truss.cli.loops_commands.train_cli.write_truss_config"),
         patch(
             "truss.cli.loops_commands.train_cli.print_deploy_checkpoints_success_message"
         ),
@@ -626,7 +625,6 @@ def test_checkpoints_deploy_with_checkpoint_ids_parses_and_forwards(mock_remote)
         patch(
             "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
         ) as mock_create,
-        patch("truss.cli.loops_commands.train_cli.write_truss_config"),
         patch(
             "truss.cli.loops_commands.train_cli.print_deploy_checkpoints_success_message"
         ),

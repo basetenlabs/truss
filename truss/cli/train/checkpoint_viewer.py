@@ -8,6 +8,7 @@ import sys
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Optional
 
 import requests
@@ -26,6 +27,15 @@ from pygments.lexers import get_lexer_for_filename
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
+
+
+class ScopeKind(str, Enum):
+    """What kind of parent a checkpoint hangs off — drives column labels and
+    JSON id keys. `str` mixin keeps it interchangeable with raw strings for
+    f-strings; switch to `enum.StrEnum` once we drop 3.9/3.10."""
+
+    JOB = "job"
+    RUN = "run"
 
 # Sort constants
 SORT_BY_CHECKPOINT_ID = "checkpoint-id"
@@ -66,8 +76,7 @@ def _get_sort_key(sort_by: str) -> Callable[[dict], Any]:
 class CheckpointListViewer(ABC):
     """Base class for checkpoint list viewers that output in different formats."""
 
-    def __init__(self, scope_kind: str = "job"):
-        # "job" for training-job checkpoints, "run" for Loops checkpoints.
+    def __init__(self, scope_kind: ScopeKind = ScopeKind.JOB):
         # Controls labels in titles, messages, and the JSON id key.
         self.scope_kind = scope_kind
 
@@ -87,13 +96,13 @@ class CLITableCheckpointViewer(CheckpointListViewer):
 
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         table = rich.table.Table(
-            title=f"Checkpoints for {self.scope_kind}: {scope_id}",
+            title=f"Checkpoints for {self.scope_kind.value}: {scope_id}",
             show_header=True,
             header_style="bold magenta",
             box=rich.table.box.ROUNDED,
             border_style="blue",
         )
-        is_loops = self.scope_kind == "run"
+        is_loops = self.scope_kind == ScopeKind.RUN
         if is_loops:
             # Loops has both a DB-PK (`id`, used by `loops_checkpoint_ids` in
             # configs) and a human step-name (`checkpoint_id`, used as the
@@ -102,6 +111,9 @@ class CLITableCheckpointViewer(CheckpointListViewer):
             table.add_column("Checkpoint ID", style="cyan")
             table.add_column("Checkpoint Name", style="cyan")
         else:
+            # Train checkpoints have only one identifier (`checkpoint_id` =
+            # the name, e.g. `checkpoint-100`); show that and the parent job.
+            table.add_column("Job ID", style="cyan")
             table.add_column("Checkpoint ID", style="cyan")
         table.add_column("Type")
         table.add_column("Base Model", style="yellow")
@@ -116,7 +128,7 @@ class CLITableCheckpointViewer(CheckpointListViewer):
             id_cells = (
                 (scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", ""))
                 if is_loops
-                else (ckpt.get("checkpoint_id", ""),)
+                else (scope_id, ckpt.get("checkpoint_id", ""))
             )
             table.add_row(
                 *id_cells,
@@ -130,7 +142,8 @@ class CLITableCheckpointViewer(CheckpointListViewer):
 
     def output_no_checkpoints_message(self, scope_id: str) -> None:
         console.print(
-            f"No checkpoints found for {self.scope_kind}: {scope_id}.", style="yellow"
+            f"No checkpoints found for {self.scope_kind.value}: {scope_id}.",
+            style="yellow",
         )
 
 
@@ -138,7 +151,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in CSV format."""
 
     def _header(self) -> list[str]:
-        if self.scope_kind == "run":
+        if self.scope_kind == ScopeKind.RUN:
             return [
                 "Run ID",
                 "Checkpoint ID",
@@ -150,6 +163,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
                 "Created At",
             ]
         return [
+            "Job ID",
             "Checkpoint ID",
             "Type",
             "Base Model",
@@ -161,7 +175,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
         writer.writerow(self._header())
-        is_loops = self.scope_kind == "run"
+        is_loops = self.scope_kind == ScopeKind.RUN
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
                 ckpt.get("size_bytes", 0)
@@ -170,7 +184,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
             id_cells = (
                 [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
                 if is_loops
-                else [ckpt.get("checkpoint_id", "")]
+                else [scope_id, ckpt.get("checkpoint_id", "")]
             )
             writer.writerow(
                 [
@@ -192,7 +206,7 @@ class JSONCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in JSON format."""
 
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
-        is_loops = self.scope_kind == "run"
+        is_loops = self.scope_kind == ScopeKind.RUN
         checkpoints_data = []
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
@@ -203,6 +217,8 @@ class JSONCheckpointViewer(CheckpointListViewer):
             if is_loops:
                 entry["run_id"] = scope_id
                 entry["id"] = ckpt.get("id", "")
+            else:
+                entry["job_id"] = scope_id
             entry.update(
                 {
                     "checkpoint_id": ckpt.get("checkpoint_id", ""),
@@ -218,7 +234,7 @@ class JSONCheckpointViewer(CheckpointListViewer):
             checkpoints_data.append(entry)
 
         output = {
-            f"{self.scope_kind}_id": scope_id,
+            f"{self.scope_kind.value}_id": scope_id,
             "total_checkpoints": len(checkpoints),
             "checkpoints": checkpoints_data,
         }
@@ -226,7 +242,7 @@ class JSONCheckpointViewer(CheckpointListViewer):
 
     def output_no_checkpoints_message(self, scope_id: str) -> None:
         output = {
-            f"{self.scope_kind}_id": scope_id,
+            f"{self.scope_kind.value}_id": scope_id,
             "total_checkpoints": 0,
             "checkpoints": [],
         }
