@@ -71,11 +71,11 @@ def create_model_version_from_inference_template(
         model_version = None
         if result and result.get("model_version"):
             console.print(
-                f"Successfully created model version: {result['model_version']['name']}",
+                f"Successfully created deployment: {result['model_version']['name']}",
                 style="green",
             )
             console.print(
-                f"Model version ID: {result['model_version']['id']}", style="yellow"
+                f"Deployment ID: {result['model_version']['id']}", style="yellow"
             )
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
@@ -93,7 +93,7 @@ def create_model_version_from_inference_template(
             console.print(f"Response: {result}", style="yellow")
 
     except Exception as e:
-        console.print(f"Error creating model version: {e}", style="red")
+        console.print(f"Error creating deployment: {e}", style="red")
         raise
 
     return DeploySuccessResult(
