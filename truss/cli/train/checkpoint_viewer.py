@@ -108,7 +108,7 @@ class CLITableCheckpointViewer(CheckpointListViewer):
         # (`checkpoint_id`, e.g. `checkpoint-100` / `step-100`). Show the
         # parent scope, then both identifiers.
         scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
-        show_target = self.scope_kind == ScopeKind.JOB
+        show_target = self.scope_kind == ScopeKind.RUN
         table.add_column(scope_column, style="cyan")
         table.add_column("Checkpoint ID", style="cyan")
         table.add_column("Checkpoint Name", style="cyan")
@@ -157,7 +157,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
             "Type",
             "Base Model",
         ]
-        if self.scope_kind == ScopeKind.JOB:
+        if self.scope_kind == ScopeKind.RUN:
             header.append("Target")
         header.extend(["Size (bytes)", "Size (human readable)", "Created At"])
         return header
@@ -165,7 +165,7 @@ class CSVCheckpointViewer(CheckpointListViewer):
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
         writer.writerow(self._header())
-        show_target = self.scope_kind == ScopeKind.JOB
+        show_target = self.scope_kind == ScopeKind.RUN
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
                 ckpt.get("size_bytes", 0)
@@ -209,7 +209,7 @@ class JSONCheckpointViewer(CheckpointListViewer):
                 "size_human_readable": size_str,
                 "created_at": created_str,
             }
-            if self.scope_kind == ScopeKind.JOB:
+            if self.scope_kind == ScopeKind.RUN:
                 entry["target"] = ckpt.get("target", "") or ""
             if ckpt.get("lora_adapter_config"):
                 entry["lora_adapter_config"] = ckpt["lora_adapter_config"]
