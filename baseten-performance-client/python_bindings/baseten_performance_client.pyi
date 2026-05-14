@@ -226,7 +226,7 @@ class RequestProcessingPreference:
         total_timeout_s: Optional total timeout for the entire operation in seconds.
         hedge_budget_pct: Hedge budget percentage (default: 0.10).
         retry_budget_pct: Retry budget percentage (default: 0.05).
-        max_retries: Maximum number of HTTP retries (default: 4).
+            max_retries: Maximum number of HTTP retries (default: 5).
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         cancel_token: Optional CancellationToken for cancelling operations.
         extra_headers: Optional dictionary of custom headers to include with all requests.
@@ -292,7 +292,7 @@ class RequestProcessingPreference:
             total_timeout_s: Optional total timeout for the entire operation in seconds.
             hedge_budget_pct: Hedge budget percentage (default: 0.10).
             retry_budget_pct: Retry budget percentage (default: 0.05).
-            max_retries: Maximum number of HTTP retries (default: 4).
+        max_retries: Maximum number of HTTP retries (default: 5).
             initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
             cancel_token: Optional CancellationToken for cancelling operations.
             primary_api_key_override: Optional API key override used for primary requests.

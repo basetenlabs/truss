@@ -47,7 +47,7 @@ impl RequestProcessingPreference {
             total_timeout_s: self.total_timeout_s,
             hedge_budget_pct: self.hedge_budget_pct.or(Some(HEDGE_BUDGET_PERCENTAGE)),
             retry_budget_pct: self.retry_budget_pct.or(Some(RETRY_BUDGET_PERCENTAGE)),
-            max_retries: self.max_retries.or(Some(MAX_HTTP_RETRIES)),
+            max_retries: self.max_retries.or(Some(DEFAULT_MAX_RETRIES)),
             initial_backoff_ms: self.initial_backoff_ms.or(Some(INITIAL_BACKOFF_MS)),
             cancel_token: self.cancel_token.clone(),
             primary_api_key_override: self.primary_api_key_override.clone(),
@@ -1194,7 +1194,7 @@ mod tests {
             _ => panic!("Expected InvalidParameter error"),
         }
 
-        let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(35000); // Above MAX_BACKOFF_MS (30000)
+        let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(50000); // Above MAX_BACKOFF_MS (45000)
 
         let result2 = pref2.pair_with_request_validate_and_convert(
             "https://example.com".to_string(),
@@ -1205,7 +1205,7 @@ mod tests {
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
                 assert!(msg.contains("initial_backoff_ms must be between"));
-                assert!(msg.contains("30000"));
+                assert!(msg.contains("45000"));
             }
             _ => panic!("Expected InvalidParameter error"),
         }
@@ -1224,7 +1224,7 @@ mod tests {
     #[test]
     fn test_max_retries_validation() {
         // Test max_retries validation
-        let pref = RequestProcessingPreference::new().with_max_retries(5); // Above MAX_HTTP_RETRIES (4)
+        let pref = RequestProcessingPreference::new().with_max_retries(7); // Above MAX_HTTP_RETRIES (6)
 
         let result = pref.pair_with_request_validate_and_convert(
             "https://example.com".to_string(),
@@ -1235,7 +1235,7 @@ mod tests {
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
                 assert!(msg.contains("max_retries cannot exceed"));
-                assert!(msg.contains("4"));
+                assert!(msg.contains("6"));
             }
             _ => panic!("Expected InvalidParameter error"),
         }

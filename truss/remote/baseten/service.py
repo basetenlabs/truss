@@ -171,8 +171,13 @@ class BasetenService(TrussService):
             time.sleep(sleep_secs)
             try:
                 yield self._fetch_deployment()
-            except requests.exceptions.RequestException:
-                logger.warning("Network error, unable to reach Baseten. Retrying...")
+            except requests.exceptions.RequestException as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                logger.warning(
+                    "Network error polling deployment, retrying: %s%s",
+                    exc.__class__.__name__,
+                    f" (HTTP {status}): {exc}" if status is not None else f": {exc}",
+                )
                 continue
 
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:

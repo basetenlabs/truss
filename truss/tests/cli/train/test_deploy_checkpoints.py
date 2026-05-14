@@ -292,7 +292,7 @@ def mock_loops_remote():
     mock.api.list_loops_checkpoints.return_value = {
         "checkpoints": [
             {
-                "id": "tcp_step100",
+                "id": "vL3pQrS8",
                 "checkpoint_id": "step-100",
                 "base_model": "Qwen/Qwen3-8B",
                 "checkpoint_type": "lora",
@@ -320,7 +320,7 @@ def test_ensure_loops_checkpoint_details_user_provided_passes_through(
     mock_loops_remote,
 ):
     """When the user authored loops_checkpoint_ids in --config, return as-is."""
-    user_config = definitions.CheckpointList(loops_checkpoint_ids=["tcp_step100"])
+    user_config = definitions.CheckpointList(loops_checkpoint_ids=["vL3pQrS8"])
     result = _ensure_loops_checkpoint_details(
         mock_loops_remote, user_config, run_id=None
     )
@@ -350,7 +350,7 @@ def test_ensure_loops_checkpoint_details_picker_emits_ids_and_base_model(
     result = _ensure_loops_checkpoint_details(
         mock_loops_remote, checkpoint_details=None, run_id="trnr_xyz"
     )
-    assert result.loops_checkpoint_ids == ["tcp_step100"]
+    assert result.loops_checkpoint_ids == ["vL3pQrS8"]
     assert result.base_model_id == "Qwen/Qwen3-8B"
     mock_loops_remote.api.list_loops_checkpoints.assert_called_once_with(
         run_id="trnr_xyz"
@@ -382,15 +382,14 @@ def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(
         )
 
 
-def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
-    mock_loops_remote,
-):
-    """--job-id + --config that has loops_checkpoint_ids should error."""
+def test_hydrate_deploy_config_train_rejects_loops_checkpoint_ids(mock_loops_remote):
+    """`truss train deploy_checkpoints` must refuse a config with loops_checkpoint_ids."""
     deploy_config = definitions.DeployCheckpointsConfig(
-        checkpoint_details=definitions.CheckpointList(loops_checkpoint_ids=["tcp_xyz"])
+        checkpoint_details=definitions.CheckpointList(loops_checkpoint_ids=["vL3pQrS8"])
     )
     with pytest.raises(
-        click.UsageError, match="--project-id / --job-id cannot be combined"
+        click.UsageError,
+        match="`truss train deploy_checkpoints` does not accept Loops checkpoints",
     ):
         _hydrate_deploy_config(
             deploy_config,
@@ -398,4 +397,34 @@ def test_hydrate_deploy_config_rejects_job_id_with_config_loops_checkpoint_ids(
             project_id=None,
             job_id="tj_abc",
             run_id=None,
+            is_loops_command=False,
+        )
+
+
+def test_hydrate_deploy_config_loops_rejects_training_job_checkpoints(
+    mock_loops_remote,
+):
+    """`truss loops checkpoints deploy` must refuse a config with training-job checkpoints."""
+    deploy_config = definitions.DeployCheckpointsConfig(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="tj_abc",
+                    checkpoint_name="step-1",
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                )
+            ]
+        )
+    )
+    with pytest.raises(
+        click.UsageError,
+        match="`truss loops checkpoints deploy` does not accept training-job",
+    ):
+        _hydrate_deploy_config(
+            deploy_config,
+            mock_loops_remote,
+            project_id=None,
+            job_id=None,
+            run_id="trnr_xyz",
+            is_loops_command=True,
         )

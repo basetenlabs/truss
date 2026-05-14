@@ -32,7 +32,6 @@ from truss.cli.train.cache import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
-from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -505,12 +504,6 @@ def get_job_metrics(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
-    "--run-id",
-    type=str,
-    required=False,
-    help="Loops run ID. Use to deploy checkpoints from a Loops run instead of a training job.",
-)
-@click.option(
     "--config",
     type=str,
     required=False,
@@ -531,7 +524,6 @@ def deploy_checkpoints(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
-    run_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
@@ -544,20 +536,15 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    if run_id and (project_id or project or job_id):
-        raise click.UsageError(
-            "--run-id cannot be combined with --project, --project-id, or --job-id."
-        )
-    if not run_id:
-        project_id = _maybe_resolve_project_id_from_id_or_name(
-            remote_provider, project_id=project_id, project=project
-        )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
-            run_id=run_id,
+            run_id=None,
             deploy_config_path=config,
             dry_run=dry_run,
         ),
@@ -566,35 +553,10 @@ def deploy_checkpoints(
     if dry_run:
         console.print("did not deploy because --dry-run flag provided", style="yellow")
 
-    _write_truss_config(result, truss_config_output_dir, dry_run)
+    train_cli.write_truss_config(result, truss_config_output_dir, dry_run)
 
     if not dry_run:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
-
-
-def _write_truss_config(
-    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
-) -> None:
-    if not result.truss_config:
-        return
-    # format: 20251006_123456
-    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    folder_name = (
-        f"{result.model_version.name}_{result.model_version.id}"
-        if result.model_version
-        else f"dry_run_{datestamp}"
-    )
-    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
-    output_dir = Path(output_dir_str)
-    output_path = output_dir / "config.yaml"
-    os.makedirs(output_dir, exist_ok=True)
-    console.print(f"Writing truss config to {output_path}", style="yellow")
-    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
-    if dry_run:
-        console.print(
-            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
-        )
-    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")

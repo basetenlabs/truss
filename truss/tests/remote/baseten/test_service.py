@@ -1,4 +1,7 @@
+import logging
 from unittest.mock import MagicMock
+
+import requests
 
 from truss.remote.baseten import service
 from truss.remote.baseten.core import ModelVersionHandle
@@ -185,3 +188,49 @@ def test_predict_uses_header_provider_for_each_request():
         {"Authorization": "Bearer t1"},
         {"Authorization": "Bearer t2"},
     ]
+
+
+def test_poll_deployment_warning_includes_exception_detail(monkeypatch, caplog):
+    # Transient polling failures log a one-line warning naming the exception
+    # class (and HTTP status when present), so operators can distinguish
+    # ReadTimeout / ConnectionError / HTTPError without re-running.
+    mock_handle = MagicMock(spec=ModelVersionHandle)
+    mock_handle.model_id = "m"
+    mock_handle.version_id = "v"
+
+    service_instance = service.BasetenService(
+        model_version_handle=mock_handle,
+        is_draft=False,
+        header_provider=lambda: {},
+        service_url="https://test.com",
+        api=MagicMock(),
+    )
+
+    http_resp = MagicMock()
+    http_resp.status_code = 429
+    http_error = requests.exceptions.HTTPError(response=http_resp)
+
+    calls = iter(
+        [
+            requests.exceptions.ReadTimeout("read timed out"),
+            http_error,
+            {"status": "ACTIVE"},
+        ]
+    )
+
+    def fake_fetch():
+        nxt = next(calls)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return nxt
+
+    monkeypatch.setattr(service_instance, "_fetch_deployment", fake_fetch)
+    monkeypatch.setattr(service.time, "sleep", lambda _s: None)
+
+    with caplog.at_level(logging.WARNING, logger=service.logger.name):
+        deployment = next(service_instance.poll_deployment())
+
+    assert deployment == {"status": "ACTIVE"}
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("ReadTimeout" in m and "read timed out" in m for m in messages)
+    assert any("HTTPError" in m and "HTTP 429" in m for m in messages)

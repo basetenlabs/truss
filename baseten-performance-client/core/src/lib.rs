@@ -14,8 +14,9 @@ pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
 pub use endpoint_routing::{
-    DEFAULT_TIMEOUT_IS_NO_VOTE, Endpoint, EndpointConfig, EndpointHealthCheckConfig, EndpointHealthConfig,
+    Endpoint, EndpointConfig, EndpointHealthCheckConfig, EndpointHealthConfig,
     EndpointHealthStatus, EndpointPool, EndpointPoolConfig, EndpointPoolHealthSnapshot,
+    DEFAULT_TIMEOUT_IS_NO_VOTE,
 };
 pub use errors::ClientError;
 pub use http::*;

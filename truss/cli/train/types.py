@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -19,6 +19,11 @@ class DeployCheckpointArgs:
     job_id: Optional[str]
     run_id: Optional[str]
     deploy_config_path: Optional[str]
+    is_loops_command: bool = False
+    # Loops-only: explicit checkpoint PKs (alphanumeric, no underscores —
+    # e.g. `vL3pQrS8`) provided via `--checkpoint-ids`. Bypasses the
+    # interactive picker. Mutually exclusive with deploy_config_path.
+    checkpoint_ids: List[str] = field(default_factory=list)
 
 
 class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
