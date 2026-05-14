@@ -112,10 +112,10 @@ class CLITableCheckpointViewer(CheckpointListViewer):
         table.add_column(scope_column, style="cyan")
         table.add_column("Checkpoint ID", style="cyan")
         table.add_column("Checkpoint Name", style="cyan")
-        table.add_column("Type")
-        table.add_column("Base Model", style="yellow")
         if show_target:
             table.add_column("Target", style="yellow")
+        table.add_column("Type")
+        table.add_column("Base Model", style="yellow")
         table.add_column("Size", style="green")
         table.add_column("Created At", style="dim")
 
@@ -124,16 +124,17 @@ class CLITableCheckpointViewer(CheckpointListViewer):
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            row = [
-                scope_id,
-                ckpt.get("id", ""),
-                ckpt.get("checkpoint_id", ""),
-                ckpt.get("checkpoint_type", ""),
-                ckpt.get("base_model", "") or "",
-            ]
+            row = [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
             if show_target:
                 row.append(ckpt.get("target", "") or "")
-            row.extend([size_str, created_str])
+            row.extend(
+                [
+                    ckpt.get("checkpoint_type", ""),
+                    ckpt.get("base_model", "") or "",
+                    size_str,
+                    created_str,
+                ]
+            )
             table.add_row(*row)
 
         console.print(table)
@@ -150,16 +151,18 @@ class CSVCheckpointViewer(CheckpointListViewer):
 
     def _header(self) -> list[str]:
         scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
-        header = [
-            scope_column,
-            "Checkpoint ID",
-            "Checkpoint Name",
-            "Type",
-            "Base Model",
-        ]
+        header = [scope_column, "Checkpoint ID", "Checkpoint Name"]
         if self.scope_kind == ScopeKind.RUN:
             header.append("Target")
-        header.extend(["Size (bytes)", "Size (human readable)", "Created At"])
+        header.extend(
+            [
+                "Type",
+                "Base Model",
+                "Size (bytes)",
+                "Size (human readable)",
+                "Created At",
+            ]
+        )
         return header
 
     def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
@@ -171,16 +174,18 @@ class CSVCheckpointViewer(CheckpointListViewer):
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            row = [
-                scope_id,
-                ckpt.get("id", ""),
-                ckpt.get("checkpoint_id", ""),
-                ckpt.get("checkpoint_type", ""),
-                ckpt.get("base_model", "") or "",
-            ]
+            row = [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
             if show_target:
                 row.append(ckpt.get("target", "") or "")
-            row.extend([str(ckpt.get("size_bytes", 0)), size_str, created_str])
+            row.extend(
+                [
+                    ckpt.get("checkpoint_type", ""),
+                    ckpt.get("base_model", "") or "",
+                    str(ckpt.get("size_bytes", 0)),
+                    size_str,
+                    created_str,
+                ]
+            )
             writer.writerow(row)
 
     def output_no_checkpoints_message(self, scope_id: str) -> None:
@@ -203,14 +208,18 @@ class JSONCheckpointViewer(CheckpointListViewer):
                 scope_id_key: scope_id,
                 "id": ckpt.get("id", ""),
                 "checkpoint_id": ckpt.get("checkpoint_id", ""),
-                "checkpoint_type": ckpt.get("checkpoint_type", ""),
-                "base_model": ckpt.get("base_model", "") or "",
-                "size_bytes": ckpt.get("size_bytes", 0),
-                "size_human_readable": size_str,
-                "created_at": created_str,
             }
             if self.scope_kind == ScopeKind.RUN:
                 entry["target"] = ckpt.get("target", "") or ""
+            entry.update(
+                {
+                    "checkpoint_type": ckpt.get("checkpoint_type", ""),
+                    "base_model": ckpt.get("base_model", "") or "",
+                    "size_bytes": ckpt.get("size_bytes", 0),
+                    "size_human_readable": size_str,
+                    "created_at": created_str,
+                }
+            )
             if ckpt.get("lora_adapter_config"):
                 entry["lora_adapter_config"] = ckpt["lora_adapter_config"]
             checkpoints_data.append(entry)
