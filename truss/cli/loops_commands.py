@@ -440,10 +440,7 @@ def deploy_loops_checkpoints(
         # Server resolves checkpoint PKs directly and ignores run_id when both
         # are present — silently dropping the run_id would mislead users into
         # thinking we validated their pairing.
-        raise click.UsageError(
-            "--checkpoint-ids cannot be combined with --run-id. "
-            "Loops checkpoint IDs are globally unique, so the run is implicit."
-        )
+        raise click.UsageError("--checkpoint-ids cannot be combined with --run-id.")
 
     parsed_checkpoint_ids = (
         [s.strip() for s in checkpoint_ids.split(",") if s.strip()]
