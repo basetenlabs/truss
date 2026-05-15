@@ -39,6 +39,8 @@ pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 // Slow providers where customers have reported issues
 pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
+pub(crate) const REQUEST_TIMEOUT_HEADER_NAME: &str = "Request-Timeout-Ms";
+pub(crate) const REQUEST_DEADLINE_HEADER_NAME: &str = "Request-Deadline-Ms";
 
 // Logging constants
 pub const DEFAULT_LOG_LEVEL: &str = "warn";
