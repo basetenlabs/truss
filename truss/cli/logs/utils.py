@@ -75,7 +75,11 @@ def resolve_log_time_range(
         return None, None
 
     if end is None:
-        end = datetime.now(timezone.utc)
+        # Click's DateTime parses --start at second precision (no microseconds),
+        # so floor "now" to seconds here. Otherwise a user passing --start at
+        # exactly 7 days ago would fail the MAX_LOG_RANGE check by the
+        # microsecond fraction in datetime.now().
+        end = datetime.now(timezone.utc).replace(microsecond=0)
     if start is None:
         start = end - MAX_LOG_RANGE
 

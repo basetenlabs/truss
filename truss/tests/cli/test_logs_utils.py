@@ -74,6 +74,14 @@ def test_resolve_only_start_defaults_end_to_now():
     assert abs(end_ms - now_ms) < 5_000
 
 
+def test_resolve_only_start_at_exact_7d_boundary_accepted():
+    # Regression: --start exactly 7d ago at second precision must not be
+    # rejected because datetime.now() has microsecond precision.
+    start = (datetime.now(timezone.utc) - MAX_LOG_RANGE).replace(microsecond=0)
+    start_ms, end_ms = resolve_log_time_range(start, None, None)
+    assert end_ms - start_ms <= int(MAX_LOG_RANGE.total_seconds() * 1000)
+
+
 def test_resolve_only_end_defaults_start_to_end_minus_7d():
     end = datetime(2026, 5, 14, 0, 0, 0, tzinfo=timezone.utc)
     start_ms, end_ms = resolve_log_time_range(None, end, None)
