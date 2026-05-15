@@ -33,9 +33,7 @@ def _invoke_loops_push(args, mock_remote):
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        with patch("requests.get") as mock_get:
-            mock_get.return_value = Mock(status_code=200)
-            return runner.invoke(truss_cli, ["loops", "push"] + args)
+        return runner.invoke(truss_cli, ["loops", "push"] + args)
 
 
 def test_push_basic(mock_remote):
@@ -63,43 +61,6 @@ def test_push_with_project_id(mock_remote):
     )
 
 
-def test_push_polls_until_running(mock_remote):
-    # First two polls return 503, third returns 200.
-    responses = [Mock(status_code=503), Mock(status_code=503), Mock(status_code=200)]
-
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", side_effect=responses):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                result = runner.invoke(
-                    truss_cli,
-                    ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                )
-
-    assert result.exit_code == 0, result.output
-
-
-def test_push_times_out_waiting_for_health(mock_remote):
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", return_value=Mock(status_code=503)):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                with patch(
-                    "truss.cli.loops_commands.time.monotonic", side_effect=[0, 0, 700]
-                ):
-                    result = runner.invoke(
-                        truss_cli,
-                        ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                    )
-
-    assert result.exit_code != 0
-    assert "Timed out" in result.output
-
-
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
     runner = CliRunner()
     with patch(
@@ -108,9 +69,7 @@ def test_push_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            with patch("requests.get") as mock_get:
-                mock_get.return_value = Mock(status_code=200)
-                result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
+            result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
 
     assert result.exit_code == 0, result.output
     mock_inquire.assert_called_once()

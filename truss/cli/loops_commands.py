@@ -1,7 +1,5 @@
-import time
 from typing import Any, Dict, List, Optional, cast
 
-import requests
 import rich.table
 import rich_click as click
 import yaml
@@ -18,9 +16,6 @@ from truss.cli.utils import common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
-
-_READY_TIMEOUT_SECONDS = 600
-_POLL_INTERVAL_SECONDS = 10
 
 
 @click.group()
@@ -62,20 +57,17 @@ def push_loops_deployment(
     session_id = session["id"]
 
     with console.status(
-        # Loops run cold-start typically takes ~5 minutes.
-        f"Deploying Loops run and sampler for [cyan]{base_model}[/cyan]"
-        f" (this may take ~5 minutes)...",
+        f"Provisioning Loops run and sampler for [cyan]{base_model}[/cyan]...",
         spinner="dots",
     ):
-        run = remote_provider.create_loops_run(
-            session_id=session_id, base_model=base_model
-        )
-        run_base_url = run["base_url"]
-        _poll_until_running(remote_provider, run_base_url)
+        remote_provider.create_loops_run(session_id=session_id, base_model=base_model)
 
+    # Readiness is now the loops SDK's responsibility — clients block on
+    # construction (TrainingClient → /health, SamplingClient → deployment
+    # status). The CLI just confirms the resources were provisioned.
     console.print(
-        f"✨ Loops deployment for [cyan]{base_model}[/cyan] is ready.\n"
-        f"   Run and sampler have been provisioned.",
+        f"✨ Loops deployment for [cyan]{base_model}[/cyan] provisioned.\n"
+        f"   Trainer and sampler will finish coming up in the background",
         style="green",
     )
 
@@ -111,25 +103,6 @@ def deactivate_loops_deployment(
         remote_provider.deactivate_loops_deployment(base_model)
 
     console.print(f"Loops deployment for {base_model} deactivated.", style="green")
-
-
-def _poll_until_running(remote_provider: BasetenRemote, run_base_url: str) -> None:
-    """Poll GET {run_base_url}/health until the Loops run is up."""
-    health_url = f"{run_base_url}/health"
-    auth_header = remote_provider.fetch_auth_header()
-    deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        try:
-            resp = requests.get(health_url, headers=auth_header, timeout=10)
-            if resp.status_code == 200:
-                return
-        except requests.RequestException:
-            pass
-        time.sleep(_POLL_INTERVAL_SECONDS)
-    raise click.ClickException(
-        f"Timed out waiting for Loops deployment to become ready after"
-        f" {_READY_TIMEOUT_SECONDS}s."
-    )
 
 
 @loops.command(name="view")
