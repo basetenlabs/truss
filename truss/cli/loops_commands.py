@@ -67,9 +67,7 @@ def push_loops_deployment(
     # status). The CLI just confirms the resources were provisioned.
     console.print(
         f"✨ Loops deployment for [cyan]{base_model}[/cyan] provisioned.\n"
-        f"   Trainer and sampler will finish coming up in the background"
-        f" (~5 minutes for first cold-start); the loops SDK will block on"
-        f" client construction until each is ready.",
+        f"   Trainer and sampler will finish coming up in the background",
         style="green",
     )
 
