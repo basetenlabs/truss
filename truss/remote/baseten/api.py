@@ -1264,3 +1264,15 @@ class BasetenApi:
         self._rest_api_client.post(
             f"v1/loops/deployments/{deployment_id}/deactivate", body={}
         )
+
+    def get_loops_deployment_metrics(
+        self,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Fetch utilization + request metrics for a Loops trainer deployment."""
+        return self._rest_api_client.post(
+            f"v1/loops/deployments/{deployment_id}/metrics",
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
+        )
