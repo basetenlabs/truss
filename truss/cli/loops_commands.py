@@ -380,9 +380,9 @@ def _build_service_metrics_table(metrics: Dict[str, Any]) -> rich.table.Table:
 
     table.add_row("Request rate (RPS)", _fmt_float(rate))
     table.add_row("Concurrent requests", _fmt_float(concurrent))
-    table.add_row("Latency p50 (s)", _fmt_float(latencies.get("p50")))
-    table.add_row("Latency p95 (s)", _fmt_float(latencies.get("p95")))
-    table.add_row("Latency p99 (s)", _fmt_float(latencies.get("p99")))
+    table.add_row("Latency p50 (ms)", _fmt_float(latencies.get("p50")))
+    table.add_row("Latency p95 (ms)", _fmt_float(latencies.get("p95")))
+    table.add_row("Latency p99 (ms)", _fmt_float(latencies.get("p99")))
 
     by_status = (metrics.get("inference_volume_by_status") or [None])[-1] or {}
     table.add_row("2xx rate", _fmt_float(by_status.get("status_2xx")))
