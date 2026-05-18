@@ -722,9 +722,9 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
 _FAKE_METRICS_PAYLOAD = {
     "deployment_id": "trn_abc123",
     "metrics": {
-        "request_rate": [{"timestamp": "2026-05-13T12:00:00Z", "value": 12.5}],
+        "inference_volume": [{"timestamp": "2026-05-13T12:00:00Z", "value": 12.5}],
         "concurrent_requests": [{"timestamp": "2026-05-13T12:00:00Z", "value": 3.0}],
-        "request_latencies": [
+        "response_time_stats": [
             {"timestamp": "2026-05-13T12:00:00Z", "p50": 0.04, "p95": 0.18, "p99": 0.31}
         ],
         "inference_volume_by_status": [

@@ -374,9 +374,9 @@ def _build_service_metrics_table(metrics: Dict[str, Any]) -> rich.table.Table:
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right")
 
-    rate = _latest_value(metrics.get("request_rate"))
+    rate = _latest_value(metrics.get("inference_volume"))
     concurrent = _latest_value(metrics.get("concurrent_requests"))
-    latencies = (metrics.get("request_latencies") or [None])[-1] or {}
+    latencies = (metrics.get("response_time_stats") or [None])[-1] or {}
 
     table.add_row("Request rate (RPS)", _fmt_float(rate))
     table.add_row("Concurrent requests", _fmt_float(concurrent))
