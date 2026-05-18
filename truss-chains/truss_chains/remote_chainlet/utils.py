@@ -3,7 +3,6 @@ import builtins
 import collections
 import contextlib
 import contextvars
-import json
 import logging
 import statistics
 import sys
@@ -29,8 +28,7 @@ from typing import (
 import httpx
 import pydantic
 
-from truss.templates.shared import dynamic_config_resolver
-from truss_chains import private_types, public_types, utils
+from truss_chains import private_types, public_types, runtime, utils
 
 if TYPE_CHECKING:
     import aiohttp
@@ -119,21 +117,15 @@ _REQUESTS_TOTAL = prometheus_client.Counter(
 def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
 ) -> Mapping[str, public_types.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
+    """Combine static ``ServiceDescriptor`` entries (from codegen / ``config.yaml``) with
+    predict and internal URLs from the mounted ``dynamic_chainlet_config``.
+    """
     if not chainlet_to_service:
         return {}
 
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
-    )
-    if not dynamic_chainlet_config_str:
-        raise public_types.MissingDependencyError(
-            f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
-            "found. Cannot override Chainlet configs."
-        )
+    dynamic_chainlet_config = runtime.load_dynamic_chainlet_config()
 
-    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
-
+    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
     for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
@@ -149,10 +141,11 @@ def populate_chainlet_service_predict_urls(
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
-        if internal_url := dynamic_chainlet_config[display_name].get("internal_url"):
+        url: dict[str, Any]
+        if internal_url := dynamic_chainlet_config[display_name].internal_url:
             url = {"internal_url": internal_url}
         else:
-            predict_url = dynamic_chainlet_config[display_name].get("predict_url")
+            predict_url = dynamic_chainlet_config[display_name].predict_url
             url = {"predict_url": predict_url}
 
         chainlet_to_deployed_service[chainlet_name] = (

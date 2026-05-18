@@ -1,4 +1,5 @@
 from truss.base.truss_config import WeightsSource
+from truss_chains import runtime
 from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
 from truss_chains.public_api import (
     depends,
@@ -22,6 +23,7 @@ from truss_chains.public_types import (
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
+    ServiceDescriptorUrls,
     WebSocketProtocol,
 )
 
@@ -47,6 +49,7 @@ __all__ = [
     "RPCOptions",
     "RemoteConfig",
     "RemoteErrorDetail",
+    "ServiceDescriptorUrls",
     "StubBase",
     "WebSocketProtocol",
     "WeightsSource",
@@ -56,4 +59,5 @@ __all__ = [
     "mark_entrypoint",
     "push",
     "run_local",
+    "runtime",
 ]

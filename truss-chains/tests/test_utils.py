@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from truss_chains import private_types, public_types
+from truss_chains import private_types, public_types, runtime
 from truss_chains.remote_chainlet.utils import populate_chainlet_service_predict_urls
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
@@ -33,11 +33,19 @@ DYNAMIC_CHAINLET_CONFIG_INTERNAL_ONLY = {
 
 @pytest.fixture
 def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    # ``runtime.load_dynamic_chainlet_config`` is ``lru_cache``-decorated;
+    # invalidate so monkeypatched paths/contents take effect.
+    runtime.load_dynamic_chainlet_config.cache_clear()
     monkeypatch.setattr(
         "truss.templates.shared.dynamic_config_resolver.DYNAMIC_CONFIG_MOUNT_DIR",
         str(tmp_path),
     )
     yield
+    runtime.load_dynamic_chainlet_config.cache_clear()
+
+
+def test_populate_chainlet_service_predict_urls_empty_input(dynamic_config_mount_dir):
+    assert populate_chainlet_service_predict_urls({}) == {}
 
 
 def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_dir):
