@@ -201,6 +201,7 @@ def test_view_lists_active_deployments(mock_remote):
             "id": "dep_abc",
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "active"},
             "sampler": {
                 "id": "sampler_def",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
@@ -211,7 +212,22 @@ def test_view_lists_active_deployments(mock_remote):
     assert result.exit_code == 0, result.output
     assert "dep_abc" in result.output
     assert "Qwen/Qwen3-8B" in result.output
+    assert "active" in result.output
     assert "model-def.api.baseten.co" in result.output
+
+
+def test_view_deployment_without_status_shows_empty_string(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "sampler": {},
+        }
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_abc" in result.output
 
 
 def test_view_with_no_deployments_prints_friendly_message(mock_remote):
