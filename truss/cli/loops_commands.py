@@ -214,7 +214,9 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
         sampler = deployment.get("sampler") or {}
         sampler_url = sampler.get("base_url", "") if isinstance(sampler, dict) else ""
         status_obj = deployment.get("status") or {}
-        status_name = status_obj.get("name", "") if isinstance(status_obj, dict) else ""
+        status_name = (
+            status_obj.get("name") or "" if isinstance(status_obj, dict) else ""
+        )
         table.add_row(
             deployment.get("id", ""),
             deployment.get("base_model", "") or "",
