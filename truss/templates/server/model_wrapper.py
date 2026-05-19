@@ -201,6 +201,8 @@ class ArgConfig(enum.Enum):
         else:
             raise NotImplementedError(f"Arg config {descriptor.arg_config}.")
         return args
+
+
 @dataclasses.dataclass
 class MethodDescriptor:
     is_async: bool
