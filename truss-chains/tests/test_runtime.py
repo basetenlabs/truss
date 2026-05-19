@@ -374,6 +374,52 @@ def test_http_call_args_is_destructurable(
     assert "Authorization" in headers
 
 
+def test_http_call_args_sync_path_rewrites_url(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``sync_path`` rewrites the URL from ``/run_remote`` to ``/sync/<path>``,
+    the alternative routing for TC siblings that expose their predict
+    endpoint via the platform's path-passthrough."""
+    _write_config(tmp_path, PREDICT_URL_ONLY)
+    call = runtime.ServiceHandle("Whisper").http_call_args(
+        sync_path="v1/models/model:predict"
+    )
+    expected = PREDICT_URL_ONLY["Whisper"]["predict_url"].removesuffix("/run_remote")
+    assert call.url == f"{expected}/sync/v1/models/model:predict"
+    # Auth header unaffected; no Host (predict_url path).
+    assert call.headers == {"Authorization": "Api-Key test-key"}
+
+
+def test_http_call_args_sync_path_with_prefer_internal(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``sync_path`` combined with ``prefer_internal=True`` rewrites the
+    workload-plane URL the same way, and the ``Host`` header is preserved."""
+    _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
+    call = runtime.ServiceHandle("Whisper").http_call_args(
+        prefer_internal=True, sync_path="predict"
+    )
+    base = INTERNAL_AND_PREDICT_URL["Whisper"]["internal_url"][
+        "gateway_run_remote_url"
+    ].removesuffix("/run_remote")
+    assert call.url == f"{base}/sync/predict"
+    assert (
+        call.headers["Host"]
+        == (INTERNAL_AND_PREDICT_URL["Whisper"]["internal_url"]["hostname"])
+    )
+
+
+def test_http_call_args_sync_path_leading_slash_normalized(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``sync_path`` accepts both ``"foo"`` and ``"/foo"``; the leading slash
+    is stripped to produce a single ``/sync/`` prefix."""
+    _write_config(tmp_path, PREDICT_URL_ONLY)
+    call = runtime.ServiceHandle("Whisper").http_call_args(sync_path="/predict")
+    expected = PREDICT_URL_ONLY["Whisper"]["predict_url"].removesuffix("/run_remote")
+    assert call.url == f"{expected}/sync/predict"
+
+
 # ---- DeployedServiceDescriptor type identity --------------------------------
 
 

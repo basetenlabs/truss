@@ -1,6 +1,11 @@
 from truss.base.truss_config import WeightsSource
 from truss_chains import runtime
-from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
+from truss_chains.framework import (
+    ChainletBase,
+    EngineBuilderLLMChainlet,
+    ModelBase,
+    TrussChainlet,
+)
 from truss_chains.public_api import (
     depends,
     depends_context,
@@ -23,12 +28,12 @@ from truss_chains.public_types import (
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
-    ServiceDescriptorUrls,
     WebSocketProtocol,
 )
 
 # TODO: make this optional (remove aiohttp, httpx and starlette deps).
 from truss_chains.remote_chainlet.stub import StubBase
+from truss_chains.runtime import ServiceHandle
 from truss_chains.utils import make_abs_path_here
 
 __all__ = [
@@ -49,8 +54,9 @@ __all__ = [
     "RPCOptions",
     "RemoteConfig",
     "RemoteErrorDetail",
-    "ServiceDescriptorUrls",
+    "ServiceHandle",
     "StubBase",
+    "TrussChainlet",
     "WebSocketProtocol",
     "WeightsSource",
     "depends",

@@ -1,9 +1,11 @@
 """Discover sibling chainlet URLs from mounted ``dynamic_chainlet_config``.
 
-:func:`load_dynamic_chainlet_config` is the primitive used by typed-chainlet
-wiring; :class:`ServiceHandle`, :func:`get_service_urls`, and
-:func:`get_baseten_chain_api_key` are the BYOC entry points for plain Truss
-models or any code without an injected ``DeploymentContext``.
+:class:`ServiceHandle` is the canonical BYOC entry point — also re-exported
+at the top level as :class:`truss_chains.ServiceHandle`.
+:func:`load_dynamic_chainlet_config` is the primitive used by
+typed-chainlet wiring; :func:`get_service_urls` and
+:func:`get_baseten_chain_api_key` are additional BYOC entry points for code
+without an injected ``DeploymentContext``.
 Keys are chainlet display names; values parse as ``ServiceDescriptorUrls``.
 Catch ``MissingDependencyError`` when not deployed in a chain context.
 """
@@ -126,28 +128,34 @@ class ServiceHandle:
         self.urls = get_service_urls(target)
 
     def http_call_args(
-        self, *, prefer_internal: bool = False, api_key: Union[str, None] = None
+        self,
+        *,
+        prefer_internal: bool = False,
+        sync_path: Union[str, None] = None,
+        api_key: Union[str, None] = None,
     ) -> HttpCallArgs:
         """Default ``predict_url`` + ``Authorization``; ``prefer_internal`` uses workload-plane URL + ``Host``.
 
-        Whichever URL is present is used when only one is set, regardless of
-        ``prefer_internal``. ``api_key`` overrides :func:`get_baseten_chain_api_key`.
+        ``sync_path`` rewrites the URL to ``/sync/<sync_path>``.
+        ``api_key`` overrides :func:`get_baseten_chain_api_key`.
+        ``prefer_internal`` uses the internal url if it exists.
         """
         key = api_key if api_key is not None else get_baseten_chain_api_key()
         if (
             prefer_internal or self.urls.predict_url is None
         ) and self.urls.internal_url is not None:
-            return HttpCallArgs(
-                url=self.urls.internal_url.gateway_run_remote_url,
-                headers={
-                    "Authorization": f"Api-Key {key}",
-                    "Host": self.urls.internal_url.hostname,
-                },
+            url = self.urls.internal_url.gateway_run_remote_url
+            headers = {
+                "Authorization": f"Api-Key {key}",
+                "Host": self.urls.internal_url.hostname,
+            }
+        else:
+            assert self.urls.predict_url is not None, (
+                "ServiceDescriptorUrls has neither predict_url nor internal_url — "
+                "platform invariant violated."
             )
-        assert self.urls.predict_url is not None, (
-            "ServiceDescriptorUrls has neither predict_url nor internal_url — "
-            "platform invariant violated."
-        )
-        return HttpCallArgs(
-            url=self.urls.predict_url, headers={"Authorization": f"Api-Key {key}"}
-        )
+            url = self.urls.predict_url
+            headers = {"Authorization": f"Api-Key {key}"}
+        if sync_path is not None:
+            url = f"{url.removesuffix('/run_remote')}/sync/{sync_path.lstrip('/')}"
+        return HttpCallArgs(url=url, headers=headers)

@@ -382,6 +382,8 @@ def _gen_stub_src_for_deps(
     imports: set[str] = set()
     src_parts: list[str] = []
     for dep in dependencies:
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            continue
         _update_src(_gen_stub_src(dep), src_parts, imports)
 
     if not (imports or src_parts):
@@ -453,7 +455,11 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
         # `dep.name` is the class name, while `name` is the argument name.
-        stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            imports.add("from truss_chains import ServiceHandle")
+            stub_args.append(f"{name}=ServiceHandle({dep.display_name!r})")
+        else:
+            stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
     if chainlet_descriptor.has_context:
         if stub_args:
@@ -940,6 +946,55 @@ def gen_truss_model(
     )
 
 
+def _prepare_truss_chainlet_artifact(
+    chainlet_dir: pathlib.Path,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+    dep_services: Mapping[str, private_types.ServiceDescriptor],
+    model_name: str,
+) -> pathlib.Path:
+    src_truss_dir = chainlet_descriptor.truss_dir
+    if src_truss_dir is None or not src_truss_dir.is_dir():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` resolved to "
+            f"`{src_truss_dir}`, which is not a directory."
+        )
+    # Replace any pre-existing chainlet_dir from a stale prior generation.
+    if chainlet_dir.exists():
+        shutil.rmtree(chainlet_dir)
+    truss_path.copy_tree_path(src_truss_dir, chainlet_dir)
+
+    config_path = chainlet_dir / serving_image_builder.CONFIG_FILE
+    if not config_path.is_file():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) is "
+            "missing `config.yaml` — not a valid Truss directory."
+        )
+    try:
+        config = truss_config.TrussConfig.from_yaml(config_path)
+    except Exception as exc:
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) has "
+            f"an invalid `config.yaml`: {exc}"
+        ) from exc
+    config.model_name = model_name
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
+        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
+            public_types.SECRET_DUMMY
+        )
+    else:
+        logging.info(
+            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
+            "to secrets - no need to manually add it."
+        )
+    # Preserve any user-set model_metadata keys; only overwrite chains_metadata.
+    config.model_metadata = dict(config.model_metadata or {})
+    config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
+        private_types.TrussMetadata(chainlet_to_service=dep_services).model_dump()
+    )
+    config.write_to_yaml_file(config_path, verbose=True)
+    return chainlet_dir
+
+
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
     chain_name: str,
@@ -959,6 +1014,13 @@ def gen_truss_chainlet(
         f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
+    if chainlet_descriptor.is_truss_chainlet:
+        return _prepare_truss_chainlet_artifact(
+            chainlet_dir,
+            chainlet_descriptor,
+            dep_services,
+            model_name=model_name or chain_name,
+        )
     if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
         engine_builder_config = cast(
             framework.EngineBuilderChainlet, chainlet_descriptor.chainlet_cls
