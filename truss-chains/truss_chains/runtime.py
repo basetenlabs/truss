@@ -1,7 +1,10 @@
 """Discover sibling chainlet URLs from mounted ``dynamic_chainlet_config``.
 
 :class:`ServiceHandle` is the canonical BYOC entry point — also re-exported
-at the top level as :class:`truss_chains.ServiceHandle`.
+at the top level as :class:`truss_chains.ServiceHandle`. Its
+:meth:`~ServiceHandle.http_call_args` / :meth:`~ServiceHandle.ws_call_args`
+methods return a :class:`CallArgs` ``(url, headers)`` tuple ready to hand
+to ``httpx`` or ``websockets``.
 :func:`load_dynamic_chainlet_config` is the primitive used by
 typed-chainlet wiring; :func:`get_service_urls` and
 :func:`get_baseten_chain_api_key` are additional BYOC entry points for code
@@ -18,8 +21,8 @@ from truss.templates.shared import dynamic_config_resolver, secrets_resolver
 from truss_chains import private_types, public_types
 
 
-class HttpCallArgs(NamedTuple):
-    """``(url, headers)`` for an HTTP POST to a sibling chainlet."""
+class CallArgs(NamedTuple):
+    """``(url, headers)`` for a sibling-chainlet call."""
 
     url: str
     headers: dict[str, str]
@@ -117,10 +120,7 @@ def get_service_urls(
 
 
 class ServiceHandle:
-    """Sibling chainlet handle; build once (e.g. in ``__init__``), then ``http_call_args``.
-
-    Same target rules as :func:`get_service_urls`. Raw fields live on ``.urls``.
-    """
+    """Sibling chainlet handle; build once (e.g. in ``__init__``), then call args."""
 
     urls: public_types.ServiceDescriptorUrls
 
@@ -133,7 +133,7 @@ class ServiceHandle:
         prefer_internal: bool = False,
         sync_path: Union[str, None] = None,
         api_key: Union[str, None] = None,
-    ) -> HttpCallArgs:
+    ) -> CallArgs:
         """Default ``predict_url`` + ``Authorization``; ``prefer_internal`` uses workload-plane URL + ``Host``.
 
         ``sync_path`` rewrites the URL to ``/sync/<sync_path>``.
@@ -158,4 +158,27 @@ class ServiceHandle:
             headers = {"Authorization": f"Api-Key {key}"}
         if sync_path is not None:
             url = f"{url.removesuffix('/run_remote')}/sync/{sync_path.lstrip('/')}"
-        return HttpCallArgs(url=url, headers=headers)
+        return CallArgs(url=url, headers=headers)
+
+    def ws_call_args(
+        self, *, sync_path: Union[str, None] = None, api_key: Union[str, None] = None
+    ) -> CallArgs:
+        """Returns a ``wss://`` URL + auth-only headers for a WebSocket sibling call.
+
+        ``websockets.connect`` rejects Host-header overrides (api-gateway
+        returns 400), so this has no ``prefer_internal`` kwarg
+        """
+        key = api_key if api_key is not None else get_baseten_chain_api_key()
+        assert self.urls.predict_url is not None, (
+            "ServiceDescriptorUrls has no predict_url — WS BYOC requires the chain-host URL."
+        )
+        base = self.urls.predict_url.removesuffix("/run_remote")
+        suffix = (
+            f"sync/{sync_path.lstrip('/')}" if sync_path is not None else "websocket"
+        )
+        url = f"{base}/{suffix}"
+        if url.startswith("https://"):
+            url = "wss://" + url[len("https://") :]
+        elif url.startswith("http://"):
+            url = "ws://" + url[len("http://") :]
+        return CallArgs(url=url, headers={"Authorization": f"Api-Key {key}"})

@@ -420,6 +420,68 @@ def test_http_call_args_sync_path_leading_slash_normalized(
     assert call.url == f"{expected}/sync/predict"
 
 
+# ---- ws_call_args ------------------------------------------------------------
+
+
+def test_ws_call_args_rewrites_scheme_and_path(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``ws_call_args`` returns a ``wss://`` URL with the trailing ``/run_remote``
+    rewritten to ``/websocket``. Headers carry only ``Authorization`` (no
+    ``Host`` for the predict_url path)."""
+    _write_config(tmp_path, PREDICT_URL_ONLY)
+    call = runtime.ServiceHandle("Whisper").ws_call_args()
+    expected_base = (
+        PREDICT_URL_ONLY["Whisper"]["predict_url"]
+        .removesuffix("/run_remote")
+        .replace("https://", "wss://")
+    )
+    assert call.url == f"{expected_base}/websocket"
+    assert call.headers == {"Authorization": "Api-Key test-key"}
+
+
+def test_ws_call_args_ignores_internal_url(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``ws_call_args`` does NOT honor ``internal_url`` even when present —
+    ``websockets.connect`` rejects Host-header overrides (api-gateway returns
+    400), so WS BYOC always uses ``predict_url`` (chain-host)."""
+    _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
+    call = runtime.ServiceHandle("Whisper").ws_call_args()
+    expected_base = (
+        INTERNAL_AND_PREDICT_URL["Whisper"]["predict_url"]
+        .removesuffix("/run_remote")
+        .replace("https://", "wss://")
+    )
+    assert call.url == f"{expected_base}/websocket"
+    # Auth-only — no Host header.
+    assert call.headers == {"Authorization": "Api-Key test-key"}
+
+
+def test_ws_call_args_sync_path_keeps_sync_route(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``sync_path`` overrides the default ``/websocket`` rewrite; scheme is
+    still rewritten to ``wss://`` so the caller can use ``websockets.connect``."""
+    _write_config(tmp_path, PREDICT_URL_ONLY)
+    call = runtime.ServiceHandle("Whisper").ws_call_args(sync_path="v1/websocket")
+    expected_base = (
+        PREDICT_URL_ONLY["Whisper"]["predict_url"]
+        .removesuffix("/run_remote")
+        .replace("https://", "wss://")
+    )
+    assert call.url == f"{expected_base}/sync/v1/websocket"
+
+
+def test_ws_call_args_api_key_override(
+    tmp_path, dynamic_config_mount_dir, _stub_api_key
+):
+    """``api_key=`` overrides the resolved secret (parity with http_call_args)."""
+    _write_config(tmp_path, PREDICT_URL_ONLY)
+    call = runtime.ServiceHandle("Whisper").ws_call_args(api_key="override-key")
+    assert call.headers == {"Authorization": "Api-Key override-key"}
+
+
 # ---- DeployedServiceDescriptor type identity --------------------------------
 
 
