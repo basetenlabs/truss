@@ -1,0 +1,21 @@
+model_name: perf_streaming_frontend__assigner_mock
+description: |
+  Streaming front-end showcase: speaker-assigner, written in Rust. Joins
+  the transcribed sentences (from TranscriberMock) with the diarizer's
+  speaker segments (from DiarizerMock) and emits the merged
+  speaker-attributed transcript. Demonstrates a TC CS HTTP leaf in a
+  third language alongside the Go entrypoint and Python siblings.
+base_image:
+  image: ghcr.io/mattelim/streaming-rust:0.1.2
+docker_server:
+  start_command: /app/assigner
+  predict_endpoint: /predict
+  server_port: 8000
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+resources:
+  cpu: "0.5"
+  memory: 256Mi
+  use_gpu: false
+runtime:
+  predict_concurrency: 4

@@ -1,0 +1,19 @@
+model_name: voice_agent_mocked__stt_handler
+description: |
+  Voice-agent showcase: TC Py WS handler. Accepts gzipped MOCKAUDIO bytes
+  over WS, decompresses, fans out to STTMock over HTTP, post-processes
+  the returned text, and sends back a JSON frame.
+model_class_filename: model.py
+model_class_name: Model
+python_version: py311
+requirements:
+  - truss @ git+https://github.com/basetenlabs/truss.git@matte/chains-trusschainlets
+  - httpx>=0.27
+resources:
+  cpu: "0.5"
+  memory: 512Mi
+  use_gpu: false
+runtime:
+  predict_concurrency: 4
+  transport:
+    kind: websocket
