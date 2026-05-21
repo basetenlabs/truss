@@ -8,8 +8,23 @@ use rand::Rng;
 use reqwest::Client;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing;
+
+fn add_timeout_headers(
+    request_builder: reqwest::RequestBuilder,
+    request_timeout: Duration,
+) -> reqwest::RequestBuilder {
+    let timeout_ms = ((request_timeout.as_secs_f64() * 1000.0).ceil() as u64).to_string();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let deadline_ms = (now_ms + request_timeout.as_millis() as u64).to_string();
+    request_builder
+        .header(REQUEST_TIMEOUT_HEADER_NAME, timeout_ms)
+        .header(REQUEST_DEADLINE_HEADER_NAME, deadline_ms)
+}
 
 // Unified HTTP request helper
 pub(crate) async fn send_http_request_with_retry<T, R>(
@@ -33,6 +48,8 @@ where
             .json(&payload)
             .timeout(request_timeout)
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+
+        request_builder = add_timeout_headers(request_builder, request_timeout);
 
         if let Some(ref headers) = config.extra_headers {
             for (key, value) in headers {
@@ -86,6 +103,8 @@ where
             .bearer_auth(&api_key)
             .timeout(request_timeout)
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+
+        request_builder = add_timeout_headers(request_builder, request_timeout);
 
         if method.has_body() {
             request_builder = request_builder.json(&payload);

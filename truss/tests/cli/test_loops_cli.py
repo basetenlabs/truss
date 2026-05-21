@@ -33,9 +33,7 @@ def _invoke_loops_push(args, mock_remote):
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        with patch("requests.get") as mock_get:
-            mock_get.return_value = Mock(status_code=200)
-            return runner.invoke(truss_cli, ["loops", "push"] + args)
+        return runner.invoke(truss_cli, ["loops", "push"] + args)
 
 
 def test_push_basic(mock_remote):
@@ -63,43 +61,6 @@ def test_push_with_project_id(mock_remote):
     )
 
 
-def test_push_polls_until_running(mock_remote):
-    # First two polls return 503, third returns 200.
-    responses = [Mock(status_code=503), Mock(status_code=503), Mock(status_code=200)]
-
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", side_effect=responses):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                result = runner.invoke(
-                    truss_cli,
-                    ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                )
-
-    assert result.exit_code == 0, result.output
-
-
-def test_push_times_out_waiting_for_health(mock_remote):
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", return_value=Mock(status_code=503)):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                with patch(
-                    "truss.cli.loops_commands.time.monotonic", side_effect=[0, 0, 700]
-                ):
-                    result = runner.invoke(
-                        truss_cli,
-                        ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                    )
-
-    assert result.exit_code != 0
-    assert "Timed out" in result.output
-
-
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
     runner = CliRunner()
     with patch(
@@ -108,9 +69,7 @@ def test_push_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            with patch("requests.get") as mock_get:
-                mock_get.return_value = Mock(status_code=200)
-                result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
+            result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
 
     assert result.exit_code == 0, result.output
     mock_inquire.assert_called_once()
@@ -242,6 +201,7 @@ def test_view_lists_active_deployments(mock_remote):
             "id": "dep_abc",
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "active"},
             "sampler": {
                 "id": "sampler_def",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
@@ -252,7 +212,32 @@ def test_view_lists_active_deployments(mock_remote):
     assert result.exit_code == 0, result.output
     assert "dep_abc" in result.output
     assert "Qwen/Qwen3-8B" in result.output
+    assert "active" in result.output
     assert "model-def.api.baseten.co" in result.output
+
+
+@pytest.mark.parametrize(
+    "status_field",
+    [
+        None,  # status key absent
+        {},  # status present but empty dict
+        {"name": None},  # status present with explicit null name
+    ],
+)
+def test_view_deployment_without_status_shows_empty_string(mock_remote, status_field):
+    deployment: dict = {
+        "id": "dep_abc",
+        "base_model": "Qwen/Qwen3-8B",
+        "base_url": "https://trainer-abc.api.baseten.co/trainer",
+        "sampler": {},
+    }
+    if status_field is not None:
+        deployment["status"] = status_field
+    mock_remote.api.list_loops_deployments.return_value = [deployment]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_abc" in result.output
+    assert "None" not in result.output
 
 
 def test_view_with_no_deployments_prints_friendly_message(mock_remote):

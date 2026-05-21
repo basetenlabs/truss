@@ -121,6 +121,12 @@ def inquire_team(
     prompt: str = "👥 Which team do you want to push to?",
 ) -> Optional[str]:
     if existing_teams is not None:
+        if not check_is_interactive():
+            available_teams_str = format_available_teams(existing_teams)
+            raise click.UsageError(
+                "Team selection required but running in a non-interactive context. "
+                f"Pass --team <name> (available: {available_teams_str})."
+            )
         # Sort with default team first, then alphanumerically (case-insensitive)
         sorted_teams = sorted(
             existing_teams.items(),
