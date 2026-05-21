@@ -1,5 +1,6 @@
 import contextlib
 import io
+import logging
 import tarfile
 import tempfile
 from pathlib import Path
@@ -10,6 +11,17 @@ if TYPE_CHECKING:
 
 from truss.base.constants import CONFIG_FILE
 from truss.util.path import collect_files
+
+logger = logging.getLogger(__name__)
+
+
+def _human_readable_size(num_bytes: int) -> str:
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{int(size)} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 class ReadProgressIndicatorFileHandle:
@@ -45,6 +57,21 @@ def create_tar_with_progress_bar(
     total_size = sum(f.stat().st_size for f in files_to_include)
     if config_yaml_override is not None:
         total_size += len(config_yaml_override)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        listing = "\n".join(
+            f"  {f.relative_to(source_dir)} ({_human_readable_size(f.stat().st_size)})"
+            for f in sorted(
+                files_to_include, key=lambda f: f.stat().st_size, reverse=True
+            )
+        )
+        logger.debug(
+            "Packing %d files (%s) for upload:\n%s",
+            len(files_to_include),
+            _human_readable_size(total_size),
+            listing,
+        )
+
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
 
     progress_context = (
