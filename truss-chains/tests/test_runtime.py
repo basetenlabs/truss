@@ -245,18 +245,6 @@ def test_get_baseten_chain_api_key_missing_raises(
         runtime.get_baseten_chain_api_key()
 
 
-def test_get_baseten_chain_api_key_dummy_raises(
-    monkeypatch: pytest.MonkeyPatch, clear_chain_api_key_cache
-):
-    """Placeholder ``SECRET_DUMMY`` value raises."""
-    monkeypatch.setenv(
-        f"TRUSS_SECRET_{public_types.CHAIN_API_KEY_SECRET_NAME}",
-        public_types.SECRET_DUMMY,
-    )
-    with pytest.raises(public_types.MissingDependencyError, match="placeholder"):
-        runtime.get_baseten_chain_api_key()
-
-
 # ---- ServiceHandle ----------------------------------------------------------
 
 

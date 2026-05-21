@@ -60,15 +60,13 @@ def load_dynamic_chainlet_config() -> dict[str, public_types.ServiceDescriptorUr
 def get_baseten_chain_api_key() -> str:
     """Baseten chain API key from the Truss secrets resolver.
 
-    LRU-cached per process. Uses the same secret name and ``SECRET_DUMMY`` check as
-    ``DeploymentContext.get_baseten_api_key``, but reads from env / mount instead of
-    an injected ``secrets`` map.
-
-    Raises ``MissingDependencyError`` if missing or placeholder ``SECRET_DUMMY``.
+    LRU-cached per process. The key is injected by the platform at deploy
+    time, so the only failure mode is "secret mount missing entirely" —
+    that surfaces as ``MissingDependencyError``.
     """
     secrets = secrets_resolver.Secrets({public_types.CHAIN_API_KEY_SECRET_NAME: ""})
     try:
-        api_key = secrets[public_types.CHAIN_API_KEY_SECRET_NAME]
+        return secrets[public_types.CHAIN_API_KEY_SECRET_NAME]
     except secrets_resolver.SecretNotFound:
         raise public_types.MissingDependencyError(
             f"No '{public_types.CHAIN_API_KEY_SECRET_NAME}' secret found at "
@@ -76,13 +74,6 @@ def get_baseten_chain_api_key() -> str:
             f"env var. Required for sibling-chainlet authorization in BYOC "
             f"code."
         )
-    if api_key == public_types.SECRET_DUMMY:
-        raise public_types.MissingDependencyError(
-            f"Chain API key resolved to the placeholder "
-            f"`{public_types.SECRET_DUMMY}`. Set the real value on the "
-            f"deployed chain."
-        )
-    return api_key
 
 
 @overload
