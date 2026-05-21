@@ -60,7 +60,7 @@ def create_tar_with_progress_bar(
 
     if logger.isEnabledFor(logging.DEBUG):
         listing = "\n".join(
-            f"  {f.relative_to(source_dir)} ({_human_readable_size(f.stat().st_size)})"
+            f"  {f.relative_to(source_dir).as_posix()} ({_human_readable_size(f.stat().st_size)})"
             for f in sorted(
                 files_to_include, key=lambda f: f.stat().st_size, reverse=True
             )

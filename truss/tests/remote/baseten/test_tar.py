@@ -1,6 +1,8 @@
 import logging
+import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 from truss.remote.baseten.utils.tar import (
     _human_readable_size,
@@ -13,6 +15,15 @@ _TAR_LOGGER = "truss.remote.baseten.utils.tar"
 def _write(path: Path, num_bytes: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"\0" * num_bytes)
+
+
+def _pack(root: Path, ignore_patterns: Optional[list] = None) -> None:
+    # delete=False avoids a Windows NamedTemporaryFile reopen error, as core.py does.
+    tar = create_tar_with_progress_bar(root, ignore_patterns, delete=False)
+    try:
+        os.unlink(tar.name)
+    except OSError:
+        pass
 
 
 def test_human_readable_size():
@@ -29,7 +40,7 @@ def test_debug_logs_bundled_files_largest_first(caplog):
         _write(root / "model" / "weights.bin", 5 * 1024 * 1024)
 
         with caplog.at_level(logging.DEBUG, logger=_TAR_LOGGER):
-            create_tar_with_progress_bar(root)
+            _pack(root)
 
     text = caplog.text
     assert "Packing 3 files" in text
@@ -39,12 +50,28 @@ def test_debug_logs_bundled_files_largest_first(caplog):
     assert text.index("weights.bin") < text.index("config.yaml")
 
 
+def test_manifest_reflects_bundle_not_directory(caplog):
+    # Manifest reflects the packed set, not the dir: ignored files are excluded.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write(root / "model" / "model.py", 30)
+        _write(root / "junk.pyc", 5 * 1024 * 1024)
+
+        with caplog.at_level(logging.DEBUG, logger=_TAR_LOGGER):
+            _pack(root, ignore_patterns=["*.pyc"])
+
+    text = caplog.text
+    assert "Packing 1 files" in text
+    assert "model/model.py" in text
+    assert "junk.pyc" not in text
+
+
 def test_no_file_listing_below_debug(caplog):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         _write(root / "config.yaml", 40)
 
         with caplog.at_level(logging.INFO, logger=_TAR_LOGGER):
-            create_tar_with_progress_bar(root)
+            _pack(root)
 
     assert "Packing" not in caplog.text
