@@ -497,6 +497,14 @@ class WeightsSource(custom_types.ConfigModel):
                     f"Invalid HuggingFace URI format: '{v}'. "
                     f"Expected format: hf://owner/repo"
                 )
+            # Strip optional @revision suffix before structural validation
+            path_without_revision = repo_part.split("@")[0]
+            path_segments = path_without_revision.split("/")
+            if len(path_segments) < 2 or not path_segments[0] or not path_segments[1]:
+                raise ValueError(
+                    f"Invalid HuggingFace URI format: '{v}'. "
+                    f"Expected format: hf://owner/repo"
+                )
 
         return v
 
