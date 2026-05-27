@@ -81,18 +81,19 @@ def push_loops_deployment(
 
 
 @loops.command(name="deactivate")
-@click.argument("base_model", type=str)
+@click.argument("deployment_id", type=str)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
 def deactivate_loops_deployment(
-    base_model: str, remote: Optional[str], yes: bool
+    deployment_id: str, remote: Optional[str], yes: bool
 ) -> None:
-    """Deactivate the active Loops deployment for BASE_MODEL.
+    """Deactivate the Loops deployment with DEPLOYMENT_ID.
 
     Shuts down the Loops deployment. Saved checkpoints remain accessible.
+    Use `truss loops view` to find deployment IDs.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -103,14 +104,14 @@ def deactivate_loops_deployment(
 
     if not yes:
         click.confirm(
-            f"This will shut down the active Loops deployment for {base_model}. Continue?",
+            f"This will shut down Loops deployment {deployment_id}. Continue?",
             abort=True,
         )
 
     with console.status("Deactivating Loops deployment...", spinner="dots"):
-        remote_provider.deactivate_loops_deployment(base_model)
+        remote_provider.api.deactivate_loops_deployment(deployment_id)
 
-    console.print(f"Loops deployment for {base_model} deactivated.", style="green")
+    console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
 
 
 def _poll_until_running(remote_provider: BasetenRemote, run_base_url: str) -> None:
