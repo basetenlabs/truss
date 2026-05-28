@@ -7,6 +7,11 @@ import yaml
 import truss.cli.train.core as train_cli
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.loops_trainer_deployment_log_watcher import (
+    LoopsTrainerDeploymentLogWatcher,
+)
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.loops_checkpoint_viewer import (
     resolve_most_recent_run_for_base_model,
     view_loops_checkpoint_list,
@@ -461,3 +466,100 @@ def deploy_loops_checkpoints(
             print(yaml.safe_dump(result.truss_config.to_dict()))
     else:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
+
+
+def _resolve_sampler_model_id(
+    remote_provider: BasetenRemote, sampler_deployment_id: str
+) -> str:
+    """Find the model_id for a sampler's inference deployment.
+
+    The Loops deployments list endpoint returns each deployment's sampler
+    with both ``deployment_id`` (the OracleVersion id) and ``model_id`` (the
+    Oracle id). We don't want users to have to pass both flags, so resolve
+    the model_id client-side by matching on the deployment_id they gave us.
+    """
+    deployments = remote_provider.api.list_loops_deployments()
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
+        if sampler.get("deployment_id") == sampler_deployment_id:
+            return sampler["model_id"]
+    raise click.ClickException(
+        f"No Loops deployment found whose sampler matches deployment {sampler_deployment_id!r}. "
+        "Run `truss loops view` to list active deployments."
+    )
+
+
+@loops.command(name="logs")
+@click.option(
+    "--trainer-deployment-id",
+    type=str,
+    required=False,
+    help="Fetch logs from the trainer pods of a Loops deployment.",
+)
+@click.option(
+    "--deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "Fetch logs from the sampler's inference deployment. The companion "
+        "model id is resolved automatically by matching against the caller's "
+        "active Loops deployments."
+    ),
+)
+@click.option(
+    "--tail",
+    is_flag=True,
+    default=False,
+    help="Continue polling for new log lines until the deployment goes inactive (or Ctrl+C).",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def view_loops_logs(
+    trainer_deployment_id: Optional[str],
+    deployment_id: Optional[str],
+    tail: bool,
+    remote: Optional[str],
+) -> None:
+    """Fetch logs from one half of a Loops deployment.
+
+    Pass exactly one of ``--trainer-deployment-id`` (the trainer pods) or
+    ``--deployment-id`` (the sampler's inference deployment). The two
+    sides have separate log streams; pick the one you're debugging.
+    """
+    if bool(trainer_deployment_id) == bool(deployment_id):
+        raise click.UsageError(
+            "Pass exactly one of --trainer-deployment-id or --deployment-id."
+        )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if trainer_deployment_id is not None:
+        if tail:
+            watcher = LoopsTrainerDeploymentLogWatcher(
+                remote_provider.api, trainer_deployment_id
+            )
+            for log in watcher.watch():
+                cli_log_utils.output_log(log)
+        else:
+            logs = remote_provider.api.get_loops_deployment_logs(trainer_deployment_id)
+            for log in cli_log_utils.parse_logs(logs):
+                cli_log_utils.output_log(log)
+        return
+
+    # --deployment-id path: reuse the existing model-deployment log machinery.
+    assert deployment_id is not None  # narrowed by the XOR check above
+    model_id = _resolve_sampler_model_id(remote_provider, deployment_id)
+    if tail:
+        watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id
+        )
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
