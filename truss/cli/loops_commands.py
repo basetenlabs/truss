@@ -539,10 +539,10 @@ def view_loops_logs(
 
     if trainer_deployment_id is not None:
         if tail:
-            watcher = LoopsTrainerDeploymentLogWatcher(
+            trainer_watcher = LoopsTrainerDeploymentLogWatcher(
                 remote_provider.api, trainer_deployment_id
             )
-            for log in watcher.watch():
+            for log in trainer_watcher.watch():
                 cli_log_utils.output_log(log)
         else:
             logs = remote_provider.api.get_loops_deployment_logs(trainer_deployment_id)
@@ -554,10 +554,10 @@ def view_loops_logs(
     assert deployment_id is not None  # narrowed by the XOR check above
     model_id = _resolve_sampler_model_id(remote_provider, deployment_id)
     if tail:
-        watcher = ModelDeploymentLogWatcher(
+        model_watcher = ModelDeploymentLogWatcher(
             remote_provider.api, model_id, deployment_id
         )
-        for log in watcher.watch():
+        for log in model_watcher.watch():
             cli_log_utils.output_log(log)
     else:
         logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
