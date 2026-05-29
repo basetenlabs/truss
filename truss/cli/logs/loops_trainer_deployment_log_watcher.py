@@ -44,12 +44,10 @@ class LoopsTrainerDeploymentLogWatcher(LogWatcher):
         pass
 
     def _get_current_status(self) -> Optional[str]:
-        # The Loops deployments list view returns each deployment's latest
-        # status. Filter for ours; if the backend stops returning it (e.g.
-        # post-deactivation) treat that as a terminal signal so tail exits.
-        deployments = self.api.list_loops_deployments()
-        for deployment in deployments:
-            if deployment.get("id") == self._trainer_deployment_id:
-                status = deployment.get("status") or {}
-                return status.get("name")
-        return None
+        # Hit the per-deployment endpoint instead of paging the full list —
+        # cheaper and the response carries the latest status directly. A 404
+        # (e.g. post-deactivation) surfaces as an exception we let propagate;
+        # the watcher will exit on the next ``should_poll_again`` call.
+        deployment = self.api.get_loops_deployment(self._trainer_deployment_id)
+        status = deployment.get("status") or {}
+        return status.get("name")
