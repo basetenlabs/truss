@@ -207,12 +207,21 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     )
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Status")
+    table.add_column("Trainer Status")
+    table.add_column("Sampler Status")
     table.add_column("Base URL", style="blue")
     table.add_column("Deployment URL", style="blue")
     for deployment in deployments:
         sampler = deployment.get("sampler") or {}
         sampler_url = sampler.get("base_url", "") if isinstance(sampler, dict) else ""
+        sampler_status_obj = (
+            sampler.get("status") or {} if isinstance(sampler, dict) else {}
+        )
+        sampler_status = (
+            sampler_status_obj.get("name") or ""
+            if isinstance(sampler_status_obj, dict)
+            else ""
+        )
         status_obj = deployment.get("status") or {}
         status_name = (
             status_obj.get("name") or "" if isinstance(status_obj, dict) else ""
@@ -221,6 +230,7 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
             deployment.get("id", ""),
             deployment.get("base_model", "") or "",
             status_name,
+            sampler_status,
             deployment.get("base_url", ""),
             sampler_url,
         )
