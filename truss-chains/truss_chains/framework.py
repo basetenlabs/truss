@@ -1505,17 +1505,13 @@ class _ABCImporter(abc.ABC):
         pass
 
     @classmethod
-    def _is_target_cls(cls, candidate: Any) -> bool:
-        return utils.issubclass_safe(candidate, cls._target_cls_type())
-
-    @classmethod
     def _get_chainlets(
         cls, symbols
     ) -> tuple[
         set[Type[private_types.ABCChainlet]], set[Type[private_types.ABCChainlet]]
     ]:
         chainlets: set[Type[private_types.ABCChainlet]] = {
-            sym for sym in symbols if cls._is_target_cls(sym)
+            sym for sym in symbols if utils.issubclass_safe(sym, cls._target_cls_type())
         }
         entrypoints: set[Type[private_types.ABCChainlet]] = {
             chainlet for chainlet in chainlets if chainlet.meta_data.is_entrypoint
@@ -1619,7 +1615,7 @@ class _ABCImporter(abc.ABC):
                         f"Target class `{target_name}` not found "
                         f"in `{resolved_module_path}`."
                     )
-                if not cls._is_target_cls(target_cls):
+                if not utils.issubclass_safe(target_cls, cls._target_cls_type()):
                     raise TypeError(
                         f"Target `{target_cls}` is not a {cls._target_cls_type()}."
                     )

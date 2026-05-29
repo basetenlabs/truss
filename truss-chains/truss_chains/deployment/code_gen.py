@@ -455,6 +455,7 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
         # `dep.name` is the class name, while `name` is the argument name.
+        # inject chainlet subclass-specific `depends` imports
         if framework.is_truss_chainlet(dep.chainlet_cls):
             imports.add("from truss_chains.remote_chainlet import truss_chainlet")
             stub_args.append(f"{name}=truss_chainlet.TrussHandle({dep.display_name!r})")
@@ -965,13 +966,7 @@ def _prepare_truss_chainlet_artifact(
             f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) is "
             "missing `config.yaml` — not a valid Truss directory."
         )
-    try:
-        config = truss_config.TrussConfig.from_yaml(config_path)
-    except Exception as exc:
-        raise public_types.ChainsUsageError(
-            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) has "
-            f"an invalid `config.yaml`: {exc}"
-        ) from exc
+    config = truss_config.TrussConfig.from_yaml(config_path)
     config.model_name = model_name
     config.write_to_yaml_file(config_path, verbose=True)
     return chainlet_dir

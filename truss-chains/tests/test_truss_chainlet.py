@@ -153,8 +153,8 @@ def test_truss_dir_missing_config_yaml(tmp_path):
 
 
 def test_truss_dir_invalid_config_yaml(tmp_path):
-    """An unparseable `config.yaml` is OK at parse time; the error surfaces
-    at codegen."""
+    """An unparseable `config.yaml` is OK at parse time; the underlying yaml /
+    pydantic exception bubbles unchanged at codegen (no framework-level wrap)."""
     from truss_chains.deployment import code_gen
 
     bad = tmp_path / "bad_truss"
@@ -168,7 +168,7 @@ def test_truss_dir_invalid_config_yaml(tmp_path):
     framework.raise_validation_errors()
     descriptor = framework.get_descriptor(_Bad)
 
-    with pytest.raises(public_types.ChainsUsageError, match="invalid `config.yaml`"):
+    with pytest.raises(yaml.YAMLError):
         code_gen.gen_truss_chainlet(
             chain_root=tmp_path,
             chain_name="codegen-test",
