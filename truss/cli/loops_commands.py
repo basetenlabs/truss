@@ -131,13 +131,23 @@ def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
+    if not deployments:
+        console.print("No Loops deployments.", style="yellow")
+        return
     if not show_all:
         deployments = [
             d
             for d in deployments
             if d["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-    _render_loops_deployments(deployments, show_all=show_all)
+        if not deployments:
+            console.print(
+                "No active Loops deployments. Pass --all to include "
+                "STOPPED and FAILED deployments.",
+                style="yellow",
+            )
+            return
+    _render_loops_deployments(deployments)
 
 
 @loops.group(name="runs")
@@ -211,19 +221,7 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(
-    deployments: List[Dict[str, Any]], show_all: bool = False
-) -> None:
-    if not deployments:
-        if show_all:
-            console.print("No Loops deployments.", style="yellow")
-        else:
-            console.print(
-                "No active Loops deployments. Pass --all to include "
-                "STOPPED and FAILED deployments.",
-                style="yellow",
-            )
-        return
+def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",

@@ -222,7 +222,9 @@ def test_view_with_no_deployments_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No active Loops deployments" in result.output
+    assert "No Loops deployments" in result.output
+    # Truly empty: don't suggest --all since there's nothing to reveal.
+    assert "--all" not in result.output
 
 
 def _deployment(deployment_id: str, status_name: str) -> dict:
