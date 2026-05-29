@@ -207,7 +207,7 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     )
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Trainer Status")
+    table.add_column("Run Status")
     table.add_column("Sampler Status")
     table.add_column("Base URL", style="blue")
     table.add_column("Deployment URL", style="blue")
