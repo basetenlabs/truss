@@ -1076,11 +1076,11 @@ class BasetenApi:
 
     def get_loops_deployment_logs(
         self,
-        trainer_deployment_id: str,
+        loops_deployment_id: str,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        """Fetch trainer-pod logs for a Loops (TrainerDeployment) deployment.
+        """Fetch logs for a Loops deployment.
 
         Backend endpoint is GET-only — uses query params, not a request body
         like the training-job / model-deployment endpoints.
@@ -1092,7 +1092,7 @@ class BasetenApi:
             params["end_epoch_millis"] = str(end_epoch_millis)
 
         resp_json = self._rest_api_client.get(
-            f"v1/loops/deployments/{trainer_deployment_id}/logs", url_params=params
+            f"v1/loops/deployments/{loops_deployment_id}/logs", url_params=params
         )
         # Reverse so latest logs are at the end (matches the training-job /
         # model-deployment helpers above).

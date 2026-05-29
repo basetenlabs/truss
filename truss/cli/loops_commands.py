@@ -8,9 +8,7 @@ import truss.cli.train.core as train_cli
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
-from truss.cli.logs.loops_trainer_deployment_log_watcher import (
-    LoopsTrainerDeploymentLogWatcher,
-)
+from truss.cli.logs.loops_deployment_log_watcher import LoopsDeploymentLogWatcher
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.loops_checkpoint_viewer import (
     resolve_most_recent_run_for_base_model,
@@ -501,8 +499,8 @@ def _resolve_sampler_model_id(
     type=str,
     required=False,
     help=(
-        "Fetch logs from the trainer pods of a Loops deployment. The id is "
-        "the ``Deployment ID`` column in ``truss loops view``."
+        "Fetch logs from a Loops deployment. The id is the "
+        "``Deployment ID`` column in ``truss loops view``."
     ),
 )
 @click.option(
@@ -532,7 +530,7 @@ def view_loops_logs(
 ) -> None:
     """Fetch logs from one half of a Loops deployment.
 
-    Pass exactly one of ``--loops-deployment-id`` (the trainer pods) or
+    Pass exactly one of ``--loops-deployment-id`` (the Loops deployment) or
     ``--sampler-deployment-id`` (the sampler's inference deployment). The
     two sides have separate log streams; pick the one you're debugging.
     """
@@ -549,10 +547,10 @@ def view_loops_logs(
 
     if loops_deployment_id is not None:
         if tail:
-            trainer_watcher = LoopsTrainerDeploymentLogWatcher(
+            loops_watcher = LoopsDeploymentLogWatcher(
                 remote_provider.api, loops_deployment_id
             )
-            for log in trainer_watcher.watch():
+            for log in loops_watcher.watch():
                 cli_log_utils.output_log(log)
         else:
             logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
