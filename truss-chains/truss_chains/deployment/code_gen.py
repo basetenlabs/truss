@@ -949,7 +949,6 @@ def gen_truss_model(
 def _prepare_truss_chainlet_artifact(
     chainlet_dir: pathlib.Path,
     chainlet_descriptor: private_types.ChainletAPIDescriptor,
-    dep_services: Mapping[str, private_types.ServiceDescriptor],
     model_name: str,
 ) -> pathlib.Path:
     src_truss_dir = chainlet_descriptor.truss_dir
@@ -977,20 +976,6 @@ def _prepare_truss_chainlet_artifact(
             f"an invalid `config.yaml`: {exc}"
         ) from exc
     config.model_name = model_name
-    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
-        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
-            public_types.SECRET_DUMMY
-        )
-    else:
-        logging.info(
-            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
-            "to secrets - no need to manually add it."
-        )
-    # Preserve any user-set model_metadata keys; only overwrite chains_metadata.
-    config.model_metadata = dict(config.model_metadata or {})
-    config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
-        private_types.TrussMetadata(chainlet_to_service=dep_services).model_dump()
-    )
     config.write_to_yaml_file(config_path, verbose=True)
     return chainlet_dir
 
@@ -1016,10 +1001,7 @@ def gen_truss_chainlet(
     )
     if chainlet_descriptor.is_truss_chainlet:
         return _prepare_truss_chainlet_artifact(
-            chainlet_dir,
-            chainlet_descriptor,
-            dep_services,
-            model_name=model_name or chain_name,
+            chainlet_dir, chainlet_descriptor, model_name=model_name or chain_name
         )
     if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
         engine_builder_config = cast(

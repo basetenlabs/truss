@@ -7,7 +7,8 @@ Sections, in order of the lifecycle they exercise:
     writes — the TC's own ``config.yaml`` + bundled user files)
   - Caller-side codegen (what the calling ChainletBase's generated ``model.py``
     looks like when it has TC deps)
-  - TrussChainlet as chain entrypoint (``deps`` ClassVar + codegen)
+  - Leaf-only contract (TrussChainlets rejected as entrypoints; ``deps``
+    ClassVar silently ignored)
   - run_local with TrussChainlet deps
   - Backward compatibility (pure ChainletBase chains unaffected)
   - Adversarial (bad inputs rejected)
@@ -592,8 +593,8 @@ def test_depends_on_random_class_rejected():
 
 def test_truss_chainlet_artifact_preserves_user_files(truss_dir_path, tmp_path):
     """Generating a TrussChainlet artifact must copy the user's truss_dir
-    byte-for-byte (model.py preserved exactly), and merge `chains_metadata`
-    into the copied `config.yaml`."""
+    byte-for-byte (model.py preserved exactly). Since TrussChainlets are
+    non-entry leaves, the codegen also does NOT inject any chains_metadata."""
     from truss_chains.deployment import code_gen
 
     truss_dir_str = str(truss_dir_path)
@@ -612,12 +613,11 @@ def test_truss_chainlet_artifact_preserves_user_files(truss_dir_path, tmp_path):
     dst_model_py = (chainlet_dir / "model" / "model.py").read_text()
     assert src_model_py == dst_model_py
 
-    # Generated config.yaml has the chains_metadata block.
     dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
-    chains_meta = dst_config["model_metadata"][private_types.TRUSS_CONFIG_CHAINS_KEY]
-    assert "chainlet_to_service" in chains_meta
-    # Empty for a leaf TrussChainlet (no nested deps).
-    assert chains_meta["chainlet_to_service"] == {}
+    # No chains_metadata injection for leaf TCs.
+    assert private_types.TRUSS_CONFIG_CHAINS_KEY not in (
+        dst_config.get("model_metadata") or {}
+    )
 
     # `model_name` is overwritten with the chain-uniquified name; user's
     # literal `EchoTruss` is preserved in the source `truss_dir` but not in
@@ -655,11 +655,12 @@ def test_truss_chainlet_artifact_overrides_user_model_name(truss_dir_path, tmp_p
     assert src_config["model_name"] == "EchoTruss"
 
 
-def test_truss_chainlet_artifact_auto_adds_chain_api_key(truss_dir_path, tmp_path):
-    """The codegen artifact must include `baseten_chain_api_key` in its
-    `secrets` map so any TrussChainlet that calls a sibling via the chain
-    RPC URL has the chain-internal key available (Issue 2). The ChainletBase
-    path auto-adds this; the TrussChainlet path must too."""
+def test_truss_chainlet_artifact_does_not_inject_chain_api_key(
+    truss_dir_path, tmp_path
+):
+    """TrussChainlets are non-entry leaves and make no outbound sibling
+    calls, so the codegen must NOT auto-inject ``baseten_chain_api_key``
+    into the user's ``config.yaml`` secrets map."""
     from truss_chains.deployment import code_gen
 
     truss_dir_str = str(truss_dir_path)
@@ -677,56 +678,14 @@ def test_truss_chainlet_artifact_auto_adds_chain_api_key(truss_dir_path, tmp_pat
     )
 
     dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
-    assert public_types.CHAIN_API_KEY_SECRET_NAME in dst_config["secrets"]
-    assert (
-        dst_config["secrets"][public_types.CHAIN_API_KEY_SECRET_NAME]
-        == public_types.SECRET_DUMMY
-    )
-
-
-def test_truss_chainlet_artifact_chain_api_key_idempotent(tmp_path):
-    """If the user's truss `config.yaml` already lists `baseten_chain_api_key`
-    in its `secrets` map, the codegen must not overwrite it — same idempotency
-    contract as the ChainletBase path."""
-    from truss_chains.deployment import code_gen
-
-    # User truss with chain_api_key already declared.
-    user_config = (
-        VALID_TRUSS_CONFIG_YAML
-        + f"secrets:\n  {public_types.CHAIN_API_KEY_SECRET_NAME}: null\n"
-    )
-    truss_dir = tmp_path / "user_truss"
-    truss_dir.mkdir()
-    (truss_dir / "config.yaml").write_text(user_config)
-    (truss_dir / "model").mkdir()
-    (truss_dir / "model" / "model.py").write_text(VALID_MODEL_PY)
-
-    truss_dir_str = str(truss_dir)
-
-    class _Echo(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-
-    framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Echo)
-    chainlet_dir = code_gen.gen_truss_chainlet(
-        chain_root=tmp_path,
-        chain_name="codegen-test",
-        chainlet_descriptor=descriptor,
-        model_name="_Echo-abc12345",
-    )
-
-    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
-    # User's literal value (None) preserved — codegen did NOT overwrite to '***'.
-    assert (
-        dst_config["secrets"][public_types.CHAIN_API_KEY_SECRET_NAME]
-        != public_types.SECRET_DUMMY
-    )
+    secrets = dst_config.get("secrets") or {}
+    assert public_types.CHAIN_API_KEY_SECRET_NAME not in secrets
 
 
 def test_truss_chainlet_artifact_preserves_user_model_metadata(tmp_path):
     """User-set ``model_metadata`` keys in the source ``config.yaml`` are
-    preserved when the artifact merges ``chains_metadata`` — codegen must not
-    clobber unrelated metadata."""
+    preserved verbatim. Since TrussChainlets have no deps, the codegen also
+    does NOT inject any ``chains_metadata`` block."""
     from truss_chains.deployment import code_gen
 
     user_config = (
@@ -750,241 +709,63 @@ def test_truss_chainlet_artifact_preserves_user_model_metadata(tmp_path):
     )
 
     dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
-    # chains_metadata block added.
-    assert private_types.TRUSS_CONFIG_CHAINS_KEY in dst_config["model_metadata"]
-    # User-set sibling keys preserved.
-    assert dst_config["model_metadata"]["custom_key"] == "foo"
-    assert dst_config["model_metadata"]["nested"] == {"a": 1, "b": 2}
+    metadata = dst_config.get("model_metadata") or {}
+    # No chains_metadata injection for leaf TCs.
+    assert private_types.TRUSS_CONFIG_CHAINS_KEY not in metadata
+    # User-set keys preserved verbatim.
+    assert metadata["custom_key"] == "foo"
+    assert metadata["nested"] == {"a": 1, "b": 2}
 
 
-# ---- TrussChainlet as chain entrypoint --------------------------------------
+# ---- Leaf-only contract: TrussChainlet rejected as entrypoint / deps unsupported
 
 
-def test_truss_chainlet_can_be_entrypoint(truss_dir_path):
-    """A `TrussChainlet` decorated with `@chains.mark_entrypoint` registers
-    as a valid entrypoint candidate. The `ChainletImporter._is_target_cls`
-    override is what unlocks this; without it the importer skips
-    TrussChainlets at discovery time."""
+def test_truss_chainlet_rejected_as_entrypoint(truss_dir_path):
+    """`TrussChainlet` is a non-entry leaf — `@chains.mark_entrypoint` on
+    one must raise a clear ``ChainsUsageError`` so users don't get a confusing
+    "no entrypoint found" failure from the importer."""
     truss_dir_str = str(truss_dir_path)
 
     @chains.mark_entrypoint("Polyglot Front Door")
     class _Entry(chains.TrussChainlet):
         truss_dir = truss_dir_str
 
-    framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Entry)
-    assert descriptor.chainlet_cls.meta_data.is_entrypoint is True
-    assert descriptor.chainlet_cls.meta_data.chain_name == "Polyglot Front Door"
-    assert descriptor.is_truss_chainlet is True
-    # `ChainletImporter._is_target_cls` accepts this class.
-    assert framework.ChainletImporter._is_target_cls(_Entry)
-
-
-def test_truss_chainlet_deps_class_attr_parses(truss_dir_path):
-    """A `TrussChainlet` with `deps = [SomeDep]` populates the
-    `dependencies` map on its descriptor — same shape ChainletBase produces
-    from `__init__` deps."""
-    truss_dir_str = str(truss_dir_path)
-
-    class _Sibling(chains.ChainletBase):
-        remote_config = chains.RemoteConfig(
-            compute=chains.Compute(cpu_count=1, memory="512Mi")
-        )
-
-        async def run_remote(self, text: str) -> str:
-            return text
-
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-        deps = [_Sibling]
-
-    framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Entry)
-    assert "_Sibling" in descriptor.dependencies
-    assert descriptor.dependencies["_Sibling"].chainlet_cls is _Sibling
-
-
-def test_truss_chainlet_entrypoint_with_mixed_deps(truss_dir_path, tmp_path):
-    """Entrypoint TrussChainlet can declare deps that are a mix of
-    `ChainletBase` and other `TrussChainlet` types — both shapes are valid
-    sibling targets."""
-    cb_sibling_truss_dir = str(truss_dir_path)
-    tc_sibling_truss_dir = tmp_path / "tc_sibling"
-    tc_sibling_truss_dir.mkdir()
-    (tc_sibling_truss_dir / "config.yaml").write_text(VALID_TRUSS_CONFIG_YAML)
-    (tc_sibling_truss_dir / "model").mkdir()
-    (tc_sibling_truss_dir / "model" / "model.py").write_text(VALID_MODEL_PY)
-
-    class _CBSibling(chains.ChainletBase):
-        remote_config = chains.RemoteConfig(
-            compute=chains.Compute(cpu_count=1, memory="512Mi")
-        )
-
-        async def run_remote(self, text: str) -> str:
-            return text
-
-    class _TCSibling(chains.TrussChainlet):
-        truss_dir = str(tc_sibling_truss_dir)
-
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = cb_sibling_truss_dir
-        deps = [_CBSibling, _TCSibling]
-
-    framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Entry)
-    assert set(descriptor.dependencies.keys()) == {"_CBSibling", "_TCSibling"}
-    assert descriptor.dependencies["_CBSibling"].chainlet_cls is _CBSibling
-    assert descriptor.dependencies["_TCSibling"].chainlet_cls is _TCSibling
-
-
-def test_truss_chainlet_entrypoint_duplicate_dep_rejected(truss_dir_path):
-    truss_dir_str = str(truss_dir_path)
-
-    class _Sibling(chains.ChainletBase):
-        remote_config = chains.RemoteConfig(
-            compute=chains.Compute(cpu_count=1, memory="512Mi")
-        )
-
-        async def run_remote(self, text: str) -> str:
-            return text
-
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-        deps = [_Sibling, _Sibling]
-
-    with pytest.raises(public_types.ChainsUsageError, match="duplicate"):
-        framework.raise_validation_errors()
-
-
-def test_truss_chainlet_entrypoint_self_dep_rejected(truss_dir_path):
-    truss_dir_str = str(truss_dir_path)
-
-    # Self-reference via a forward declaration: a TrussChainlet that lists
-    # itself as a dep. We construct this by patching `deps` post-class.
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-
-    # Clear what the class declaration registered (since `deps = []` passed),
-    # then re-validate with self-reference.
-    framework._global_error_collector.clear()
-    framework._global_chainlet_registry.unregister_chainlet("_Entry")
-    _Entry.deps = [_Entry]
-    framework.validate_and_register_cls(_Entry)
-    with pytest.raises(public_types.ChainsUsageError, match="cannot reference itself"):
-        framework.raise_validation_errors()
-
-
-def test_truss_chainlet_entrypoint_non_chainlet_dep_rejected(truss_dir_path):
-    """A non-chainlet class in `deps` is rejected with a clear error."""
-    truss_dir_str = str(truss_dir_path)
-
-    class _NotAChainlet:
-        pass
-
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-        deps = [_NotAChainlet]
-
     with pytest.raises(
-        public_types.ChainsUsageError, match="not a `ChainletBase` or `TrussChainlet`"
+        public_types.ChainsUsageError,
+        match="TrussChainlet cannot be a chain entrypoint",
     ):
         framework.raise_validation_errors()
 
 
-def test_truss_chainlet_entrypoint_deps_must_be_list(truss_dir_path):
-    """`deps` must be a list or tuple — anything else is a clear type error."""
+def test_truss_chainlet_deps_classvar_ignored(truss_dir_path):
+    """A ``deps`` ClassVar on a ``TrussChainlet`` is silently ignored —
+    TrussChainlets are leaves and have no framework-level deps mechanism.
+    The descriptor's ``dependencies`` map is always empty."""
     truss_dir_str = str(truss_dir_path)
 
-    @chains.mark_entrypoint("Entry")
-    class _Entry(chains.TrussChainlet):
+    class _Sibling(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            compute=chains.Compute(cpu_count=1, memory="512Mi")
+        )
+
+        async def run_remote(self, text: str) -> str:
+            return text
+
+    class _LeafWithDepsAttr(chains.TrussChainlet):
         truss_dir = truss_dir_str
-        deps = "not a list"  # type: ignore[assignment]
-
-    with pytest.raises(public_types.ChainsUsageError, match="must be a list"):
-        framework.raise_validation_errors()
-
-
-def test_truss_chainlet_entrypoint_codegen_preserves_truss_dir(
-    truss_dir_path, tmp_path
-):
-    """When a TrussChainlet *is* the entrypoint, codegen still uses the
-    `_prepare_truss_chainlet_artifact` path (not the framework-generated
-    `model.py` path). The user's `truss_dir` is copied byte-for-byte, with
-    only `model_metadata.chains_metadata` injected."""
-    from truss_chains.deployment import code_gen
-
-    truss_dir_str = str(truss_dir_path)
-
-    @chains.mark_entrypoint("Polyglot")
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
+        deps = [_Sibling]  # type: ignore[attr-defined]  # ignored by the framework
 
     framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Entry)
-    chainlet_dir = code_gen.gen_truss_chainlet(
-        chain_root=tmp_path,
-        chain_name="codegen-test",
-        chainlet_descriptor=descriptor,
-        model_name="_Entry-abc12345",
-    )
-
-    # User's model.py is preserved.
-    assert (chainlet_dir / "model" / "model.py").read_text() == VALID_MODEL_PY
-    # config.yaml carries the uniquified model_name + chains_metadata.
-    dst_config = yaml.safe_load((chainlet_dir / "config.yaml").read_text())
-    assert dst_config["model_name"] == "_Entry-abc12345"
-    assert private_types.TRUSS_CONFIG_CHAINS_KEY in (
-        dst_config.get("model_metadata") or {}
-    )
-
-
-def test_truss_chainlet_entrypoint_with_truss_chainlet_dep(truss_dir_path):
-    """A ``TrussChainlet`` entrypoint can depend on another ``TrussChainlet``
-    via the ``deps`` ClassVar. The dep is recorded on the descriptor and
-    codegen treats it as a TC dep (no typed stub generated)."""
-    truss_dir_str = str(truss_dir_path)
-
-    class _Inner(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-
-    class _Entry(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-        deps = [_Inner]
-
-    framework.raise_validation_errors()
-    entry_desc = framework.get_descriptor(_Entry)
-    assert "_Inner" in entry_desc.dependencies
-    dep = entry_desc.dependencies["_Inner"]
-    assert framework.is_truss_chainlet(dep.chainlet_cls)
-    assert dep.chainlet_cls is _Inner
-
-
-def test_truss_chainlet_entrypoint_with_empty_deps(truss_dir_path):
-    """A ``TrussChainlet`` entrypoint with ``deps = []`` is a standalone
-    polyglot front door — no siblings, just an externally-callable Truss."""
-    truss_dir_str = str(truss_dir_path)
-
-    class _Solo(chains.TrussChainlet):
-        truss_dir = truss_dir_str
-        deps = []
-
-    framework.raise_validation_errors()
-    descriptor = framework.get_descriptor(_Solo)
+    descriptor = framework.get_descriptor(_LeafWithDepsAttr)
     assert descriptor.dependencies == {}
 
 
 def test_chainletbase_ws_as_sibling_rejected():
     """WebSocket `ChainletBase` chainlets can only be entrypoints, not
     siblings. The validator at `framework.py:_validate_dependencies` checks
-    `endpoint.is_websocket` on each dep. Locks in that behavior for the
-    Project 3 work — `TrussChainlet` entrypoints with a `ChainletBase`+WS
-    dep should also be blocked via the same predicate (we route
-    `_validate_truss_chainlet_deps` through the same check)."""
+    `endpoint.is_websocket` on each dep. Locks in that behavior — unrelated
+    to the TrussChainlet rollback but kept here because it shares the
+    sibling-dep validation surface."""
 
     class _WSChainlet(chains.ChainletBase):
         remote_config = chains.RemoteConfig(

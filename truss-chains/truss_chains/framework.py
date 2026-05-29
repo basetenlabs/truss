@@ -994,14 +994,15 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
 
     if is_truss_chainlet(cls):
         _validate_truss_chainlet_cls(cls, src_path, location)
-        truss_chainlet_deps = _validate_truss_chainlet_deps(cls, location)
         chainlet_descriptor = private_types.ChainletAPIDescriptor(
             chainlet_cls=cls,
-            dependencies=truss_chainlet_deps,
+            # TrussChainlets are non-entry leaves; they have no deps.
+            dependencies={},
             has_context=False,
             # ``endpoint`` is a build-time-only field consumed by codegen
             endpoint=_DUMMY_ENDPOINT_DESCRIPTOR,
             src_path=src_path,
+            # TrussChainlet health checks are from the truss, we use None as passthrough
             health_check=None,
             truss_dir=cls._resolved_truss_dir,
         )
@@ -1073,84 +1074,6 @@ def _validate_truss_chainlet_cls(
     if not truss_dir.is_absolute():
         truss_dir = (src_dir / truss_dir).resolve()
     cls._resolved_truss_dir = truss_dir
-
-
-def _validate_truss_chainlet_deps(
-    cls: Type["TrussChainlet"], location: _ErrorLocation
-) -> Mapping[str, private_types.DependencyDescriptor]:
-    """Validate ``cls.deps`` (a class-attribute list of chainlet classes) and
-    return the resulting ``{display_name: DependencyDescriptor}`` mapping.
-    """
-    deps_attr = getattr(cls, "deps", None) or []
-    if not isinstance(deps_attr, (list, tuple)):
-        _collect_error(
-            f"`TrussChainlet.{cls.__name__}.deps` must be a list of chainlet "
-            f"classes, got `{type(deps_attr).__name__}`.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return {}
-
-    used: set[Type[private_types.ABCChainlet]] = set()
-    dependencies: dict[str, private_types.DependencyDescriptor] = {}
-    for dep_cls in deps_attr:
-        if not isinstance(dep_cls, type):
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` entries must be chainlet "
-                f"classes, got `{dep_cls!r}`.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        if not (
-            utils.issubclass_safe(dep_cls, ChainletBase)
-            or utils.issubclass_safe(dep_cls, TrussChainlet)
-        ):
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` entry `{dep_cls.__name__}` "
-                "is not a `ChainletBase` or `TrussChainlet` subclass.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        if dep_cls is cls:
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` cannot reference itself.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        if dep_cls in used:
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` contains duplicate "
-                f"`{dep_cls.__name__}`.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        if dep_cls not in _global_chainlet_registry._chainlets:
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` references `{dep_cls.__name__}` "
-                "before it was registered. Define the dep before the chainlet "
-                "that uses it.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        if get_descriptor(dep_cls).endpoint.is_websocket:
-            _collect_error(
-                f"`TrussChainlet.{cls.__name__}.deps` entry `{dep_cls.__name__}` "
-                "uses a websocket. WebSockets can only be used in the entrypoint, "
-                "not in 'inner' chainlets.",
-                _ErrorKind.TYPE_ERROR,
-                location,
-            )
-            continue
-        dependencies[dep_cls.__name__] = private_types.DependencyDescriptor(
-            chainlet_cls=dep_cls, options=public_types.RPCOptions()
-        )
-        used.add(dep_cls)
-    return dependencies
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1538,6 +1461,17 @@ def entrypoint(
                 _ErrorKind.TYPE_ERROR,
                 location,
             )
+        if is_truss_chainlet(cls):
+            src_path = os.path.abspath(inspect.getfile(cls))
+            line = inspect.getsourcelines(cls)[1]
+            location = _ErrorLocation(src_path=src_path, line=line)
+            _collect_error(
+                "TrussChainlet cannot be a chain entrypoint. Use a ChainletBase "
+                "entrypoint that depends on the TrussChainlet via "
+                "`chains.depends(...)`.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
         cls.meta_data.is_entrypoint = True
         if isinstance(cls_or_chain_name, str):
             cls.meta_data.chain_name = cls_or_chain_name
@@ -1736,12 +1670,6 @@ class ChainletImporter(_ABCImporter):
     def _target_cls_type(cls) -> Type[private_types.ABCChainlet]:
         return ChainletBase
 
-    @classmethod
-    def _is_target_cls(cls, candidate: Any) -> bool:
-        return utils.issubclass_safe(candidate, ChainletBase) or utils.issubclass_safe(
-            candidate, TrussChainlet
-        )
-
 
 class ModelImporter(_ABCImporter):
     @classmethod
@@ -1856,17 +1784,15 @@ def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
 
 
 class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
-    """Declares an existing Truss directory as a chain member.
+    """Declares an existing Truss directory as a non-entry leaf chain member.
 
     Unlike ``ChainletBase``, the framework does not generate a ``model.py`` or
     a typed ``StubBase`` for this declaration — the user's Truss directory
-    (``model.py``-flavored or ``docker_server``) is archived as-is and only
-    ``chains_metadata`` is merged into its ``config.yaml``.
+    (``model.py``-flavored or ``docker_server``) is archived as-is.
 
-    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ for
-    guidance on declaring TrussChainlets, using them as deps via
-    :class:`truss_chains.ServiceHandle`, and the ``deps`` ClassVar for
-    polyglot entrypoints.
+    TrussChainlets cannot be entrypoints and cannot declare deps — they're
+    only depended on by ``ChainletBase`` chainlets via ``chains.depends(...)``,
+    which yields a :class:`truss_chains.ServiceHandle` to the caller.
     """
 
     truss_dir: ClassVar[str]
@@ -1874,9 +1800,6 @@ class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
     # `_resolved_truss_dir` is set by `__init_subclass__` after path resolution
     # and validation. Codegen reads it to locate the user's Truss directory.
     _resolved_truss_dir: ClassVar[Optional[pathlib.Path]] = None
-
-    # Deps for a TrussChainlet entrypoint. Bare chainlet class references
-    deps: ClassVar[list[type[private_types.ABCChainlet]]] = []
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
