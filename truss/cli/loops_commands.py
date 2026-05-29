@@ -105,13 +105,24 @@ def deactivate_loops_deployment(
     console.print(f"Loops deployment for {base_model} deactivated.", style="green")
 
 
+_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+
+
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include deployments in terminal states (STOPPED, FAILED).",
+)
 @common.common_options()
-def view_loops_deployments(remote: Optional[str]) -> None:
-    """List the caller's active Loops deployments.
+def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
+    """List the caller's Loops deployments.
 
-    Excludes deployments whose latest status is STOPPED (filtered server-side).
+    By default, deployments in terminal states (STOPPED, FAILED) are hidden.
+    Pass --all to include them.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -120,7 +131,13 @@ def view_loops_deployments(remote: Optional[str]) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
-    _render_loops_deployments(deployments)
+    if not show_all:
+        deployments = [
+            d
+            for d in deployments
+            if d["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
+        ]
+    _render_loops_deployments(deployments, show_all=show_all)
 
 
 @loops.group(name="runs")
@@ -194,9 +211,18 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
+def _render_loops_deployments(
+    deployments: List[Dict[str, Any]], show_all: bool = False
+) -> None:
     if not deployments:
-        console.print("No active Loops deployments.", style="yellow")
+        if show_all:
+            console.print("No Loops deployments.", style="yellow")
+        else:
+            console.print(
+                "No active Loops deployments. Pass --all to include "
+                "STOPPED and FAILED deployments.",
+                style="yellow",
+            )
         return
     table = rich.table.Table(
         show_header=True,
