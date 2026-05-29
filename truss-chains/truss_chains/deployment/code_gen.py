@@ -456,8 +456,8 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
     for name, dep in chainlet_descriptor.dependencies.items():
         # `dep.name` is the class name, while `name` is the argument name.
         if framework.is_truss_chainlet(dep.chainlet_cls):
-            imports.add("from truss_chains import ServiceHandle")
-            stub_args.append(f"{name}=ServiceHandle({dep.display_name!r})")
+            imports.add("from truss_chains.remote_chainlet import truss_chainlet")
+            stub_args.append(f"{name}=truss_chainlet.TrussHandle({dep.display_name!r})")
         else:
             stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
@@ -957,9 +957,6 @@ def _prepare_truss_chainlet_artifact(
             f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` resolved to "
             f"`{src_truss_dir}`, which is not a directory."
         )
-    # Replace any pre-existing chainlet_dir from a stale prior generation.
-    if chainlet_dir.exists():
-        shutil.rmtree(chainlet_dir)
     truss_path.copy_tree_path(src_truss_dir, chainlet_dir)
 
     config_path = chainlet_dir / serving_image_builder.CONFIG_FILE

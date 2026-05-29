@@ -3,6 +3,8 @@ import builtins
 import collections
 import contextlib
 import contextvars
+import functools
+import json
 import logging
 import statistics
 import sys
@@ -28,7 +30,8 @@ from typing import (
 import httpx
 import pydantic
 
-from truss_chains import private_types, public_types, runtime, utils
+from truss.templates.shared import dynamic_config_resolver
+from truss_chains import private_types, public_types, utils
 
 if TYPE_CHECKING:
     import aiohttp
@@ -114,6 +117,34 @@ _REQUESTS_TOTAL = prometheus_client.Counter(
 )
 
 
+@functools.lru_cache(maxsize=1)
+def load_dynamic_chainlet_config() -> dict[str, public_types.ServiceDescriptorUrls]:
+    """Load and validate ``dynamic_chainlet_config`` (display name → URLs).
+
+    Result is LRU-cached per process; tests that patch mount paths must call
+    ``cache_clear()`` on this function first.
+
+    Raises ``MissingDependencyError`` if unset or empty.
+    """
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
+    )
+    if not dynamic_chainlet_config_str:
+        raise public_types.MissingDependencyError(
+            f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
+            "found. Cannot override Chainlet configs."
+        )
+    data = json.loads(dynamic_chainlet_config_str)
+    if not isinstance(data, dict):
+        # Ignore unexpected root types (e.g. `json.dumps("")` decodes to a string).
+        # Historically `in`/`not in` on those values behaved like an empty mapping.
+        data = {}
+    return {
+        name: public_types.ServiceDescriptorUrls.model_validate(entry)
+        for name, entry in data.items()
+    }
+
+
 def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
 ) -> Mapping[str, public_types.DeployedServiceDescriptor]:
@@ -123,7 +154,7 @@ def populate_chainlet_service_predict_urls(
     if not chainlet_to_service:
         return {}
 
-    dynamic_chainlet_config = runtime.load_dynamic_chainlet_config()
+    dynamic_chainlet_config = load_dynamic_chainlet_config()
 
     chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
     for chainlet_name, service_descriptor in chainlet_to_service.items():

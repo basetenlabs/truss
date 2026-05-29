@@ -1,11 +1,11 @@
-"""Plain ``Model`` that optionally resolves a sibling via ``runtime.ServiceHandle``.
+"""Plain ``Model`` that optionally resolves a sibling via ``TrussHandle``.
 
 Uses only the public runtime API—no Chainlet framework. On ``MissingDependencyError``,
 ``.load()`` leaves sibling fields unset.
 """
 
 from truss_chains.public_types import MissingDependencyError
-from truss_chains.runtime import ServiceHandle
+from truss_chains.remote_chainlet.truss_chainlet import TrussHandle
 
 
 class Model:
@@ -16,7 +16,7 @@ class Model:
     def load(self) -> None:
         # Optional Diarizer sibling; skip if not in a chain.
         try:
-            diarizer = ServiceHandle("Diarizer")
+            diarizer = TrussHandle("Diarizer")
         except MissingDependencyError:
             return
         # Fixture uses a literal api_key; deployed Truss reads secrets automatically.

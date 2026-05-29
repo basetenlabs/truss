@@ -1,24 +1,25 @@
-"""Discover sibling chainlet URLs from mounted ``dynamic_chainlet_config``.
+"""BYOC entry points: ``TrussHandle`` + sibling URL discovery from mounted ``dynamic_chainlet_config``.
 
-:class:`ServiceHandle` is the canonical BYOC entry point — also re-exported
-at the top level as :class:`truss_chains.ServiceHandle`. Its
-:meth:`~ServiceHandle.http_call_args` / :meth:`~ServiceHandle.ws_call_args`
+:class:`TrussHandle` is the canonical BYOC handle. Its
+:meth:`~TrussHandle.http_call_args` / :meth:`~TrussHandle.ws_call_args`
 methods return a :class:`CallArgs` ``(url, headers)`` tuple ready to hand
 to ``httpx`` or ``websockets``.
-:func:`load_dynamic_chainlet_config` is the primitive used by
-typed-chainlet wiring; :func:`get_service_urls` and
-:func:`get_baseten_chain_api_key` are additional BYOC entry points for code
-without an injected ``DeploymentContext``.
-Keys are chainlet display names; values parse as ``ServiceDescriptorUrls``.
-Catch ``MissingDependencyError`` when not deployed in a chain context.
+
+:func:`~truss_chains.remote_chainlet.utils.load_dynamic_chainlet_config` is
+the shared primitive used by both typed-chainlet wiring and the BYOC entry
+points below. :func:`get_service_urls` and :func:`get_baseten_chain_api_key`
+are additional BYOC entry points for code without an injected
+``DeploymentContext``. Keys are chainlet display names; values parse as
+``ServiceDescriptorUrls``. Catch ``MissingDependencyError`` when not deployed
+in a chain context.
 """
 
 import functools
-import json
-from typing import NamedTuple, Type, Union, overload
+from typing import NamedTuple, Optional, Type, Union, overload
 
-from truss.templates.shared import dynamic_config_resolver, secrets_resolver
+from truss.templates.shared import secrets_resolver
 from truss_chains import private_types, public_types
+from truss_chains.remote_chainlet import utils
 
 
 class CallArgs(NamedTuple):
@@ -26,34 +27,6 @@ class CallArgs(NamedTuple):
 
     url: str
     headers: dict[str, str]
-
-
-@functools.lru_cache(maxsize=1)
-def load_dynamic_chainlet_config() -> dict[str, public_types.ServiceDescriptorUrls]:
-    """Load and validate ``dynamic_chainlet_config`` (display name → URLs).
-
-    Result is LRU-cached per process; tests that patch mount paths must call
-    ``cache_clear()`` on this function first.
-
-    Raises ``MissingDependencyError`` if unset or empty.
-    """
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
-    )
-    if not dynamic_chainlet_config_str:
-        raise public_types.MissingDependencyError(
-            f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
-            "found. Cannot override Chainlet configs."
-        )
-    data = json.loads(dynamic_chainlet_config_str)
-    if not isinstance(data, dict):
-        # Ignore unexpected root types (e.g. `json.dumps("")` decodes to a string).
-        # Historically `in`/`not in` on those values behaved like an empty mapping.
-        data = {}
-    return {
-        name: public_types.ServiceDescriptorUrls.model_validate(entry)
-        for name, entry in data.items()
-    }
 
 
 @functools.lru_cache(maxsize=1)
@@ -102,7 +75,7 @@ def get_service_urls(
             "`get_service_urls` accepts a chainlet class or its display-name "
             f"string, got {type(target).__name__!r}."
         )
-    config = load_dynamic_chainlet_config()
+    config = utils.load_dynamic_chainlet_config()
     if name not in config:
         raise public_types.MissingDependencyError(
             f"No sibling chainlet named '{name}'. Available: {list(config)}."
@@ -110,7 +83,7 @@ def get_service_urls(
     return config[name]
 
 
-class ServiceHandle:
+class TrussHandle:
     """Sibling chainlet handle; build once (e.g. in ``__init__``), then call args."""
 
     urls: public_types.ServiceDescriptorUrls
@@ -122,8 +95,8 @@ class ServiceHandle:
         self,
         *,
         prefer_internal: bool = False,
-        sync_path: Union[str, None] = None,
-        api_key: Union[str, None] = None,
+        sync_path: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> CallArgs:
         """Default ``predict_url`` + ``Authorization``; ``prefer_internal`` uses workload-plane URL + ``Host``.
 
@@ -152,7 +125,7 @@ class ServiceHandle:
         return CallArgs(url=url, headers=headers)
 
     def ws_call_args(
-        self, *, sync_path: Union[str, None] = None, api_key: Union[str, None] = None
+        self, *, sync_path: Optional[str] = None, api_key: Optional[str] = None
     ) -> CallArgs:
         """Returns a ``wss://`` URL + auth-only headers for a WebSocket sibling call.
 

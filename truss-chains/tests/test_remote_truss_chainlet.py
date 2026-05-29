@@ -1,4 +1,4 @@
-"""Tests for ``truss_chains.runtime`` (sibling URL discovery from dynamic config)."""
+"""Tests for ``truss_chains.remote_chainlet.truss_chainlet`` (TrussHandle + sibling URL discovery from dynamic config)."""
 
 import json
 import pathlib
@@ -7,10 +7,11 @@ import sys
 import pytest
 
 import truss_chains as chains
-from truss_chains import private_types, public_types, runtime
+from truss_chains import private_types, public_types
+from truss_chains.remote_chainlet import truss_chainlet, utils
 
 _PLAIN_TRUSS_MODEL_DIR = (
-    pathlib.Path(__file__).parent / "runtime_discovery" / "plain_truss" / "model"
+    pathlib.Path(__file__).parent / "truss_chainlet_discovery" / "plain_truss" / "model"
 )
 
 # ---- Test fixtures -----------------------------------------------------------
@@ -56,16 +57,16 @@ MULTIPLE_SIBLINGS = {
 
 @pytest.fixture
 def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    # ``runtime.load_dynamic_chainlet_config`` is ``lru_cache``-decorated;
+    # ``utils.load_dynamic_chainlet_config`` is ``lru_cache``-decorated;
     # invalidate before and after each test so monkeypatched paths/contents
     # take effect, and so the cache doesn't leak across tests.
-    runtime.load_dynamic_chainlet_config.cache_clear()
+    utils.load_dynamic_chainlet_config.cache_clear()
     monkeypatch.setattr(
         "truss.templates.shared.dynamic_config_resolver.DYNAMIC_CONFIG_MOUNT_DIR",
         str(tmp_path),
     )
     yield
-    runtime.load_dynamic_chainlet_config.cache_clear()
+    utils.load_dynamic_chainlet_config.cache_clear()
 
 
 @pytest.fixture
@@ -89,7 +90,7 @@ def _write_config(tmp_path, payload):
 
 def test_get_service_urls_predict_url_only(tmp_path, dynamic_config_mount_dir):
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    urls = runtime.get_service_urls("Whisper")
+    urls = truss_chainlet.get_service_urls("Whisper")
     assert urls.predict_url == PREDICT_URL_ONLY["Whisper"]["predict_url"]
     assert urls.internal_url is None
 
@@ -99,7 +100,7 @@ def test_get_service_urls_carries_both_urls_when_present(
 ):
     """Result includes ``predict_url`` and ``internal_url`` when config has both."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    urls = runtime.get_service_urls("Whisper")
+    urls = truss_chainlet.get_service_urls("Whisper")
     assert urls.predict_url == INTERNAL_AND_PREDICT_URL["Whisper"]["predict_url"]
     assert urls.internal_url is not None
     assert (
@@ -114,7 +115,7 @@ def test_get_service_urls_carries_both_urls_when_present(
 
 def test_get_service_urls_internal_url_only(tmp_path, dynamic_config_mount_dir):
     _write_config(tmp_path, INTERNAL_URL_ONLY)
-    urls = runtime.get_service_urls("Whisper")
+    urls = truss_chainlet.get_service_urls("Whisper")
     assert urls.predict_url is None
     assert urls.internal_url is not None
 
@@ -127,7 +128,7 @@ def test_get_service_urls_missing_name_raises(tmp_path, dynamic_config_mount_dir
     with pytest.raises(
         public_types.MissingDependencyError, match="No sibling chainlet named 'Nope'"
     ):
-        runtime.get_service_urls("Nope")
+        truss_chainlet.get_service_urls("Nope")
 
 
 def test_get_service_urls_missing_name_lists_available(
@@ -136,7 +137,7 @@ def test_get_service_urls_missing_name_lists_available(
     """``MissingDependencyError`` lists known sibling names."""
     _write_config(tmp_path, MULTIPLE_SIBLINGS)
     with pytest.raises(public_types.MissingDependencyError) as excinfo:
-        runtime.get_service_urls("Nope")
+        truss_chainlet.get_service_urls("Nope")
     assert "Whisper" in str(excinfo.value)
     assert "Diarizer" in str(excinfo.value)
 
@@ -146,13 +147,13 @@ def test_get_service_urls_no_chain_context_raises(tmp_path, dynamic_config_mount
     with pytest.raises(
         public_types.MissingDependencyError, match="Cannot override Chainlet configs"
     ):
-        runtime.get_service_urls("Whisper")
+        truss_chainlet.get_service_urls("Whisper")
 
 
 def test_get_service_urls_invalid_input_type_raises():
     """Invalid ``target`` type raises ``TypeError``."""
     with pytest.raises(TypeError, match="chainlet class or its display-name"):
-        runtime.get_service_urls(42)  # type: ignore[arg-type]
+        truss_chainlet.get_service_urls(42)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("payload", ["", [], "some string"])
@@ -164,7 +165,7 @@ def test_load_dynamic_chainlet_config_treats_non_dict_as_empty(
     with pytest.raises(
         public_types.MissingDependencyError, match="No sibling chainlet named"
     ):
-        runtime.get_service_urls("Whisper")
+        truss_chainlet.get_service_urls("Whisper")
 
 
 # ---- get_service_urls: class-keyed lookup -----------------------------------
@@ -178,7 +179,7 @@ def test_get_service_urls_by_class_uses_class_name(tmp_path, dynamic_config_moun
         async def run_remote(self, text: str) -> str:
             return text
 
-    urls = runtime.get_service_urls(Whisper)
+    urls = truss_chainlet.get_service_urls(Whisper)
     assert urls.predict_url == PREDICT_URL_ONLY["Whisper"]["predict_url"]
 
 
@@ -201,7 +202,7 @@ def test_get_service_urls_by_class_honors_display_name_override(
         async def run_remote(self, text: str) -> str:
             return text
 
-    urls = runtime.get_service_urls(Diarizer)
+    urls = truss_chainlet.get_service_urls(Diarizer)
     assert urls.predict_url == "https://chain-x.api.baseten.co/.../diarizer/run_remote"
 
 
@@ -211,9 +212,9 @@ def test_get_service_urls_by_class_honors_display_name_override(
 @pytest.fixture
 def clear_chain_api_key_cache():
     """Clear ``get_baseten_chain_api_key`` cache around the test."""
-    runtime.get_baseten_chain_api_key.cache_clear()
+    truss_chainlet.get_baseten_chain_api_key.cache_clear()
     yield
-    runtime.get_baseten_chain_api_key.cache_clear()
+    truss_chainlet.get_baseten_chain_api_key.cache_clear()
 
 
 def test_get_baseten_chain_api_key_from_env(
@@ -223,7 +224,7 @@ def test_get_baseten_chain_api_key_from_env(
     monkeypatch.setenv(
         f"TRUSS_SECRET_{public_types.CHAIN_API_KEY_SECRET_NAME}", "secret123"
     )
-    assert runtime.get_baseten_chain_api_key() == "secret123"
+    assert truss_chainlet.get_baseten_chain_api_key() == "secret123"
 
 
 def test_get_baseten_chain_api_key_missing_raises(
@@ -242,10 +243,10 @@ def test_get_baseten_chain_api_key_missing_raises(
         public_types.MissingDependencyError,
         match=f"No '{public_types.CHAIN_API_KEY_SECRET_NAME}'",
     ):
-        runtime.get_baseten_chain_api_key()
+        truss_chainlet.get_baseten_chain_api_key()
 
 
-# ---- ServiceHandle ----------------------------------------------------------
+# ---- TrussHandle ------------------------------------------------------------
 
 
 @pytest.fixture
@@ -257,10 +258,10 @@ def _stub_api_key(monkeypatch: pytest.MonkeyPatch, clear_chain_api_key_cache):
     yield "test-key"
 
 
-def test_service_handle_exposes_raw_urls(tmp_path, dynamic_config_mount_dir):
+def test_truss_handle_exposes_raw_urls(tmp_path, dynamic_config_mount_dir):
     """``.urls`` exposes the parsed ``ServiceDescriptorUrls``."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    handle = runtime.ServiceHandle("Whisper")
+    handle = truss_chainlet.TrussHandle("Whisper")
     assert handle.urls.predict_url == INTERNAL_AND_PREDICT_URL["Whisper"]["predict_url"]
     assert handle.urls.internal_url is not None
     assert (
@@ -269,17 +270,17 @@ def test_service_handle_exposes_raw_urls(tmp_path, dynamic_config_mount_dir):
     )
 
 
-def test_service_handle_missing_target_raises(tmp_path, dynamic_config_mount_dir):
-    """Unknown sibling name fails in ``ServiceHandle()``."""
+def test_truss_handle_missing_target_raises(tmp_path, dynamic_config_mount_dir):
+    """Unknown sibling name fails in ``TrussHandle()``."""
     _write_config(tmp_path, MULTIPLE_SIBLINGS)
     with pytest.raises(
         public_types.MissingDependencyError, match="No sibling chainlet named 'Nope'"
     ):
-        runtime.ServiceHandle("Nope")
+        truss_chainlet.TrussHandle("Nope")
 
 
-def test_service_handle_constructor_takes_class(tmp_path, dynamic_config_mount_dir):
-    """``ServiceHandle`` accepts a chainlet class (distinct name avoids registry clashes)."""
+def test_truss_handle_constructor_takes_class(tmp_path, dynamic_config_mount_dir):
+    """``TrussHandle`` accepts a chainlet class (distinct name avoids registry clashes)."""
     expected_url = "https://chain-xyz.api.baseten.co/.../whisper/run_remote"
     _write_config(tmp_path, {"WhisperHandle": {"predict_url": expected_url}})
 
@@ -287,7 +288,7 @@ def test_service_handle_constructor_takes_class(tmp_path, dynamic_config_mount_d
         async def run_remote(self, text: str) -> str:
             return text
 
-    handle = runtime.ServiceHandle(WhisperHandle)
+    handle = truss_chainlet.TrussHandle(WhisperHandle)
     assert handle.urls.predict_url == expected_url
 
 
@@ -296,7 +297,7 @@ def test_http_call_args_default_uses_predict_url(
 ):
     """Default uses ``predict_url`` and ``Authorization`` only."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    call = runtime.ServiceHandle("Whisper").http_call_args()
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args()
     assert call.url == INTERNAL_AND_PREDICT_URL["Whisper"]["predict_url"]
     assert call.headers == {"Authorization": "Api-Key test-key"}
 
@@ -306,7 +307,7 @@ def test_http_call_args_prefer_internal_uses_workload_plane_url(
 ):
     """``prefer_internal`` uses workload gateway URL plus ``Host`` header."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    call = runtime.ServiceHandle("Whisper").http_call_args(prefer_internal=True)
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(prefer_internal=True)
     assert (
         call.url
         == INTERNAL_AND_PREDICT_URL["Whisper"]["internal_url"]["gateway_run_remote_url"]
@@ -322,7 +323,7 @@ def test_http_call_args_predict_only_ignores_prefer_internal(
 ):
     """No ``internal_url`` means ``prefer_internal`` still uses ``predict_url``."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").http_call_args(prefer_internal=True)
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(prefer_internal=True)
     assert call.url == PREDICT_URL_ONLY["Whisper"]["predict_url"]
     assert call.headers == {"Authorization": "Api-Key test-key"}
 
@@ -332,7 +333,7 @@ def test_http_call_args_internal_only_falls_through_silently(
 ):
     """``predict_url`` missing falls back to internal gateway URL + ``Host``."""
     _write_config(tmp_path, INTERNAL_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").http_call_args()
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args()
     assert (
         call.url
         == INTERNAL_URL_ONLY["Whisper"]["internal_url"]["gateway_run_remote_url"]
@@ -348,7 +349,7 @@ def test_http_call_args_api_key_override(
 ):
     """``api_key=`` overrides the resolved secret."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").http_call_args(api_key="override-key")
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(api_key="override-key")
     assert call.headers == {"Authorization": "Api-Key override-key"}
 
 
@@ -357,7 +358,7 @@ def test_http_call_args_is_destructurable(
 ):
     """Return value unpacks as ``url, headers``."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    url, headers = runtime.ServiceHandle("Whisper").http_call_args()
+    url, headers = truss_chainlet.TrussHandle("Whisper").http_call_args()
     assert url == PREDICT_URL_ONLY["Whisper"]["predict_url"]
     assert "Authorization" in headers
 
@@ -369,7 +370,7 @@ def test_http_call_args_sync_path_rewrites_url(
     the alternative routing for TC siblings that expose their predict
     endpoint via the platform's path-passthrough."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").http_call_args(
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(
         sync_path="v1/models/model:predict"
     )
     expected = PREDICT_URL_ONLY["Whisper"]["predict_url"].removesuffix("/run_remote")
@@ -384,7 +385,7 @@ def test_http_call_args_sync_path_with_prefer_internal(
     """``sync_path`` combined with ``prefer_internal=True`` rewrites the
     workload-plane URL the same way, and the ``Host`` header is preserved."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    call = runtime.ServiceHandle("Whisper").http_call_args(
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(
         prefer_internal=True, sync_path="predict"
     )
     base = INTERNAL_AND_PREDICT_URL["Whisper"]["internal_url"][
@@ -403,7 +404,7 @@ def test_http_call_args_sync_path_leading_slash_normalized(
     """``sync_path`` accepts both ``"foo"`` and ``"/foo"``; the leading slash
     is stripped to produce a single ``/sync/`` prefix."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").http_call_args(sync_path="/predict")
+    call = truss_chainlet.TrussHandle("Whisper").http_call_args(sync_path="/predict")
     expected = PREDICT_URL_ONLY["Whisper"]["predict_url"].removesuffix("/run_remote")
     assert call.url == f"{expected}/sync/predict"
 
@@ -418,7 +419,7 @@ def test_ws_call_args_rewrites_scheme_and_path(
     rewritten to ``/websocket``. Headers carry only ``Authorization`` (no
     ``Host`` for the predict_url path)."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").ws_call_args()
+    call = truss_chainlet.TrussHandle("Whisper").ws_call_args()
     expected_base = (
         PREDICT_URL_ONLY["Whisper"]["predict_url"]
         .removesuffix("/run_remote")
@@ -435,7 +436,7 @@ def test_ws_call_args_ignores_internal_url(
     ``websockets.connect`` rejects Host-header overrides (api-gateway returns
     400), so WS BYOC always uses ``predict_url`` (chain-host)."""
     _write_config(tmp_path, INTERNAL_AND_PREDICT_URL)
-    call = runtime.ServiceHandle("Whisper").ws_call_args()
+    call = truss_chainlet.TrussHandle("Whisper").ws_call_args()
     expected_base = (
         INTERNAL_AND_PREDICT_URL["Whisper"]["predict_url"]
         .removesuffix("/run_remote")
@@ -452,7 +453,7 @@ def test_ws_call_args_sync_path_keeps_sync_route(
     """``sync_path`` overrides the default ``/websocket`` rewrite; scheme is
     still rewritten to ``wss://`` so the caller can use ``websockets.connect``."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").ws_call_args(sync_path="v1/websocket")
+    call = truss_chainlet.TrussHandle("Whisper").ws_call_args(sync_path="v1/websocket")
     expected_base = (
         PREDICT_URL_ONLY["Whisper"]["predict_url"]
         .removesuffix("/run_remote")
@@ -466,7 +467,7 @@ def test_ws_call_args_api_key_override(
 ):
     """``api_key=`` overrides the resolved secret (parity with http_call_args)."""
     _write_config(tmp_path, PREDICT_URL_ONLY)
-    call = runtime.ServiceHandle("Whisper").ws_call_args(api_key="override-key")
+    call = truss_chainlet.TrussHandle("Whisper").ws_call_args(api_key="override-key")
     assert call.headers == {"Authorization": "Api-Key override-key"}
 
 

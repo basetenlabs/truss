@@ -1,5 +1,4 @@
 from truss.base.truss_config import WeightsSource
-from truss_chains import runtime
 from truss_chains.framework import (
     ChainletBase,
     EngineBuilderLLMChainlet,
@@ -33,13 +32,11 @@ from truss_chains.public_types import (
 
 # TODO: make this optional (remove aiohttp, httpx and starlette deps).
 from truss_chains.remote_chainlet.stub import StubBase
-from truss_chains.runtime import CallArgs, ServiceHandle
 from truss_chains.utils import make_abs_path_here
 
 __all__ = [
     "Assets",
     "BasetenImage",
-    "CallArgs",
     "EngineBuilderLLMChainlet",
     "ChainletBase",
     "ChainletOptions",
@@ -55,7 +52,6 @@ __all__ = [
     "RPCOptions",
     "RemoteConfig",
     "RemoteErrorDetail",
-    "ServiceHandle",
     "StubBase",
     "TrussChainlet",
     "WebSocketProtocol",
@@ -66,5 +62,4 @@ __all__ = [
     "mark_entrypoint",
     "push",
     "run_local",
-    "runtime",
 ]

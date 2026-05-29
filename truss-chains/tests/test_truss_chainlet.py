@@ -30,6 +30,7 @@ import yaml
 
 import truss_chains as chains
 from truss_chains import framework, private_types, public_types
+from truss_chains.remote_chainlet.truss_chainlet import TrussHandle
 
 # ---- Fixtures ---------------------------------------------------------------
 
@@ -190,7 +191,8 @@ def test_truss_dir_resolved_relative_to_declaring_file():
             truss_dir = "_relative_test_truss"  # relative to this test file
 
         framework.raise_validation_errors()  # should not raise
-        assert _Echo._resolved_truss_dir == rel_truss_dir.resolve()
+        descriptor = framework.get_descriptor(_Echo)
+        assert descriptor.truss_dir == rel_truss_dir.resolve()
     finally:
         import shutil
 
@@ -231,7 +233,7 @@ def test_valid_truss_chainlet_registers_descriptor(truss_dir_path):
 
 def test_chainletbase_can_depend_on_truss_chainlet(truss_dir_path):
     """A typed ChainletBase can declare a TrussChainlet as a dep with the
-    ``chains.ServiceHandle`` type annotation."""
+    ``TrussHandle`` type annotation."""
     truss_dir_str = str(truss_dir_path)
 
     class _Echo(chains.TrussChainlet):
@@ -243,7 +245,7 @@ def test_chainletbase_can_depend_on_truss_chainlet(truss_dir_path):
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             self._echo = echo
@@ -270,7 +272,7 @@ def test_mixed_deps_typed_and_truss(truss_dir_path):
         def __init__(
             self,
             reverser: _Reverser = chains.depends(_Reverser),
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             self._reverser = reverser
@@ -293,7 +295,7 @@ def test_truss_chainlet_dep_recorded_on_descriptor(truss_dir_path):
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             pass
@@ -308,7 +310,7 @@ def test_truss_chainlet_dep_recorded_on_descriptor(truss_dir_path):
 
 def test_truss_chainlet_dep_with_descriptor_annotation_rejected(truss_dir_path):
     """After change #1, ``chains.depends(TC)`` must be annotated as
-    ``chains.ServiceHandle``. The legacy ``chains.DeployedServiceDescriptor``
+    ``TrussHandle``. The legacy ``chains.DeployedServiceDescriptor``
     annotation is rejected by the validator — locks in the migration."""
     truss_dir_str = str(truss_dir_path)
 
@@ -334,11 +336,9 @@ def test_truss_chainlet_dep_with_descriptor_annotation_rejected(truss_dir_path):
 # ---- Caller-side codegen (ChainletBase with TrussChainlet deps) -------------
 
 
-def test_entrypoint_codegen_emits_service_handle_for_truss_dep(
-    truss_dir_path, tmp_path
-):
+def test_entrypoint_codegen_emits_truss_handle_for_truss_dep(truss_dir_path, tmp_path):
     """The entrypoint's generated ``model.py`` must construct a
-    :class:`truss_chains.ServiceHandle` for each TrussChainlet dep, not call
+    :class:`TrussHandle` for each TrussChainlet dep, not call
     ``stub.factory(...)``. The user's ``__init__`` receives the handle and
     uses ``handle.http_call_args(...)`` for BYOC sibling calls."""
     from truss_chains.deployment import code_gen
@@ -354,7 +354,7 @@ def test_entrypoint_codegen_emits_service_handle_for_truss_dep(
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             self._echo = echo
@@ -368,12 +368,14 @@ def test_entrypoint_codegen_emits_service_handle_for_truss_dep(
     )
     generated_model_py = (chainlet_dir / "model" / "model.py").read_text()
 
-    # ServiceHandle injection used (display_name-keyed).
+    # TrussHandle injection used (display_name-keyed).
     assert (
-        "ServiceHandle('_Echo')" in generated_model_py
-        or 'ServiceHandle("_Echo")' in generated_model_py
+        "truss_chainlet.TrussHandle('_Echo')" in generated_model_py
+        or 'truss_chainlet.TrussHandle("_Echo")' in generated_model_py
     )
-    assert "from truss_chains import ServiceHandle" in generated_model_py
+    assert (
+        "from truss_chains.remote_chainlet import truss_chainlet" in generated_model_py
+    )
     # No stale descriptor-injection pattern.
     assert "get_service_descriptor" not in generated_model_py
     # No stub.factory(_Echo, ...) — no typed stub for TrussChainlet deps.
@@ -399,7 +401,7 @@ def test_truss_chainlet_dep_options_propagated(truss_dir_path):
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(
+            echo: TrussHandle = chains.depends(
                 _Echo, retries=5, timeout_sec=42.0, concurrency_limit=7
             ),
         ):
@@ -431,7 +433,7 @@ def test_truss_chainlet_dep_options_propagated(truss_dir_path):
 def test_chainletbase_with_multiple_truss_chainlet_deps_codegen(
     truss_dir_path, tmp_path
 ):
-    """A CB with multiple TC deps gets one ``ServiceHandle(...)`` injection
+    """A CB with multiple TC deps gets one ``TrussHandle(...)`` injection
     per TC dep in the generated ``load()``."""
     from truss_chains.deployment import code_gen
 
@@ -449,8 +451,8 @@ def test_chainletbase_with_multiple_truss_chainlet_deps_codegen(
 
         def __init__(
             self,
-            echo1: chains.ServiceHandle = chains.depends(_Echo1),
-            echo2: chains.ServiceHandle = chains.depends(_Echo2),
+            echo1: TrussHandle = chains.depends(_Echo1),
+            echo2: TrussHandle = chains.depends(_Echo2),
         ):
             self._echo1 = echo1
             self._echo2 = echo2
@@ -464,15 +466,19 @@ def test_chainletbase_with_multiple_truss_chainlet_deps_codegen(
     )
     generated = (chainlet_dir / "model" / "model.py").read_text()
 
-    # Both ServiceHandle injections emitted.
+    # Both TrussHandle injections emitted.
     assert (
-        "ServiceHandle('_Echo1')" in generated or 'ServiceHandle("_Echo1")' in generated
+        "truss_chainlet.TrussHandle('_Echo1')" in generated
+        or 'truss_chainlet.TrussHandle("_Echo1")' in generated
     )
     assert (
-        "ServiceHandle('_Echo2')" in generated or 'ServiceHandle("_Echo2")' in generated
+        "truss_chainlet.TrussHandle('_Echo2')" in generated
+        or 'truss_chainlet.TrussHandle("_Echo2")' in generated
     )
     # Import emitted once (set semantics — not duplicated).
-    assert generated.count("from truss_chains import ServiceHandle") == 1
+    assert (
+        generated.count("from truss_chains.remote_chainlet import truss_chainlet") == 1
+    )
 
 
 # ---- run_local with TrussChainlet deps --------------------------------------
@@ -494,7 +500,7 @@ def test_run_local_truss_chainlet_dep_raises_clear_error(truss_dir_path):
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             self._echo = echo
@@ -522,7 +528,7 @@ def test_run_local_truss_chainlet_dep_can_be_pre_supplied(truss_dir_path):
 
         def __init__(
             self,
-            echo: chains.ServiceHandle = chains.depends(_Echo),
+            echo: TrussHandle = chains.depends(_Echo),
             context: chains.DeploymentContext = chains.depends_context(),
         ):
             self._echo = echo

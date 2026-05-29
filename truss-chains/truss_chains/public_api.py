@@ -13,7 +13,7 @@ from typing import (
 
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import deployment_client
-from truss_chains.runtime import ServiceHandle
+from truss_chains.remote_chainlet.truss_chainlet import TrussHandle
 
 if TYPE_CHECKING:
     from rich import progress
@@ -45,7 +45,8 @@ def depends_context() -> public_types.DeploymentContext:
 
 
 # `TrussChainlet` deps don't have a typed ``run_remote`` surface; the framework
-# injects a :class:`truss_chains.ServiceHandle` at runtime.
+# injects a :class:`truss_chains.remote_chainlet.truss_chainlet.TrussHandle` at
+# runtime.
 @overload
 def depends(  # type: ignore[overload-overlap]
     chainlet_cls: Type[framework.TrussChainlet],
@@ -53,7 +54,7 @@ def depends(  # type: ignore[overload-overlap]
     timeout_sec: float = ...,
     use_binary: bool = ...,
     concurrency_limit: int = ...,
-) -> ServiceHandle: ...
+) -> TrussHandle: ...
 
 
 @overload
@@ -72,7 +73,7 @@ def depends(
     timeout_sec: float = public_types.DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
     concurrency_limit: int = public_types.DEFAULT_CONCURRENCY_LIMIT,
-) -> Union[ServiceHandle, framework.ChainletT]:
+) -> Union[TrussHandle, framework.ChainletT]:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
     dependency of another chainlet. The return value of ``depends`` is intended to be
     used as a default argument in a chainlet's ``__init__``-method.
