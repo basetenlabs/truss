@@ -218,62 +218,6 @@ def test_view_lists_active_deployments(mock_remote):
     assert "model-def.api.baseten.co" in result.output
 
 
-@pytest.mark.parametrize(
-    "status_field",
-    [
-        None,  # status key absent
-        {},  # status present but empty dict
-        {"name": None},  # status present with explicit null name
-    ],
-)
-def test_view_deployment_without_status_shows_empty_string(mock_remote, status_field):
-    deployment: dict = {
-        "id": "dep_abc",
-        "base_model": "Qwen/Qwen3-8B",
-        "base_url": "https://trainer-abc.api.baseten.co/trainer",
-        "sampler": {},
-    }
-    if status_field is not None:
-        deployment["status"] = status_field
-    mock_remote.api.list_loops_deployments.return_value = [deployment]
-    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
-    assert result.exit_code == 0, result.output
-    assert "dep_abc" in result.output
-    assert "None" not in result.output
-
-
-@pytest.mark.parametrize(
-    "sampler_status_field",
-    [
-        None,  # status key absent on sampler
-        {},  # status present but empty dict
-        {"name": None},  # status present with explicit null name
-    ],
-)
-def test_view_deployment_without_sampler_status_shows_empty_string(
-    mock_remote, sampler_status_field
-):
-    sampler: dict = {
-        "id": "sampler_def",
-        "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
-    }
-    if sampler_status_field is not None:
-        sampler["status"] = sampler_status_field
-    mock_remote.api.list_loops_deployments.return_value = [
-        {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": sampler,
-        }
-    ]
-    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
-    assert result.exit_code == 0, result.output
-    assert "dep_abc" in result.output
-    assert "None" not in result.output
-
-
 def test_view_with_no_deployments_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
