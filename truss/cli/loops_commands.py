@@ -7,6 +7,9 @@ import yaml
 import truss.cli.train.core as train_cli
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.loops_deployment_log_watcher import LoopsDeploymentLogWatcher
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.loops_checkpoint_viewer import (
     resolve_most_recent_run_for_base_model,
     view_loops_checkpoint_list,
@@ -268,7 +271,12 @@ def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
+    # Two distinct IDs to surface: the user-facing Sampler ID (used by
+    # ``truss loops samplers view --sampler-id``) and the Sampler Deployment
+    # ID (the underlying model-deployment hashid, used by
+    # ``truss loops logs --sampler-deployment-id``).
     table.add_column("Sampler ID", style="cyan")
+    table.add_column("Sampler Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
     table.add_column("Base URL", style="blue")
     table.add_column("Created At")
@@ -277,6 +285,7 @@ def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
         created_str = common.format_localized_time(created_at) if created_at else ""
         table.add_row(
             sampler.get("id", ""),
+            sampler.get("deployment_id", "") or "",
             sampler.get("base_model", ""),
             sampler.get("base_url", ""),
             created_str,
@@ -461,3 +470,106 @@ def deploy_loops_checkpoints(
             print(yaml.safe_dump(result.truss_config.to_dict()))
     else:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
+
+
+def _resolve_sampler_model_id(
+    remote_provider: BasetenRemote, sampler_deployment_id: str
+) -> str:
+    """Find the model_id for a sampler's inference deployment.
+
+    The Loops deployments list endpoint returns each deployment's sampler
+    with both ``deployment_id`` (the OracleVersion id) and ``model_id`` (the
+    Oracle id). We don't want users to have to pass both flags, so resolve
+    the model_id client-side by matching on the deployment_id they gave us.
+    """
+    deployments = remote_provider.api.list_loops_deployments()
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
+        if sampler.get("deployment_id") == sampler_deployment_id:
+            return sampler["model_id"]
+    raise click.ClickException(
+        f"No Loops deployment found whose sampler matches deployment {sampler_deployment_id!r}. "
+        "Run `truss loops view` to list active deployments."
+    )
+
+
+@loops.command(name="logs")
+@click.option(
+    "--loops-deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "Fetch logs from a Loops deployment. The id is the "
+        "``Deployment ID`` column in ``truss loops view``."
+    ),
+)
+@click.option(
+    "--sampler-deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "Fetch logs from the sampler's inference deployment. The id is the "
+        "``Sampler Deployment ID`` column in ``truss loops samplers view``. "
+        "The companion model id is resolved automatically by matching "
+        "against the caller's active Loops deployments."
+    ),
+)
+@click.option(
+    "--tail",
+    is_flag=True,
+    default=False,
+    help="Continue polling for new log lines until the deployment goes inactive (or Ctrl+C).",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def view_loops_logs(
+    loops_deployment_id: Optional[str],
+    sampler_deployment_id: Optional[str],
+    tail: bool,
+    remote: Optional[str],
+) -> None:
+    """Fetch logs from one half of a Loops deployment.
+
+    Pass exactly one of ``--loops-deployment-id`` (the Loops deployment) or
+    ``--sampler-deployment-id`` (the sampler's inference deployment). The
+    two sides have separate log streams; pick the one you're debugging.
+    """
+    if bool(loops_deployment_id) == bool(sampler_deployment_id):
+        raise click.UsageError(
+            "Pass exactly one of --loops-deployment-id or --sampler-deployment-id."
+        )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if loops_deployment_id is not None:
+        if tail:
+            loops_watcher = LoopsDeploymentLogWatcher(
+                remote_provider.api, loops_deployment_id
+            )
+            for log in loops_watcher.watch():
+                cli_log_utils.output_log(log)
+        else:
+            logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
+            for log in cli_log_utils.parse_logs(logs):
+                cli_log_utils.output_log(log)
+        return
+
+    # --sampler-deployment-id path: reuse the existing model-deployment log machinery.
+    assert sampler_deployment_id is not None  # narrowed by the XOR check above
+    model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
+    if tail:
+        model_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, sampler_deployment_id
+        )
+        for log in model_watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_model_deployment_logs(
+            model_id, sampler_deployment_id
+        )
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
