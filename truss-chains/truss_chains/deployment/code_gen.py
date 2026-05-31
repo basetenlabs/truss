@@ -382,6 +382,11 @@ def _gen_stub_src_for_deps(
     imports: set[str] = set()
     src_parts: list[str] = []
     for dep in dependencies:
+        # TrussChainlet deps don't get a typed stub — the user accesses them
+        # via the injected `DeployedServiceDescriptor` and brings their own
+        # client. Skip stub generation entirely for these.
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            continue
         _update_src(_gen_stub_src(dep), src_parts, imports)
 
     if not (imports or src_parts):
@@ -453,7 +458,15 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
         # `dep.name` is the class name, while `name` is the argument name.
-        stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            # TrussChainlet deps don't have a generated typed stub. Inject the
+            # runtime `DeployedServiceDescriptor` so the user can call the
+            # sibling with their own client (httpx / websockets / ...).
+            stub_args.append(
+                f"{name}=self._context.get_service_descriptor({dep.name!r})"
+            )
+        else:
+            stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
     if chainlet_descriptor.has_context:
         if stub_args:
@@ -940,6 +953,62 @@ def gen_truss_model(
     )
 
 
+def _prepare_truss_chainlet_artifact(
+    chainlet_dir: pathlib.Path,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+    dep_services: Mapping[str, private_types.ServiceDescriptor],
+    model_name: str,
+) -> pathlib.Path:
+    """Build a TrussChainlet artifact: copy the user's `truss_dir` to
+    ``chainlet_dir`` and merge ``model_metadata.chains_metadata`` into its
+    ``config.yaml``. The user's source files (model.py, custom server, etc.)
+    are preserved byte-for-byte. ``model_name`` (the chain-uniquified name
+    matching the ChainletBase form ``<display_name>-<uuid_prefix>``) overwrites
+    the user's literal ``config.yaml.model_name`` so workspace/promote-time
+    name uniqueness is satisfied. Returns ``chainlet_dir``."""
+    src_truss_dir = chainlet_descriptor.truss_dir
+    if src_truss_dir is None or not src_truss_dir.is_dir():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` resolved to "
+            f"`{src_truss_dir}`, which is not a directory."
+        )
+    # Replace any pre-existing chainlet_dir from a stale prior generation.
+    if chainlet_dir.exists():
+        shutil.rmtree(chainlet_dir)
+    truss_path.copy_tree_path(src_truss_dir, chainlet_dir)
+
+    config_path = chainlet_dir / serving_image_builder.CONFIG_FILE
+    if not config_path.is_file():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) is "
+            "missing `config.yaml` — not a valid Truss directory."
+        )
+    try:
+        config = truss_config.TrussConfig.from_yaml(config_path)
+    except Exception as exc:
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) has "
+            f"an invalid `config.yaml`: {exc}"
+        ) from exc
+    config.model_name = model_name
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
+        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
+            public_types.SECRET_DUMMY
+        )
+    else:
+        logging.info(
+            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
+            "to secrets - no need to manually add it."
+        )
+    # Preserve any user-set model_metadata keys; only overwrite chains_metadata.
+    config.model_metadata = dict(config.model_metadata or {})
+    config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
+        private_types.TrussMetadata(chainlet_to_service=dep_services).model_dump()
+    )
+    config.write_to_yaml_file(config_path, verbose=True)
+    return chainlet_dir
+
+
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
     chain_name: str,
@@ -959,6 +1028,17 @@ def gen_truss_chainlet(
         f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
+    if chainlet_descriptor.is_truss_chainlet:
+        # TrussChainlet: copy the user's existing Truss directory as-is and
+        # merge `model_metadata.chains_metadata` into its `config.yaml` so the
+        # backend recognizes it as a chain member. No `model.py` generation,
+        # no chain-root copy.
+        return _prepare_truss_chainlet_artifact(
+            chainlet_dir,
+            chainlet_descriptor,
+            dep_services,
+            model_name=model_name or chain_name,
+        )
     if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
         engine_builder_config = cast(
             framework.EngineBuilderChainlet, chainlet_descriptor.chainlet_cls

@@ -3,7 +3,6 @@ import builtins
 import collections
 import contextlib
 import contextvars
-import json
 import logging
 import statistics
 import sys
@@ -29,8 +28,7 @@ from typing import (
 import httpx
 import pydantic
 
-from truss.templates.shared import dynamic_config_resolver
-from truss_chains import private_types, public_types, utils
+from truss_chains import private_types, public_types, runtime, utils
 
 if TYPE_CHECKING:
     import aiohttp
@@ -119,29 +117,37 @@ _REQUESTS_TOTAL = prometheus_client.Counter(
 def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
 ) -> Mapping[str, public_types.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
+    """Resolve URLs for typed chainlet dependencies from the dynamic config.
+
+    Used by the generated ``TrussChainletModel.__init__`` to combine the static
+    ``ServiceDescriptor`` map (from ``config.yaml``, carrying the framework's
+    ``name`` / ``display_name`` / ``RPCOptions`` triple) with the
+    runtime-resolved URLs from ``/etc/b10_dynamic_config/dynamic_chainlet_config``.
+
+    For raw (non-typed) Truss code that just needs sibling URLs, see the public
+    :mod:`truss_chains.runtime` API instead.
+    """
     if not chainlet_to_service:
         return {}
 
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
-    )
-    if not dynamic_chainlet_config_str:
+    try:
+        dynamic_chainlet_config = runtime._load_dynamic_config()
+    except public_types.MissingDependencyError:
+        # Preserve the historical error message — existing tests and downstream
+        # consumers may match on its text.
         raise public_types.MissingDependencyError(
             f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
             "found. Cannot override Chainlet configs."
         )
 
-    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
-
+    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
     for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
-        # NOTE: The Chainlet `display_name` in the Truss CLI
-        # corresponds to Chainlet `name` in the backend. As
-        # the dynamic Chainlet config is keyed on the backend
-        # Chainlet name, we have to look up config values by
-        # using the `display_name` in the service descriptor.
+        # NOTE: The Chainlet `display_name` in the Truss CLI corresponds to
+        # Chainlet `name` in the backend. As the dynamic Chainlet config is
+        # keyed on the backend Chainlet name, we have to look up config values
+        # by using the `display_name` in the service descriptor.
         if display_name not in dynamic_chainlet_config:
             raise public_types.MissingDependencyError(
                 f"Chainlet '{display_name}' not found in "
@@ -149,18 +155,21 @@ def populate_chainlet_service_predict_urls(
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
-        if internal_url := dynamic_chainlet_config[display_name].get("internal_url"):
-            url = {"internal_url": internal_url}
-        else:
-            predict_url = dynamic_chainlet_config[display_name].get("predict_url")
-            url = {"predict_url": predict_url}
-
+        # Build URLs via the runtime helper, then preserve the typed-chain
+        # identity (`name` / `display_name`) and `RPCOptions` from the static
+        # config map. Historical contract: when ``internal_url`` is present it
+        # is mutually exclusive with ``predict_url`` — keep ``predict_url`` set
+        # only when no ``internal_url`` is provided.
+        urls = runtime._descriptor_from_raw(
+            display_name, dynamic_chainlet_config[display_name]
+        )
         chainlet_to_deployed_service[chainlet_name] = (
             public_types.DeployedServiceDescriptor(
-                display_name=display_name,
                 name=service_descriptor.name,
+                display_name=display_name,
                 options=service_descriptor.options,
-                **url,
+                predict_url=None if urls.internal_url else urls.predict_url,
+                internal_url=urls.internal_url,
             )
         )
 

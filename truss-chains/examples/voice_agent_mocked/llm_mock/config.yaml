@@ -1,0 +1,8 @@
+model_name: LLMMock
+model_class_filename: model.py
+model_class_name: Model
+python_version: py311
+resources:
+  cpu: "1"
+  memory: 256Mi
+  use_gpu: false

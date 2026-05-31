@@ -1,0 +1,10 @@
+model_name: EchoTruss
+model_class_filename: model.py
+model_class_name: Model
+python_version: py311
+requirements:
+  - truss @ git+https://github.com/basetenlabs/truss.git@matte/composable-chains-2-trusschainlet
+resources:
+  cpu: "1"
+  memory: 512Mi
+  use_gpu: false

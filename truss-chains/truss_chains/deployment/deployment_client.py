@@ -89,6 +89,11 @@ def _collect_external_package_dirs(
     seen: set[pathlib.Path] = set()
     result: list[pathlib.Path] = []
     for desc in chainlet_descriptors:
+        if desc.is_truss_chainlet:
+            # The user's TrussChainlet has its own packaging (its `truss_dir`
+            # is bundled separately by Truss's `archive_dir`). Chain-level
+            # `gather_chain` should not touch it.
+            continue
         ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
         if not ext_dirs:
             continue

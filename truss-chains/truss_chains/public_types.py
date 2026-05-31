@@ -3,6 +3,7 @@ import enum
 import logging
 import pathlib
 import traceback
+import urllib.parse
 from collections.abc import AsyncIterator
 from typing import (
     Any,
@@ -727,6 +728,35 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
+def _to_websocket_url(url: str) -> str:
+    """Rewrite an http(s):// predict URL to its ws(s):// WS counterpart.
+
+    Two transformations:
+
+    1. Scheme: ``http`` → ``ws``, ``https`` → ``wss``.
+    2. Path: terminal ``/run_remote`` → ``/websocket`` — chains' WS endpoints
+       are routed by api-gateway via that path suffix, while the matching HTTP
+       predict path uses ``/run_remote``. Other path shapes pass through
+       unchanged so this is also useful for standalone-model URLs whose paths
+       differ.
+
+    Raises ``ValueError`` if the scheme is unknown.
+    """
+    if url.startswith("https://"):
+        ws_url = "wss://" + url[len("https://") :]
+    elif url.startswith("http://"):
+        ws_url = "ws://" + url[len("http://") :]
+    else:
+        raise ValueError(
+            f"Cannot convert to WebSocket scheme; expected http(s):// prefix: {url!r}"
+        )
+
+    if ws_url.endswith("/run_remote"):
+        ws_url = ws_url[: -len("/run_remote")] + "/websocket"
+
+    return ws_url
+
+
 class DeployedServiceDescriptor(custom_types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
@@ -755,6 +785,56 @@ class DeployedServiceDescriptor(custom_types.SafeModel):
                 "At least one of 'predict_url' or 'internal_url' must be provided."
             )
         return self
+
+    @property
+    def target_url(self) -> str:
+        """The URL a ``StubBase`` would post to: prefer ``internal_url``'s
+        ``gateway_run_remote_url`` (cluster-local, lower-latency), fall back to
+        ``predict_url``. Mirrors the selection logic in
+        ``BasetenSession.__init__``."""
+        if self.internal_url is not None:
+            return self.internal_url.gateway_run_remote_url
+        # Validator guarantees predict_url is set when internal_url is None.
+        assert self.predict_url is not None
+        return self.predict_url
+
+    @property
+    def ws_url(self) -> Optional[str]:
+        """WebSocket URL derived from ``predict_url``: scheme swapped to
+        ws(s):// and terminal ``/run_remote`` rewritten to ``/websocket``
+        (the path api-gateway routes to its WS handler). ``None`` when
+        ``predict_url`` is not set. See ``_to_websocket_url``."""
+        if self.predict_url is None:
+            return None
+        return _to_websocket_url(self.predict_url)
+
+    @property
+    def internal_ws_url(self) -> Optional[str]:
+        """Cluster-local WS URL; ``None`` if ``internal_url`` unset. Uses the
+        chain hostname as netloc (not ``gateway_run_remote_url``'s host) — the
+        ``websockets`` lib emits Host from the URL netloc, so a Host override
+        can't be used to smuggle chain-host through like HTTP does."""
+        if self.internal_url is None:
+            return None
+        rewritten = _to_websocket_url(self.internal_url.gateway_run_remote_url)
+        parsed = urllib.parse.urlparse(rewritten)
+        return parsed._replace(netloc=self.internal_url.hostname).geturl()
+
+    def with_auth_headers(self, api_key: str) -> dict[str, str]:
+        """Headers for *HTTP* sibling calls (against ``target_url``):
+        Authorization, plus ``Host: internal_url.hostname`` when set.
+        For WS, use :py:meth:`with_ws_auth_headers` — the Host override breaks
+        the WS handshake."""
+        headers = {"Authorization": f"Api-Key {api_key}"}
+        if self.internal_url is not None:
+            headers["Host"] = self.internal_url.hostname
+        return headers
+
+    def with_ws_auth_headers(self, api_key: str) -> dict[str, str]:
+        """Headers for *WebSocket* sibling calls (against ``internal_ws_url`` /
+        ``ws_url``). Authorization-only; an explicit Host would corrupt the
+        handshake."""
+        return {"Authorization": f"Api-Key {api_key}"}
 
 
 class Environment(custom_types.SafeModel):
