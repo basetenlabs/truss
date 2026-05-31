@@ -9,6 +9,8 @@ from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
+INTERACTIVE_SESSION_TIMEOUT_INFINITE = -1
+_INFINITE_TIMEOUT_ALIASES = frozenset({"inf", "infinity", "infinite"})
 
 
 class ModelWeightsFormat(str, enum.Enum):
@@ -131,6 +133,26 @@ class InteractiveSession(custom_types.SafeModelNoExtra):
     auth_provider: InteractiveSessionAuthProvider = (
         InteractiveSessionAuthProvider.MICROSOFT
     )
+
+    @field_validator("timeout_minutes", mode="before")
+    @classmethod
+    def validate_timeout_minutes(cls, v: Union[int, str]) -> int:
+        if isinstance(v, str):
+            if v.strip().lower() in _INFINITE_TIMEOUT_ALIASES:
+                return INTERACTIVE_SESSION_TIMEOUT_INFINITE
+            try:
+                v = int(v)
+            except ValueError:
+                raise ValueError(
+                    "timeout_minutes must be an integer, 'inf', or 'infinity'"
+                )
+        if v == INTERACTIVE_SESSION_TIMEOUT_INFINITE:
+            return v
+        if v < 1 or v > 5266080:
+            raise ValueError(
+                "timeout_minutes must be -1 (infinite) or between 1 and 5266080"
+            )
+        return v
 
 
 class Runtime(custom_types.SafeModelNoExtra):
