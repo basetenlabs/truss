@@ -174,6 +174,16 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
     }
 
 
+def _should_use_docker_server_slim(config: TrussConfig) -> bool:
+    if os.getenv("BT_USE_DOCKER_SERVER_SLIM", "").strip().lower() != "true":
+        return False
+    if config.docker_server is None:
+        return False
+    if config.docker_server.no_build:
+        return False
+    return True
+
+
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
         self.repo_name = repo_name
@@ -719,6 +729,7 @@ class ServingImageBuilder(ImageBuilder):
         if (
             config.docker_server is not None
             and config.docker_server.no_build is not True
+            and not _should_use_docker_server_slim(config)
         ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
@@ -730,7 +741,6 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_supervisord_config(build_dir, config)
 
-            # Copy event listener script
             event_listener_script = (
                 TEMPLATES_DIR / "docker_server" / "event_listener.py"
             )
@@ -1035,6 +1045,7 @@ class ServingImageBuilder(ImageBuilder):
             apt_mirror_url=_resolve_apt_mirror_url(),
             cache_mount_id=cache_mount_id,
             **_build_cache_mount_template_vars(cache_mount_id),
+            docker_server_slim=_should_use_docker_server_slim(config),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
