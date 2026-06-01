@@ -140,9 +140,9 @@ def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
         return
     if not show_all:
         deployments = [
-            d
-            for d in deployments
-            if d["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
+            deployment
+            for deployment in deployments
+            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
         if not deployments:
             console.print(
