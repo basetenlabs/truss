@@ -201,10 +201,12 @@ def test_view_lists_active_deployments(mock_remote):
             "id": "dep_abc",
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "active"},
+            "status": {"name": "RUNNING"},
             "sampler": {
                 "id": "sampler_def",
+                "deployment_id": "ov_def123",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
+                "status": {"name": "ACTIVE"},
             },
         }
     ]
@@ -212,39 +214,81 @@ def test_view_lists_active_deployments(mock_remote):
     assert result.exit_code == 0, result.output
     assert "dep_abc" in result.output
     assert "Qwen/Qwen3-8B" in result.output
-    assert "active" in result.output
+    assert "RUNNING" in result.output
+    assert "ACTIVE" in result.output
+    assert "ov_def123" in result.output
     assert "model-def.api.baseten.co" in result.output
-
-
-@pytest.mark.parametrize(
-    "status_field",
-    [
-        None,  # status key absent
-        {},  # status present but empty dict
-        {"name": None},  # status present with explicit null name
-    ],
-)
-def test_view_deployment_without_status_shows_empty_string(mock_remote, status_field):
-    deployment: dict = {
-        "id": "dep_abc",
-        "base_model": "Qwen/Qwen3-8B",
-        "base_url": "https://trainer-abc.api.baseten.co/trainer",
-        "sampler": {},
-    }
-    if status_field is not None:
-        deployment["status"] = status_field
-    mock_remote.api.list_loops_deployments.return_value = [deployment]
-    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
-    assert result.exit_code == 0, result.output
-    assert "dep_abc" in result.output
-    assert "None" not in result.output
 
 
 def test_view_with_no_deployments_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
+    assert "No Loops deployments" in result.output
+    # Truly empty: don't suggest --all since there's nothing to reveal.
+    assert "--all" not in result.output
+
+
+def _deployment(deployment_id: str, status_name: str) -> dict:
+    return {
+        "id": deployment_id,
+        "base_model": "Qwen/Qwen3-8B",
+        "base_url": f"https://trainer-{deployment_id}.api.baseten.co/trainer",
+        "status": {"name": status_name},
+        "sampler": {
+            "id": f"sampler_{deployment_id}",
+            "deployment_id": f"ov_{deployment_id}",
+            "base_url": f"https://model-{deployment_id}.api.baseten.co/deployment/v1/sync",
+            "status": {"name": "ACTIVE"},
+        },
+    }
+
+
+def test_view_filters_stopped_and_failed_by_default(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+        _deployment("dep_deploying", "DEPLOYING"),
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_running" in result.output
+    assert "dep_deploying" in result.output
+    assert "dep_stopped" not in result.output
+    assert "dep_failed" not in result.output
+
+
+def test_view_all_flag_includes_terminal_states(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_running" in result.output
+    assert "dep_stopped" in result.output
+    assert "dep_failed" in result.output
+
+
+def test_view_empty_after_filter_hints_at_all_flag(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
     assert "No active Loops deployments" in result.output
+    assert "--all" in result.output
+
+
+def test_view_all_flag_with_no_deployments(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "No Loops deployments" in result.output
+    assert "--all" not in result.output
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):

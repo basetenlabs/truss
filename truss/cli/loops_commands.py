@@ -109,13 +109,24 @@ def deactivate_loops_deployment(
     console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
 
 
+_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+
+
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include deployments in terminal states (STOPPED, FAILED).",
+)
 @common.common_options()
-def view_loops_deployments(remote: Optional[str]) -> None:
-    """List the caller's active Loops deployments.
+def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
+    """List the caller's Loops deployments.
 
-    Excludes deployments whose latest status is STOPPED (filtered server-side).
+    By default, deployments in terminal states (STOPPED, FAILED) are hidden.
+    Pass --all to include them.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -124,6 +135,22 @@ def view_loops_deployments(remote: Optional[str]) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
+    if not deployments:
+        console.print("No Loops deployments.", style="yellow")
+        return
+    if not show_all:
+        deployments = [
+            deployment
+            for deployment in deployments
+            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
+        ]
+        if not deployments:
+            console.print(
+                "No active Loops deployments. Pass --all to include "
+                "STOPPED and FAILED deployments.",
+                style="yellow",
+            )
+            return
     _render_loops_deployments(deployments)
 
 
@@ -199,9 +226,6 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
 
 
 def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
-    if not deployments:
-        console.print("No active Loops deployments.", style="yellow")
-        return
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -211,22 +235,21 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     )
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
-    table.add_column("Status")
-    table.add_column("Base URL", style="blue")
-    table.add_column("Deployment URL", style="blue")
+    table.add_column("Deployment Status")
+    table.add_column("Deployment Base URL", style="blue")
+    table.add_column("Sampler Deployment ID", style="cyan")
+    table.add_column("Sampler Status")
+    table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
-        sampler = deployment.get("sampler") or {}
-        sampler_url = sampler.get("base_url", "") if isinstance(sampler, dict) else ""
-        status_obj = deployment.get("status") or {}
-        status_name = (
-            status_obj.get("name") or "" if isinstance(status_obj, dict) else ""
-        )
+        sampler = deployment["sampler"]
         table.add_row(
-            deployment.get("id", ""),
-            deployment.get("base_model", "") or "",
-            status_name,
-            deployment.get("base_url", ""),
-            sampler_url,
+            deployment["id"],
+            deployment["base_model"],
+            deployment["status"]["name"],
+            deployment["base_url"],
+            sampler["deployment_id"],
+            sampler["status"]["name"],
+            sampler["base_url"],
         )
     console.print(table)
 
