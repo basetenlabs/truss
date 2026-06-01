@@ -215,6 +215,7 @@ def test_view_lists_active_deployments(mock_remote):
     assert "Qwen/Qwen3-8B" in result.output
     assert "RUNNING" in result.output
     assert "ACTIVE" in result.output
+    assert "sampler_def" in result.output
     assert "model-def.api.baseten.co" in result.output
 
 

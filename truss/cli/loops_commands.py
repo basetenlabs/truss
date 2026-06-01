@@ -237,6 +237,7 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table.add_column("Base Model", style="green")
     table.add_column("Deployment Status")
     table.add_column("Deployment Base URL", style="blue")
+    table.add_column("Sampler ID", style="cyan")
     table.add_column("Sampler Status")
     table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
@@ -246,6 +247,7 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
             deployment["base_model"],
             deployment["status"]["name"],
             deployment["base_url"],
+            sampler["id"],
             sampler["status"]["name"],
             sampler["base_url"],
         )
