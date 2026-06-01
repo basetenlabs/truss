@@ -204,6 +204,7 @@ def test_view_lists_active_deployments(mock_remote):
             "status": {"name": "RUNNING"},
             "sampler": {
                 "id": "sampler_def",
+                "deployment_id": "ov_def123",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
                 "status": {"name": "ACTIVE"},
             },
@@ -215,7 +216,7 @@ def test_view_lists_active_deployments(mock_remote):
     assert "Qwen/Qwen3-8B" in result.output
     assert "RUNNING" in result.output
     assert "ACTIVE" in result.output
-    assert "sampler_def" in result.output
+    assert "ov_def123" in result.output
     assert "model-def.api.baseten.co" in result.output
 
 
@@ -236,6 +237,7 @@ def _deployment(deployment_id: str, status_name: str) -> dict:
         "status": {"name": status_name},
         "sampler": {
             "id": f"sampler_{deployment_id}",
+            "deployment_id": f"ov_{deployment_id}",
             "base_url": f"https://model-{deployment_id}.api.baseten.co/deployment/v1/sync",
             "status": {"name": "ACTIVE"},
         },
