@@ -1,4 +1,5 @@
 import enum
+import ipaddress
 import logging
 import math
 import os
@@ -624,6 +625,74 @@ class RemoteSSH(custom_types.ConfigModel):
     )
 
 
+_FQDN_LABEL_REGEX = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
+def _validate_fqdn(value: str) -> str:
+    if not value:
+        raise ValueError("FQDN entries cannot be empty.")
+    if len(value) > 253:
+        raise ValueError(f"FQDN '{value}' exceeds 253 characters.")
+    labels = value.split(".")
+    if len(labels) < 2:
+        raise ValueError(f"FQDN '{value}' must contain at least two labels.")
+    for index, label in enumerate(labels):
+        if index == 0 and label == "*":
+            continue
+        if not _FQDN_LABEL_REGEX.match(label):
+            raise ValueError(f"Invalid FQDN '{value}': label '{label}' is malformed.")
+    return value
+
+
+def _validate_cidr(value: str) -> str:
+    try:
+        ipaddress.ip_network(value, strict=True)
+    except ValueError as e:
+        raise ValueError(f"Invalid IP CIDR '{value}': {e}") from e
+    return value
+
+
+class EgressRestrictions(custom_types.ConfigModel):
+    """Egress network restrictions for a model version.
+
+    Enterprise-only. Setting both ``ip_allow_list`` and ``fqdn_allow_list`` to
+    ``null`` or ``[]`` blocks all outbound network egress. Omitting the
+    ``egress_restrictions`` block (or setting it to ``null``) preserves the
+    default behavior of allowing all egress.
+    """
+
+    ip_allow_list: Optional[list[str]] = pydantic.Field(
+        default=None,
+        description=(
+            "Allowed outbound IP CIDR ranges. Use null or [] alongside an "
+            "equally restrictive fqdn_allow_list to block all egress."
+        ),
+        examples=[["1.1.1.1/32", "8.8.8.8/32"]],
+    )
+    fqdn_allow_list: Optional[list[str]] = pydantic.Field(
+        default=None,
+        description=(
+            "Allowed outbound fully-qualified domain names. A leading '*.' "
+            "wildcard matches any single subdomain label."
+        ),
+        examples=[["*.baseten.co", "huggingface.co"]],
+    )
+
+    @pydantic.field_validator("ip_allow_list")
+    @classmethod
+    def _validate_ip_allow_list(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        return [_validate_cidr(entry) for entry in v]
+
+    @pydantic.field_validator("fqdn_allow_list")
+    @classmethod
+    def _validate_fqdn_allow_list(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        return [_validate_fqdn(entry) for entry in v]
+
+
 class Runtime(custom_types.ConfigModel):
     """Runtime settings for your model instance."""
 
@@ -657,6 +726,14 @@ class Runtime(custom_types.ConfigModel):
     remote_ssh: RemoteSSH = pydantic.Field(
         default_factory=RemoteSSH,
         description="Configuration for SSH access to running model instances.",
+    )
+    egress_restrictions: Optional[EgressRestrictions] = pydantic.Field(
+        default=None,
+        description=(
+            "Egress network restrictions for the model version. When unset, "
+            "all egress is allowed (default). Enterprise-only; enforced "
+            "server-side."
+        ),
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
