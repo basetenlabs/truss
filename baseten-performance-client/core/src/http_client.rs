@@ -229,7 +229,7 @@ async fn send_request_with_retry(
                     return Ok(resp);
                 }
 
-                let retryable = is_retryable_status(status.as_u16());
+                let retryable = is_retryable_status(status.as_u16(), config);
                 let should_retry = retryable && retries_done < max_retries;
 
                 if !should_retry {
@@ -407,7 +407,11 @@ pub(crate) async fn send_request_with_hedging(
 }
 
 /// Determine if an HTTP status code is retryable
-fn is_retryable_status(status: u16) -> bool {
+fn is_retryable_status(status: u16, config: &RequestProcessingConfig) -> bool {
+    if config.is_explicitly_non_retryable_status(status) {
+        return false;
+    }
+
     match status {
         // Rate limiting
         429 => true,

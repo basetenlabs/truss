@@ -18,6 +18,7 @@ use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -531,6 +532,7 @@ pub struct RequestProcessingPreference {
     pub primary_api_key_override: Option<String>,
     #[pyo3(get, set)]
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+    pub non_retryable_status_codes: HashSet<u16>,
     inner: RustRequestProcessingPreference,
 }
 
@@ -551,7 +553,8 @@ impl RequestProcessingPreference {
         initial_backoff_ms = None,
         cancel_token = None,
         primary_api_key_override = None,
-        extra_headers = None
+        extra_headers = None,
+        non_retryable_status_codes = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -568,6 +571,7 @@ impl RequestProcessingPreference {
         cancel_token: Option<CancellationToken>,
         primary_api_key_override: Option<String>,
         extra_headers: Option<std::collections::HashMap<String, String>>,
+        non_retryable_status_codes: Option<HashSet<u16>>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -584,6 +588,7 @@ impl RequestProcessingPreference {
             cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
             primary_api_key_override,
             extra_headers,
+            non_retryable_status_codes,
         };
 
         // Apply defaults using the same method as Rust core
@@ -606,6 +611,7 @@ impl RequestProcessingPreference {
             cancel_token,
             primary_api_key_override: complete.primary_api_key_override,
             extra_headers: complete.extra_headers,
+            non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
             inner: rust_pref,
         }
     }
@@ -615,13 +621,25 @@ impl RequestProcessingPreference {
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None,
         ))
+    }
+
+    #[getter]
+    fn non_retryable_status_codes(&self) -> HashSet<u16> {
+        self.non_retryable_status_codes.clone()
+    }
+
+    #[setter]
+    fn set_non_retryable_status_codes(&mut self, value: HashSet<u16>) {
+        self.non_retryable_status_codes = value.clone();
+        self.inner.non_retryable_status_codes = Some(value);
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?})",
             self.max_concurrent_requests,
             self.batch_size,
             self.pin_initial_endpoint_once,
@@ -631,7 +649,8 @@ impl RequestProcessingPreference {
             self.hedge_budget_pct,
             self.retry_budget_pct,
             self.max_retries,
-            self.initial_backoff_ms
+            self.initial_backoff_ms,
+            self.non_retryable_status_codes
         ))
     }
 
