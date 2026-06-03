@@ -17,14 +17,16 @@ def validate(truss_spec: TrussSpec):
 
 def _verify_has_class_init_arg(source: str, class_name: str, arg_name: str):
     tree = ast.parse(source)
+    model_class_found = False
     model_class_init_found = False
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
+            model_class_found = True
             for child in node.body:
-                if child.name == "__init__":  # type: ignore[attr-defined]
+                if isinstance(child, ast.FunctionDef) and child.name == "__init__":
                     model_class_init_found = True
                     arg_found = False
-                    for arg in child.args.args:  # type: ignore[attr-defined]
+                    for arg in child.args.args:
                         if arg.arg == arg_name:
                             arg_found = True
                     if not arg_found:
@@ -36,6 +38,10 @@ def _verify_has_class_init_arg(source: str, class_name: str, arg_name: str):
                             )
                         )
 
+    if not model_class_found:
+        raise ValidationError(
+            f"Model class `{class_name}` was not found in the model file; when using `trt_llm` the class is required"
+        )
     if not model_class_init_found:
         raise ValidationError(
             "Model class does not have an `__init__` method; when using `trt_llm` it is required"

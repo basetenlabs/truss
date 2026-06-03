@@ -33,9 +33,7 @@ def _invoke_loops_push(args, mock_remote):
     with patch(
         "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
     ):
-        with patch("requests.get") as mock_get:
-            mock_get.return_value = Mock(status_code=200)
-            return runner.invoke(truss_cli, ["loops", "push"] + args)
+        return runner.invoke(truss_cli, ["loops", "push"] + args)
 
 
 def test_push_basic(mock_remote):
@@ -63,43 +61,6 @@ def test_push_with_project_id(mock_remote):
     )
 
 
-def test_push_polls_until_running(mock_remote):
-    # First two polls return 503, third returns 200.
-    responses = [Mock(status_code=503), Mock(status_code=503), Mock(status_code=200)]
-
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", side_effect=responses):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                result = runner.invoke(
-                    truss_cli,
-                    ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                )
-
-    assert result.exit_code == 0, result.output
-
-
-def test_push_times_out_waiting_for_health(mock_remote):
-    runner = CliRunner()
-    with patch(
-        "truss.remote.remote_factory.RemoteFactory.create", return_value=mock_remote
-    ):
-        with patch("requests.get", return_value=Mock(status_code=503)):
-            with patch("truss.cli.loops_commands.time.sleep"):
-                with patch(
-                    "truss.cli.loops_commands.time.monotonic", side_effect=[0, 0, 700]
-                ):
-                    result = runner.invoke(
-                        truss_cli,
-                        ["loops", "push", "Qwen/Qwen3-8B", "--remote", "test_remote"],
-                    )
-
-    assert result.exit_code != 0
-    assert "Timed out" in result.output
-
-
 def test_push_uses_inquire_when_remote_not_provided(mock_remote):
     runner = CliRunner()
     with patch(
@@ -108,9 +69,7 @@ def test_push_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            with patch("requests.get") as mock_get:
-                mock_get.return_value = Mock(status_code=200)
-                result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
+            result = runner.invoke(truss_cli, ["loops", "push", "Qwen/Qwen3-8B"])
 
     assert result.exit_code == 0, result.output
     mock_inquire.assert_called_once()
@@ -168,30 +127,30 @@ def _invoke_loops_deactivate(args, mock_remote, input=None):
 
 def test_deactivate_basic(mock_remote):
     result = _invoke_loops_deactivate(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--yes"], mock_remote
+        ["dep_abc", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_loops_deployment.assert_called_once_with("Qwen/Qwen3-8B")
+    mock_remote.api.deactivate_loops_deployment.assert_called_once_with("dep_abc")
     assert "deactivated" in result.output
 
 
 def test_deactivate_confirms_before_proceeding(mock_remote):
     result = _invoke_loops_deactivate(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote, input="y\n"
+        ["dep_abc", "--remote", "test_remote"], mock_remote, input="y\n"
     )
 
     assert result.exit_code == 0, result.output
-    mock_remote.deactivate_loops_deployment.assert_called_once_with("Qwen/Qwen3-8B")
+    mock_remote.api.deactivate_loops_deployment.assert_called_once_with("dep_abc")
 
 
 def test_deactivate_aborts_on_no_confirmation(mock_remote):
     result = _invoke_loops_deactivate(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote"], mock_remote, input="n\n"
+        ["dep_abc", "--remote", "test_remote"], mock_remote, input="n\n"
     )
 
     assert result.exit_code != 0
-    mock_remote.deactivate_loops_deployment.assert_not_called()
+    mock_remote.api.deactivate_loops_deployment.assert_not_called()
 
 
 def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
@@ -202,28 +161,28 @@ def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            runner.invoke(truss_cli, ["loops", "deactivate", "Qwen/Qwen3-8B", "--yes"])
+            runner.invoke(truss_cli, ["loops", "deactivate", "dep_abc", "--yes"])
 
     mock_inquire.assert_called_once()
 
 
 def test_deactivate_propagates_error(mock_remote):
-    mock_remote.deactivate_loops_deployment.side_effect = RuntimeError(
+    mock_remote.api.deactivate_loops_deployment.side_effect = RuntimeError(
         "deactivation failed"
     )
 
     result = _invoke_loops_deactivate(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--yes"], mock_remote
+        ["dep_abc", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code != 0
 
 
-def test_deactivate_requires_base_model(mock_remote):
+def test_deactivate_requires_deployment_id(mock_remote):
     result = _invoke_loops_deactivate(["--remote", "test_remote", "--yes"], mock_remote)
 
     assert result.exit_code != 0
-    mock_remote.deactivate_loops_deployment.assert_not_called()
+    mock_remote.api.deactivate_loops_deployment.assert_not_called()
 
 
 def _invoke(args, mock_remote):
@@ -242,9 +201,12 @@ def test_view_lists_active_deployments(mock_remote):
             "id": "dep_abc",
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
             "sampler": {
                 "id": "sampler_def",
+                "deployment_id": "ov_def123",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
+                "status": {"name": "ACTIVE"},
             },
         }
     ]
@@ -252,6 +214,9 @@ def test_view_lists_active_deployments(mock_remote):
     assert result.exit_code == 0, result.output
     assert "dep_abc" in result.output
     assert "Qwen/Qwen3-8B" in result.output
+    assert "RUNNING" in result.output
+    assert "ACTIVE" in result.output
+    assert "ov_def123" in result.output
     assert "model-def.api.baseten.co" in result.output
 
 
@@ -259,7 +224,71 @@ def test_view_with_no_deployments_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
+    assert "No Loops deployments" in result.output
+    # Truly empty: don't suggest --all since there's nothing to reveal.
+    assert "--all" not in result.output
+
+
+def _deployment(deployment_id: str, status_name: str) -> dict:
+    return {
+        "id": deployment_id,
+        "base_model": "Qwen/Qwen3-8B",
+        "base_url": f"https://trainer-{deployment_id}.api.baseten.co/trainer",
+        "status": {"name": status_name},
+        "sampler": {
+            "id": f"sampler_{deployment_id}",
+            "deployment_id": f"ov_{deployment_id}",
+            "base_url": f"https://model-{deployment_id}.api.baseten.co/deployment/v1/sync",
+            "status": {"name": "ACTIVE"},
+        },
+    }
+
+
+def test_view_filters_stopped_and_failed_by_default(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+        _deployment("dep_deploying", "DEPLOYING"),
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_running" in result.output
+    assert "dep_deploying" in result.output
+    assert "dep_stopped" not in result.output
+    assert "dep_failed" not in result.output
+
+
+def test_view_all_flag_includes_terminal_states(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_running" in result.output
+    assert "dep_stopped" in result.output
+    assert "dep_failed" in result.output
+
+
+def test_view_empty_after_filter_hints_at_all_flag(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
     assert "No active Loops deployments" in result.output
+    assert "--all" in result.output
+
+
+def test_view_all_flag_with_no_deployments(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "No Loops deployments" in result.output
+    assert "--all" not in result.output
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
