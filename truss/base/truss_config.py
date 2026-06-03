@@ -655,8 +655,8 @@ def _validate_cidr(value: str) -> str:
 class EgressRestrictions(custom_types.ConfigModel):
     """Egress network restrictions for a model version.
 
-    Enterprise-only. Setting both ``ip_allow_list`` and ``fqdn_allow_list`` to
-    ``null`` or ``[]`` blocks all outbound network egress. Omitting the
+    Setting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or
+    ``[]`` blocks all outbound network egress. Omitting the
     ``egress_restrictions`` block (or setting it to ``null``) preserves the
     default behavior of allowing all egress.
     """
@@ -731,8 +731,7 @@ class Runtime(custom_types.ConfigModel):
         default=None,
         description=(
             "Egress network restrictions for the model version. When unset, "
-            "all egress is allowed (default). Enterprise-only; enforced "
-            "server-side."
+            "all egress is allowed (default)."
         ),
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
