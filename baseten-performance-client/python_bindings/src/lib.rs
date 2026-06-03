@@ -532,8 +532,44 @@ pub struct RequestProcessingPreference {
     pub primary_api_key_override: Option<String>,
     #[pyo3(get, set)]
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+    #[pyo3(get, set)]
     pub non_retryable_status_codes: HashSet<u16>,
-    inner: RustRequestProcessingPreference,
+}
+
+impl RequestProcessingPreference {
+    fn to_rust_preference(&self) -> RustRequestProcessingPreference {
+        let non_retryable_status_codes = if self.non_retryable_status_codes.is_empty() {
+            None
+        } else {
+            Some(self.non_retryable_status_codes.clone())
+        };
+
+        RustRequestProcessingPreference {
+            max_concurrent_requests: Some(self.max_concurrent_requests),
+            batch_size: Some(self.batch_size),
+            max_chars_per_request: self.max_chars_per_request,
+            pin_initial_endpoint_once: Some(self.pin_initial_endpoint_once),
+            timeout_s: Some(self.timeout_s),
+            hedge_delay: self.hedge_delay,
+            total_timeout_s: self.total_timeout_s,
+            hedge_budget_pct: Some(self.hedge_budget_pct),
+            retry_budget_pct: Some(self.retry_budget_pct),
+            max_retries: Some(self.max_retries),
+            initial_backoff_ms: Some(self.initial_backoff_ms),
+            cancel_token: self.cancel_token.as_ref().map(|token| token.inner.clone()),
+            primary_api_key_override: self.primary_api_key_override.clone(),
+            extra_headers: self.extra_headers.clone(),
+            non_retryable_status_codes,
+        }
+    }
+}
+
+fn rust_preference_from_py(
+    preference: Option<&RequestProcessingPreference>,
+) -> RustRequestProcessingPreference {
+    preference
+        .map(RequestProcessingPreference::to_rust_preference)
+        .unwrap_or_default()
 }
 
 #[pymethods]
@@ -612,7 +648,6 @@ impl RequestProcessingPreference {
             primary_api_key_override: complete.primary_api_key_override,
             extra_headers: complete.extra_headers,
             non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
-            inner: rust_pref,
         }
     }
 
@@ -623,17 +658,6 @@ impl RequestProcessingPreference {
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             None,
         ))
-    }
-
-    #[getter]
-    fn non_retryable_status_codes(&self) -> HashSet<u16> {
-        self.non_retryable_status_codes.clone()
-    }
-
-    #[setter]
-    fn set_non_retryable_status_codes(&mut self, value: HashSet<u16>) {
-        self.non_retryable_status_codes = value.clone();
-        self.inner.non_retryable_status_codes = Some(value);
     }
 
     /// Return a string representation
@@ -781,7 +805,7 @@ impl PerformanceClient {
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -863,7 +887,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Extract cancellation token if present
         let cancel_token = preference.and_then(|p| p.cancel_token.clone());
@@ -926,7 +950,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -981,7 +1005,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -1034,7 +1058,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1085,7 +1109,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -1145,7 +1169,7 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Parse method parameter using core function
         let http_method =
@@ -1236,7 +1260,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Parse method parameter using core function
         let http_method =
@@ -1314,4 +1338,51 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<BatchPostResponse>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn request_processing_preference_to_rust_uses_mutated_public_fields() {
+        let mut preference = RequestProcessingPreference::new(
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None,
+        );
+
+        preference.max_concurrent_requests = 64;
+        preference.batch_size = 32;
+        preference.timeout_s = 45.0;
+        preference.hedge_delay = Some(0.5);
+        preference.total_timeout_s = Some(90.0);
+        preference.hedge_budget_pct = 0.15;
+        preference.retry_budget_pct = 0.08;
+        preference.max_retries = 3;
+        preference.initial_backoff_ms = 250;
+        preference.non_retryable_status_codes = HashSet::from([429, 529]);
+
+        let rust_preference = preference.to_rust_preference();
+
+        assert_eq!(rust_preference.max_concurrent_requests, Some(64));
+        assert_eq!(rust_preference.batch_size, Some(32));
+        assert_eq!(rust_preference.timeout_s, Some(45.0));
+        assert_eq!(rust_preference.hedge_delay, Some(0.5));
+        assert_eq!(rust_preference.total_timeout_s, Some(90.0));
+        assert_eq!(rust_preference.hedge_budget_pct, Some(0.15));
+        assert_eq!(rust_preference.retry_budget_pct, Some(0.08));
+        assert_eq!(rust_preference.max_retries, Some(3));
+        assert_eq!(rust_preference.initial_backoff_ms, Some(250));
+        assert_eq!(
+            rust_preference.non_retryable_status_codes,
+            Some(HashSet::from([429, 529]))
+        );
+
+        preference.non_retryable_status_codes.clear();
+        assert!(preference
+            .to_rust_preference()
+            .non_retryable_status_codes
+            .is_none());
+    }
 }
