@@ -117,6 +117,10 @@ class BasetenService(TrussService):
     def model_version_id(self) -> str:
         return self._model_version_handle.version_id
 
+    @property
+    def hostname(self) -> str:
+        return self._model_version_handle.hostname
+
     def predict(self, model_request_body: Dict) -> Any:
         response = self._send_request(
             self.predict_url, "POST", data=model_request_body, stream=True

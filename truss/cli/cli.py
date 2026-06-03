@@ -933,7 +933,16 @@ def push(
         labels=labels_dict,
     )
 
-    console.print(f"✨ Model {model_name} was successfully pushed ✨")
+    console.print(f"✨ Model {model_name} was successfully pushed ✨\n")
+
+    if isinstance(service, BasetenService):
+        common.print_deployment_links(
+            model_id=service.model_id,
+            version_id=service.model_version_id,
+            hostname=service.hostname,
+            logs_url=service.logs_url,
+        )
+        console.print()
 
     if service.is_draft:
         draft_model_text = """
@@ -955,10 +964,6 @@ def push(
             f"deploys, it will become the next {environment} deployment of your model."
         )
         console.print(promotion_text, style="green")
-
-    console.print(
-        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
-    )
 
     if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
         service, BasetenService
@@ -1314,14 +1319,17 @@ def watch(
     logs_url = URLConfig.model_logs_url(
         remote_provider.remote_url, model_id, dev_version_id
     )
-    console.print(
-        f"🪵  View logs for your development model at {common.format_link(logs_url)}"
-    )
-
     model_hostname = resolved_model.get("hostname")
     if not model_hostname:
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
+
+    common.print_deployment_links(
+        model_id=model_id,
+        version_id=dev_version_id,
+        hostname=model_hostname,
+        logs_url=logs_url,
+    )
 
     common.wait_for_development_model_ready(
         model_hostname=model_hostname,
