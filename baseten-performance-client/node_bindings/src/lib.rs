@@ -13,7 +13,7 @@ use baseten_performance_client_core::{
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 // Use constants from core crate - no more hardcoded values!
@@ -245,7 +245,10 @@ impl RequestProcessingPreference {
     cancel_token: Option<&CancellationToken>,
     primary_api_key_override: Option<String>,
     extra_headers: Option<HashMap<String, String>>,
+    non_retryable_status_codes: Option<Vec<u16>>,
   ) -> Self {
+    let non_retryable_status_codes: Option<HashSet<u16>> =
+      non_retryable_status_codes.map(|codes| codes.into_iter().collect());
     let inner = RustRequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
       batch_size: batch_size.map(|x| x as usize),
@@ -261,6 +264,7 @@ impl RequestProcessingPreference {
       cancel_token: cancel_token.map(|token| token.inner.clone()),
       primary_api_key_override,
       extra_headers,
+      non_retryable_status_codes,
     };
 
     // Apply defaults using the same method as Rust core
@@ -344,6 +348,19 @@ impl RequestProcessingPreference {
   #[napi(getter)]
   pub fn extra_headers(&self) -> Option<HashMap<String, String>> {
     self.complete.extra_headers.clone()
+  }
+
+  #[napi(getter)]
+  pub fn non_retryable_status_codes(&self) -> Vec<u16> {
+    let mut status_codes: Vec<u16> = self
+      .complete
+      .non_retryable_status_codes
+      .clone()
+      .unwrap_or_default()
+      .into_iter()
+      .collect();
+    status_codes.sort_unstable();
+    status_codes
   }
 }
 
