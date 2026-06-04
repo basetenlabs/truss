@@ -625,22 +625,14 @@ class RemoteSSH(custom_types.ConfigModel):
     )
 
 
-_FQDN_LABEL_REGEX = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+_FQDN_PATTERN = re.compile(r"^([a-zA-Z0-9*]([-a-zA-Z0-9_*]*[a-zA-Z0-9*])*\.?)*$")
 
 
 def _validate_fqdn(value: str) -> str:
     if not value:
         raise ValueError("FQDN entries cannot be empty.")
-    if len(value) > 253:
-        raise ValueError(f"FQDN '{value}' exceeds 253 characters.")
-    labels = value.split(".")
-    if len(labels) < 2:
-        raise ValueError(f"FQDN '{value}' must contain at least two labels.")
-    for index, label in enumerate(labels):
-        if index == 0 and label == "*":
-            continue
-        if not _FQDN_LABEL_REGEX.match(label):
-            raise ValueError(f"Invalid FQDN '{value}': label '{label}' is malformed.")
+    if not _FQDN_PATTERN.match(value):
+        raise ValueError(f"Invalid FQDN '{value}'.")
     return value
 
 
@@ -672,8 +664,8 @@ class EgressRestrictions(custom_types.ConfigModel):
     fqdn_allow_list: Optional[list[str]] = pydantic.Field(
         default=None,
         description=(
-            "Allowed outbound fully-qualified domain names. A leading '*.' "
-            "wildcard matches any single subdomain label."
+            "Allowed outbound fully-qualified domain names. Supports "
+            "wildcards: '*' may appear anywhere in a label."
         ),
         examples=[["*.baseten.co", "huggingface.co"]],
     )

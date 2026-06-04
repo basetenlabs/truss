@@ -1928,16 +1928,23 @@ class TestEgressRestrictions:
 
     def test_invalid_fqdn_raises(self):
         with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
-            EgressRestrictions(fqdn_allow_list=["bad_label.com"])
-
-    def test_single_label_fqdn_rejected(self):
-        with pytest.raises(pydantic.ValidationError, match="at least two labels"):
-            EgressRestrictions(fqdn_allow_list=["localhost"])
-
-    def test_wildcard_only_in_leading_position(self):
-        EgressRestrictions(fqdn_allow_list=["*.baseten.co"])
+            EgressRestrictions(fqdn_allow_list=["-bad.com"])
         with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
-            EgressRestrictions(fqdn_allow_list=["foo.*.baseten.co"])
+            EgressRestrictions(fqdn_allow_list=["bad-.com"])
+        with pytest.raises(pydantic.ValidationError, match="cannot be empty"):
+            EgressRestrictions(fqdn_allow_list=[""])
+
+    def test_wildcards(self):
+        EgressRestrictions(fqdn_allow_list=["*.baseten.co"])
+        EgressRestrictions(fqdn_allow_list=["foo.*.baseten.co"])
+        EgressRestrictions(fqdn_allow_list=["*"])
+        EgressRestrictions(fqdn_allow_list=["sub*domain.example.com"])
+
+    def test_underscores_allowed(self):
+        EgressRestrictions(fqdn_allow_list=["bad_label.com"])
+
+    def test_single_label_accepted(self):
+        EgressRestrictions(fqdn_allow_list=["localhost"])
 
     def test_serialization_roundtrip(self, tmp_path):
         config = TrussConfig()
