@@ -4,6 +4,7 @@ use crate::customer_request_id::CustomerRequestId;
 use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
+use std::collections::HashSet;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,6 +28,7 @@ pub struct RequestProcessingPreference {
     pub cancel_token: Option<CancellationToken>,
     pub primary_api_key_override: Option<String>,
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+    pub non_retryable_status_codes: Option<HashSet<u16>>,
 }
 
 impl RequestProcessingPreference {
@@ -52,6 +54,7 @@ impl RequestProcessingPreference {
             cancel_token: self.cancel_token.clone(),
             primary_api_key_override: self.primary_api_key_override.clone(),
             extra_headers: self.extra_headers.clone(),
+            non_retryable_status_codes: self.non_retryable_status_codes.clone(),
         }
     }
 }
@@ -143,6 +146,12 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set HTTP status codes that should not be retried.
+    pub fn with_non_retryable_status_codes(mut self, status_codes: HashSet<u16>) -> Self {
+        self.non_retryable_status_codes = Some(status_codes);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests, api_key)
     /// and returns a validated config ready for processing.
@@ -206,6 +215,9 @@ pub struct RequestProcessingConfig {
 
     /// Extra headers to include with all requests
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Optional HTTP status codes that override retryable defaults.
+    pub(crate) non_retryable_status_codes: Option<Arc<HashSet<u16>>>,
 
     /// Client-level endpoint router for single or pooled routing.
     pub(crate) endpoint_router: Arc<EndpointRouter>,
@@ -346,6 +358,14 @@ impl RequestProcessingConfig {
         Ok(())
     }
 
+    fn build_non_retryable_status_codes(
+        status_codes: Option<&HashSet<u16>>,
+    ) -> Option<Arc<HashSet<u16>>> {
+        status_codes
+            .filter(|codes| !codes.is_empty())
+            .map(|codes| Arc::new(codes.clone()))
+    }
+
     /// Calculate budget based on total requests and percentage
     /// Always ensures minimum budget of 2 to prevent budget exhaustion
     fn calculate_budget(total_requests: usize, budget_pct: f64) -> usize {
@@ -378,6 +398,7 @@ impl RequestProcessingConfig {
         let retry_budget_pct = pref.retry_budget_pct.unwrap();
         let max_retries = pref.max_retries.unwrap();
         let initial_backoff_ms = pref.initial_backoff_ms.unwrap();
+        let non_retryable_status_codes = pref.non_retryable_status_codes.as_ref();
 
         // Handle API key override
         let api_key_primary = if let Some(ref key) = pref.primary_api_key_override {
@@ -401,6 +422,9 @@ impl RequestProcessingConfig {
             total_requests,
             &api_key_primary,
         )?;
+
+        let non_retryable_status_codes =
+            Self::build_non_retryable_status_codes(non_retryable_status_codes);
 
         // Create customer request ID for this batch operation
         let customer_request_id = CustomerRequestId::new_batch();
@@ -444,6 +468,7 @@ impl RequestProcessingConfig {
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
             extra_headers: pref.extra_headers.clone(),
+            non_retryable_status_codes,
             endpoint_router: EndpointRouter::single(base_url),
             pinned_initial_endpoint: None,
         })
@@ -525,6 +550,12 @@ impl RequestProcessingConfig {
     ) -> (String, EndpointSelection) {
         self.endpoint_router
             .select_hedge_url(request_suffix, original_endpoint_index)
+    }
+
+    pub(crate) fn is_explicitly_non_retryable_status(&self, status: u16) -> bool {
+        self.non_retryable_status_codes
+            .as_ref()
+            .is_some_and(|status_codes| status_codes.contains(&status))
     }
 }
 
@@ -1249,6 +1280,44 @@ mod tests {
             "test_api_key".to_string(),
         );
         assert!(result2.is_ok());
+    }
+
+    #[test]
+    fn test_non_retryable_status_codes_accept_any_u16() {
+        let pref = RequestProcessingPreference::new()
+            .with_non_retryable_status_codes(HashSet::from([650]));
+
+        let config = pref
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("non-retryable status overrides should not be range-validated");
+
+        assert!(config.is_explicitly_non_retryable_status(650));
+        assert!(!config.is_explicitly_non_retryable_status(529));
+
+        let empty_pref =
+            RequestProcessingPreference::new().with_non_retryable_status_codes(HashSet::new());
+
+        let empty_config = empty_pref
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("empty non-retryable status override should be accepted");
+        assert!(!empty_config.is_explicitly_non_retryable_status(650));
+
+        let default_config = RequestProcessingPreference::new()
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("default preference should be accepted");
+        assert!(!default_config.is_explicitly_non_retryable_status(650));
     }
 
     #[test]

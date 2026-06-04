@@ -34,12 +34,14 @@ def test_request_processing_preference_basic():
         timeout_s=30.0,
         hedge_delay=0.5,
         total_timeout_s=60.0,
+        non_retryable_status_codes={529},
     )
     assert custom_preference.max_concurrent_requests == 64
     assert custom_preference.batch_size == 32
     assert custom_preference.timeout_s == 30.0
     assert custom_preference.hedge_delay == 0.5
     assert custom_preference.total_timeout_s == 60.0
+    assert custom_preference.non_retryable_status_codes == {529}
 
 
 def test_request_processing_preference_property_setters():
@@ -58,6 +60,7 @@ def test_request_processing_preference_property_setters():
     preference.retry_budget_pct = 0.10
     preference.max_retries = 5
     preference.initial_backoff_ms = 250
+    preference.non_retryable_status_codes = {429, 529}
 
     assert preference.max_concurrent_requests == 128
     assert preference.batch_size == 64
@@ -68,6 +71,7 @@ def test_request_processing_preference_property_setters():
     assert preference.retry_budget_pct == 0.10
     assert preference.max_retries == 5
     assert preference.initial_backoff_ms == 250
+    assert preference.non_retryable_status_codes == {429, 529}
 
 
 def test_cancellation_token_basic():

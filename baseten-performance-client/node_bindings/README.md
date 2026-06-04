@@ -43,19 +43,20 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 
 try {
     const preference = new RequestProcessingPreference(
-        8,    // max_concurrent_requests
-        2,    // batch_size
-        undefined, // max_chars_per_request
-        30,   // timeout_s
-        undefined, // hedge_delay
-        undefined, // total_timeout_s
-        undefined, // hedge_budget_pct
-        undefined, // retry_budget_pct
-        undefined, // max_retries
-        undefined, // initial_backoff_ms
-        undefined, // cancel_token
-        undefined, // primary_api_key_override
-        {"x-custom-header": "value"} // extra_headers
+        8,         // maxConcurrentRequests
+        2,         // batchSize
+        30,        // timeoutS
+        undefined, // maxCharsPerRequest
+        undefined, // pinInitialEndpointOnce
+        undefined, // hedgeDelay
+        undefined, // totalTimeoutS
+        undefined, // hedgeBudgetPct
+        undefined, // retryBudgetPct
+        undefined, // maxRetries
+        undefined, // initialBackoffMs
+        undefined, // cancelToken
+        undefined, // primaryApiKeyOverride
+        {"x-custom-header": "value"} // extraHeaders
     );
     const response = await embedClient.embed(
         texts,
@@ -99,16 +100,16 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 
 try {
     const preference = new RequestProcessingPreference(
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        undefined, // max_chars_per_request
-        30,    // timeout_s
-        undefined, // hedge_delay
-        undefined, // total_timeout_s
-        undefined, // hedge_budget_pct
-        undefined, // retry_budget_pct
-        undefined, // max_retries
-        undefined  // initial_backoff_ms
+        4,         // maxConcurrentRequests
+        2,         // batchSize
+        30,        // timeoutS
+        undefined, // maxCharsPerRequest
+        undefined, // pinInitialEndpointOnce
+        undefined, // hedgeDelay
+        undefined, // totalTimeoutS
+        undefined, // hedgeBudgetPct
+        undefined, // retryBudgetPct
+        undefined  // maxRetries
     );
     const response = await rerankClient.rerank(
         query,
@@ -144,19 +145,20 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 
 try {
     const preference = new RequestProcessingPreference(
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        undefined, // max_chars_per_request
-        30,    // timeout_s
-        undefined, // hedge_delay
-        undefined, // total_timeout_s
-        undefined, // hedge_budget_pct
-        undefined, // retry_budget_pct
-        undefined, // max_retries
-        undefined, // initial_backoff_ms
-        undefined, // cancel_token
-        undefined, // primary_api_key_override
-        {"x-custom-header": "value"} // extra_headers
+        4,         // maxConcurrentRequests
+        2,         // batchSize
+        30,        // timeoutS
+        undefined, // maxCharsPerRequest
+        undefined, // pinInitialEndpointOnce
+        undefined, // hedgeDelay
+        undefined, // totalTimeoutS
+        undefined, // hedgeBudgetPct
+        undefined, // retryBudgetPct
+        undefined, // maxRetries
+        undefined, // initialBackoffMs
+        undefined, // cancelToken
+        undefined, // primaryApiKeyOverride
+        {"x-custom-header": "value"} // extraHeaders
     );
     const response = await rerankClient.classify(
         textsToClassify,
@@ -193,20 +195,21 @@ const payloads = [
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 try {
-const preference = new RequestProcessingPreference(
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        undefined, // max_chars_per_request
-        30,    // timeout_s
-        undefined, // hedge_delay
-        undefined, // total_timeout_s
-        undefined, // hedge_budget_pct
-        undefined, // retry_budget_pct
-        undefined, // max_retries
-        undefined, // initial_backoff_ms
-        undefined, // cancel_token
-        undefined, // primary_api_key_override
-        {"x-custom-header": "value"} // extra_headers
+    const preference = new RequestProcessingPreference(
+        4,         // maxConcurrentRequests
+        2,         // batchSize
+        30,        // timeoutS
+        undefined, // maxCharsPerRequest
+        undefined, // pinInitialEndpointOnce
+        undefined, // hedgeDelay
+        undefined, // totalTimeoutS
+        undefined, // hedgeBudgetPct
+        undefined, // retryBudgetPct
+        undefined, // maxRetries
+        undefined, // initialBackoffMs
+        undefined, // cancelToken
+        undefined, // primaryApiKeyOverride
+        {"x-custom-header": "value"} // extraHeaders
     );
     const response = await embedClient.batchPost(
         "/v1/embeddings", // URL path
@@ -248,13 +251,14 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 const preference = new RequestProcessingPreference(
     64,        // maxConcurrentRequests (default: 128)
     32,        // batchSize (default: 128)
-    undefined, // maxCharsPerRequest
     30.0,      // timeoutS (default: 3600.0)
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     0.5,       // hedgeDelay
     undefined, // totalTimeoutS
     0.15,      // hedgeBudgetPct (default: 0.10)
     0.08,      // retryBudgetPct (default: 0.05)
-    3,         // maxRetries (default: 4)
+    3,         // maxRetries (default: 5)
     250        // initialBackoffMs (default: 125)
 );
 
@@ -273,9 +277,13 @@ const response = await embedClient.embed(
 - Maximum allowed: 300% for both budgets
 
 **Retry Configuration:**
-- `maxRetries`: Maximum number of HTTP retries (default: 4, max: 4)
-- `initialBackoffMs`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
-- Backoff uses exponential backoff with jitter
+- HTTP status-code retries are controlled by `maxRetries`, not by `retryBudgetPct`.
+- Retryable status codes by default: `408`, `409`, `429`, and `500` through `599`.
+- Use `nonRetryableStatusCodes=[529]` to opt specific statuses out of the default retry policy.
+- `maxRetries`: Maximum HTTP status-code retries per request (default: 5, max: 6). Set to 0 to disable these retries.
+- `retryBudgetPct`: Budget for timeout and network-error retry paths (default: 5%, max: 300%).
+- `initialBackoffMs`: Initial backoff duration in milliseconds (default: 125, range: 50-45000).
+- Backoff multiplies by 4 after each retry, caps at 45000ms, and adds 0-99ms jitter. With defaults, the retry sleeps are about 125ms, 500ms, 2000ms, 8000ms, and 32000ms; a sixth retry sleeps about 45000ms.
 
 #### Request Hedging
 The client supports request hedging for improved latency:
@@ -284,7 +292,20 @@ The client supports request hedging for improved latency:
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 const preference = new RequestProcessingPreference(
-    8, 2, 100000, 30, 0.5, 60, 0.1, 0.05, 3, 250, undefined, undefined, undefined, {"x-custom-header": "value"}  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS, hedgeBudgetPct, retryBudgetPct, maxRetries, initialBackoffMs, cancelToken, primaryApiKeyOverride, extraHeaders
+    8,          // maxConcurrentRequests
+    2,          // batchSize
+    30,         // timeoutS
+    100000,     // maxCharsPerRequest
+    undefined,  // pinInitialEndpointOnce
+    0.5,        // hedgeDelay
+    60,         // totalTimeoutS
+    0.1,        // hedgeBudgetPct
+    0.05,       // retryBudgetPct
+    3,          // maxRetries
+    250,        // initialBackoffMs
+    undefined,  // cancelToken
+    undefined,  // primaryApiKeyOverride
+    {"x-custom-header": "value"} // extraHeaders
 );
 const response = await embedClient.embed(
     texts,
@@ -304,13 +325,14 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 const preference = new RequestProcessingPreference(
     32,        // maxConcurrentRequests
     16,        // batchSize
-    undefined, // maxCharsPerRequest
     60.0,      // timeoutS
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     undefined, // hedgeDelay
     undefined, // totalTimeoutS
     undefined, // hedgeBudgetPct
     0.10,      // retryBudgetPct (10% for retries)
-    4,         // maxRetries (maximum allowed)
+    6,         // maxRetries (maximum allowed)
     500,       // initialBackoffMs (start with 500ms backoff)
     undefined, // cancelToken
     undefined, // primaryApiKeyOverride
@@ -334,8 +356,9 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 const preference = new RequestProcessingPreference(
     4, // maxConcurrentRequests
     undefined, // batchSize
-    undefined, // maxCharsPerRequest
     30, // timeoutS
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     undefined, // hedgeDelay
     undefined, // totalTimeoutS
     undefined, // hedgeBudgetPct
@@ -432,22 +455,24 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 #### RequestProcessingPreference
 
 ```javascript
-new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerRequest?, timeoutS?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?)
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?)
 ```
 
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 128)
 - `batchSize` (number, optional): Number of items per batch (default: 128)
-- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: undefined)
 - `timeoutS` (number, optional): Per-request timeout in seconds (default: 3600.0)
+- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: undefined)
+- `pinInitialEndpointOnce` (boolean, optional): Route all initial requests in one operation to one selected endpoint (default: false)
 - `hedgeDelay` (number, optional): Request hedging delay in seconds (default: undefined)
 - `totalTimeoutS` (number, optional): Total timeout for the entire operation in seconds (default: undefined)
 - `hedgeBudgetPct` (number, optional): Hedge budget percentage (default: 0.10, range: 0.0-3.0)
 - `retryBudgetPct` (number, optional): Retry budget percentage (default: 0.05, range: 0.0-3.0)
-- `maxRetries` (number, optional): Maximum number of HTTP retries (default: 4, max: 4)
-- `initialBackoffMs` (number, optional): Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+- `maxRetries` (number, optional): Maximum number of HTTP status-code retries per request (default: 5, max: 6)
+- `initialBackoffMs` (number, optional): Initial backoff duration in milliseconds (default: 125, range: 50-45000)
 - `cancelToken` (CancellationToken, optional): Token for cancelling operations
 - `primaryApiKeyOverride` (string, optional): Override API key for requests
 - `extraHeaders` (Record<string, string>, optional): Custom headers to include with all requests
+- `nonRetryableStatusCodes` (number[], optional): Status codes that should not be retried even if the default policy would retry them
 
 ### Methods
 

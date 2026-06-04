@@ -37,10 +37,11 @@ from typing import (
 )
 
 import pydantic
-from typing_extensions import ParamSpec
+from typing_extensions import ParamSpec, TypeGuard
 
 from truss.base import custom_types, trt_llm_config, truss_config
 from truss_chains import private_types, public_types, utils
+from truss_chains.remote_chainlet.truss_chainlet import TrussHandle
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -790,10 +791,16 @@ class _ChainletInitValidator:
         # chainlet class, proper type inference is possible even without annotation.
         # TODO: `Protocol` is not a proper class and this might be version dependent.
         #   Find a better way to inspect this.
+        # For TrussChainlet deps, the framework injects a
+        # `truss_chains.remote_chainlet.truss_chainlet.TrussHandle` at runtime
         if not (
             param.annotation == inspect.Parameter.empty
             or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
             or utils.issubclass_safe(chainlet_cls, param.annotation)
+            or (
+                is_truss_chainlet(chainlet_cls)
+                and utils.issubclass_safe(param.annotation, TrussHandle)
+            )
         ):
             _collect_error(
                 f"The type annotation for `{param.name}` must be a class/subclass of the "
@@ -974,6 +981,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         "ModelBase",
         "EngineBuilderChainlet",
         "EngineBuilderLLMChainlet",
+        "TrussChainlet",
     ]
     if cls.__name__ in _skip_class_name:
         logging.debug(f"Skipping chainlet class validation for `{cls}`.")
@@ -982,8 +990,25 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
-
     _validate_display_name(cls, location)
+
+    if is_truss_chainlet(cls):
+        resolved_truss_dir = _resolve_truss_dir(cls, src_path, location)
+        chainlet_descriptor = private_types.ChainletAPIDescriptor(
+            chainlet_cls=cls,
+            # TrussChainlets are non-entry leaves; they have no deps.
+            dependencies={},
+            has_context=False,
+            # ``endpoint`` is a build-time-only field consumed by codegen
+            endpoint=_DUMMY_ENDPOINT_DESCRIPTOR,
+            src_path=src_path,
+            # TrussChainlet health checks are from the truss, we use None as passthrough
+            health_check=None,
+            truss_dir=resolved_truss_dir,
+        )
+        _global_chainlet_registry.register_chainlet(chainlet_descriptor)
+        return
+
     _validate_config_class_variable(
         cls, location, private_types.REMOTE_CONFIG_NAME, public_types.RemoteConfig
     )
@@ -1013,6 +1038,41 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
     )
     _global_chainlet_registry.register_chainlet(chainlet_descriptor)
+
+
+def _resolve_truss_dir(
+    cls: Type["TrussChainlet"], src_path: str, location: _ErrorLocation
+) -> Optional[pathlib.Path]:
+    """Resolve a TrussChainlet's ``truss_dir`` attribute to an absolute path.
+    Returns the resolved path, or ``None`` with error collection.
+    """
+    # 1. truss_dir class attribute is required (follow MRO so subclasses inherit).
+    truss_dir_raw = getattr(cls, "truss_dir", None)
+    if not truss_dir_raw:
+        _collect_error(
+            f"`TrussChainlet` subclass `{cls.__name__}` must declare "
+            "a `truss_dir` class attribute pointing at the wrapped Truss directory.",
+            _ErrorKind.MISSING_API_ERROR,
+            location,
+        )
+        return None
+    if not isinstance(truss_dir_raw, (str, pathlib.Path)):
+        _collect_error(
+            f"`TrussChainlet.truss_dir` must be a str or pathlib.Path, got "
+            f"`{type(truss_dir_raw).__name__}`.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return None
+
+    # 2. Resolve relative paths against the declaring file's directory. This is
+    # a pure string→canonical-path translation; existence isn't checked here;
+    # that is deferred to codegen time so that selective watch works.
+    src_dir = pathlib.Path(src_path).parent
+    truss_dir = pathlib.Path(truss_dir_raw)
+    if not truss_dir.is_absolute():
+        truss_dir = (src_dir / truss_dir).resolve()
+    return truss_dir
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1302,6 +1362,18 @@ def _create_modified_init_for_local(
                     f"Use given instance for `{arg_name}` of type `{dep.name}`."
                 )
                 continue
+            if is_truss_chainlet(chainlet_cls):
+                raise public_types.ChainsUsageError(
+                    f"`run_local` cannot instantiate TrussChainlet dep "
+                    f"`{dep.name}` for chainlet "
+                    f"`{chainlet_descriptor.name}` — TrussChainlets wrap "
+                    f"deployable Truss directories, not local classes. "
+                    f"Pass a stub (e.g. a "
+                    f"`truss_chains.remote_chainlet.truss_chainlet.TrussHandle` "
+                    f"configured with test URLs) directly via "
+                    f"`{arg_name}=...` when instantiating "
+                    f"`{chainlet_descriptor.name}`."
+                )
             if chainlet_cls in cls_to_instance:
                 logging.debug(
                     f"Use previously created `{arg_name}` of type `{dep.name}`."
@@ -1386,6 +1458,17 @@ def entrypoint(
             location = _ErrorLocation(src_path=src_path, line=line)
             _collect_error(
                 "Only Chainlet classes can be marked as entrypoint.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+        if is_truss_chainlet(cls):
+            src_path = os.path.abspath(inspect.getfile(cls))
+            line = inspect.getsourcelines(cls)[1]
+            location = _ErrorLocation(src_path=src_path, line=line)
+            _collect_error(
+                "TrussChainlet cannot be a chain entrypoint. Use a ChainletBase "
+                "entrypoint that depends on the TrussChainlet via "
+                "`chains.depends(...)`.",
                 _ErrorKind.TYPE_ERROR,
                 location,
             )
@@ -1691,3 +1774,38 @@ class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
 
 def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
     return issubclass(cls, EngineBuilderChainlet)
+
+
+# TrussChainlet ########################################################################
+
+
+class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
+    """Declares an existing Truss directory as a non-entry leaf chain member.
+
+    Unlike ``ChainletBase``, the framework does not generate a ``model.py`` or
+    a typed ``StubBase`` for this declaration — the user's Truss directory
+    (``model.py``-flavored or ``docker_server``) is archived as-is.
+
+    TrussChainlets cannot be entrypoints and cannot declare deps — they're
+    only depended on by ``ChainletBase`` chainlets via ``chains.depends(...)``,
+    which yields a
+    :class:`truss_chains.remote_chainlet.truss_chainlet.TrussHandle` to the caller.
+    """
+
+    truss_dir: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = private_types.FrameworkConfig(
+            entity_type=private_types.EntityType.TRUSS_CHAINLET,
+            supports_dependencies=False,
+            endpoint_method_name="",  # no run_remote on TrussChainlet
+        )
+        cls.meta_data = private_types.ChainletMetadata()
+        validate_and_register_cls(cls)
+
+
+def is_truss_chainlet(
+    cls: Type[private_types.ABCChainlet],
+) -> TypeGuard[Type["TrussChainlet"]]:
+    return issubclass(cls, TrussChainlet)

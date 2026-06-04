@@ -363,9 +363,13 @@ response = client.embed(
 - Maximum allowed: 300% for both budgets
 
 **Retry Configuration:**
-- `max_retries`: Maximum number of HTTP retries (default: 5, max: 6)
-- `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
-- Backoff uses exponential backoff with jitter
+- HTTP status-code retries are controlled by `max_retries`, not by `retry_budget_pct`.
+- Retryable status codes by default: `408`, `409`, `429`, and `500` through `599`.
+- Use `non_retryable_status_codes={529}` to opt specific statuses out of the default retry policy.
+- `max_retries`: Maximum HTTP status-code retries per request (default: 5, max: 6). Set to 0 to disable these retries.
+- `retry_budget_pct`: Budget for timeout and network-error retry paths (default: 5%, max: 300%).
+- `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-45000).
+- Backoff multiplies by 4 after each retry, caps at 45000ms, and adds 0-99ms jitter. With defaults, the retry sleeps are about 125ms, 500ms, 2000ms, 8000ms, and 32000ms; a sixth retry sleeps about 45000ms.
 
 #### Request Hedging
 The client supports request hedging for improved latency by sending duplicate requests after a specified delay:

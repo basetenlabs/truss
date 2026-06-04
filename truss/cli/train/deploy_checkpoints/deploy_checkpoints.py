@@ -71,11 +71,8 @@ def create_model_version_from_inference_template(
         model_version = None
         if result and result.get("model_version"):
             console.print(
-                f"Successfully created deployment: {result['model_version']['name']}",
+                f"Successfully created deployment: {result['model_version']['name']}\n",
                 style="green",
-            )
-            console.print(
-                f"Deployment ID: {result['model_version']['id']}", style="yellow"
             )
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
@@ -83,8 +80,10 @@ def create_model_version_from_inference_template(
             logs_url = URLConfig.model_logs_url(
                 remote_provider.remote_url, model_version.model_id, model_version.id
             )
-            console.print(
-                f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
+            cli_common.print_deployment_links(
+                model_id=model_version.model_id,
+                version_id=model_version.id,
+                logs_url=logs_url,
             )
         elif not dry_run:
             console.print(
