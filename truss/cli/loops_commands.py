@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List, Optional, cast
 
 import rich.table
@@ -121,8 +122,19 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     default=False,
     help="Include deployments in terminal states (STOPPED, FAILED).",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default) or json.",
+)
 @common.common_options()
-def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
+def view_loops_deployments(
+    remote: Optional[str], show_all: bool, output_format: str
+) -> None:
     """List the caller's Loops deployments.
 
     By default, deployments in terminal states (STOPPED, FAILED) are hidden.
@@ -135,22 +147,30 @@ def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
-    if not deployments:
+    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
+
+    if not deployments and is_human_output:
         console.print("No Loops deployments.", style="yellow")
         return
+
     if not show_all:
         deployments = [
             deployment
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-        if not deployments:
+        if not deployments and is_human_output:
             console.print(
                 "No active Loops deployments. Pass --all to include "
                 "STOPPED and FAILED deployments.",
                 style="yellow",
             )
             return
+
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_deployments_json(deployments)
+        return
+
     _render_loops_deployments(deployments)
 
 
@@ -252,6 +272,26 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
             sampler["base_url"],
         )
     console.print(table)
+
+
+def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
+    """
+    Print the deployments as jsonl. Closely follows the columns in the default format.
+    """
+    for deployment in deployments:
+        sampler = deployment["sampler"]
+        output = {
+            "id": deployment["id"],
+            "base_model": deployment["base_model"],
+            "base_url": deployment["base_url"],
+            "status": deployment["status"]["name"],
+            "sampler": {
+                "deployment_id": sampler["deployment_id"],
+                "base_url": sampler["base_url"],
+                "status": sampler["status"]["name"],
+            },
+        }
+        print(json.dumps(output))
 
 
 def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
