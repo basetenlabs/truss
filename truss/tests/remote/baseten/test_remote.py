@@ -658,8 +658,12 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
     mock_truss_handle.spec.config.weights = Weights(
         [
-            WeightsSource(source="hf://model-1", mount_location="/models/base"),
-            WeightsSource(source="hf://model-2", mount_location="/models/adapter"),
+            WeightsSource(
+                source="hf://test-org/model-1", mount_location="/models/base"
+            ),
+            WeightsSource(
+                source="hf://test-org/model-2", mount_location="/models/adapter"
+            ),
         ]
     )
 
@@ -701,8 +705,8 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["weights"] == [
-        {"source": "hf://model-1", "mount_location": "/models/base"},
-        {"source": "hf://model-2", "mount_location": "/models/adapter"},
+        {"source": "hf://test-org/model-1", "mount_location": "/models/base"},
+        {"source": "hf://test-org/model-2", "mount_location": "/models/adapter"},
     ]
     assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
     assert kwargs["body"]["metadata"] == {
