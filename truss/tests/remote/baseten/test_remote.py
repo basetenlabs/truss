@@ -658,8 +658,12 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
     mock_truss_handle.spec.config.weights = Weights(
         [
-            WeightsSource(source="hf://test-org/model-1", mount_location="/models/base"),
-            WeightsSource(source="hf://test-org/model-2", mount_location="/models/adapter"),
+            WeightsSource(
+                source="hf://test-org/model-1", mount_location="/models/base"
+            ),
+            WeightsSource(
+                source="hf://test-org/model-2", mount_location="/models/adapter"
+            ),
         ]
     )
 
