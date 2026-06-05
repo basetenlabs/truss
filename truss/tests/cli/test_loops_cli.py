@@ -292,7 +292,11 @@ def test_view_all_flag_with_no_deployments(mock_remote):
     assert "--all" not in result.output
 
 
-def test_view_json_output_emits_structured_payload(mock_remote):
+def _parse_jsonl(output: str) -> list[dict]:
+    return [json.loads(line) for line in output.splitlines() if line.strip()]
+
+
+def test_view_json_output_emits_one_object_per_deployment(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         {
             "id": "dep_abc",
@@ -311,30 +315,31 @@ def test_view_json_output_emits_structured_payload(mock_remote):
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["total_deployments"] == 1
-    deployment = payload["deployments"][0]
-    assert deployment == {
-        "id": "dep_abc",
-        "base_model": "Qwen/Qwen3-8B",
-        "base_url": "https://trainer-abc.api.baseten.co/trainer",
-        "status": "RUNNING",
-        "sampler": {
-            "deployment_id": "ov_def123",
-            "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
-            "status": "ACTIVE",
-        },
-    }
+    records = _parse_jsonl(result.output)
+    assert records == [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": "RUNNING",
+            "sampler": {
+                "deployment_id": "ov_def123",
+                "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
+                "status": "ACTIVE",
+            },
+        }
+    ]
 
 
-def test_view_json_output_with_no_deployments_emits_empty_payload(mock_remote):
+def test_view_json_output_with_no_deployments_emits_nothing(mock_remote):
+    # JSONL stream of zero records: no stdout content, and crucially no
+    # friendly "No Loops deployments." message that would corrupt the stream.
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload == {"total_deployments": 0, "deployments": []}
+    assert result.output.strip() == ""
 
 
 def test_view_json_output_filters_terminal_states_by_default(mock_remote):
@@ -347,10 +352,24 @@ def test_view_json_output_filters_terminal_states_by_default(mock_remote):
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    ids = [d["id"] for d in payload["deployments"]]
-    assert ids == ["dep_running"]
-    assert payload["total_deployments"] == 1
+    records = _parse_jsonl(result.output)
+    assert [r["id"] for r in records] == ["dep_running"]
+
+
+def test_view_json_output_filter_to_empty_emits_nothing(mock_remote):
+    # Raw list non-empty but the default terminal-state filter empties it;
+    # JSON consumers should get an empty stream — no "pass --all" hint that
+    # the CLI table prints.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == ""
+    assert "--all" not in result.output
 
 
 def test_view_json_output_all_flag_includes_terminal_states(mock_remote):
@@ -362,10 +381,8 @@ def test_view_json_output_all_flag_includes_terminal_states(mock_remote):
         ["loops", "view", "--all", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    ids = sorted(d["id"] for d in payload["deployments"])
-    assert ids == ["dep_running", "dep_stopped"]
-    assert payload["total_deployments"] == 2
+    records = _parse_jsonl(result.output)
+    assert sorted(r["id"] for r in records) == ["dep_running", "dep_stopped"]
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
