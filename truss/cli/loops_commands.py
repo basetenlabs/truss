@@ -159,19 +159,18 @@ def view_loops_deployments(
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-        if not deployments:
-            if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-                _render_loops_deployments_json([])
-                return
+        if not deployments and output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE:
             console.print(
                 "No active Loops deployments. Pass --all to include "
                 "STOPPED and FAILED deployments.",
                 style="yellow",
             )
             return
+
     if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
         _render_loops_deployments_json(deployments)
         return
+
     _render_loops_deployments(deployments)
 
 
@@ -276,24 +275,23 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
 
 
 def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
-    deployments_data = []
+    """
+    Print the deployments as jsonl. Closely follows the columns in the default format.
+    """
     for deployment in deployments:
         sampler = deployment["sampler"]
-        deployments_data.append(
-            {
-                "id": deployment["id"],
-                "base_model": deployment["base_model"],
-                "base_url": deployment["base_url"],
-                "status": deployment["status"]["name"],
-                "sampler": {
-                    "deployment_id": sampler["deployment_id"],
-                    "base_url": sampler["base_url"],
-                    "status": sampler["status"]["name"],
-                },
-            }
-        )
-    output = {"total_deployments": len(deployments), "deployments": deployments_data}
-    print(json.dumps(output, indent=2))
+        output = {
+            "id": deployment["id"],
+            "base_model": deployment["base_model"],
+            "base_url": deployment["base_url"],
+            "status": deployment["status"]["name"],
+            "sampler": {
+                "deployment_id": sampler["deployment_id"],
+                "base_url": sampler["base_url"],
+                "status": sampler["status"]["name"],
+            },
+        }
+        print(json.dumps(output))
 
 
 def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
