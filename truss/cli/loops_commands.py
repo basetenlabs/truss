@@ -147,19 +147,19 @@ def view_loops_deployments(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
-    if not deployments:
-        if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-            _render_loops_deployments_json([])
-            return
+    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
+
+    if not deployments and is_human_output:
         console.print("No Loops deployments.", style="yellow")
         return
+
     if not show_all:
         deployments = [
             deployment
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-        if not deployments and output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE:
+        if not deployments and is_human_output:
             console.print(
                 "No active Loops deployments. Pass --all to include "
                 "STOPPED and FAILED deployments.",
