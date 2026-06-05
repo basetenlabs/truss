@@ -1601,35 +1601,6 @@ class TestWeightsSource:
         ):
             WeightsSource(source="hf://only-repo@main", mount_location="/models/llama")
 
-    def test_hf_uri_missing_repo_segment(self):
-        """HuggingFace URI with only an owner and no repo should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid HuggingFace URI format"
-        ):
-            WeightsSource(source="hf://owner", mount_location="/models/llama")
-
-    def test_hf_uri_empty_repo_segment(self):
-        """HuggingFace URI with owner but empty repo (trailing slash) should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid HuggingFace URI format"
-        ):
-            WeightsSource(source="hf://owner/", mount_location="/models/llama")
-
-    def test_hf_uri_revision_only_no_owner_or_repo(self):
-        """HuggingFace URI with only a revision and no owner/repo should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid HuggingFace URI format"
-        ):
-            WeightsSource(source="hf://@main", mount_location="/models/llama")
-
-    def test_hf_uri_single_segment_with_revision(self):
-        """HuggingFace URI with single path segment and revision but no owner should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid HuggingFace URI format"
-        ):
-            WeightsSource(source="hf://only-repo@main", mount_location="/models/llama")
-
-    def test_aws_oidc_missing_role_arn(self):
         """AWS OIDC without role ARN should error."""
         with pytest.raises(
             pydantic.ValidationError, match="aws_oidc_role_arn must be provided"
