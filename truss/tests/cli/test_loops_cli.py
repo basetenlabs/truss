@@ -1,5 +1,6 @@
 """Tests for truss loops CLI commands."""
 
+import json
 import os
 import re
 from unittest.mock import Mock, patch
@@ -289,6 +290,82 @@ def test_view_all_flag_with_no_deployments(mock_remote):
     assert result.exit_code == 0, result.output
     assert "No Loops deployments" in result.output
     assert "--all" not in result.output
+
+
+def test_view_json_output_emits_structured_payload(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "sampler": {
+                "id": "sampler_def",
+                "deployment_id": "ov_def123",
+                "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
+                "status": {"name": "ACTIVE"},
+            },
+        }
+    ]
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["total_deployments"] == 1
+    deployment = payload["deployments"][0]
+    assert deployment == {
+        "id": "dep_abc",
+        "base_model": "Qwen/Qwen3-8B",
+        "base_url": "https://trainer-abc.api.baseten.co/trainer",
+        "status": "RUNNING",
+        "sampler": {
+            "deployment_id": "ov_def123",
+            "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
+            "status": "ACTIVE",
+        },
+    }
+
+
+def test_view_json_output_with_no_deployments_emits_empty_payload(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload == {"total_deployments": 0, "deployments": []}
+
+
+def test_view_json_output_filters_terminal_states_by_default(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+        _deployment("dep_failed", "FAILED"),
+    ]
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    ids = [d["id"] for d in payload["deployments"]]
+    assert ids == ["dep_running"]
+    assert payload["total_deployments"] == 1
+
+
+def test_view_json_output_all_flag_includes_terminal_states(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep_running", "RUNNING"),
+        _deployment("dep_stopped", "STOPPED"),
+    ]
+    result = _invoke(
+        ["loops", "view", "--all", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    ids = sorted(d["id"] for d in payload["deployments"])
+    assert ids == ["dep_running", "dep_stopped"]
+    assert payload["total_deployments"] == 2
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
