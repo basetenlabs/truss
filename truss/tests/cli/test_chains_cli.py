@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.remote.baseten.core import CHAINLET_READY_STATUSES, DEPLOYING_STATUSES
 
 
 def test_chains_push_with_disable_chain_download_flag():
@@ -367,3 +368,38 @@ def test_chains_push_watch_with_environment_fails():
 
     assert result.exit_code == 1
     assert "Cannot use --watch with --environment" in result.output
+
+
+def _make_chainlet_info(name: str, status: str, is_entrypoint: bool = False):
+    chainlet_info = Mock()
+    chainlet_info.is_entrypoint = is_entrypoint
+    chainlet_info.name = name
+    chainlet_info.status = status
+    chainlet_info.logs_url = f"https://app.baseten.co/chains/test/logs/{name}"
+    return chainlet_info
+
+
+def test_create_chains_table_treats_scaled_to_zero_as_ready():
+    """Scaled-to-zero chainlets are ready, not failed."""
+    from truss.cli.chains_commands import _create_chains_table
+
+    mock_service = Mock()
+    mock_service.name = "TestChain"
+    mock_service.status_page_url = "https://app.baseten.co/chains/test123/overview"
+    mock_service.get_info.return_value = [
+        _make_chainlet_info("TestChain", "MODEL_READY", is_entrypoint=True),
+        _make_chainlet_info("Worker", "SCALED_TO_ZERO"),
+    ]
+
+    _, statuses = _create_chains_table(mock_service)
+
+    assert statuses == ["ACTIVE", "SCALED_TO_ZERO"]
+
+
+def test_chainlet_ready_statuses_include_scaled_to_zero():
+    statuses = ["ACTIVE", "SCALED_TO_ZERO", "BUILDING"]
+    num_ready = sum(s in CHAINLET_READY_STATUSES for s in statuses)
+    num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
+    assert num_ready == 2
+    assert num_deploying == 1
+    assert len(statuses) - num_ready - num_deploying == 0

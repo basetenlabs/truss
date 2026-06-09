@@ -149,7 +149,7 @@ def wait_ready(
             for chainlet in chainlets
         ]
         num_services = len(statuses)
-        num_ok = sum(s in [core.ACTIVE_STATUS, "SCALED_TO_ZERO"] for s in statuses)
+        num_ok = sum(s in core.CHAINLET_READY_STATUSES for s in statuses)
         num_deploying = sum(s in core.DEPLOYING_STATUSES for s in statuses)
         if num_ok == num_services:
             success = True

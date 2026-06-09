@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
+# Chainlets that finished deploying but may have scaled down while others deploy.
+CHAINLET_READY_STATUSES = [ACTIVE_STATUS, "SCALED_TO_ZERO"]
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
     "Model hasn't been deployed yet. No environments exist."
 )
