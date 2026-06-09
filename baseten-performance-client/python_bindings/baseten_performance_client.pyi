@@ -278,6 +278,7 @@ class RequestProcessingPreference:
         cancel_token: typing.Optional[CancellationToken] = None,
         primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
+        non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -297,6 +298,7 @@ class RequestProcessingPreference:
             cancel_token: Optional CancellationToken for cancelling operations.
             primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
+            non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
         """
 
     # Property definitions with type hints
@@ -314,6 +316,7 @@ class RequestProcessingPreference:
     cancel_token: typing.Optional[CancellationToken]
     primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
+    non_retryable_status_codes: typing.Set[builtins.int]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":

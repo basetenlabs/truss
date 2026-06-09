@@ -832,6 +832,45 @@ def test_push_publish_flag_shows_deprecation_warning(
     assert "DEPRECATED" in result.output
 
 
+def test_push_output_shows_model_id_deployment_id_and_endpoint(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """A successful push surfaces model_id, deployment_id, and endpoint as
+    labeled lines so first-time users don't have to parse them out of the
+    logs URL."""
+    runner = CliRunner()
+    remote.push = Mock(return_value=_make_mock_service())
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                ],
+            )
+
+    assert result.exit_code == 0, result.output
+    assert "Model ID:" in result.output
+    assert "model_id" in result.output
+    assert "Deployment ID:" in result.output
+    assert "version_id" in result.output
+    assert "Endpoint:" in result.output
+    assert "https://model-model_id.api.baseten.co" in result.output
+    assert "Logs:" in result.output
+    assert "https://app.baseten.co/models/model_id/logs/version_id" in result.output
+
+
 def test_push_watch_creates_development_deployment(
     custom_model_truss_dir_with_pre_and_post,
     remote,
@@ -1325,6 +1364,7 @@ def _make_mock_service(**overrides):
     mock_service.is_draft = False
     mock_service.model_id = "model_id"
     mock_service.model_version_id = "version_id"
+    mock_service.hostname = "https://model-model_id.api.baseten.co"
     mock_service.predict_url = (
         "https://model.api.baseten.co/deployment/version_id/predict"
     )

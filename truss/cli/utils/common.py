@@ -200,6 +200,21 @@ def format_link(url: str, display_text: Optional[str] = None) -> str:
     return f"[link={url}]{display_text}[/link]"
 
 
+def print_deployment_links(
+    *, model_id: str, version_id: str, logs_url: str, hostname: Optional[str] = None
+) -> None:
+    """Print a labeled block of deployment identifiers and links.
+
+    Shared across deployment-touching commands (`truss push`, `truss watch`,
+    `truss train ... deploy_checkpoints`) so they render the same format.
+    """
+    console.print(f"   [bold]{'Model ID:':<14}[/bold] {model_id}")
+    console.print(f"   [bold]{'Deployment ID:':<14}[/bold] {version_id}")
+    if hostname:
+        console.print(f"   [bold]{'Endpoint:':<14}[/bold] {hostname}")
+    console.print(f"   [bold]{'Logs:':<14}[/bold] {format_link(logs_url)}")
+
+
 def is_human_log_level(ctx: click.Context) -> bool:
     return get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL
 
