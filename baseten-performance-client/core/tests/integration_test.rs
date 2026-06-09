@@ -8,6 +8,7 @@ use axum::{
 use baseten_performance_client_core::split_policy::{Combinable, SplitPolicy, Splittable};
 use baseten_performance_client_core::*;
 use serde_json::json;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -233,6 +234,7 @@ struct TestServerState {
     remaining_failures: Arc<Mutex<usize>>,
     response_delay: Duration,
     healthy: bool,
+    failure_status: StatusCode,
 }
 
 struct TestServer {
@@ -253,6 +255,23 @@ async fn start_test_server(
     remaining_failures: usize,
     healthy: bool,
 ) -> TestServer {
+    start_test_server_with_failure_status(
+        name,
+        response_delay,
+        remaining_failures,
+        healthy,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    )
+    .await
+}
+
+async fn start_test_server_with_failure_status(
+    name: &'static str,
+    response_delay: Duration,
+    remaining_failures: usize,
+    healthy: bool,
+    failure_status: StatusCode,
+) -> TestServer {
     let request_count = Arc::new(AtomicUsize::new(0));
     let state = TestServerState {
         name,
@@ -260,6 +279,7 @@ async fn start_test_server(
         remaining_failures: Arc::new(Mutex::new(remaining_failures)),
         response_delay,
         healthy,
+        failure_status,
     };
 
     let app = Router::new()
@@ -314,7 +334,7 @@ async fn test_embeddings_handler(
     if *remaining_failures > 0 {
         *remaining_failures -= 1;
         return (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            state.failure_status,
             Json(json!({"error": format!("{} failed", state.name)})),
         )
             .into_response();
@@ -478,6 +498,80 @@ async fn test_retry_uses_alternate_endpoint_from_pool() {
     let alternate_request_count = endpoint_b.request_count.load(Ordering::SeqCst)
         + endpoint_c.request_count.load(Ordering::SeqCst);
     assert_eq!(alternate_request_count, 1);
+}
+
+#[tokio::test]
+async fn test_empty_non_retryable_status_codes_keeps_default_retry_policy() {
+    let status_529 = StatusCode::from_u16(529).expect("529 is a valid status code");
+    let endpoint =
+        start_test_server_with_failure_status("endpoint", Duration::ZERO, 1, true, status_529)
+            .await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference()
+        .with_max_retries(1)
+        .with_hedge_budget_pct(0.0)
+        .with_non_retryable_status_codes(HashSet::new());
+
+    client
+        .process_embeddings_requests(
+            vec!["retry me".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect("empty non-retryable override should keep default 5xx retry");
+
+    assert_eq!(endpoint.request_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn test_non_retryable_status_codes_disable_default_5xx_retry() {
+    let status_529 = StatusCode::from_u16(529).expect("529 is a valid status code");
+    let endpoint =
+        start_test_server_with_failure_status("endpoint", Duration::ZERO, 1, true, status_529)
+            .await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference()
+        .with_max_retries(1)
+        .with_hedge_budget_pct(0.0)
+        .with_non_retryable_status_codes(HashSet::from([529]));
+
+    let result = client
+        .process_embeddings_requests(
+            vec!["do not retry me".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await;
+
+    assert!(result.is_err(), "529 should not be retried when overridden");
+    assert_eq!(endpoint.request_count.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

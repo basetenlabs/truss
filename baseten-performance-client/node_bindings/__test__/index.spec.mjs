@@ -1,6 +1,6 @@
 import test from 'ava'
 
-import { PerformanceClient, HttpClientWrapper } from '../index.js'
+import { PerformanceClient, HttpClientWrapper, RequestProcessingPreference } from '../index.js'
 
 // Test client initialization
 test('PerformanceClient initialization', (t) => {
@@ -69,6 +69,28 @@ test('HttpClientWrapper can be shared between clients', (t) => {
 
   t.truthy(client1, 'First client should be initialized')
   t.truthy(client2, 'Second client should be initialized')
+})
+
+test('RequestProcessingPreference supports non-retryable status codes', (t) => {
+  const preference = new RequestProcessingPreference(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    [529, 429, 529],
+  )
+
+  t.deepEqual(preference.nonRetryableStatusCodes, [429, 529])
 })
 
 // Test getting wrapper from one client and using it in another
