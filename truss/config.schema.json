@@ -465,7 +465,7 @@
             }
           ],
           "default": null,
-          "description": "Allowed outbound fully-qualified domain names. A leading '*.' wildcard matches any single subdomain label.",
+          "description": "Allowed outbound fully-qualified domain names. Supports wildcards: '*' may appear anywhere in a label.",
           "examples": [
             [
               "*.baseten.co",
