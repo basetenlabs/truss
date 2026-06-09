@@ -32,6 +32,12 @@ from truss.cli.train.cache import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.workstation import (
+    DEFAULT_BASE_IMAGE,
+    SUPPORTED_WORKSTATION_ACCELERATORS,
+    build_workstation_project,
+    copy_workstation_templates,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -1086,7 +1092,7 @@ def capacity(remote: Optional[str]):
 @train.command(name="workstation")
 @click.option(
     "--accelerator",
-    type=click.Choice(["H100", "H200"], case_sensitive=False),
+    type=click.Choice(SUPPORTED_WORKSTATION_ACCELERATORS, case_sensitive=False),
     default="H100",
     help="GPU accelerator type (default: H100).",
 )
@@ -1165,11 +1171,6 @@ def workstation(
     """Spin up an SSH workstation on Baseten training infrastructure."""
     import tempfile
 
-    from truss.cli.train.workstation import (
-        DEFAULT_BASE_IMAGE,
-        build_workstation_project,
-        copy_workstation_templates,
-    )
     from truss_train.public_api import push
 
     if gpu_count is not None and node_count is not None:
