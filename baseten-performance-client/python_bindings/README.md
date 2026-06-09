@@ -314,7 +314,7 @@ preference = RequestProcessingPreference(
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)
     retry_budget_pct=0.08,            # Retry budget percentage (default: 0.05)
-    max_retries=3,                    # Maximum HTTP retries (default: 4)
+    max_retries=5,                    # Maximum HTTP retries (default: 5)
     initial_backoff_ms=250,           # Initial backoff in milliseconds (default: 125)
     total_timeout_s=300.0              # Total operation timeout (default: None)
 )
@@ -363,9 +363,13 @@ response = client.embed(
 - Maximum allowed: 300% for both budgets
 
 **Retry Configuration:**
-- `max_retries`: Maximum number of HTTP retries (default: 4, max: 4)
-- `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
-- Backoff uses exponential backoff with jitter
+- HTTP status-code retries are controlled by `max_retries`, not by `retry_budget_pct`.
+- Retryable status codes by default: `408`, `409`, `429`, and `500` through `599`.
+- Use `non_retryable_status_codes={529}` to opt specific statuses out of the default retry policy.
+- `max_retries`: Maximum HTTP status-code retries per request (default: 5, max: 6). Set to 0 to disable these retries.
+- `retry_budget_pct`: Budget for timeout and network-error retry paths (default: 5%, max: 300%).
+- `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-45000).
+- Backoff multiplies by 4 after each retry, caps at 45000ms, and adds 0-99ms jitter. With defaults, the retry sleeps are about 125ms, 500ms, 2000ms, 8000ms, and 32000ms; a sixth retry sleeps about 45000ms.
 
 #### Request Hedging
 The client supports request hedging for improved latency by sending duplicate requests after a specified delay:
@@ -461,6 +465,49 @@ client = PerformanceClient(
     proxy="http://envoy-proxy.local:8080"
 )
 ```
+
+#### Endpoint Pool and Health Checks
+Route traffic across reusable endpoints with deterministic weighted routing. Each `Endpoint`
+owns its own health worker, so the same endpoint object can be shared across many pools
+without duplicate probes:
+
+```python
+from baseten_performance_client import Endpoint, EndpointPool, HttpClientWrapper, PerformanceClient
+
+health_wrapper = HttpClientWrapper(http_version=1)
+endpoint_a = Endpoint(
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    client_wrapper=health_wrapper,
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=False,
+)
+endpoint_b = Endpoint(
+    base_url="https://model-BBBB.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    client_wrapper=health_wrapper,
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=False,
+)
+
+endpoint_pool = EndpointPool(
+    endpoints=[endpoint_a, endpoint_b],
+    endpoint_weights=[0.8, 0.2],  # deterministic weighted routing
+)
+
+client = PerformanceClient(
+    base_url="https://model-AAAA.api.baseten.co/environments/production/sync",
+    api_key="your_key",
+    endpoint_pool=endpoint_pool,
+)
+```
+
+Health semantics:
+
+- Weights are deterministic weighted routing, not weighted round robin.
+- Each configured health check is retried up to `health_check_retries`, and one successful retry is enough for that check.
+- If an endpoint has `deep_health_url` configured, both the shallow deployment health path and the deep health URL are evaluated.
+- `health_fail_on_first=True` short-circuits on the first hard failing check within an endpoint refresh cycle.
 
 ### Error Handling
 

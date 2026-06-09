@@ -8,6 +8,7 @@ import sys
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Optional
 
 import requests
@@ -26,6 +27,16 @@ from pygments.lexers import get_lexer_for_filename
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
+
+
+class ScopeKind(str, Enum):
+    """What kind of parent a checkpoint hangs off — drives column labels and
+    JSON id keys. `str` mixin keeps it interchangeable with raw strings for
+    f-strings; switch to `enum.StrEnum` once we drop 3.9/3.10."""
+
+    JOB = "job"
+    RUN = "run"
+
 
 # Sort constants
 SORT_BY_CHECKPOINT_ID = "checkpoint-id"
@@ -66,13 +77,17 @@ def _get_sort_key(sort_by: str) -> Callable[[dict], Any]:
 class CheckpointListViewer(ABC):
     """Base class for checkpoint list viewers that output in different formats."""
 
+    def __init__(self, scope_kind: ScopeKind = ScopeKind.JOB):
+        # Controls labels in titles, messages, and the JSON id key.
+        self.scope_kind = scope_kind
+
     @abstractmethod
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         """Output the checkpoint list in the viewer's format."""
         pass
 
     @abstractmethod
-    def output_no_checkpoints_message(self, job_id: str) -> None:
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
         """Output message when no checkpoints are found."""
         pass
 
@@ -80,15 +95,25 @@ class CheckpointListViewer(ABC):
 class CLITableCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list as a styled CLI table."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
         table = rich.table.Table(
-            title=f"Checkpoints for job: {job_id}",
+            title=f"Checkpoints for {self.scope_kind.value}: {scope_id}",
             show_header=True,
             header_style="bold magenta",
             box=rich.table.box.ROUNDED,
             border_style="blue",
         )
+        # Both train and loops checkpoints have a DB-PK (`id`, alphanumeric
+        # no-underscore, e.g. `vL3pQrS8`) and a human step-name
+        # (`checkpoint_id`, e.g. `checkpoint-100` / `step-100`). Show the
+        # parent scope, then both identifiers.
+        scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
+        show_target = self.scope_kind == ScopeKind.RUN
+        table.add_column(scope_column, style="cyan")
         table.add_column("Checkpoint ID", style="cyan")
+        table.add_column("Checkpoint Name", style="cyan")
+        if show_target:
+            table.add_column("Target", style="yellow")
         table.add_column("Type")
         table.add_column("Base Model", style="yellow")
         table.add_column("Size", style="green")
@@ -99,28 +124,38 @@ class CLITableCheckpointViewer(CheckpointListViewer):
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            table.add_row(
-                ckpt.get("checkpoint_id", ""),
-                ckpt.get("checkpoint_type", ""),
-                ckpt.get("base_model", "") or "",
-                size_str,
-                created_str,
+            row = [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
+            if show_target:
+                row.append(ckpt.get("target", "") or "")
+            row.extend(
+                [
+                    ckpt.get("checkpoint_type", ""),
+                    ckpt.get("base_model", "") or "",
+                    size_str,
+                    created_str,
+                ]
             )
+            table.add_row(*row)
 
         console.print(table)
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
-        console.print(f"No checkpoints found for job: {job_id}.", style="yellow")
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
+        console.print(
+            f"No checkpoints found for {self.scope_kind.value}: {scope_id}.",
+            style="yellow",
+        )
 
 
 class CSVCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in CSV format."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
-        writer = csv.writer(sys.stdout)
-        writer.writerow(
+    def _header(self) -> list[str]:
+        scope_column = "Run ID" if self.scope_kind == ScopeKind.RUN else "Job ID"
+        header = [scope_column, "Checkpoint ID", "Checkpoint Name"]
+        if self.scope_kind == ScopeKind.RUN:
+            header.append("Target")
+        header.extend(
             [
-                "Checkpoint ID",
                 "Type",
                 "Base Model",
                 "Size (bytes)",
@@ -128,14 +163,22 @@ class CSVCheckpointViewer(CheckpointListViewer):
                 "Created At",
             ]
         )
+        return header
+
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
+        writer = csv.writer(sys.stdout)
+        writer.writerow(self._header())
+        show_target = self.scope_kind == ScopeKind.RUN
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
                 ckpt.get("size_bytes", 0)
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
-            writer.writerow(
+            row = [scope_id, ckpt.get("id", ""), ckpt.get("checkpoint_id", "")]
+            if show_target:
+                row.append(ckpt.get("target", "") or "")
+            row.extend(
                 [
-                    ckpt.get("checkpoint_id", ""),
                     ckpt.get("checkpoint_type", ""),
                     ckpt.get("base_model", "") or "",
                     str(ckpt.get("size_bytes", 0)),
@@ -143,25 +186,18 @@ class CSVCheckpointViewer(CheckpointListViewer):
                     created_str,
                 ]
             )
+            writer.writerow(row)
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
         writer = csv.writer(sys.stdout)
-        writer.writerow(
-            [
-                "Checkpoint ID",
-                "Type",
-                "Base Model",
-                "Size (bytes)",
-                "Size (human readable)",
-                "Created At",
-            ]
-        )
+        writer.writerow(self._header())
 
 
 class JSONCheckpointViewer(CheckpointListViewer):
     """Viewer that outputs checkpoint list in JSON format."""
 
-    def output_checkpoints(self, checkpoints: list[dict], job_id: str) -> None:
+    def output_checkpoints(self, checkpoints: list[dict], scope_id: str) -> None:
+        scope_id_key = f"{self.scope_kind.value}_id"
         checkpoints_data = []
         for ckpt in checkpoints:
             size_str = cli_common.format_bytes_to_human_readable(
@@ -169,26 +205,38 @@ class JSONCheckpointViewer(CheckpointListViewer):
             )
             created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
             entry: dict[str, Any] = {
+                scope_id_key: scope_id,
+                "id": ckpt.get("id", ""),
                 "checkpoint_id": ckpt.get("checkpoint_id", ""),
-                "checkpoint_type": ckpt.get("checkpoint_type", ""),
-                "base_model": ckpt.get("base_model", "") or "",
-                "size_bytes": ckpt.get("size_bytes", 0),
-                "size_human_readable": size_str,
-                "created_at": created_str,
             }
+            if self.scope_kind == ScopeKind.RUN:
+                entry["target"] = ckpt.get("target", "") or ""
+            entry.update(
+                {
+                    "checkpoint_type": ckpt.get("checkpoint_type", ""),
+                    "base_model": ckpt.get("base_model", "") or "",
+                    "size_bytes": ckpt.get("size_bytes", 0),
+                    "size_human_readable": size_str,
+                    "created_at": created_str,
+                }
+            )
             if ckpt.get("lora_adapter_config"):
                 entry["lora_adapter_config"] = ckpt["lora_adapter_config"]
             checkpoints_data.append(entry)
 
         output = {
-            "job_id": job_id,
+            f"{self.scope_kind.value}_id": scope_id,
             "total_checkpoints": len(checkpoints),
             "checkpoints": checkpoints_data,
         }
         print(json.dumps(output, indent=2))
 
-    def output_no_checkpoints_message(self, job_id: str) -> None:
-        output = {"job_id": job_id, "total_checkpoints": 0, "checkpoints": []}
+    def output_no_checkpoints_message(self, scope_id: str) -> None:
+        output = {
+            f"{self.scope_kind.value}_id": scope_id,
+            "total_checkpoints": 0,
+            "checkpoints": [],
+        }
         print(json.dumps(output, indent=2))
 
 

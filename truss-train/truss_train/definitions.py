@@ -116,6 +116,7 @@ class InteractiveSessionTrigger(str, enum.Enum):
 class InteractiveSessionProvider(str, enum.Enum):
     VS_CODE = "vs_code"
     CURSOR = "cursor"
+    SSH = "ssh"
 
 
 class InteractiveSessionAuthProvider(str, enum.Enum):
@@ -206,10 +207,11 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     runtime: Runtime = Runtime()
     interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
+    priority: Optional[int] = None
     workspace: Optional[Workspace] = None
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
-    enable_baseten_workdir: bool = False
+    enable_baseten_workdir: bool = True
 
     @model_validator(mode="after")
     def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
@@ -272,6 +274,17 @@ class CheckpointList(custom_types.SafeModelNoExtra):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
+    loops_checkpoint_ids: List[str] = []
+
+    @model_validator(mode="after")
+    def _no_mixing(self) -> "CheckpointList":
+        if self.checkpoints and self.loops_checkpoint_ids:
+            raise ValueError(
+                "Cannot mix training job checkpoints and loops checkpoints in "
+                "the same deploy. Use either checkpoints or "
+                "loops_checkpoint_ids, not both."
+            )
+        return self
 
     def to_truss_config(self) -> truss_config.CheckpointList:
         artifact_references: List[truss_config.TrainingArtifactReference] = [
@@ -280,6 +293,7 @@ class CheckpointList(custom_types.SafeModelNoExtra):
         return truss_config.CheckpointList(
             download_folder=self.download_folder,
             artifact_references=artifact_references,
+            loops_checkpoint_ids=self.loops_checkpoint_ids,
         )
 
 

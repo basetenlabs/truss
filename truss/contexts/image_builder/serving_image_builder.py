@@ -105,6 +105,74 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
+_DEFAULT_APT_MIRROR_URL = "mirror://mirrors.ubuntu.com/US.txt"
+
+_CACHE_MOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _resolve_apt_mirror_url() -> str:
+    return os.getenv("BT_APT_MIRROR_URL") or _DEFAULT_APT_MIRROR_URL
+
+
+def _resolve_cache_mount_id() -> Optional[str]:
+    """Return the BuildKit cache mount id from `TRUSS_CACHE_MOUNT_ID`, or None.
+
+    Callers (typically the platform build orchestrator) are expected to set
+    this to a value that namespaces the cache appropriately (e.g. per-org or
+    per-tenant) so cache mounts don't collide across unrelated builds. We
+    restrict the value to `[A-Za-z0-9_-]+` because it's interpolated into
+    `--mount=type=cache,id=...` flags; permitting commas, spaces, or `=`
+    would allow injection of additional mount options.
+    """
+    raw = os.getenv("TRUSS_CACHE_MOUNT_ID") or None
+    if raw is None:
+        return None
+    if not _CACHE_MOUNT_ID_RE.match(raw):
+        raise ValueError(
+            f"TRUSS_CACHE_MOUNT_ID must match {_CACHE_MOUNT_ID_RE.pattern}, got {raw!r}"
+        )
+    return raw
+
+
+def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str, str]:
+    """Compute Jinja variables for BuildKit cache mounts.
+
+    When `cache_mount_id` is set, returns `--mount=type=cache` fragments to
+    splice before apt/pip/uv installs and an empty `py_no_cache_dir`. When
+    unset, returns empty fragments and ` --no-cache-dir` so the rendered
+    Dockerfile is byte-identical to the pre-caching behavior. The cache id
+    is baked in here because BuildKit does not expand env/build args inside
+    `--mount` `id=` fields. Each non-empty fragment includes a trailing
+    space so callers can splice them immediately before the next token, eg
+    `RUN {{ apt_cache_mount }}apt-get ...`.
+    """
+    if not cache_mount_id:
+        return {
+            "apt_cache_mount": "",
+            "pip_cache_mount": "",
+            "uv_cache_mount": "",
+            "py_no_cache_dir": " --no-cache-dir",
+        }
+    apt_mount = (
+        f"--mount=type=cache,id=truss-apt-cache-{cache_mount_id},"
+        f"target=/var/cache/apt,sharing=locked "
+        f"--mount=type=cache,id=truss-apt-lib-{cache_mount_id},"
+        f"target=/var/lib/apt,sharing=locked "
+    )
+    pip_mount = (
+        f"--mount=type=cache,id=truss-pip-{cache_mount_id},"
+        f"target=/root/.cache/pip,sharing=locked "
+    )
+    uv_mount = (
+        f"--mount=type=cache,id=truss-uv-{cache_mount_id},target=/root/.cache/uv "
+    )
+    return {
+        "apt_cache_mount": apt_mount,
+        "pip_cache_mount": pip_mount,
+        "uv_cache_mount": uv_mount,
+        "py_no_cache_dir": "",
+    }
+
 
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
@@ -787,6 +855,13 @@ class ServingImageBuilder(ImageBuilder):
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
+        if config.runtime.remote_ssh.enabled:
+            self._copy_into_build_dir(
+                TEMPLATES_DIR / "baseten-ssh-server.sh",
+                build_dir,
+                "baseten-ssh-server.sh",
+            )
+
         # Copy constraints file to bound versions for user-overridden packages.
         self._copy_into_build_dir(
             SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,
@@ -898,6 +973,7 @@ class ServingImageBuilder(ImageBuilder):
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
+        should_install_openssh_server = config.runtime.remote_ssh.enabled
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
@@ -917,6 +993,8 @@ class ServingImageBuilder(ImageBuilder):
         else:
             run_as_user_id = 0
 
+        cache_mount_id = _resolve_cache_mount_id()
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -926,6 +1004,7 @@ class ServingImageBuilder(ImageBuilder):
             min_supported_python_minor_version_in_custom_base_image=min_py_version.minor,
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
+            should_install_openssh_server=should_install_openssh_server,
             should_install_requirements=should_install_python_requirements,
             requirements_file_type=config.requirements_file_type.value,
             config=config,
@@ -953,6 +1032,9 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             run_as_user_id=run_as_user_id,
+            apt_mirror_url=_resolve_apt_mirror_url(),
+            cache_mount_id=cache_mount_id,
+            **_build_cache_mount_template_vars(cache_mount_id),
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.

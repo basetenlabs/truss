@@ -123,11 +123,15 @@ You should see:
 ```output
 ✨ Model Qwen 2.5 3B was successfully pushed ✨
 
-🪵  View logs for your deployment at https://app.baseten.co/models/abc1d2ef/logs/xyz123
+   Model ID:      abc1d2ef
+   Deployment ID: xyz123
+   Endpoint:      https://model-abc1d2ef.api.baseten.co
+   Logs:          https://app.baseten.co/models/abc1d2ef/logs/xyz123
+
 👀 Watching for changes to truss...
 ```
 
-The logs URL contains your model ID, the string after `/models/` (e.g., `abc1d2ef`). You'll need this to call the model's API. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
+You'll need the model ID to call the model's API. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
 
 Baseten now downloads the model weights from Hugging Face, compiles them with TensorRT-LLM, and deploys the resulting container to an L4 GPU. You can watch progress in the logs linked above.
 
@@ -183,7 +187,10 @@ uvx truss watch
 You should see:
 
 ```output
-🪵  View logs for your deployment at https://app.baseten.co/models/<model_id>/logs/<deployment_id>
+   Model ID:      <model_id>
+   Deployment ID: <deployment_id>
+   Endpoint:      https://model-<model_id>.api.baseten.co
+   Logs:          https://app.baseten.co/models/<model_id>/logs/<deployment_id>
 🚰 Attempting to sync truss with remote
 No changes observed, skipping patching.
 👀 Watching for changes to truss...

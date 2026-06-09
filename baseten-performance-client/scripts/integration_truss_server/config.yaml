@@ -1,0 +1,55 @@
+model_name: performance-client-integration-truss-server
+model_metadata:
+  example_model_input: { "model": "voyageai/voyage-4-nano", "input": [ "hi" ] }
+base_image:
+  image: baseten/performance-client-integration-truss-server:0.1.2
+
+docker_server:
+  start_command: python -m uvicorn app:app --host 0.0.0.0 --port 8000
+  predict_endpoint: /v1/embeddings
+  readiness_endpoint: /always_healthy
+  liveness_endpoint: /always_healthy
+  server_port: 8000
+
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+
+runtime:
+  predict_concurrency: 16
+
+environment_variables:
+  # Deploy the same Truss 3 times with different env vars.
+  #
+  # Recommended client-side settings for this schedule:
+  # - health_check_interval_s: 2.0
+  # - health_check_timeout_s: 1.25
+  # - endpoint_weights: [1.0, 1.0, 1.0]
+  #
+  # Suggested deployment A:
+  #   INTEGRATION_SERVER_NAME: window-a
+  #   SERVE_MINUTES_UTC: "*"
+  #   SERVE_SECONDS_UTC: 5-35
+  #   SERVE_GRACE_PERIOD_S: 5
+  #
+  # Suggested deployment B:
+  #   INTEGRATION_SERVER_NAME: window-b
+  #   SERVE_MINUTES_UTC: "*"
+  #   SERVE_SECONDS_UTC: 25-55
+  #   SERVE_GRACE_PERIOD_S: 6
+  #
+  # Suggested deployment C:
+  #   INTEGRATION_SERVER_NAME: window-c
+  #   SERVE_MINUTES_UTC: "*"
+  #   SERVE_SECONDS_UTC: 45-60,0-15
+  #   SERVE_GRACE_PERIOD_S: 6
+  INTEGRATION_SERVER_NAME: window-a
+  SERVE_MINUTES_UTC: "*"
+  SERVE_SECONDS_UTC: "5-35"
+  SERVE_GRACE_PERIOD_S: 6
+  EMBEDDING_DIM: "8"
+  RESPONSE_DELAY_MS: "0"
+
+secrets: {}

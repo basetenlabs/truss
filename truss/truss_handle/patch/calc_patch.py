@@ -1,5 +1,6 @@
 import base64
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -491,6 +492,6 @@ def _strictly_under(path: str, parent_paths: List[str]) -> bool:
     them. Assumes that parent paths themselves are not under each other.
     """
     for dir_path in parent_paths:
-        if path.startswith(dir_path) and not path == dir_path:
+        if path.startswith(dir_path + os.sep):
             return True
     return False

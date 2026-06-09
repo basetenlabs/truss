@@ -179,7 +179,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baseten-performance-client"
-version = "0.1.5"
+version = "0.1.9"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client"
-version = "0.1.5"
+version = "0.1.9"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -233,10 +233,12 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client_core"
-version = "0.1.5"
+version = "0.1.9"
 dependencies = [
+ "axum",
  "ctor 0.6.3",
  "futures",
+ "nonempty",
  "once_cell",
  "openssl",
  "rand",
@@ -1404,6 +1406,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "nonempty"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "549e471b99ccaf2f89101bec68f4d244457d5a95a9c3d0672e9564124397741d"
 
 [[package]]
 name = "nu-ansi-term"

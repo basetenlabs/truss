@@ -398,8 +398,14 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
 
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         let response = client
             .process_embeddings_requests(
@@ -431,8 +437,14 @@ impl IntegrationTest {
         info!("Testing large batch request through proxy");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         // Create a large batch
         let inputs: Vec<String> = (0..100).map(|i| format!("Test input {}", i)).collect();
@@ -464,8 +476,14 @@ impl IntegrationTest {
         info!("Testing request with custom preferences");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         let response = client
             .process_embeddings_requests(
@@ -508,8 +526,14 @@ impl IntegrationTest {
         self.mock_server.update_config(error_config).await;
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         // First request should fail - use preferences that disable hedging and retries
         let no_hedge_prefs = RequestProcessingPreference::new()
@@ -583,6 +607,7 @@ impl IntegrationTest {
             2,
             None,
             None,
+            None,
         )?);
 
         // Create multiple concurrent requests
@@ -637,8 +662,14 @@ impl IntegrationTest {
         info!("Testing classify endpoint through proxy");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         let response = client
             .process_classify_requests(
@@ -674,8 +705,14 @@ impl IntegrationTest {
         info!("Testing rerank endpoint through proxy");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         info!("Sending rerank request to proxy");
         let response = client
@@ -729,8 +766,14 @@ impl IntegrationTest {
         info!("Testing generic batch endpoint through proxy");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let _client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
+        let _client = PerformanceClientCore::new(
+            proxy_url,
+            Some("test_api_key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )?;
 
         let payloads = vec![
             json!({"test": "payload1"}),

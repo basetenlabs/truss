@@ -48,6 +48,16 @@ RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
 {#- at the very beginning, set non-interactive mode for apt #}
 ENV DEBIAN_FRONTEND=noninteractive
 
+{%- if cache_mount_id %}
+{#- Defeat the default Debian/Ubuntu docker-clean apt config which auto-deletes
+    /var/cache/apt after every install, and pin uv/pip cache dirs so the cache
+    mount targets line up regardless of $HOME. #}
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+    && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+ENV UV_CACHE_DIR=/root/.cache/uv
+ENV PIP_CACHE_DIR=/root/.cache/pip
+{%- endif %}
+
 
 {%- set UV_VERSION = "0.10.0" %}
 {#
@@ -57,13 +67,32 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - Use the python executable currently on the path, will respect activated virtual envs.
 - `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
-{%- set clean_uv_env = 'env -i PATH="$PATH" HOME="$HOME"' %}
+{#- Strip env to isolate `UV_*` vars, but keep PATH/HOME and standard proxy/CA vars. #}
+{%- set clean_uv_env =
+    'env -i PATH="$PATH" HOME="$HOME"'
+    + ' HTTP_PROXY="$HTTP_PROXY" HTTPS_PROXY="$HTTPS_PROXY" NO_PROXY="$NO_PROXY"'
+    + ' SSL_CERT_FILE="$SSL_CERT_FILE" REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE" PIP_CERT="$PIP_CERT"'
+%}
 {%- set sys_pip_install_command =
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
     "uv pip install --system --break-system-packages " +
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}
+
+{#
+  BuildKit cache mount fragments (`apt_cache_mount` / `pip_cache_mount` /
+  `uv_cache_mount`) and `py_no_cache_dir` are computed in the Python builder
+  from `TRUSS_CACHE_MOUNT_ID`; when unset, the rendered Dockerfile is
+  byte-identical to the previous behavior.
+
+  In the cache-on case, `clean_uv_env` is extended below to pass UV_CACHE_DIR /
+  PIP_CACHE_DIR through its `env -i` boundary so uv invocations wrapped in
+  clean_uv_env still see the pinned cache dirs.
+#}
+{%- if cache_mount_id %}
+{%- set clean_uv_env = clean_uv_env + ' UV_CACHE_DIR="$UV_CACHE_DIR" PIP_CACHE_DIR="$PIP_CACHE_DIR"' %}
+{%- endif %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
@@ -76,18 +105,18 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{# mirrors.ubuntu.com is a redirector service (uses mirrors.txt) that provides the best mirror based on location #}
+{# Rewrite apt sources. Default uses apt's mirror method on Canonical's US country list. Override with BT_APT_MIRROR_URL: must end in '/ubuntu/' for a single mirror (e.g. https://mirrors.kernel.org/ubuntu/) or be a 'mirror://...' URL. #}
 {# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
 {%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
 {%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
 RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
-    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' {{ ubuntu_sources_list_file }}; \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|{{ apt_mirror_url }}|g' {{ ubuntu_sources_list_file }}; \
 fi
 {%- endfor %}
 
 {% block install_tools %}
 {# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
-RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
+RUN {{ apt_cache_mount }}command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
 
 {# Install uv if not already present in the image. We validate the expected location for `uv` at the very end
    due to limitations with `pipefail` in Docker context. #}
@@ -105,7 +134,7 @@ ENV PATH=${PATH}:${HOME}/.local/bin
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
 {# HuggingFace pytorch gpu support needs mkl. #}
-RUN {{ sys_pip_install_command }} install mkl
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} install mkl
     {% endif %}
 {% endif %}
 
@@ -115,10 +144,23 @@ RUN {{ sys_pip_install_command }} install mkl
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
 COPY --chown={{ default_owner }} ./{{ system_packages_filename }} {{ system_packages_filename }}
-RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ system_packages_filename }}) \
+RUN {{ apt_cache_mount }}apt-get update && apt-get install --yes --no-install-recommends $(cat {{ system_packages_filename }})
+        {%- if not cache_mount_id %} \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
+        {%- endif %}
+    {%- endif %}
+    {%- if should_install_openssh_server %}
+COPY --chown={{ default_owner }} ./baseten-ssh-server.sh /usr/local/bin/baseten-ssh-server.sh
+RUN {{ apt_cache_mount }}apt-get update && apt-get install --yes --no-install-recommends openssh-server \
+        {%- if not cache_mount_id %}
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* \
+        {%- endif %}
+    && chmod +x /usr/local/bin/baseten-ssh-server.sh \
+    && mkdir -p /run/sshd \
+    && sed -i 's/^app:!/app:*/' /etc/shadow
     {%- endif %}
 {% endblock %}
 
@@ -134,22 +176,22 @@ COPY --chown={{ default_owner }} ./{{ uv_lock_filename }} {{ uv_lock_filename }}
   NB(nikhil) By default, `uv sync --frozen` manages its own venv, but we need to install into the provided python
   env. To get around this, we leverage `uv export` to dump the requirements in a format that `uv pip install` can use
 #}
-RUN uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
-    {{ sys_pip_install_command }} -r /tmp/uv_requirements.txt --no-cache-dir && \
+RUN {{ uv_cache_mount }}uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
+    {{ sys_pip_install_command }} -r /tmp/uv_requirements.txt{{ py_no_cache_dir }} && \
     rm -f /tmp/uv_requirements.txt
 
     {%- elif requirements_file_type == "pyproject" %}
 COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
-RUN {{ sys_pip_install_command }} -r {{ pyproject_toml_filename }} --no-cache-dir
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ pyproject_toml_filename }}{{ py_no_cache_dir }}
 
     {%- elif requirements_file_type == "pip" %}
 COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} -c {{ constraints_filename }} --no-cache-dir
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} -c {{ constraints_filename }}{{ py_no_cache_dir }}
     {%- endif %}
 
     {%- if should_install_requirements %}
 COPY --chown={{ default_owner }} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} -c {{ constraints_filename }} --no-cache-dir
+RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ config_requirements_filename }} -c {{ constraints_filename }}{{ py_no_cache_dir }}
     {%- endif %}
 {% endblock %}
 

@@ -149,8 +149,9 @@ print("bptr manifest created successfully!")
 # Configure download location
 export TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/my-models"
 
-# Enable b10fs caching (optional)
+# Enable b10fs caching (optional, requires both flags)
 export BASETEN_FS_ENABLED=1
+export USE_BASETEN_FS_TRUSS_TRANSFER=1
 
 # Set up authentication (if needed)
 export HF_TOKEN="your-huggingface-token"
@@ -321,7 +322,12 @@ The following environment variables can be used to configure truss-transfer beha
 
 - **`BASETEN_FS_ENABLED`** (default: `false`)
   - Enable/disable Baseten FS caching: `1`/`true` to enable, `0`/`false` to disable
+  - Requires `USE_BASETEN_FS_TRUSS_TRANSFER` to also be set for b10fs to be enabled
   - When enabled, files are cached in the directory specified by `TRUSS_TRANSFER_CACHE_DIR`
+
+- **`USE_BASETEN_FS_TRUSS_TRANSFER`** (default: `false`)
+  - Secondary flag to enable Baseten FS via truss-transfer
+  - Must be set alongside `BASETEN_FS_ENABLED` for b10fs to be enabled
 
 - **`TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`** (default: `96`)
   - Hours after last access before deleting cached files from other tenants
@@ -355,6 +361,7 @@ export TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD=1
 
 # With b10fs enabled and tuned
 export BASETEN_FS_ENABLED=1
+export USE_BASETEN_FS_TRUSS_TRANSFER=1
 export TRUSS_TRANSFER_CACHE_DIR="/fast-ssd/cache"
 export TRUSS_TRANSFER_B10FS_CLEANUP_HOURS=48
 export TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS=200

@@ -89,6 +89,9 @@ def _collect_external_package_dirs(
     seen: set[pathlib.Path] = set()
     result: list[pathlib.Path] = []
     for desc in chainlet_descriptors:
+        if desc.is_truss_chainlet:
+            # TrussChainlet packages are bundled separately by Truss's `archive_dir`
+            continue
         ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
         if not ext_dirs:
             continue
@@ -326,6 +329,9 @@ class DockerChainletService(b10_service.TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[dict]:
+        raise NotImplementedError()
+
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         raise NotImplementedError()
 
@@ -465,7 +471,7 @@ class BasetenChainService(ChainService):
 
         Returns:
             The JSON response."""
-        headers = self._remote._auth_service.authenticate().header()
+        headers = self._remote.fetch_auth_header()
         response = requests.post(
             self.run_remote_url, json=json_data, headers=headers, stream=True
         )
@@ -543,7 +549,7 @@ def _create_baseten_chain(
             remote_factory.RemoteFactory.create(remote=baseten_options.remote),
         )
 
-    if user_config.settings.include_git_info or baseten_options.include_git_info:
+    if user_config.get_settings().include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
             baseten_options.working_dir
         )

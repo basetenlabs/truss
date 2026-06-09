@@ -275,16 +275,17 @@ class TestNotifyIfOutdated:
         mock_settings = mock.Mock()
         mock_settings.check_for_updates = True
 
-        monkeypatch.setattr(user_config, "state", mock_state)
-        monkeypatch.setattr(user_config, "settings", mock_settings)
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
 
         self_upgrade.notify_if_outdated("0.11.0")
 
         captured = capsys.readouterr()
-        assert "0.12.3" in captured.out
-        assert "0.11.0" in captured.out
-        assert "truss upgrade" in captured.out
-        assert "check_for_updates" in captured.out
+        assert captured.out == ""
+        assert "0.12.3" in captured.err
+        assert "0.11.0" in captured.err
+        assert "truss upgrade" in captured.err
+        assert "check_for_updates" in captured.err
 
     def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
         mock_state = mock.Mock()
@@ -292,8 +293,8 @@ class TestNotifyIfOutdated:
         mock_settings = mock.Mock()
         mock_settings.check_for_updates = True
 
-        monkeypatch.setattr(user_config, "state", mock_state)
-        monkeypatch.setattr(user_config, "settings", mock_settings)
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
 
         self_upgrade.notify_if_outdated("0.12.3")
 
@@ -305,8 +306,8 @@ class TestNotifyIfOutdated:
         mock_settings = mock.Mock()
         mock_settings.check_for_updates = False
 
-        monkeypatch.setattr(user_config, "state", mock_state)
-        monkeypatch.setattr(user_config, "settings", mock_settings)
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
 
         self_upgrade.notify_if_outdated("0.11.0")
 
@@ -320,8 +321,8 @@ class TestNotifyIfOutdated:
         mock_settings = mock.Mock()
         mock_settings.check_for_updates = True
 
-        monkeypatch.setattr(user_config, "state", mock_state)
-        monkeypatch.setattr(user_config, "settings", mock_settings)
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
 
         # Exception handling moved to upgrade_dialogue() in common.py
         with pytest.raises(Exception, match="Network error"):

@@ -48,7 +48,7 @@ def test_settings_check_for_updates(enabled: bool):
     src = f"/tests/settings_{'enabled' if enabled else 'disabled'}.toml"
     shutil.copy(src, SETTINGS_DIR / "settings.toml")
     importlib.reload(uc)
-    assert uc.settings.check_for_updates is enabled
+    assert uc.get_settings().check_for_updates is enabled
     return f"check_for_updates={enabled} loaded correctly"
 
 

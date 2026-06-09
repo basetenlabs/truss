@@ -6,6 +6,7 @@ import requests
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.truss_handle.truss_handle import TrussHandle
 
 
@@ -70,7 +71,7 @@ class TrussService(ABC):
             headers = {}
 
         auth_header = self.authenticate()
-        headers = {**headers, **auth_header}
+        headers = with_user_agent({**headers, **auth_header})
         if method == "GET":
             response = requests.request(method, url, headers=headers, stream=stream)
         elif method == "POST":
@@ -172,6 +173,13 @@ class TrussService(ABC):
     def predict_url(self) -> str:
         """
         Get the URL for the prediction endpoint.
+        """
+        pass
+
+    @abstractmethod
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[Dict[str, Any]]:
+        """
+        Poll for a deployment, yielding the full deployment dict.
         """
         pass
 
