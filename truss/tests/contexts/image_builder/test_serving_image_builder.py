@@ -250,8 +250,13 @@ def test_cache_mount_id_enabled_with_system_pkgs_ssh_and_docker_server(
         "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
         "apt-get update -y && apt-get install -y --no-install-recommends "
     ) in dockerfile
+    assert "curl nginx tini" in dockerfile
     assert (
         "COPY --chown=root:root ./server_wrapper.sh /docker_server/server_wrapper.sh"
+        in dockerfile
+    )
+    assert (
+        'ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/docker_server/server_wrapper.sh"]'
         in dockerfile
     )
     assert "ENV READINESS_ENDPOINT=" in dockerfile

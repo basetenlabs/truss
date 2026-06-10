@@ -118,9 +118,10 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 
 {%- if config.docker_server %}
 RUN {{ apt_cache_mount }}apt-get update -y && apt-get install -y --no-install-recommends \
-        curl nginx{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %}
+        curl nginx tini{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %}
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set server_wrapper_path = "/docker_server/server_wrapper.sh" %}
+{% set tini_path = "/usr/bin/tini" %}
 COPY --chown={{ default_owner }} ./proxy.conf {{ proxy_config_path }}
 COPY --chown={{ default_owner }} ./server_wrapper.sh {{ server_wrapper_path }}
 RUN chmod +x {{ server_wrapper_path }}
@@ -134,7 +135,7 @@ RUN rm -f /etc/nginx/sites-enabled/default
 RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
-ENTRYPOINT ["{{ server_wrapper_path }}"]
+ENTRYPOINT ["{{ tini_path }}", "-g", "--", "{{ server_wrapper_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
