@@ -86,6 +86,18 @@ def test_get_service_by_model_name(remote):
             ]
         }
     }
+    # Full version info is loaded for only the resolved model by id.
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": versions,
+            }
+        }
+    }
 
     with requests_mock.Mocker() as m:
         m.post(
@@ -93,8 +105,10 @@ def test_get_service_by_model_name(remote):
             [
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
             ],
         )
 
@@ -133,6 +147,18 @@ def test_get_service_by_model_name_no_dev_version(remote):
             ]
         }
     }
+    # Full version info is loaded for only the resolved model by id.
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": versions,
+            }
+        }
+    }
 
     with requests_mock.Mocker() as m:
         m.post(
@@ -140,8 +166,10 @@ def test_get_service_by_model_name_no_dev_version(remote):
             [
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
             ],
         )
 
@@ -180,6 +208,18 @@ def test_get_service_by_model_name_no_prod_version(remote):
             ]
         }
     }
+    # Full version info is loaded for only the resolved model by id.
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": versions,
+            }
+        }
+    }
 
     with requests_mock.Mocker() as m:
         m.post(
@@ -187,8 +227,10 @@ def test_get_service_by_model_name_no_prod_version(remote):
             [
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
                 {"json": teams_response},
                 {"json": models_response},
+                {"json": model_response},
             ],
         )
 
