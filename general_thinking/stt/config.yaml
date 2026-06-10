@@ -1,0 +1,98 @@
+apply_library_patches: true
+base_image: null
+bis_llm: null
+build:
+  arguments: {}
+  model_server: TrussServer
+  no_cache: false
+  secret_to_path_mapping: {}
+build_commands: []
+bundled_packages_dir: packages
+cache_internal: []
+data_dir: data
+description: null
+docker_server: null
+environment_variables:
+  HF_HOME: /cache/org
+  HF_HUB_CACHE: /cache/org
+  TLLM_LOG_LEVEL: ERROR
+examples_filename: examples.yaml
+external_data: null
+external_package_dirs: []
+input_type: Any
+live_reload: false
+model_cache: []
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: Streaming ASR Truss - Whisper Large V3 Turbo
+model_type: Model
+python_version: py310
+requirements:
+- --extra-index-url https://pypi.nvidia.com
+- httpx
+- truss
+- ffmpeg-python==0.2.0
+- tensorrt_llm==0.21.0
+- torch==2.7.1
+- torchaudio==2.7.1
+- torchcodec>=0.5.0,<0.6.0
+- numpy==1.26.4
+- platformdirs>=4.2.0
+- ctranslate2==4.4.0
+- tokenizers==0.21
+- huggingface-hub>=0.19.3,<1.0.0
+- transformers==4.51.1
+- openai-whisper==20250625
+- nvidia-ml-py==12.535.133
+- pynvml==12.0.0
+- cuda-bindings==12.9.0
+- cuda-python==12.9.0
+- onnx==1.19.1
+- onnxruntime==1.22.0
+- regex==2025.7.34
+- einops>=0.3.0
+- pyannote.core>=4.5
+- pyannote.audio>=3.1
+- pandas==2.2.3
+- opencc-python-reimplemented==0.1.7
+requirements_file: null
+resources:
+  accelerator: H100
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: true
+runtime:
+  enable_debug_logs: false
+  enable_tracing_data: false
+  health_checks:
+    restart_check_delay_seconds: null
+    restart_threshold_seconds: null
+    startup_threshold_seconds: null
+    stop_traffic_threshold_seconds: null
+  is_websocket_endpoint: true
+  predict_concurrency: 20
+  remote_ssh:
+    enabled: false
+  streaming_read_timeout: 60
+  transport:
+    kind: websocket
+    ping_interval_seconds: null
+    ping_timeout_seconds: 86400.0
+  truss_server_version_override: null
+secrets:
+  baseten_hf_access_token: null
+spec_version: '2.0'
+system_packages:
+- ffmpeg
+- openmpi-bin
+- libopenmpi-dev
+- libsox-dev
+- sox
+- wget
+training_checkpoints: null
+trt_llm: null
+use_local_src: false
+weights: []
