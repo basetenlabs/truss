@@ -811,9 +811,10 @@ class TestDockerServerWrapperScript:
         assert wrapper_path.exists()
         content = wrapper_path.read_text()
         assert "#!/bin/bash" in content
-        assert "start_nginx" in content
-        assert "start_model_server" in content
+        assert "nginx -g" in content
+        assert "bash -c" in content
         assert "cleanup" in content
+        assert "wait -n" in content
 
     def test_wrapper_script_requires_start_command(self, tmp_path):
         """Test that missing start_command raises an assertion."""
