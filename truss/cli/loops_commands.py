@@ -1,6 +1,12 @@
 import json
-from typing import Any, Dict, List, Optional, cast
+import re
+import sys
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, Iterator, List, Optional, TextIO, Tuple, cast
 
+import rich.live
 import rich.table
 import rich_click as click
 import yaml
@@ -213,6 +219,356 @@ def view_loops_runs(
     runs = remote_provider.api.list_loops_runs(run_id=run_id, base_model=base_model)
     runs = sorted(runs, key=lambda r: r.get("created_at") or "", reverse=reverse)
     _render_loops_runs(runs)
+
+
+_DEFAULT_METRICS_REFRESH_SECONDS = 30
+_SPARKLINE_BLOCKS = "▁▂▃▄▅▆▇█"
+_SPARKLINE_WIDTH = 24
+_DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd])\s*$", re.IGNORECASE)
+_DURATION_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+# Deployments in these states have no live pods producing metrics, so they
+# can't be the trainer behind an in-flight run.
+_INACTIVE_DEPLOYMENT_STATUSES = frozenset({"FAILED", "STOPPED", "SCALED_TO_ZERO"})
+
+
+@loops_runs.command(name="metrics")
+@click.option("--run-id", type=str, required=True, help="Loops run ID.")
+@click.option(
+    "--tail",
+    is_flag=True,
+    default=False,
+    help=(
+        "Refresh continuously until interrupted. Without --tail, a single "
+        "snapshot is rendered and the command exits."
+    ),
+)
+@click.option(
+    "--refresh-rate-seconds",
+    type=int,
+    default=_DEFAULT_METRICS_REFRESH_SECONDS,
+    show_default=True,
+    help="Seconds between refreshes when --tail is set.",
+)
+@click.option(
+    "--since",
+    type=str,
+    default=None,
+    help=(
+        "Window start as a duration relative to now (e.g. '30m', '2h', '1d'). "
+        "Mutually exclusive with --start. Defaults to the run's creation time."
+    ),
+)
+@click.option(
+    "--start",
+    type=str,
+    default=None,
+    help="Window start as an ISO-8601 timestamp. Mutually exclusive with --since.",
+)
+@click.option(
+    "--end",
+    type=str,
+    default=None,
+    help="Window end as an ISO-8601 timestamp. Defaults to now.",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help=(
+        "Output format. With --tail and json, NDJSON is emitted "
+        "(one document per refresh tick)."
+    ),
+)
+@click.option(
+    "--output-file",
+    type=click.Path(dir_okay=False, writable=True, allow_dash=True),
+    default=None,
+    help=(
+        "Write JSON output to this path instead of stdout. Use '-' for stdout. "
+        "Only valid with -o json."
+    ),
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def view_loops_run_metrics(
+    run_id: str,
+    tail: bool,
+    refresh_rate_seconds: int,
+    since: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
+    output_format: str,
+    output_file: Optional[str],
+    remote: Optional[str],
+) -> None:
+    """Show request volume + concurrent requests for the trainer and sampler
+    tied to a Loops run.
+
+    Resolves the run's trainer deployment client-side by matching the run's
+    base model against the caller's non-stopped Loops deployments. By default
+    queries the window ``run.created_at → now`` and renders a single snapshot;
+    pass ``--tail`` to refresh continuously, or ``-o json`` for machine-
+    readable output (NDJSON when combined with ``--tail``).
+    """
+    if since is not None and start is not None:
+        raise click.UsageError("--since and --start are mutually exclusive.")
+    is_json = output_format == checkpoint_mod.OUTPUT_FORMAT_JSON
+    if output_file is not None and not is_json:
+        raise click.UsageError("--output-file requires -o json.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    run = remote_provider.api.get_loops_run(run_id)
+    deployment_id = _resolve_trainer_deployment_for_run(remote_provider, run)
+    sampler_deployment_id = (run.get("sampler") or {}).get("deployment_id")
+    run_created_at_iso = run["created_at"]
+
+    def compute_window() -> Tuple[str, str]:
+        end_iso = end if end else datetime.now().astimezone().isoformat()
+        if start:
+            start_iso = start
+        elif since:
+            start_iso = (
+                datetime.now().astimezone()
+                - timedelta(seconds=_parse_duration_seconds(since))
+            ).isoformat()
+        else:
+            start_iso = run_created_at_iso
+        return start_iso, end_iso
+
+    def fetch_snapshot() -> Dict[str, Any]:
+        start_iso, end_iso = compute_window()
+        trainer_resp = remote_provider.api.get_loops_deployment_metrics(
+            deployment_id,
+            start_epoch_millis=_iso_to_epoch_millis(start_iso),
+            end_epoch_millis=_iso_to_epoch_millis(end_iso),
+        )
+        trainer_raw = trainer_resp.get("metrics") or {}
+        sampler_block: Dict[str, Any] = {
+            "request_volume": [],
+            "concurrent_requests": [],
+        }
+        if sampler_deployment_id:
+            sampler_raw = remote_provider.api.get_model_deployment_range_metrics(
+                model_version_id=sampler_deployment_id,
+                start_iso=start_iso,
+                end_iso=end_iso,
+            )
+            sampler_block = {
+                "request_volume": sampler_raw.get("inference_volume") or [],
+                "concurrent_requests": sampler_raw.get("model_concurrent_requests")
+                or [],
+            }
+        return {
+            "run_id": run_id,
+            "trainer_deployment_id": deployment_id,
+            "sampler_deployment_id": sampler_deployment_id,
+            "window": {"start": start_iso, "end": end_iso},
+            "trainer": {
+                "request_volume": trainer_raw.get("inference_volume") or [],
+                "concurrent_requests": trainer_raw.get("concurrent_requests") or [],
+            },
+            "sampler": sampler_block,
+        }
+
+    if is_json:
+        _emit_metrics_json(
+            fetch_snapshot,
+            tail=tail,
+            refresh_rate_seconds=refresh_rate_seconds,
+            output_file=output_file,
+            run_id=run_id,
+        )
+        return
+
+    if not tail:
+        with console.status(
+            f"Fetching metrics for Loops run [cyan]{run_id}[/cyan]...", spinner="dots"
+        ):
+            snapshot = fetch_snapshot()
+        console.print(_build_metrics_table(snapshot))
+        return
+
+    with rich.live.Live(auto_refresh=False, console=console, screen=False) as live:
+        try:
+            while True:
+                live.update(_build_metrics_table(fetch_snapshot()), refresh=True)
+                time.sleep(refresh_rate_seconds)
+        except KeyboardInterrupt:
+            live.stop()
+            console.print(
+                f"\nStopped watching metrics for run {run_id}.", style="yellow"
+            )
+
+
+def _resolve_trainer_deployment_for_run(
+    remote_provider: BasetenRemote, run: Dict[str, Any]
+) -> str:
+    base_model = run.get("base_model")
+    run_id = run.get("id", "")
+    deployments = remote_provider.api.list_loops_deployments()
+    candidates = [
+        d
+        for d in deployments
+        if d.get("base_model") == base_model
+        and ((d.get("status") or {}).get("name") or "").upper()
+        not in _INACTIVE_DEPLOYMENT_STATUSES
+    ]
+    if not candidates:
+        raise click.ClickException(
+            f"No active Loops deployment found for base model {base_model!r} "
+            f"(run {run_id}). Run `truss loops view` to list deployments."
+        )
+    if len(candidates) > 1:
+        ids = ", ".join(d.get("id", "") for d in candidates)
+        raise click.ClickException(
+            f"Multiple active Loops deployments match base model {base_model!r}: "
+            f"{ids}. Cannot infer which one run {run_id} belongs to."
+        )
+    return candidates[0]["id"]
+
+
+def _parse_duration_seconds(value: str) -> int:
+    match = _DURATION_RE.match(value)
+    if not match:
+        raise click.UsageError(
+            f"Invalid duration {value!r}. Expected an integer followed by "
+            "s/m/h/d, e.g. '30s', '15m', '2h', '1d'."
+        )
+    return int(match.group(1)) * _DURATION_UNIT_SECONDS[match.group(2).lower()]
+
+
+def _iso_to_epoch_millis(iso_timestamp: str) -> int:
+    return int(
+        datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00")).timestamp() * 1000
+    )
+
+
+def _latest_value(points: List[Dict[str, Any]]) -> Optional[float]:
+    if not points:
+        return None
+    return points[-1].get("value")
+
+
+def _sparkline(points: List[Dict[str, Any]]) -> str:
+    values = [p["value"] for p in points if p.get("value") is not None]
+    if not values:
+        return ""
+    width = min(_SPARKLINE_WIDTH, len(values))
+    if len(values) > width:
+        bucket = len(values) / width
+        bucketed = []
+        for i in range(width):
+            lo_idx = int(i * bucket)
+            hi_idx = max(int((i + 1) * bucket), lo_idx + 1)
+            chunk = values[lo_idx:hi_idx]
+            bucketed.append(sum(chunk) / len(chunk))
+    else:
+        bucketed = values
+    lo, hi = min(bucketed), max(bucketed)
+    if hi - lo <= 0:
+        return _SPARKLINE_BLOCKS[len(_SPARKLINE_BLOCKS) // 2] * len(bucketed)
+    return "".join(
+        _SPARKLINE_BLOCKS[int((v - lo) / (hi - lo) * (len(_SPARKLINE_BLOCKS) - 1))]
+        for v in bucketed
+    )
+
+
+def _short_iso(iso: str) -> str:
+    try:
+        return (
+            datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            .astimezone()
+            .strftime("%Y-%m-%d %H:%M:%S")
+        )
+    except ValueError:
+        return iso
+
+
+def _fmt_latest(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}"
+
+
+def _build_metrics_table(snapshot: Dict[str, Any]) -> rich.table.Table:
+    window = snapshot["window"]
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title=(
+            f"Metrics for Loops run [cyan]{snapshot['run_id']}[/cyan]  "
+            f"({_short_iso(window['start'])} → {_short_iso(window['end'])})"
+        ),
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Component", style="green")
+    table.add_column("Deployment", style="cyan")
+    table.add_column("Request volume (req/s)", justify="right")
+    table.add_column("Concurrent requests", justify="right")
+    table.add_column("Trend", justify="left")
+
+    trainer = snapshot["trainer"]
+    table.add_row(
+        "Trainer",
+        snapshot["trainer_deployment_id"],
+        _fmt_latest(_latest_value(trainer["request_volume"])),
+        _fmt_latest(_latest_value(trainer["concurrent_requests"])),
+        _sparkline(trainer["request_volume"]),
+    )
+
+    sampler_id = snapshot["sampler_deployment_id"]
+    sampler = snapshot["sampler"]
+    if sampler_id:
+        table.add_row(
+            "Sampler",
+            sampler_id,
+            _fmt_latest(_latest_value(sampler["request_volume"])),
+            _fmt_latest(_latest_value(sampler["concurrent_requests"])),
+            _sparkline(sampler["request_volume"]),
+        )
+    else:
+        table.add_row("Sampler", "—", "—", "—", "")
+    return table
+
+
+@contextmanager
+def _open_metrics_sink(output_file: Optional[str]) -> Iterator[TextIO]:
+    if output_file is None or output_file == "-":
+        yield sys.stdout
+        return
+    with open(output_file, "w") as f:
+        yield f
+
+
+def _emit_metrics_json(
+    fetch_snapshot: Callable[[], Dict[str, Any]],
+    *,
+    tail: bool,
+    refresh_rate_seconds: int,
+    output_file: Optional[str],
+    run_id: str,
+) -> None:
+    with _open_metrics_sink(output_file) as sink:
+        if not tail:
+            sink.write(json.dumps(fetch_snapshot()) + "\n")
+            sink.flush()
+            return
+        try:
+            while True:
+                sink.write(json.dumps(fetch_snapshot()) + "\n")
+                sink.flush()
+                time.sleep(refresh_rate_seconds)
+        except KeyboardInterrupt:
+            print(f"Stopped streaming metrics for run {run_id}.", file=sys.stderr)
 
 
 @loops.group(name="samplers")
