@@ -5,6 +5,7 @@ import sys
 import tarfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
@@ -1063,30 +1064,159 @@ def push(
 @click.option(
     "--remote", type=str, required=False, help="Name of the remote in .trussrc."
 )
-@click.option("--model-id", type=str, required=True)
-@click.option("--deployment-id", type=str, required=True)
-@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--tail",
+    is_flag=True,
+    help="Stream new logs as they arrive. Cannot be combined with the filter flags.",
+)
+@click.option(
+    "--start",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S%z",
+        ]
+    ),
+    default=None,
+    help=(
+        "Start of the log time range (ISO 8601). No-timezone values are local. "
+        "Defaults to a short look-back ending at --end. Window must be <= 7 days."
+    ),
+)
+@click.option(
+    "--end",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S%z",
+        ]
+    ),
+    default=None,
+    help=(
+        "End of the log time range (ISO 8601). No-timezone values are local. "
+        "Defaults to now. Window must be <= 7 days."
+    ),
+)
+@click.option(
+    "--since",
+    type=str,
+    default=None,
+    help=(
+        "Logs from a relative time ago until now, as <N><unit> with unit "
+        "s/m/h/d (e.g. '90s', '2h', '3d'). Max '7d'. Excludes --start/--end."
+    ),
+)
+@click.option(
+    "--min-level",
+    type=click.Choice(["debug", "info", "warning", "error"], case_sensitive=False),
+    default=None,
+    help=(
+        "Minimum log severity. Defaults to all lines. Any value returns lines "
+        "at or above that severity and drops lines with no level."
+    ),
+)
+@click.option(
+    "--includes",
+    type=str,
+    multiple=True,
+    help="Case-sensitive substring that must appear in the message (repeatable).",
+)
+@click.option(
+    "--excludes",
+    type=str,
+    multiple=True,
+    help="Case-sensitive substring that drops any line containing it (repeatable).",
+)
+@click.option(
+    "--search-pattern",
+    type=str,
+    default=None,
+    help="RE2 regex matched against the message. Prefer --includes/--excludes.",
+)
+@click.option(
+    "--replica",
+    type=str,
+    default=None,
+    help="Only return logs emitted by this replica (5-char short ID).",
+)
+@click.option(
+    "--request-id",
+    type=str,
+    default=None,
+    help="Only return logs tagged with this inference request ID.",
+)
 @common.common_options()
 def model_logs(
-    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    tail: bool = False,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    since: Optional[str] = None,
+    min_level: Optional[str] = None,
+    includes: tuple[str, ...] = (),
+    excludes: tuple[str, ...] = (),
+    search_pattern: Optional[str] = None,
+    replica: Optional[str] = None,
+    request_id: Optional[str] = None,
 ) -> None:
     """
-    Fetches logs for the packaged model
+    Fetches logs for the packaged model.
+
+    Defaults to a short look-back window. Use --start/--end or --since to scope
+    the window (max 7 days), the filter flags to narrow results, or --tail to
+    stream live logs.
     """
+    if tail and (
+        start is not None
+        or end is not None
+        or since is not None
+        or min_level is not None
+        or replica is not None
+        or request_id is not None
+        or search_pattern is not None
+        or includes
+        or excludes
+    ):
+        raise click.UsageError("--tail cannot be combined with the filter flags.")
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
-    if not tail:
-        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
-    else:
+
+    if tail:
         log_watcher = ModelDeploymentLogWatcher(
             remote_provider.api, model_id, deployment_id
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
+        return
+
+    start_ms, end_ms = cli_log_utils.resolve_log_time_range(start, end, since)
+    logs = remote_provider.api.get_model_deployment_logs(
+        model_id,
+        deployment_id,
+        start_ms,
+        end_ms,
+        # Backend LogLevelV1 values are uppercase, but the flag accepts any case.
+        min_level=min_level.upper() if min_level else None,
+        replica=replica,
+        request_id=request_id,
+        search_pattern=search_pattern,
+        includes=list(includes),
+        excludes=list(excludes),
+    )
+    for log in cli_log_utils.parse_logs(logs):
+        cli_log_utils.output_log(log)
 
 
 @truss_cli.command()
