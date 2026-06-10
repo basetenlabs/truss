@@ -1,1 +1,0 @@
-"""Whisper utilities package."""

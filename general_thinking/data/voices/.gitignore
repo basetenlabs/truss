@@ -1,8 +1,0 @@
-*.wav
-*.mp3
-*.flac
-*.ogg
-*.m4a
-*.txt
-!README.md
-!.gitignore
