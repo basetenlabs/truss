@@ -121,9 +121,23 @@ def _is_relative_to(path: pathlib.Path, other: pathlib.Path) -> bool:
 def _get_chain_watch_roots(
     chain_root: pathlib.Path,
     chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+    included_chainlets: Optional[set[str]] = None,
 ) -> list[pathlib.Path]:
     roots: list[pathlib.Path] = []
-    for root in [chain_root, *_collect_external_package_dirs(chainlet_descriptors)]:
+    chainlet_descriptors = list(chainlet_descriptors)
+    if included_chainlets:
+        watch_root_candidates = [
+            pathlib.Path(inspect.getfile(desc.chainlet_cls)).absolute().parent
+            for desc in chainlet_descriptors
+            if desc.display_name in included_chainlets
+        ]
+    else:
+        watch_root_candidates = [
+            chain_root,
+            *_collect_external_package_dirs(chainlet_descriptors),
+        ]
+
+    for root in watch_root_candidates:
         resolved_root = root.resolve()
         if any(_is_relative_to(resolved_root, existing_root) for existing_root in roots):
             continue
@@ -778,9 +792,6 @@ class _Watcher:
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
             chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
-            self._watch_roots = _get_chain_watch_roots(
-                self._chain_root, chainlet_descriptors
-            )
 
         if included_chainlets:
             if not_matched := (set(included_chainlets) - chainlet_names):
@@ -791,6 +802,11 @@ class _Watcher:
             self._included_chainlets = set(included_chainlets)
         else:
             self._included_chainlets = chainlet_names
+        self._watch_roots = _get_chain_watch_roots(
+            self._chain_root,
+            chainlet_descriptors,
+            self._included_chainlets if included_chainlets else None,
+        )
 
         resolved_chain = resolve_chain_for_watch(
             self._remote_provider, self._deployed_chain_name, provided_team_name
