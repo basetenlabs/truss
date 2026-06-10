@@ -110,6 +110,32 @@ def _collect_external_package_dirs(
     return result
 
 
+def _is_relative_to(path: pathlib.Path, other: pathlib.Path) -> bool:
+    try:
+        path.relative_to(other)
+        return True
+    except ValueError:
+        return False
+
+
+def _get_chain_watch_roots(
+    chain_root: pathlib.Path,
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> list[pathlib.Path]:
+    roots: list[pathlib.Path] = []
+    for root in [chain_root, *_collect_external_package_dirs(chainlet_descriptors)]:
+        resolved_root = root.resolve()
+        if any(_is_relative_to(resolved_root, existing_root) for existing_root in roots):
+            continue
+        roots = [
+            existing_root
+            for existing_root in roots
+            if not _is_relative_to(existing_root, resolved_root)
+        ]
+        roots.append(resolved_root)
+    return roots
+
+
 class ChainService(abc.ABC):
     """Handle for a deployed chain.
 
@@ -715,6 +741,7 @@ class _Watcher:
     _remote_provider: b10_remote.BasetenRemote
     _chainlet_data: Mapping[str, b10_types.DeployedChainlet]
     _watch_filter: Callable[[watchfiles.Change, str], bool]
+    _watch_roots: list[pathlib.Path]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
@@ -749,9 +776,10 @@ class _Watcher:
                 name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
             )
             self._chain_root = _get_chain_root(entrypoint_cls)
-            chainlet_names = set(
-                desc.display_name
-                for desc in _get_ordered_dependencies([entrypoint_cls])
+            chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
+            chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
+            self._watch_roots = _get_chain_watch_roots(
+                self._chain_root, chainlet_descriptors
             )
 
         if included_chainlets:
@@ -938,7 +966,9 @@ class _Watcher:
             self._patch(executor)
             self._console.print("👀 Watching for new changes.", style="blue")
             for _ in watchfiles.watch(
-                self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
+                *self._watch_roots,
+                watch_filter=self._watch_filter,
+                raise_interrupt=False,
             ):
                 self._patch(executor)
                 self._console.print("👀 Watching for new changes.", style="blue")
