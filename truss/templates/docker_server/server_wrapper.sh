@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 
 # Start nginx and the model server; exit if either stops so the platform can restart.
 
@@ -15,10 +14,6 @@ cleanup() {
 }
 
 trap cleanup SIGTERM SIGINT
-
-: "${START_COMMAND:?START_COMMAND is required}"
-: "${SERVER_PORT:?SERVER_PORT is required}"
-: "${READINESS_ENDPOINT:?READINESS_ENDPOINT is required}"
 
 log "Starting nginx"
 nginx -g "daemon off;" &
