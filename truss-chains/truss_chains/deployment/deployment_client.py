@@ -163,7 +163,9 @@ def _get_chain_watch_paths(
 
     for root in watch_root_candidates:
         resolved_root = root.resolve()
-        if any(_is_relative_to(resolved_root, existing_root) for existing_root in roots):
+        if any(
+            _is_relative_to(resolved_root, existing_root) for existing_root in roots
+        ):
             continue
         roots = [
             existing_root

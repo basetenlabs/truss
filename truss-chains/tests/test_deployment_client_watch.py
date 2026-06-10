@@ -56,8 +56,7 @@ def test_chain_watch_roots_dedupe_external_package_dirs(tmp_path):
     external_packages.mkdir()
 
     roots, included_paths = deployment_client._get_chain_watch_paths(
-        chain_root,
-        [_descriptor(external_packages), _descriptor(external_packages)],
+        chain_root, [_descriptor(external_packages), _descriptor(external_packages)]
     )
 
     assert roots == [chain_root.resolve(), external_packages.resolve()]
@@ -145,8 +144,14 @@ def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
         included_chainlets={"Selected"},
     )
 
-    assert roots == [pathlib.Path(__file__).parent.resolve(), external_packages.resolve()]
-    assert included_paths == [pathlib.Path(__file__).resolve(), external_packages.resolve()]
+    assert roots == [
+        pathlib.Path(__file__).parent.resolve(),
+        external_packages.resolve(),
+    ]
+    assert included_paths == [
+        pathlib.Path(__file__).resolve(),
+        external_packages.resolve(),
+    ]
 
 
 def test_chain_watch_filter_ignores_sibling_paths_for_selected_chainlet(tmp_path):
