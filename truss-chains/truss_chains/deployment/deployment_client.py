@@ -792,21 +792,20 @@ class _Watcher:
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
             chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
-
-        if included_chainlets:
-            if not_matched := (set(included_chainlets) - chainlet_names):
-                raise public_types.ChainsDeploymentError(
-                    "Requested to watch specific chainlets, but did not find "
-                    f"{not_matched} among available chainlets {chainlet_names}."
-                )
-            self._included_chainlets = set(included_chainlets)
-        else:
-            self._included_chainlets = chainlet_names
-        self._watch_roots = _get_chain_watch_roots(
-            self._chain_root,
-            chainlet_descriptors,
-            self._included_chainlets if included_chainlets else None,
-        )
+            if included_chainlets:
+                if not_matched := (set(included_chainlets) - chainlet_names):
+                    raise public_types.ChainsDeploymentError(
+                        "Requested to watch specific chainlets, but did not find "
+                        f"{not_matched} among available chainlets {chainlet_names}."
+                    )
+                self._included_chainlets = set(included_chainlets)
+            else:
+                self._included_chainlets = chainlet_names
+            self._watch_roots = _get_chain_watch_roots(
+                self._chain_root,
+                chainlet_descriptors,
+                self._included_chainlets if included_chainlets else None,
+            )
 
         resolved_chain = resolve_chain_for_watch(
             self._remote_provider, self._deployed_chain_name, provided_team_name
