@@ -30,6 +30,8 @@ def _descriptor(
         display_name=display_name,
         chainlet_cls=chainlet_cls,
         is_truss_chainlet=is_truss_chainlet,
+        src_path=str(pathlib.Path(__file__)),
+        truss_dir=external_package_dirs[0] if is_truss_chainlet else None,
     )
 
 
@@ -39,11 +41,12 @@ def test_chain_watch_roots_include_external_package_dirs(tmp_path):
     chain_root.mkdir()
     external_packages.mkdir()
 
-    roots = deployment_client._get_chain_watch_roots(
+    roots, included_paths = deployment_client._get_chain_watch_paths(
         chain_root, [_descriptor(external_packages)]
     )
 
     assert roots == [chain_root.resolve(), external_packages.resolve()]
+    assert included_paths is None
 
 
 def test_chain_watch_roots_dedupe_external_package_dirs(tmp_path):
@@ -52,12 +55,13 @@ def test_chain_watch_roots_dedupe_external_package_dirs(tmp_path):
     chain_root.mkdir()
     external_packages.mkdir()
 
-    roots = deployment_client._get_chain_watch_roots(
+    roots, included_paths = deployment_client._get_chain_watch_paths(
         chain_root,
         [_descriptor(external_packages), _descriptor(external_packages)],
     )
 
     assert roots == [chain_root.resolve(), external_packages.resolve()]
+    assert included_paths is None
 
 
 def test_chain_watch_roots_skip_nested_external_package_dirs(tmp_path):
@@ -65,11 +69,12 @@ def test_chain_watch_roots_skip_nested_external_package_dirs(tmp_path):
     external_packages = chain_root / "packages"
     external_packages.mkdir(parents=True)
 
-    roots = deployment_client._get_chain_watch_roots(
+    roots, included_paths = deployment_client._get_chain_watch_paths(
         chain_root, [_descriptor(external_packages)]
     )
 
     assert roots == [chain_root.resolve()]
+    assert included_paths is None
 
 
 def test_chain_watch_roots_skip_truss_chainlet_external_package_dirs(tmp_path):
@@ -78,11 +83,12 @@ def test_chain_watch_roots_skip_truss_chainlet_external_package_dirs(tmp_path):
     chain_root.mkdir()
     external_packages.mkdir()
 
-    roots = deployment_client._get_chain_watch_roots(
+    roots, included_paths = deployment_client._get_chain_watch_paths(
         chain_root, [_descriptor(external_packages, is_truss_chainlet=True)]
     )
 
     assert roots == [chain_root.resolve()]
+    assert included_paths is None
 
 
 def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
@@ -91,7 +97,7 @@ def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
     chain_root.mkdir()
     external_packages.mkdir()
 
-    roots = deployment_client._get_chain_watch_roots(
+    roots, included_paths = deployment_client._get_chain_watch_paths(
         chain_root,
         [
             _descriptor(
@@ -104,4 +110,27 @@ def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
         included_chainlets={"Selected"},
     )
 
-    assert roots == [pathlib.Path(__file__).parent.resolve()]
+    assert roots == [pathlib.Path(__file__).parent.resolve(), external_packages.resolve()]
+    assert included_paths == [pathlib.Path(__file__).resolve(), external_packages.resolve()]
+
+
+def test_chain_watch_filter_ignores_sibling_paths_for_selected_chainlet(tmp_path):
+    chain_root = tmp_path / "chain"
+    chain_root.mkdir()
+    chain_file = chain_root / "chain.py"
+    chain_file.write_text("# chain")
+    orchestrator_packages = chain_root / "orchestrator" / "packages" / "agent"
+    orchestrator_packages.mkdir(parents=True)
+    orchestrator_file = orchestrator_packages / "agent.py"
+    orchestrator_file.write_text("# orchestrator")
+    tts_file = chain_root / "tts" / "data" / "do.sh"
+    tts_file.parent.mkdir(parents=True)
+    tts_file.write_text("# tts")
+
+    _, watch_filter = deployment_client._create_watch_filter(
+        chain_root, [chain_file.resolve(), orchestrator_packages.resolve()]
+    )
+
+    assert watch_filter(None, str(chain_file))
+    assert watch_filter(None, str(orchestrator_file))
+    assert not watch_filter(None, str(tts_file))

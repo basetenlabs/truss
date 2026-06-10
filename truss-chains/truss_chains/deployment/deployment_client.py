@@ -118,24 +118,45 @@ def _is_relative_to(path: pathlib.Path, other: pathlib.Path) -> bool:
         return False
 
 
-def _get_chain_watch_roots(
-    chain_root: pathlib.Path,
+def _get_descriptor_watch_paths(
+    descriptor: private_types.ChainletAPIDescriptor,
+) -> list[pathlib.Path]:
+    if descriptor.is_truss_chainlet:
+        return [descriptor.truss_dir] if descriptor.truss_dir else []
+
+    watch_paths = [pathlib.Path(descriptor.src_path)]
+    watch_paths.extend(_collect_external_package_dirs([descriptor]))
+    return watch_paths
+
+
+def _get_watch_root(path: pathlib.Path) -> pathlib.Path:
+    if path.is_dir():
+        return path
+    return path.parent
+
+
+def _get_chain_watch_paths(
+    default_root: pathlib.Path,
     chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
     included_chainlets: Optional[set[str]] = None,
-) -> list[pathlib.Path]:
+) -> tuple[list[pathlib.Path], Optional[list[pathlib.Path]]]:
     roots: list[pathlib.Path] = []
     chainlet_descriptors = list(chainlet_descriptors)
     if included_chainlets:
-        watch_root_candidates = [
-            pathlib.Path(inspect.getfile(desc.chainlet_cls)).absolute().parent
+        watch_paths = [
+            watch_path
             for desc in chainlet_descriptors
             if desc.display_name in included_chainlets
+            for watch_path in _get_descriptor_watch_paths(desc)
         ]
+        watch_root_candidates = [_get_watch_root(path) for path in watch_paths]
+        included_paths = [path.resolve() for path in watch_paths]
     else:
         watch_root_candidates = [
-            chain_root,
+            default_root,
             *_collect_external_package_dirs(chainlet_descriptors),
         ]
+        included_paths = None
 
     for root in watch_root_candidates:
         resolved_root = root.resolve()
@@ -147,7 +168,7 @@ def _get_chain_watch_roots(
             if not _is_relative_to(existing_root, resolved_root)
         ]
         roots.append(resolved_root)
-    return roots
+    return roots, included_paths
 
 
 class ChainService(abc.ABC):
@@ -634,10 +655,25 @@ def _create_baseten_chain(
 # Watch / Live Patching ################################################################
 
 
-def _create_watch_filter(root_dir: pathlib.Path):
+def _matches_watch_path(path: pathlib.Path, watch_path: pathlib.Path) -> bool:
+    if path == watch_path:
+        return True
+    return watch_path.is_dir() and _is_relative_to(path, watch_path)
+
+
+def _create_watch_filter(
+    root_dir: pathlib.Path, included_paths: Optional[list[pathlib.Path]] = None
+):
     ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(root_dir)
+    included_paths = included_paths or []
 
     def watch_filter(_: watchfiles.Change, path: str) -> bool:
+        resolved_path = pathlib.Path(path).resolve()
+        if included_paths and not any(
+            _matches_watch_path(resolved_path, included_path)
+            for included_path in included_paths
+        ):
+            return False
         return not truss_path.is_ignored(pathlib.Path(path), ignore_patterns)
 
     logging.getLogger("watchfiles.main").disabled = True
@@ -756,6 +792,7 @@ class _Watcher:
     _chainlet_data: Mapping[str, b10_types.DeployedChainlet]
     _watch_filter: Callable[[watchfiles.Change, str], bool]
     _watch_roots: list[pathlib.Path]
+    _included_watch_paths: Optional[list[pathlib.Path]]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
@@ -801,7 +838,7 @@ class _Watcher:
                 self._included_chainlets = set(included_chainlets)
             else:
                 self._included_chainlets = chainlet_names
-            self._watch_roots = _get_chain_watch_roots(
+            self._watch_roots, self._included_watch_paths = _get_chain_watch_paths(
                 self._chain_root,
                 chainlet_descriptors,
                 self._included_chainlets if included_chainlets else None,
@@ -834,7 +871,7 @@ class _Watcher:
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
         self._ignore_patterns, self._watch_filter = _create_watch_filter(
-            self._chain_root
+            self._chain_root, self._included_watch_paths
         )
 
     @property
