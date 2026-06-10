@@ -127,7 +127,13 @@ def _get_descriptor_watch_paths(
         handle = truss_handle.TrussHandle(descriptor.truss_dir)
         return [descriptor.truss_dir, *handle.spec.external_package_dirs_paths]
 
-    watch_paths = [pathlib.Path(descriptor.src_path)]
+    # Watch the directory containing the chainlet module (not just the single
+    # module file) for symmetry with the truss-chainlet branch above, which
+    # watches the whole `truss_dir`. This restores patching for sibling modules
+    # and local sub-packages that the chainlet imports and that are bundled into
+    # the deployment, while still keeping cross-chainlet isolation across
+    # different subtrees.
+    watch_paths = [pathlib.Path(descriptor.src_path).parent]
     watch_paths.extend(_collect_external_package_dirs([descriptor]))
     return watch_paths
 

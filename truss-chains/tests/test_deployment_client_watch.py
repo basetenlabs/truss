@@ -149,9 +149,34 @@ def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
         external_packages.resolve(),
     ]
     assert included_paths == [
-        pathlib.Path(__file__).resolve(),
+        pathlib.Path(__file__).parent.resolve(),
         external_packages.resolve(),
     ]
+
+
+def test_chain_watch_filter_includes_sibling_module_of_selected_chainlet(tmp_path):
+    chain_root = tmp_path / "chain"
+    chainlet_dir = chain_root / "chainlet"
+    chainlet_dir.mkdir(parents=True)
+    chainlet_file = chainlet_dir / "chainlet.py"
+    chainlet_file.write_text("# chainlet")
+    helper_file = chainlet_dir / "helpers.py"
+    helper_file.write_text("# helper")
+    local_pkg_file = chainlet_dir / "shared" / "utils.py"
+    local_pkg_file.parent.mkdir(parents=True)
+    local_pkg_file.write_text("# shared util")
+    sibling_file = chain_root / "other" / "other.py"
+    sibling_file.parent.mkdir(parents=True)
+    sibling_file.write_text("# other chainlet")
+
+    _, watch_filter = deployment_client._create_watch_filter(
+        chain_root, [chainlet_dir.resolve()]
+    )
+
+    assert watch_filter(None, str(chainlet_file))
+    assert watch_filter(None, str(helper_file))
+    assert watch_filter(None, str(local_pkg_file))
+    assert not watch_filter(None, str(sibling_file))
 
 
 def test_chain_watch_filter_ignores_sibling_paths_for_selected_chainlet(tmp_path):
