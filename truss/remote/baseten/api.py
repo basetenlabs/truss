@@ -560,7 +560,14 @@ class BasetenApi:
     def get_models_for_watch(
         self, team_id: Optional[str] = None, chainlets_only: Optional[bool] = False
     ):
-        """Get models with full version info needed for watch disambiguation."""
+        """Get lightweight model info (id/name/team) for watch disambiguation.
+
+        Only the fields needed to identify and disambiguate a model by name are
+        requested. Version info (including the potentially large ``truss_signature``)
+        is loaded separately for the single resolved model via
+        :meth:`get_model_with_versions_by_id`, to avoid fetching signatures for
+        every model in the team.
+        """
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
             filter_arg = f'team_id: "{team_id}"'
@@ -575,6 +582,27 @@ class BasetenApi:
         query_string = f"""
         {{
             models({filter_arg}) {{
+                id
+                name
+                team {{
+                    id
+                    name
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_model_with_versions_by_id(self, model_id: str):
+        """Get a single model with full version info needed for watch.
+
+        Returns the model identified by ``model_id`` along with its versions,
+        including ``truss_hash`` and ``truss_signature`` used to compute patches.
+        """
+        query_string = f"""
+        {{
+            model(id: "{model_id}") {{
                 id
                 name
                 hostname
