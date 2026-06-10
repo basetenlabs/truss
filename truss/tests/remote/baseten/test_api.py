@@ -722,3 +722,39 @@ def test_create_bis_llm_model_version_routing(mock_post, baseten_api):
         mock_post.call_args[0][0]
         == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
     )
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_is_lightweight(mock_post, baseten_api):
+    # Identification query must not pull version signatures for every model.
+    baseten_api.get_models_for_watch()
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert "all: true" in query
+    assert "id" in query
+    assert "name" in query
+    assert "team" in query
+    assert "versions" not in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_with_team_and_chainlets(mock_post, baseten_api):
+    baseten_api.get_models_for_watch(team_id="team1", chainlets_only=True)
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'team_id: "team1"' in query
+    assert "chainlets_only: true" in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_model_with_versions_by_id_includes_signature(mock_post, baseten_api):
+    # The resolved model is loaded by id with full version info for patching.
+    baseten_api.get_model_with_versions_by_id("model123")
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'model(id: "model123")' in query
+    assert "versions" in query
+    assert "truss_hash" in query
+    assert "truss_signature" in query
