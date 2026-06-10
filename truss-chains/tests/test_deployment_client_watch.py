@@ -91,6 +91,41 @@ def test_chain_watch_roots_skip_truss_chainlet_external_package_dirs(tmp_path):
     assert included_paths is None
 
 
+def test_selected_truss_chainlet_watch_roots_include_truss_external_packages(
+    tmp_path, monkeypatch
+):
+    chain_root = tmp_path / "chain"
+    truss_dir = tmp_path / "tts"
+    external_packages = tmp_path / "packages"
+    chain_root.mkdir()
+    truss_dir.mkdir()
+    external_packages.mkdir()
+    expected_truss_dir = truss_dir
+
+    class StubTrussHandle:
+        def __init__(self, truss_dir):
+            assert truss_dir == expected_truss_dir
+            self.spec = SimpleNamespace(external_package_dirs_paths=[external_packages])
+
+    monkeypatch.setattr(deployment_client.truss_handle, "TrussHandle", StubTrussHandle)
+
+    roots, included_paths = deployment_client._get_chain_watch_paths(
+        chain_root,
+        [
+            _descriptor(
+                truss_dir,
+                chainlet_cls=SelectedChainlet,
+                display_name="TTS",
+                is_truss_chainlet=True,
+            )
+        ],
+        included_chainlets={"TTS"},
+    )
+
+    assert roots == [truss_dir.resolve(), external_packages.resolve()]
+    assert included_paths == [truss_dir.resolve(), external_packages.resolve()]
+
+
 def test_chain_watch_roots_only_include_selected_chainlet_dirs(tmp_path):
     chain_root = tmp_path / "chain"
     external_packages = tmp_path / "packages"

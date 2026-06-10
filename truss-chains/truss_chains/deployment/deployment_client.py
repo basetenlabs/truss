@@ -122,7 +122,10 @@ def _get_descriptor_watch_paths(
     descriptor: private_types.ChainletAPIDescriptor,
 ) -> list[pathlib.Path]:
     if descriptor.is_truss_chainlet:
-        return [descriptor.truss_dir] if descriptor.truss_dir else []
+        if not descriptor.truss_dir:
+            return []
+        handle = truss_handle.TrussHandle(descriptor.truss_dir)
+        return [descriptor.truss_dir, *handle.spec.external_package_dirs_paths]
 
     watch_paths = [pathlib.Path(descriptor.src_path)]
     watch_paths.extend(_collect_external_package_dirs([descriptor]))
