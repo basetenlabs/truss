@@ -207,12 +207,11 @@ def test_qwen3():
 def test_direct_download():
     models = [
         truss_transfer.PyModelRepo(
-            repo_id=HF_REPO,
-            revision=HF_REVISION,
+            repo_id="julien-c/dummy-unknown",
+            revision="main",
             runtime_secret_name="none",
             volume_folder="julien_dummy",
             kind="hf",
-            allow_patterns=["config.json"],
         )
     ]
     shutil.rmtree("/tmp/data", ignore_errors=True)
