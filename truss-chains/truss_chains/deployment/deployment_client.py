@@ -24,6 +24,7 @@ import requests
 import tenacity
 import watchfiles
 
+from truss.cli.utils import common as cli_common
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -1037,6 +1038,33 @@ class _Watcher:
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
+def _prepare_chainlet_models_for_watch(
+    chainlet_data: Mapping[str, b10_types.DeployedChainlet],
+    included_chainlets: set[str],
+    remote_provider: b10_remote.BasetenRemote,
+    console: "rich_console.Console",
+    no_sleep: bool,
+) -> None:
+    for chainlet_name, chainlet in chainlet_data.items():
+        if chainlet_name not in included_chainlets:
+            continue
+        if not chainlet.hostname:
+            raise public_types.ChainsDeploymentError(
+                f"Could not determine hostname for Chainlet `{chainlet_name}`."
+            )
+        cli_common.wait_for_development_model_ready(
+            model_hostname=chainlet.hostname,
+            model_id=chainlet.oracle_id,
+            dev_version_id=chainlet.oracle_version_id,
+            remote_provider=remote_provider,
+            console=console,
+        )
+        if no_sleep:
+            cli_common.start_keepalive(
+                chainlet.hostname, remote_provider.fetch_auth_header
+            )
+
+
 @framework.raise_validation_errors_before
 def watch(
     source: pathlib.Path,
@@ -1048,6 +1076,7 @@ def watch(
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     console.print(
         (
@@ -1066,6 +1095,13 @@ def watch(
         show_stack_trace,
         included_chainlets,
         provided_team_name,
+    )
+    _prepare_chainlet_models_for_watch(
+        patcher._chainlet_data,
+        patcher._included_chainlets,
+        patcher._remote_provider,
+        console,
+        no_sleep,
     )
     patcher.watch()
 

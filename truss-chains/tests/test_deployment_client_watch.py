@@ -1,6 +1,8 @@
 import pathlib
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
+from truss.remote.baseten import custom_types as b10_types
 from truss_chains.deployment import deployment_client
 
 
@@ -199,3 +201,96 @@ def test_chain_watch_filter_ignores_sibling_paths_for_selected_chainlet(tmp_path
     assert watch_filter(None, str(chain_file))
     assert watch_filter(None, str(orchestrator_file))
     assert not watch_filter(None, str(tts_file))
+
+
+def _chainlet(
+    name: str,
+    *,
+    hostname: str = "https://model-abc.api.baseten.co",
+    oracle_id: str = "oracle_id",
+    oracle_version_id: str = "version_id",
+) -> b10_types.DeployedChainlet:
+    return b10_types.DeployedChainlet(
+        name=name,
+        is_entrypoint=name == "Entrypoint",
+        is_draft=True,
+        status="ACTIVE",
+        logs_url="https://app.baseten.co/logs",
+        oracle_name=f"{name}-oracle",
+        oracle_id=oracle_id,
+        oracle_version_id=oracle_version_id,
+        hostname=hostname,
+    )
+
+
+def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
+    chainlet_data = {
+        "Entrypoint": _chainlet("Entrypoint"),
+        "Worker": _chainlet("Worker", hostname="https://model-def.api.baseten.co"),
+    }
+    remote_provider = MagicMock()
+    console = MagicMock()
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.wait_for_development_model_ready"
+    ) as mock_wait:
+        with patch(
+            "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+        ) as mock_keepalive:
+            deployment_client._prepare_chainlet_models_for_watch(
+                chainlet_data,
+                {"Entrypoint", "Worker"},
+                remote_provider,
+                console,
+                no_sleep=True,
+            )
+
+    assert mock_wait.call_count == 2
+    assert mock_keepalive.call_count == 2
+    mock_keepalive.assert_any_call(
+        "https://model-abc.api.baseten.co", remote_provider.fetch_auth_header
+    )
+    mock_keepalive.assert_any_call(
+        "https://model-def.api.baseten.co", remote_provider.fetch_auth_header
+    )
+
+
+def test_prepare_chainlet_models_for_watch_only_includes_selected_chainlets():
+    chainlet_data = {
+        "Entrypoint": _chainlet("Entrypoint"),
+        "Worker": _chainlet("Worker"),
+    }
+    remote_provider = MagicMock()
+    console = MagicMock()
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.wait_for_development_model_ready"
+    ) as mock_wait:
+        with patch(
+            "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+        ) as mock_keepalive:
+            deployment_client._prepare_chainlet_models_for_watch(
+                chainlet_data, {"Entrypoint"}, remote_provider, console, no_sleep=True
+            )
+
+    assert mock_wait.call_count == 1
+    assert mock_keepalive.call_count == 1
+
+
+def test_prepare_chainlet_models_for_watch_no_sleep_false():
+    chainlet_data = {"Entrypoint": _chainlet("Entrypoint")}
+    remote_provider = MagicMock()
+    console = MagicMock()
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.wait_for_development_model_ready"
+    ) as mock_wait:
+        with patch(
+            "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+        ) as mock_keepalive:
+            deployment_client._prepare_chainlet_models_for_watch(
+                chainlet_data, {"Entrypoint"}, remote_provider, console, no_sleep=False
+            )
+
+    mock_wait.assert_called_once()
+    mock_keepalive.assert_not_called()

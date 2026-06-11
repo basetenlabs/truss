@@ -367,3 +367,79 @@ def test_chains_push_watch_with_environment_fails():
 
     assert result.exit_code == 1
     assert "Cannot use --watch with --environment" in result.output
+
+
+def test_chains_push_no_sleep_without_watch_fails():
+    """--no-sleep without --watch should fail."""
+    runner = CliRunner()
+
+    mock_entrypoint_cls = Mock()
+    mock_entrypoint_cls.meta_data.chain_name = "test_chain"
+    mock_entrypoint_cls.display_name = "TestChain"
+
+    with patch(
+        "truss_chains.framework.ChainletImporter.import_target"
+    ) as mock_importer:
+        mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
+
+        result = runner.invoke(
+            truss_cli,
+            [
+                "chains",
+                "push",
+                "test_chain.py",
+                "--no-sleep",
+                "--remote",
+                "test_remote",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "--no-sleep requires --watch" in result.output or (
+        result.exception
+        and "--no-sleep requires --watch" in str(result.exception.__context__)
+    )
+
+
+def test_chains_watch_defaults_to_sleeping():
+    """chains watch should default to sleeping (no keepalive)."""
+    runner = CliRunner()
+
+    with patch("truss_chains.deployment.deployment_client.watch") as mock_watch:
+        result = runner.invoke(
+            truss_cli,
+            [
+                "chains",
+                "watch",
+                "test_chain.py",
+                "--remote",
+                "test_remote",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args.kwargs["no_sleep"] is False
+
+
+def test_chains_watch_passes_no_sleep_to_deployment_client():
+    """chains watch should pass --no-sleep=true through to deployment_client.watch."""
+    runner = CliRunner()
+
+    with patch("truss_chains.deployment.deployment_client.watch") as mock_watch:
+        result = runner.invoke(
+            truss_cli,
+            [
+                "chains",
+                "watch",
+                "test_chain.py",
+                "--remote",
+                "test_remote",
+                "--no-sleep",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args.kwargs["no_sleep"] is True
+

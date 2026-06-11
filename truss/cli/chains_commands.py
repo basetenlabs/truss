@@ -236,6 +236,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Team name for the chain deployment",
 )
+@click.option(
+    "--no-sleep",
+    is_flag=True,
+    default=False,
+    help=(
+        "Keep development chainlet models warm by preventing scale-to-zero while "
+        "watching. Requires --watch."
+    ),
+)
 @click.pass_context
 @common.common_options()
 def push_chain(
@@ -255,6 +264,7 @@ def push_chain(
     disable_chain_download: bool = False,
     deployment_name: Optional[str] = None,
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -271,6 +281,9 @@ def push_chain(
 
     if experimental_watch_chainlet_names:
         watch = True
+
+    if ctx.get_parameter_source("no_sleep") is not None and not watch:
+        raise click.UsageError("--no-sleep requires --watch.")
 
     if watch:
         if publish or promote:
@@ -432,6 +445,7 @@ def push_chain(
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
                     provided_team_name=resolved_team_name,
+                    no_sleep=no_sleep,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -476,6 +490,12 @@ def push_chain(
     required=False,
     help="Team name for the chain to watch",
 )
+@click.option(
+    "--no-sleep",
+    is_flag=True,
+    default=False,
+    help="Keep development chainlet models warm by preventing scale-to-zero while watching.",
+)
 @click.pass_context
 @common.common_options()
 def watch_chains(
@@ -486,6 +506,7 @@ def watch_chains(
     remote: Optional[str],
     experimental_chainlet_names: Optional[str],
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.
@@ -518,6 +539,7 @@ def watch_chains(
         show_stack_trace=not common.is_human_log_level(ctx),
         included_chainlets=included_chainlets,
         provided_team_name=provided_team_name,
+        no_sleep=no_sleep,
     )
 
 
