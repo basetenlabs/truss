@@ -261,15 +261,15 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table.add_column("Sampler Status")
     table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
-        sampler = deployment["sampler"]
+        sampler = deployment.get("sampler")
         table.add_row(
             deployment["id"],
             deployment["base_model"],
             deployment["status"]["name"],
             deployment["base_url"],
-            sampler["deployment_id"],
-            sampler["status"]["name"],
-            sampler["base_url"],
+            sampler["deployment_id"] if sampler else "—",
+            sampler["status"]["name"] if sampler else "—",
+            sampler["base_url"] if sampler else "—",
         )
     console.print(table)
 
@@ -279,7 +279,7 @@ def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
     Print the deployments as jsonl. Closely follows the columns in the default format.
     """
     for deployment in deployments:
-        sampler = deployment["sampler"]
+        sampler = deployment.get("sampler")
         output = {
             "id": deployment["id"],
             "base_model": deployment["base_model"],
@@ -289,7 +289,9 @@ def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
                 "deployment_id": sampler["deployment_id"],
                 "base_url": sampler["base_url"],
                 "status": sampler["status"]["name"],
-            },
+            }
+            if sampler
+            else None,
         }
         print(json.dumps(output))
 
