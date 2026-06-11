@@ -625,7 +625,10 @@ class RemoteSSH(custom_types.ConfigModel):
     )
 
 
-_FQDN_PATTERN = re.compile(r"^([a-zA-Z0-9*]([-a-zA-Z0-9_*]*[a-zA-Z0-9*])*\.?)*$")
+_FQDN_PATTERN = re.compile(
+    r"^(?:[a-zA-Z0-9*](?:[a-zA-Z0-9*-]{0,61}[a-zA-Z0-9*])?)"
+    r"(?:\.(?:[a-zA-Z0-9*](?:[a-zA-Z0-9*-]{0,61}[a-zA-Z0-9*])?))*$"
+)
 
 
 def _validate_fqdn(value: str) -> str:
@@ -636,11 +639,15 @@ def _validate_fqdn(value: str) -> str:
     return value
 
 
-def _validate_cidr(value: str) -> str:
+def _validate_ip_or_cidr(value: str) -> str:
+    # Bare IP addresses (e.g. "1.2.3.4") are normalized to a /32 CIDR range
+    # at deploy time.
     try:
-        ipaddress.ip_network(value, strict=True)
+        network = ipaddress.ip_network(value, strict=False)
     except ValueError as e:
-        raise ValueError(f"Invalid IP CIDR '{value}': {e}") from e
+        raise ValueError(f"Invalid IP or CIDR '{value}': {e}") from e
+    if network.version != 4:
+        raise ValueError(f"Invalid IP or CIDR '{value}': IPv6 is not supported.")
     return value
 
 
@@ -656,10 +663,11 @@ class EgressRestrictions(custom_types.ConfigModel):
     ip_allow_list: Optional[list[str]] = pydantic.Field(
         default=None,
         description=(
-            "Allowed outbound IP CIDR ranges. Use null or [] alongside an "
-            "equally restrictive fqdn_allow_list to block all egress."
+            "Allowed outbound IPv4 addresses or CIDR ranges. Use null or [] "
+            "alongside an equally restrictive fqdn_allow_list to block all "
+            "egress."
         ),
-        examples=[["1.1.1.1/32", "8.8.8.8/32"]],
+        examples=[["1.1.1.1", "8.8.8.8/32"]],
     )
     fqdn_allow_list: Optional[list[str]] = pydantic.Field(
         default=None,
@@ -675,7 +683,7 @@ class EgressRestrictions(custom_types.ConfigModel):
     def _validate_ip_allow_list(cls, v: Optional[list[str]]) -> Optional[list[str]]:
         if v is None:
             return v
-        return [_validate_cidr(entry) for entry in v]
+        return [_validate_ip_or_cidr(entry) for entry in v]
 
     @pydantic.field_validator("fqdn_allow_list")
     @classmethod

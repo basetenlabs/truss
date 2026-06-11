@@ -1915,16 +1915,20 @@ class TestEgressRestrictions:
         assert config.runtime.egress_restrictions is None
 
     def test_invalid_cidr_raises(self):
-        with pytest.raises(pydantic.ValidationError, match="Invalid IP CIDR"):
+        with pytest.raises(pydantic.ValidationError, match="Invalid IP or CIDR"):
             EgressRestrictions(ip_allow_list=["not-an-ip"])
 
-    def test_cidr_with_host_bits_rejected(self):
-        with pytest.raises(pydantic.ValidationError, match="Invalid IP CIDR"):
-            EgressRestrictions(ip_allow_list=["10.0.0.5/24"])
+    def test_bare_ip_accepted(self):
+        restrictions = EgressRestrictions(ip_allow_list=["1.2.3.4"])
+        assert restrictions.ip_allow_list == ["1.2.3.4"]
 
-    def test_ipv6_cidr_accepted(self):
-        restrictions = EgressRestrictions(ip_allow_list=["2001:db8::/32"])
-        assert restrictions.ip_allow_list == ["2001:db8::/32"]
+    def test_cidr_with_host_bits_accepted(self):
+        restrictions = EgressRestrictions(ip_allow_list=["10.0.0.5/24"])
+        assert restrictions.ip_allow_list == ["10.0.0.5/24"]
+
+    def test_ipv6_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="IPv6 is not supported"):
+            EgressRestrictions(ip_allow_list=["2001:db8::/32"])
 
     def test_invalid_fqdn_raises(self):
         with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
@@ -1940,8 +1944,17 @@ class TestEgressRestrictions:
         EgressRestrictions(fqdn_allow_list=["*"])
         EgressRestrictions(fqdn_allow_list=["sub*domain.example.com"])
 
-    def test_underscores_allowed(self):
-        EgressRestrictions(fqdn_allow_list=["bad_label.com"])
+    def test_underscores_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["bad_label.com"])
+
+    def test_trailing_dot_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["example.com."])
+
+    def test_label_too_long_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["a" * 64 + ".com"])
 
     def test_single_label_accepted(self):
         EgressRestrictions(fqdn_allow_list=["localhost"])
@@ -1989,7 +2002,7 @@ class TestEgressRestrictions:
         config.runtime.egress_restrictions = EgressRestrictions(
             ip_allow_list=["1.1.1.1/32"]
         )
-        with pytest.raises(pydantic.ValidationError, match="Invalid IP CIDR"):
+        with pytest.raises(pydantic.ValidationError, match="Invalid IP or CIDR"):
             config.runtime.egress_restrictions = EgressRestrictions(
                 ip_allow_list=["999.999.999.999/32"]
             )

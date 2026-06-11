@@ -443,10 +443,10 @@
             }
           ],
           "default": null,
-          "description": "Allowed outbound IP CIDR ranges. Use null or [] alongside an equally restrictive fqdn_allow_list to block all egress.",
+          "description": "Allowed outbound IPv4 addresses or CIDR ranges. Use null or [] alongside an equally restrictive fqdn_allow_list to block all egress.",
           "examples": [
             [
-              "1.1.1.1/32",
+              "1.1.1.1",
               "8.8.8.8/32"
             ]
           ],
