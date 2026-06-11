@@ -1094,44 +1094,64 @@ def capacity(remote: Optional[str]):
     "--accelerator",
     type=click.Choice(SUPPORTED_WORKSTATION_ACCELERATORS, case_sensitive=False),
     default="H100",
-    help="GPU accelerator type (default: H100).",
+    help=(
+        "GPU type for the workstation (default: H100). "
+        "With --node-count, every node uses this accelerator."
+    ),
 )
 @click.option(
     "--gpu-count",
     type=click.IntRange(1, 8),
     default=None,
-    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --node-count.",
+    help=(
+        "Number of GPUs for a single-node workstation (1-8, default: 1). "
+        "Mutually exclusive with --node-count."
+    ),
 )
 @click.option(
     "--project-id",
     type=str,
     required=False,
-    help="Project name (default: workstation-<accelerator>).",
+    help=(
+        "Name of the training project that owns the workstation "
+        "(default: workstation-<accelerator>)."
+    ),
 )
 @click.option(
     "--node-count",
     "node_count",
     type=click.IntRange(1, 16),
     default=None,
-    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+    help=(
+        "Number of full nodes to provision, each with 8 GPUs. Values above 1 "
+        "bootstrap a Slurm cluster across the nodes. Mutually exclusive with "
+        "--gpu-count."
+    ),
 )
 @click.option(
     "--orchestrator",
     type=click.Choice(["slurm"], case_sensitive=False),
     default="slurm",
-    help="Multi-node orchestrator (default: slurm).",
+    help=(
+        "Orchestrator bootstrapped across multi-node workstations. slurm is the "
+        "only supported value. Ignored for single-node workstations."
+    ),
 )
 @click.option(
     "--image",
     type=str,
     required=False,
-    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+    help=(
+        "Docker base image for every node "
+        "(default: nvidia/cuda:12.8.1-devel-ubuntu24.04). Multi-node workstations "
+        "install Slurm with apt at startup, so use a Debian-based image."
+    ),
 )
 @click.option(
     "--enable-checkpointing",
     is_flag=True,
     default=False,
-    help="Enable checkpoint storage.",
+    help="Mount checkpoint storage on the workstation.",
 )
 @click.option(
     "--checkpoint-path",
@@ -1151,8 +1171,12 @@ def capacity(remote: Optional[str]):
     required=False,
     help="Job ID to load the latest checkpoint from.",
 )
-@click.option("--remote", type=str, required=False, help="Remote to use.")
-@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc to use."
+)
+@click.option(
+    "--tail", is_flag=True, help="Stream workstation status and logs after launch."
+)
 @common.common_options()
 def workstation(
     accelerator: str,
