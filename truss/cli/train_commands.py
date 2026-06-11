@@ -56,6 +56,15 @@ def train():
 truss_cli.add_command(train)
 
 
+def _format_ssh_commands(job_id: str, node_count: int) -> str:
+    lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        lines += " (leader)"
+        for i in range(1, node_count):
+            lines += f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+    return lines
+
+
 def _print_training_job_success_message(
     job_id: str,
     project_id: str,
@@ -83,6 +92,17 @@ def _print_training_job_success_message(
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
         f"{cache_summary_snippet}"
         f"🌐 View job in the UI: {common.format_link(core.status_page_url(remote_provider.remote_url, project_id, job_id))}"
+    )
+
+    node_count = job_object.compute.node_count if job_object else 1
+    ssh_lines = _format_ssh_commands(job_id, node_count)
+    console.print(
+        f"\n🔑 Once the job is running, SSH in with:\n"
+        f"{ssh_lines}\n"
+        f"   Or wait + connect automatically: "
+        f"[cyan]truss ssh --training-job-id {job_id}"
+        f"{' --node-id <0..%d>' % (node_count - 1) if node_count > 1 else ''}[/cyan]\n"
+        f"   First time? Run [cyan]truss ssh setup[/cyan]."
     )
 
 
