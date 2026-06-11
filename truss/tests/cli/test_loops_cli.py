@@ -385,6 +385,50 @@ def test_view_json_output_all_flag_includes_terminal_states(mock_remote):
     assert sorted(r["id"] for r in records) == ["dep_running", "dep_stopped"]
 
 
+def test_view_renders_deployment_with_null_sampler(mock_remote):
+    # Backend surfaces orphaned deployments with ``sampler: null`` rather
+    # than dropping them. The table must render the row with placeholders
+    # instead of KeyError'ing on sampler["..."].
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_orphan",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "sampler": None,
+        }
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "dep_orphan" in result.output
+
+
+def test_view_json_output_renders_null_sampler(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_orphan",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "sampler": None,
+        }
+    ]
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    records = _parse_jsonl(result.output)
+    assert records == [
+        {
+            "id": "dep_orphan",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
+            "status": "RUNNING",
+            "sampler": None,
+        }
+    ]
+
+
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}
