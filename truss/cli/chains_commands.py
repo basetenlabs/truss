@@ -237,9 +237,10 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Team name for the chain deployment",
 )
 @click.option(
-    "--no-sleep",
-    is_flag=True,
-    default=False,
+    "--watch-no-sleep",
+    type=bool,
+    required=False,
+    default=True,
     help=(
         "Keep development chainlet models warm by preventing scale-to-zero while "
         "watching. Requires --watch."
@@ -264,7 +265,7 @@ def push_chain(
     disable_chain_download: bool = False,
     deployment_name: Optional[str] = None,
     provided_team_name: Optional[str] = None,
-    no_sleep: bool = False,
+    watch_no_sleep: bool = True,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -282,8 +283,12 @@ def push_chain(
     if experimental_watch_chainlet_names:
         watch = True
 
-    if ctx.get_parameter_source("no_sleep") is not None and not watch:
-        raise click.UsageError("--no-sleep requires --watch.")
+    if (
+        ctx.get_parameter_source("watch_no_sleep")
+        != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
+        and not watch
+    ):
+        raise click.UsageError("--watch-no-sleep requires --watch.")
 
     if watch:
         if publish or promote:
@@ -445,7 +450,7 @@ def push_chain(
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
                     provided_team_name=resolved_team_name,
-                    no_sleep=no_sleep,
+                    no_sleep=watch_no_sleep,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -492,8 +497,8 @@ def push_chain(
 )
 @click.option(
     "--no-sleep",
-    is_flag=True,
-    default=False,
+    type=bool,
+    default=True,
     help="Keep development chainlet models warm by preventing scale-to-zero while watching.",
 )
 @click.pass_context
@@ -506,7 +511,7 @@ def watch_chains(
     remote: Optional[str],
     experimental_chainlet_names: Optional[str],
     provided_team_name: Optional[str] = None,
-    no_sleep: bool = False,
+    no_sleep: bool = True,
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.

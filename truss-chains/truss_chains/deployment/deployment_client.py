@@ -1076,7 +1076,7 @@ def watch(
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
     provided_team_name: Optional[str] = None,
-    no_sleep: bool = False,
+    no_sleep: bool = True,
 ) -> None:
     console.print(
         (
