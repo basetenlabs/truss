@@ -407,14 +407,7 @@ def test_chains_watch_defaults_to_sleeping():
 
     with patch("truss_chains.deployment.deployment_client.watch") as mock_watch:
         result = runner.invoke(
-            truss_cli,
-            [
-                "chains",
-                "watch",
-                "test_chain.py",
-                "--remote",
-                "test_remote",
-            ],
+            truss_cli, ["chains", "watch", "test_chain.py", "--remote", "test_remote"]
         )
 
     assert result.exit_code == 0
@@ -442,4 +435,3 @@ def test_chains_watch_passes_no_sleep_to_deployment_client():
     assert result.exit_code == 0
     mock_watch.assert_called_once()
     assert mock_watch.call_args.kwargs["no_sleep"] is True
-
