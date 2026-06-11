@@ -17,7 +17,7 @@ from truss.cli.cli import truss_cli
 from truss.cli.resolvers.chain_team_resolver import resolve_chain_team_name
 from truss.cli.utils import common, output
 from truss.cli.utils.output import console
-from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.core import CHAINLET_READY_STATUSES, DEPLOYING_STATUSES
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import RemoteFactory
@@ -114,7 +114,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     )
     for i, chainlet in enumerate([entrypoint] + sorted_chainlets):
         displayable_status = get_displayable_status(chainlet.status)
-        if displayable_status == ACTIVE_STATUS:
+        if displayable_status in CHAINLET_READY_STATUSES:
             spinner_name = "active"
         elif displayable_status in DEPLOYING_STATUSES:
             if displayable_status == "BUILDING":
@@ -389,12 +389,12 @@ def push_chain(
             while True:
                 table, statuses = _create_chains_table(service)
                 live.update(table)
-                num_active = sum(s == ACTIVE_STATUS for s in statuses)
+                num_ready = sum(s in CHAINLET_READY_STATUSES for s in statuses)
                 num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
-                if num_active == num_services:
+                if num_ready == num_services:
                     success = True
                     break
-                elif num_failed := num_services - num_active - num_deploying:
+                elif num_failed := num_services - num_ready - num_deploying:
                     break
                 time.sleep(status_check_wait_sec)
 
