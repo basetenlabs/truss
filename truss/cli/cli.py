@@ -1069,7 +1069,7 @@ def push(
 @click.option(
     "--tail",
     is_flag=True,
-    help="Stream new logs as they arrive. Cannot be combined with the filter flags.",
+    help="Stream new logs as they arrive. Cannot be combined with the time-range or filter flags.",
 )
 @click.option(
     "--start",
@@ -1187,7 +1187,9 @@ def model_logs(
         or includes
         or excludes
     ):
-        raise click.UsageError("--tail cannot be combined with the filter flags.")
+        raise click.UsageError(
+            "--tail cannot be combined with the time-range or filter flags."
+        )
 
     if not remote:
         remote = remote_cli.inquire_remote_name()

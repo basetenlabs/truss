@@ -1731,5 +1731,5 @@ def test_model_logs_tail_with_filter_errors():
         )
 
     assert result.exit_code != 0
-    assert "filter flags" in result.output
+    assert "--tail cannot be combined" in result.output
     mock_remote.api.get_model_deployment_logs.assert_not_called()
