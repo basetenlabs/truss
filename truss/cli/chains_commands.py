@@ -284,8 +284,7 @@ def push_chain(
         watch = True
 
     if (
-        ctx.get_parameter_source("watch_no_sleep")
-        != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
+        ctx.get_parameter_source("watch_no_sleep") != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
         and not watch
     ):
         raise click.UsageError("--watch-no-sleep requires --watch.")
