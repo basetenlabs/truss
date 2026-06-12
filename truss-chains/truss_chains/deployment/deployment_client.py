@@ -1059,10 +1059,16 @@ def _prepare_chainlet_models_for_watch(
             remote_provider=remote_provider,
             console=console,
         )
-        if no_sleep:
-            cli_common.start_keepalive(
-                chainlet.hostname, remote_provider.fetch_auth_header
+
+    if not no_sleep:
+        return
+
+    for chainlet_name, chainlet in chainlet_data.items():
+        if not chainlet.hostname:
+            raise public_types.ChainsDeploymentError(
+                f"Could not determine hostname for Chainlet `{chainlet_name}`."
             )
+        cli_common.start_keepalive(chainlet.hostname, remote_provider.fetch_auth_header)
 
 
 @framework.raise_validation_errors_before

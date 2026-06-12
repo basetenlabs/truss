@@ -255,10 +255,10 @@ def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
     )
 
 
-def test_prepare_chainlet_models_for_watch_only_includes_selected_chainlets():
+def test_prepare_chainlet_models_for_watch_keeps_all_chainlets_warm_with_subset():
     chainlet_data = {
         "Entrypoint": _chainlet("Entrypoint"),
-        "Worker": _chainlet("Worker"),
+        "Worker": _chainlet("Worker", hostname="https://model-def.api.baseten.co"),
     }
     remote_provider = MagicMock()
     console = MagicMock()
@@ -274,7 +274,13 @@ def test_prepare_chainlet_models_for_watch_only_includes_selected_chainlets():
             )
 
     assert mock_wait.call_count == 1
-    assert mock_keepalive.call_count == 1
+    assert mock_keepalive.call_count == 2
+    mock_keepalive.assert_any_call(
+        "https://model-abc.api.baseten.co", remote_provider.fetch_auth_header
+    )
+    mock_keepalive.assert_any_call(
+        "https://model-def.api.baseten.co", remote_provider.fetch_auth_header
+    )
 
 
 def test_prepare_chainlet_models_for_watch_no_sleep_false():
