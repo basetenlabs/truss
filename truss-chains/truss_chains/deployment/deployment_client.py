@@ -1039,8 +1039,8 @@ class _Watcher:
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
-# Statuses for which a draft chainlet exposes a usable `/development/...` endpoint,
-# so keepalive can be started even while slower chainlets are still deploying.
+# Statuses for which a chainlet exposes a usable inference endpoint, so keepalive
+# can be started even while slower chainlets are still deploying.
 _KEEPALIVE_READY_STATUSES = (b10_core.ACTIVE_STATUS, "LOADING_MODEL")
 
 
@@ -1084,21 +1084,20 @@ def _start_keepalives_for_ready_chainlets(
     started_keepalives: dict[str, threading.Event],
     resolved_hostnames: Optional[dict[str, str]] = None,
 ) -> None:
-    """Start keepalive for each draft chainlet that has a usable dev endpoint.
+    """Start keepalive for each chainlet that has a usable inference endpoint.
 
-    Only *draft* (development) chainlets are warmed, since keepalive targets the
-    `/development/...` endpoint that published deployments don't expose. Each
-    chainlet is warmed at most once; ``started_keepalives`` maps already-warmed
-    ``oracle_id`` -> stop event and is mutated in place so the same set can be
-    shared across the push wait loop and the subsequent watch.
+    Both draft (development) and published chainlets are warmed: draft chainlets
+    via the `/development/...` endpoint and published chainlets via their specific
+    `/deployment/{id}/...` endpoint. Each chainlet is warmed at most once;
+    ``started_keepalives`` maps already-warmed ``oracle_id`` -> stop event and is
+    mutated in place so the same set can be shared across the push wait loop and
+    the subsequent watch.
     """
     if resolved_hostnames is None:
         resolved_hostnames = {}
 
     for chainlet in chainlet_data:
         if chainlet.oracle_id in started_keepalives:
-            continue
-        if not chainlet.is_draft:
             continue
         if chainlet.status not in _KEEPALIVE_READY_STATUSES:
             continue
@@ -1108,7 +1107,10 @@ def _start_keepalives_for_ready_chainlets(
         if not hostname:
             continue
         started_keepalives[chainlet.oracle_id] = cli_common.start_keepalive(
-            hostname, remote_provider.fetch_auth_header
+            hostname,
+            remote_provider.fetch_auth_header,
+            is_draft=chainlet.is_draft,
+            deployment_id=chainlet.oracle_version_id,
         )
 
 

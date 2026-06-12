@@ -397,14 +397,16 @@ def push_chain(
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
-    # Keep early-ready development chainlets warm while slower ones still deploy.
-    # Only development (i.e. not published) deployments expose the keepalive
-    # `/development/...` endpoint. `watch_no_sleep` defaults to True and gates the
-    # keepalive feature for `--watch`; for legacy `--no-publish` pushes it stays
-    # the default. The map of warmed `oracle_id` -> stop event is shared with the
-    # subsequent watch so we don't start duplicate keepalive threads.
+    # Keep early-ready chainlets warm while slower ones still deploy, so they
+    # don't scale to zero before the whole chain is ready. This applies to both
+    # development and published pushes: draft chainlets are warmed via their
+    # `/development/...` endpoint and published chainlets via their specific
+    # `/deployment/{id}/...` endpoint (see `_start_keepalives_for_ready_chainlets`).
+    # `watch_no_sleep` only governs keepalive during the subsequent `--watch`, not
+    # the push wait loop. The map of warmed `oracle_id` -> stop event is shared
+    # with the watch so we don't start duplicate keepalive threads.
     started_keepalives: dict[str, threading.Event] = {}
-    keep_warm_during_push = (not publish) and watch_no_sleep
+    keep_warm_during_push = True
     if wait:
         num_services = len(statuses)
         success = False

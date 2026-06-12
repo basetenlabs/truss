@@ -577,9 +577,9 @@ def test_chains_push_watch_starts_keepalive_during_wait_loop():
     assert mock_watch.call_args.kwargs["started_keepalives"] is push_phase_set
 
 
-def test_chains_push_watch_no_sleep_false_skips_wait_loop_keepalive():
-    """`push --watch --watch-no-sleep=false` should not warm chainlets during the
-    wait loop."""
+def test_chains_push_watch_no_sleep_false_still_warms_during_wait_loop():
+    """A push always keeps ready chainlets warm during the wait loop, even with
+    `--watch-no-sleep=false`. That flag only governs the subsequent watch phase."""
     runner = CliRunner()
     mock_watch = Mock()
 
@@ -601,7 +601,10 @@ def test_chains_push_watch_no_sleep_false_skips_wait_loop_keepalive():
             )
 
     assert result.exit_code == 0
-    mock_start.assert_not_called()
+    # Wait-loop keepalive still runs for the development push.
+    assert mock_start.call_count >= 1
+    # But `watch_no_sleep=false` is forwarded so the watch phase allows sleeping.
+    assert mock_watch.call_args.kwargs["no_sleep"] is False
 
 
 def test_chains_push_watch_defaults_watch_no_sleep():

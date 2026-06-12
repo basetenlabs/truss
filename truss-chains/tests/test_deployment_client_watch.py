@@ -251,10 +251,16 @@ def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
     assert mock_wait.call_count == 2
     assert mock_keepalive.call_count == 2
     mock_keepalive.assert_any_call(
-        "https://model-abc.api.baseten.co", remote_provider.fetch_auth_header
+        "https://model-abc.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
     )
     mock_keepalive.assert_any_call(
-        "https://model-def.api.baseten.co", remote_provider.fetch_auth_header
+        "https://model-def.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
     )
 
 
@@ -279,10 +285,16 @@ def test_prepare_chainlet_models_for_watch_keeps_all_chainlets_warm_with_subset(
     assert mock_wait.call_count == 1
     assert mock_keepalive.call_count == 2
     mock_keepalive.assert_any_call(
-        "https://model-abc.api.baseten.co", remote_provider.fetch_auth_header
+        "https://model-abc.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
     )
     mock_keepalive.assert_any_call(
-        "https://model-def.api.baseten.co", remote_provider.fetch_auth_header
+        "https://model-def.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
     )
 
 
@@ -336,11 +348,14 @@ def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
         console=console,
     )
     mock_keepalive.assert_called_once_with(
-        "https://recovered-model.api.baseten.co", remote_provider.fetch_auth_header
+        "https://recovered-model.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
     )
 
 
-def test_start_keepalives_only_warms_ready_draft_chainlets():
+def test_start_keepalives_warms_ready_chainlets_including_published():
     chainlets = [
         _chainlet("Entrypoint", status="ACTIVE"),
         _chainlet("Loading", status="LOADING_MODEL"),
@@ -357,8 +372,21 @@ def test_start_keepalives_only_warms_ready_draft_chainlets():
             chainlets, remote_provider, started_keepalives
         )
 
-    assert mock_keepalive.call_count == 2
-    assert set(started_keepalives) == {"Entrypoint-oracle-id", "Loading-oracle-id"}
+    # Ready draft *and* published chainlets are warmed; only the still-building one
+    # is skipped.
+    assert mock_keepalive.call_count == 3
+    assert set(started_keepalives) == {
+        "Entrypoint-oracle-id",
+        "Loading-oracle-id",
+        "Published-oracle-id",
+    }
+    # The published chainlet is warmed via its deployment endpoint, not /development.
+    mock_keepalive.assert_any_call(
+        "https://model-abc.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=False,
+        deployment_id="version_id",
+    )
 
 
 def test_start_keepalives_is_idempotent_per_oracle_id():
