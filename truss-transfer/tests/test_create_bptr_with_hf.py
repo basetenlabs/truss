@@ -2,6 +2,7 @@ import json
 import pathlib
 import shutil
 
+import pytest
 import truss_transfer
 
 print(f"truss_transfer version: {truss_transfer.__version__}")
@@ -204,6 +205,7 @@ def test_qwen3():
     print(json.dumps(manifest, indent=2))
 
 
+@pytest.mark.skip(reason="Skipping HF direct download test due to flaky CDN 403s")
 def test_direct_download():
     models = [
         truss_transfer.PyModelRepo(
