@@ -122,6 +122,7 @@ MANIFEST_EXPECTED = [
 def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
+
 @pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_dolly():
     # fix the below models
@@ -182,6 +183,7 @@ def test_dolly():
                 print(f"Error in pointer {pointer['uid']}: {e}")
 
     print("✓ BasetenPointer structure validation passed")
+
 
 @pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_qwen3():
