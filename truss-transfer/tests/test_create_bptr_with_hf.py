@@ -122,7 +122,7 @@ MANIFEST_EXPECTED = [
 def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
-
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_dolly():
     # fix the below models
     models = [
@@ -183,7 +183,7 @@ def test_dolly():
 
     print("✓ BasetenPointer structure validation passed")
 
-
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_qwen3():
     models = [
         truss_transfer.PyModelRepo(
