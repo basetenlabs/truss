@@ -1,11 +1,75 @@
 """Tests for truss chains CLI commands."""
 
 import os
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
+import rich.table
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss_chains.deployment.deployment_client import BasetenChainService
+
+
+def _mock_baseten_chain_service() -> BasetenChainService:
+    service = object.__new__(BasetenChainService)
+    service._name = "test_chain"
+    service._entrypoint_descriptor = None
+    service._chain_deployment_handle = Mock(
+        hostname="chain.api.baseten.co",
+        chain_deployment_id="deployment_id",
+        is_draft=True,
+    )
+    return service
+
+
+@contextmanager
+def _patch_chains_push_watch_flow(mock_watch):
+    mock_entrypoint_cls = Mock()
+    mock_entrypoint_cls.meta_data.chain_name = "test_chain"
+    mock_entrypoint_cls.display_name = "TestChain"
+
+    mock_options = Mock()
+    mock_options.environment = None
+
+    mock_remote_provider = Mock()
+    mock_remote_provider.api.get_teams.return_value = {}
+
+    with patch(
+        "truss_chains.framework.ChainletImporter.import_target"
+    ) as mock_importer:
+        with patch(
+            "truss.cli.chains_commands.RemoteFactory.create",
+            return_value=mock_remote_provider,
+        ):
+            with patch(
+                "truss.cli.chains_commands.resolve_chain_team_name",
+                return_value=(None, None),
+            ):
+                with patch(
+                    "truss_chains.private_types.PushOptionsBaseten.create",
+                    return_value=mock_options,
+                ):
+                    with patch(
+                        "truss_chains.deployment.deployment_client.push"
+                    ) as mock_push:
+                        with patch(
+                            "truss_chains.deployment.deployment_client.watch",
+                            mock_watch,
+                        ):
+                            with patch(
+                                "truss.cli.chains_commands._create_chains_table",
+                                return_value=(rich.table.Table(), ["ACTIVE"]),
+                            ):
+                                with patch(
+                                    "truss.cli.chains_commands._make_chains_curl_snippet",
+                                    return_value="curl http://test.com",
+                                ):
+                                    mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
+                                    mock_push.return_value = (
+                                        _mock_baseten_chain_service()
+                                    )
+                                    yield mock_watch
 
 
 def test_chains_push_with_disable_chain_download_flag():
@@ -369,6 +433,30 @@ def test_chains_push_watch_with_environment_fails():
     assert "Cannot use --watch with --environment" in result.output
 
 
+def test_chains_push_help_includes_watch_no_sleep():
+    """Test that --watch-no-sleep appears in chains push help output."""
+    env = os.environ.copy()
+    env["COLUMNS"] = "200"
+    runner = CliRunner(env=env)
+
+    result = runner.invoke(truss_cli, ["chains", "push", "--help"])
+
+    assert result.exit_code == 0
+    assert "--watch-no-sleep" in result.output
+
+
+def test_chains_watch_help_includes_no_sleep():
+    """Test that --no-sleep appears in chains watch help output."""
+    env = os.environ.copy()
+    env["COLUMNS"] = "200"
+    runner = CliRunner(env=env)
+
+    result = runner.invoke(truss_cli, ["chains", "watch", "--help"])
+
+    assert result.exit_code == 0
+    assert "--no-sleep" in result.output
+
+
 def test_chains_push_watch_no_sleep_without_watch_fails():
     """--watch-no-sleep without --watch should fail."""
     runner = CliRunner()
@@ -429,6 +517,46 @@ def test_chains_watch_without_no_sleep_disables_keepalive():
                 "--remote",
                 "test_remote",
                 "--no-sleep=false",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args.kwargs["no_sleep"] is False
+
+
+def test_chains_push_watch_defaults_watch_no_sleep():
+    """chains push --watch should enable keepalive by default."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        result = runner.invoke(
+            truss_cli,
+            ["chains", "push", "test_chain.py", "--watch", "--remote", "test_remote"],
+        )
+
+    assert result.exit_code == 0
+    mock_watch.assert_called_once()
+    assert mock_watch.call_args.kwargs["no_sleep"] is True
+
+
+def test_chains_push_watch_watch_no_sleep_false_disables_keepalive():
+    """chains push --watch --watch-no-sleep=false should disable keepalive."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "chains",
+                "push",
+                "test_chain.py",
+                "--watch",
+                "--watch-no-sleep=false",
+                "--remote",
+                "test_remote",
             ],
         )
 
