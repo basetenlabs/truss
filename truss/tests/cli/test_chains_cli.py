@@ -8,7 +8,22 @@ import rich.table
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.remote.baseten import custom_types as b10_types
 from truss_chains.deployment.deployment_client import BasetenChainService
+
+
+def _active_chainlet() -> b10_types.DeployedChainlet:
+    return b10_types.DeployedChainlet(
+        name="Entrypoint",
+        is_entrypoint=True,
+        is_draft=True,
+        status="ACTIVE",
+        logs_url="https://app.baseten.co/logs",
+        oracle_name="Entrypoint-oracle",
+        oracle_id="oracle-id",
+        oracle_version_id="version-id",
+        hostname="https://model-abc.api.baseten.co",
+    )
 
 
 def _mock_baseten_chain_service() -> BasetenChainService:
@@ -20,6 +35,10 @@ def _mock_baseten_chain_service() -> BasetenChainService:
         chain_deployment_id="deployment_id",
         is_draft=True,
     )
+    # The push wait loop polls `get_info()` to drive both the status table and
+    # incremental keepalive; return a single already-ACTIVE chainlet so the loop
+    # completes immediately.
+    service.get_info = Mock(return_value=[_active_chainlet()])  # type: ignore[method-assign]
     return service
 
 
@@ -58,18 +77,21 @@ def _patch_chains_push_watch_flow(mock_watch):
                             mock_watch,
                         ):
                             with patch(
-                                "truss.cli.chains_commands._create_chains_table",
+                                "truss.cli.chains_commands._build_chains_table",
                                 return_value=(rich.table.Table(), ["ACTIVE"]),
                             ):
                                 with patch(
                                     "truss.cli.chains_commands._make_chains_curl_snippet",
                                     return_value="curl http://test.com",
                                 ):
-                                    mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
-                                    mock_push.return_value = (
-                                        _mock_baseten_chain_service()
-                                    )
-                                    yield mock_watch
+                                    with patch(
+                                        "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+                                    ):
+                                        mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
+                                        mock_push.return_value = (
+                                            _mock_baseten_chain_service()
+                                        )
+                                        yield mock_watch
 
 
 def test_chains_push_with_disable_chain_download_flag():
@@ -523,6 +545,63 @@ def test_chains_watch_without_no_sleep_disables_keepalive():
     assert result.exit_code == 0
     mock_watch.assert_called_once()
     assert mock_watch.call_args.kwargs["no_sleep"] is False
+
+
+def test_chains_push_watch_starts_keepalive_during_wait_loop():
+    """During `push --watch`, ready chainlets are warmed before watch starts, and
+    the warmed set is shared with watch to avoid duplicate keepalive threads."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        with patch(
+            "truss_chains.deployment.deployment_client._start_keepalives_for_ready_chainlets"
+        ) as mock_start:
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "chains",
+                    "push",
+                    "test_chain.py",
+                    "--watch",
+                    "--remote",
+                    "test_remote",
+                ],
+            )
+
+    assert result.exit_code == 0
+    # Keepalive was started incrementally during the wait loop.
+    assert mock_start.call_count >= 1
+    # The same warmed-set object is forwarded to watch.
+    push_phase_set = mock_start.call_args.args[2]
+    assert mock_watch.call_args.kwargs["started_keepalives"] is push_phase_set
+
+
+def test_chains_push_watch_no_sleep_false_skips_wait_loop_keepalive():
+    """`push --watch --watch-no-sleep=false` should not warm chainlets during the
+    wait loop."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        with patch(
+            "truss_chains.deployment.deployment_client._start_keepalives_for_ready_chainlets"
+        ) as mock_start:
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "chains",
+                    "push",
+                    "test_chain.py",
+                    "--watch",
+                    "--watch-no-sleep=false",
+                    "--remote",
+                    "test_remote",
+                ],
+            )
+
+    assert result.exit_code == 0
+    mock_start.assert_not_called()
 
 
 def test_chains_push_watch_defaults_watch_no_sleep():

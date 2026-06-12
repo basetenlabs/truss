@@ -1,5 +1,6 @@
 import pathlib
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 from truss.remote.baseten import custom_types as b10_types
@@ -207,17 +208,19 @@ def _chainlet(
     name: str,
     *,
     hostname: str = "https://model-abc.api.baseten.co",
-    oracle_id: str = "oracle_id",
+    oracle_id: Optional[str] = None,
     oracle_version_id: str = "version_id",
+    is_draft: bool = True,
+    status: str = "ACTIVE",
 ) -> b10_types.DeployedChainlet:
     return b10_types.DeployedChainlet(
         name=name,
         is_entrypoint=name == "Entrypoint",
-        is_draft=True,
-        status="ACTIVE",
+        is_draft=is_draft,
+        status=status,
         logs_url="https://app.baseten.co/logs",
         oracle_name=f"{name}-oracle",
-        oracle_id=oracle_id,
+        oracle_id=oracle_id or f"{name}-oracle-id",
         oracle_version_id=oracle_version_id,
         hostname=hostname,
     )
@@ -335,3 +338,68 @@ def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
     mock_keepalive.assert_called_once_with(
         "https://recovered-model.api.baseten.co", remote_provider.fetch_auth_header
     )
+
+
+def test_start_keepalives_only_warms_ready_draft_chainlets():
+    chainlets = [
+        _chainlet("Entrypoint", status="ACTIVE"),
+        _chainlet("Loading", status="LOADING_MODEL"),
+        _chainlet("Building", status="BUILDING"),
+        _chainlet("Published", status="ACTIVE", is_draft=False),
+    ]
+    remote_provider = MagicMock()
+    started_keepalives: dict = {}
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+    ) as mock_keepalive:
+        deployment_client._start_keepalives_for_ready_chainlets(
+            chainlets, remote_provider, started_keepalives
+        )
+
+    assert mock_keepalive.call_count == 2
+    assert set(started_keepalives) == {"Entrypoint-oracle-id", "Loading-oracle-id"}
+
+
+def test_start_keepalives_is_idempotent_per_oracle_id():
+    chainlet = _chainlet("Entrypoint", status="ACTIVE")
+    remote_provider = MagicMock()
+    started_keepalives: dict = {}
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+    ) as mock_keepalive:
+        deployment_client._start_keepalives_for_ready_chainlets(
+            [chainlet], remote_provider, started_keepalives
+        )
+        # A second poll should not start a duplicate keepalive thread.
+        deployment_client._start_keepalives_for_ready_chainlets(
+            [chainlet], remote_provider, started_keepalives
+        )
+
+    mock_keepalive.assert_called_once()
+
+
+def test_prepare_chainlet_models_for_watch_skips_already_warmed():
+    chainlet_data = {"Entrypoint": _chainlet("Entrypoint")}
+    remote_provider = MagicMock()
+    console = MagicMock()
+    # Simulate the push wait loop having already warmed this chainlet.
+    started_keepalives = {"Entrypoint-oracle-id": MagicMock()}
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.wait_for_development_model_ready"
+    ):
+        with patch(
+            "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+        ) as mock_keepalive:
+            deployment_client._prepare_chainlet_models_for_watch(
+                chainlet_data,
+                {"Entrypoint"},
+                remote_provider,
+                console,
+                no_sleep=True,
+                started_keepalives=started_keepalives,
+            )
+
+    mock_keepalive.assert_not_called()
