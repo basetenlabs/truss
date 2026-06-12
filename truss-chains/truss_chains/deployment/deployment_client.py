@@ -5,6 +5,7 @@ import json
 import logging
 import pathlib
 import textwrap
+import threading
 import traceback
 import uuid
 from typing import (
@@ -24,6 +25,7 @@ import requests
 import tenacity
 import watchfiles
 
+from truss.cli.utils import common as cli_common
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -1037,6 +1039,119 @@ class _Watcher:
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
+# Statuses for which a chainlet exposes a usable inference endpoint, so keepalive
+# can be started even while slower chainlets are still deploying.
+_KEEPALIVE_READY_STATUSES = (b10_core.ACTIVE_STATUS, "LOADING_MODEL")
+
+
+def _resolve_chainlet_hostname(
+    chainlet: b10_types.DeployedChainlet,
+    remote_provider: b10_remote.BasetenRemote,
+    resolved_hostnames: dict[str, str],
+    *,
+    required: bool = False,
+) -> Optional[str]:
+    """Resolve a chainlet's hostname, falling back to a model lookup by id.
+
+    Results are cached (keyed by ``oracle_id``) so repeated calls for the same
+    chainlet don't trigger extra API requests. When ``required`` is set, a
+    missing hostname raises; otherwise ``None`` is returned so callers polling
+    a still-deploying chain can retry on a later poll.
+    """
+    if chainlet.oracle_id in resolved_hostnames:
+        return resolved_hostnames[chainlet.oracle_id]
+
+    hostname = chainlet.hostname
+    if not hostname:
+        model = remote_provider.api.get_model_by_id(chainlet.oracle_id).get("model")
+        if model:
+            hostname = model.get("hostname")
+
+    if hostname:
+        resolved_hostnames[chainlet.oracle_id] = hostname
+        return hostname
+
+    if required:
+        raise public_types.ChainsDeploymentError(
+            f"Could not determine hostname for Chainlet `{chainlet.name}`."
+        )
+    return None
+
+
+def _start_keepalives_for_ready_chainlets(
+    chainlet_data: Iterable[b10_types.DeployedChainlet],
+    remote_provider: b10_remote.BasetenRemote,
+    started_keepalives: dict[str, threading.Event],
+    resolved_hostnames: Optional[dict[str, str]] = None,
+) -> None:
+    """Start keepalive for each chainlet that has a usable inference endpoint.
+
+    Both draft (development) and published chainlets are warmed: draft chainlets
+    via the `/development/...` endpoint and published chainlets via their specific
+    `/deployment/{id}/...` endpoint. Each chainlet is warmed at most once;
+    ``started_keepalives`` maps already-warmed ``oracle_id`` -> stop event and is
+    mutated in place so the same set can be shared across the push wait loop and
+    the subsequent watch.
+    """
+    if resolved_hostnames is None:
+        resolved_hostnames = {}
+
+    for chainlet in chainlet_data:
+        if chainlet.oracle_id in started_keepalives:
+            continue
+        if chainlet.status not in _KEEPALIVE_READY_STATUSES:
+            continue
+        hostname = _resolve_chainlet_hostname(
+            chainlet, remote_provider, resolved_hostnames
+        )
+        if not hostname:
+            continue
+        started_keepalives[chainlet.oracle_id] = cli_common.start_keepalive(
+            hostname,
+            remote_provider.fetch_auth_header,
+            is_draft=chainlet.is_draft,
+            deployment_id=chainlet.oracle_version_id,
+        )
+
+
+def _prepare_chainlet_models_for_watch(
+    chainlet_data: Mapping[str, b10_types.DeployedChainlet],
+    included_chainlets: set[str],
+    remote_provider: b10_remote.BasetenRemote,
+    console: "rich_console.Console",
+    no_sleep: bool,
+    started_keepalives: Optional[dict[str, threading.Event]] = None,
+) -> None:
+    resolved_hostnames: dict[str, str] = {}
+
+    for chainlet_name, chainlet in chainlet_data.items():
+        if chainlet_name not in included_chainlets:
+            continue
+        chainlet_hostname = _resolve_chainlet_hostname(
+            chainlet, remote_provider, resolved_hostnames, required=True
+        )
+        assert chainlet_hostname is not None  # `required=True` guarantees this.
+        cli_common.wait_for_development_model_ready(
+            model_hostname=chainlet_hostname,
+            model_id=chainlet.oracle_id,
+            dev_version_id=chainlet.oracle_version_id,
+            remote_provider=remote_provider,
+            console=console,
+        )
+
+    if not no_sleep:
+        return
+
+    if started_keepalives is None:
+        started_keepalives = {}
+    _start_keepalives_for_ready_chainlets(
+        chainlet_data.values(),
+        remote_provider,
+        started_keepalives,
+        resolved_hostnames=resolved_hostnames,
+    )
+
+
 @framework.raise_validation_errors_before
 def watch(
     source: pathlib.Path,
@@ -1048,6 +1163,8 @@ def watch(
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = True,
+    started_keepalives: Optional[dict[str, threading.Event]] = None,
 ) -> None:
     console.print(
         (
@@ -1066,6 +1183,14 @@ def watch(
         show_stack_trace,
         included_chainlets,
         provided_team_name,
+    )
+    _prepare_chainlet_models_for_watch(
+        patcher._chainlet_data,
+        patcher._included_chainlets,
+        patcher._remote_provider,
+        console,
+        no_sleep,
+        started_keepalives=started_keepalives,
     )
     patcher.watch()
 
