@@ -300,3 +300,38 @@ def test_prepare_chainlet_models_for_watch_no_sleep_false():
 
     mock_wait.assert_called_once()
     mock_keepalive.assert_not_called()
+
+
+def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
+    chainlet_data = {
+        "Entrypoint": _chainlet(
+            "Entrypoint", hostname=None, oracle_id="recovered_model_id"
+        )
+    }
+    remote_provider = MagicMock()
+    remote_provider.api.get_model_by_id.return_value = {
+        "model": {"hostname": "https://recovered-model.api.baseten.co"}
+    }
+    console = MagicMock()
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.wait_for_development_model_ready"
+    ) as mock_wait:
+        with patch(
+            "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+        ) as mock_keepalive:
+            deployment_client._prepare_chainlet_models_for_watch(
+                chainlet_data, {"Entrypoint"}, remote_provider, console, no_sleep=True
+            )
+
+    remote_provider.api.get_model_by_id.assert_called_once_with("recovered_model_id")
+    mock_wait.assert_called_once_with(
+        model_hostname="https://recovered-model.api.baseten.co",
+        model_id="recovered_model_id",
+        dev_version_id="version_id",
+        remote_provider=remote_provider,
+        console=console,
+    )
+    mock_keepalive.assert_called_once_with(
+        "https://recovered-model.api.baseten.co", remote_provider.fetch_auth_header
+    )

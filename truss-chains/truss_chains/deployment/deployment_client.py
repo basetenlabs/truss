@@ -1045,15 +1045,33 @@ def _prepare_chainlet_models_for_watch(
     console: "rich_console.Console",
     no_sleep: bool,
 ) -> None:
+    resolved_hostnames: dict[str, str] = {}
+
+    def resolve_hostname(
+        chainlet_name: str, chainlet: b10_types.DeployedChainlet
+    ) -> str:
+        if chainlet_name in resolved_hostnames:
+            return resolved_hostnames[chainlet_name]
+
+        if chainlet.hostname:
+            resolved_hostnames[chainlet_name] = chainlet.hostname
+            return chainlet.hostname
+
+        model = remote_provider.api.get_model_by_id(chainlet.oracle_id).get("model")
+        if model and model.get("hostname"):
+            resolved_hostnames[chainlet_name] = model["hostname"]
+            return resolved_hostnames[chainlet_name]
+
+        raise public_types.ChainsDeploymentError(
+            f"Could not determine hostname for Chainlet `{chainlet_name}`."
+        )
+
     for chainlet_name, chainlet in chainlet_data.items():
         if chainlet_name not in included_chainlets:
             continue
-        if not chainlet.hostname:
-            raise public_types.ChainsDeploymentError(
-                f"Could not determine hostname for Chainlet `{chainlet_name}`."
-            )
+        chainlet_hostname = resolve_hostname(chainlet_name, chainlet)
         cli_common.wait_for_development_model_ready(
-            model_hostname=chainlet.hostname,
+            model_hostname=chainlet_hostname,
             model_id=chainlet.oracle_id,
             dev_version_id=chainlet.oracle_version_id,
             remote_provider=remote_provider,
@@ -1064,11 +1082,8 @@ def _prepare_chainlet_models_for_watch(
         return
 
     for chainlet_name, chainlet in chainlet_data.items():
-        if not chainlet.hostname:
-            raise public_types.ChainsDeploymentError(
-                f"Could not determine hostname for Chainlet `{chainlet_name}`."
-            )
-        cli_common.start_keepalive(chainlet.hostname, remote_provider.fetch_auth_header)
+        chainlet_hostname = resolve_hostname(chainlet_name, chainlet)
+        cli_common.start_keepalive(chainlet_hostname, remote_provider.fetch_auth_header)
 
 
 @framework.raise_validation_errors_before
