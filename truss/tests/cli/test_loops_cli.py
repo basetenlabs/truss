@@ -52,8 +52,7 @@ def test_push_basic(mock_remote):
 
 def test_push_with_replicas(mock_remote):
     result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "4"],
-        mock_remote,
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "4"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
@@ -64,8 +63,7 @@ def test_push_with_replicas(mock_remote):
 
 def test_push_rejects_non_positive_replicas(mock_remote):
     result = _invoke_loops_push(
-        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "0"],
-        mock_remote,
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "0"], mock_remote
     )
 
     assert result.exit_code != 0
