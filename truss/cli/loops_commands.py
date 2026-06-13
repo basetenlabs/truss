@@ -38,10 +38,24 @@ truss_cli.add_command(loops)
     required=False,
     help="Training project ID to associate the deployment with.",
 )
+@click.option(
+    "--replicas",
+    type=int,
+    required=False,
+    help=(
+        "Number of data-parallel trainer replicas to provision. The trainer "
+        "deployment runs this many copies of the model's preset node group "
+        "(e.g. --replicas 4 on a 4-node preset → 16 nodes, 4 DP workers). "
+        "Must be a positive integer; defaults to 1."
+    ),
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_loops_deployment(
-    base_model: str, project_id: Optional[str], remote: Optional[str]
+    base_model: str,
+    project_id: Optional[str],
+    replicas: Optional[int],
+    remote: Optional[str],
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
 
@@ -49,6 +63,11 @@ def push_loops_deployment(
     the project already has an active Loops deployment for this base
     model, the command fails with a validation error.
     """
+    if replicas is not None and replicas < 1:
+        raise click.BadParameter(
+            "--replicas must be a positive integer.", param_hint="--replicas"
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -64,7 +83,9 @@ def push_loops_deployment(
         f"Provisioning Loops run and sampler for [cyan]{base_model}[/cyan]...",
         spinner="dots",
     ):
-        remote_provider.create_loops_run(session_id=session_id, base_model=base_model)
+        remote_provider.create_loops_run(
+            session_id=session_id, base_model=base_model, replicas=replicas
+        )
 
     # Readiness is now the loops SDK's responsibility — clients block on
     # construction (TrainingClient → /health, SamplingClient → deployment

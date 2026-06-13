@@ -1274,11 +1274,17 @@ class BasetenApi:
         return resp_json["session"]
 
     def create_loops_run(
-        self, session_id: str, base_model: str, seed: Optional[int] = None
+        self,
+        session_id: str,
+        base_model: str,
+        seed: Optional[int] = None,
+        replicas: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
             body["seed"] = seed
+        if replicas is not None:
+            body["replicas"] = replicas
         resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
         return resp_json["run"]
 
