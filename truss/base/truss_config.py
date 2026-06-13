@@ -1,4 +1,5 @@
 import enum
+import ipaddress
 import logging
 import math
 import os
@@ -91,6 +92,8 @@ class Accelerator(str, enum.Enum):
     H100_40GB = "H100_40GB"
     B200 = "B200"
     L40S = "L40S"
+    RTX_PRO_6000 = "RTX_PRO_6000"
+    B300 = "B300"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -149,11 +152,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        schema = handler(core_schema)
-        schema.update(type="string")
-        schema.pop("properties", None)
-        schema.pop("required", None)
-        return schema
+        return {"anyOf": [{"type": "string"}, {"type": "null"}]}
 
 
 class ModelRepoSourceKind(str, enum.Enum):
@@ -543,6 +542,33 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+class AutoscalingMetric(pydantic.BaseModel):
+    name: str
+    target: float
+
+
+class AdditionalAutoscalingConfig(pydantic.BaseModel):
+    """Additional autoscaling configuration for in-flight token metrics."""
+
+    metrics: list[AutoscalingMetric] = pydantic.Field(
+        ..., description="List of metric targets for autoscaling."
+    )
+
+
+class BISLLM(custom_types.ConfigModel):
+    """Configuration options for BIS LLM deployments."""
+
+    config: Optional[dict[str, Any]] = pydantic.Field(
+        default=None, description="Configuration options for BIS LLM deployments."
+    )
+    version: str = pydantic.Field(
+        default="", description="The version of the BIS LLM deployment stack."
+    )
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = (
+        pydantic.Field(default=None, description="Additional autoscaling configuration")
+    )
+
+
 class HealthChecks(custom_types.ConfigModel):
     """Custom health check configuration for your deployments."""
 
@@ -599,6 +625,74 @@ class RemoteSSH(custom_types.ConfigModel):
     )
 
 
+_FQDN_PATTERN = re.compile(
+    r"^(?:[a-zA-Z0-9*](?:[a-zA-Z0-9*-]{0,61}[a-zA-Z0-9*])?)"
+    r"(?:\.(?:[a-zA-Z0-9*](?:[a-zA-Z0-9*-]{0,61}[a-zA-Z0-9*])?))*$"
+)
+
+
+def _validate_fqdn(value: str) -> str:
+    if not value:
+        raise ValueError("FQDN entries cannot be empty.")
+    if not _FQDN_PATTERN.match(value):
+        raise ValueError(f"Invalid FQDN '{value}'.")
+    return value
+
+
+def _validate_ip_or_cidr(value: str) -> str:
+    # Bare IP addresses (e.g. "1.2.3.4") are normalized to a /32 CIDR range
+    # at deploy time.
+    try:
+        network = ipaddress.ip_network(value, strict=False)
+    except ValueError as e:
+        raise ValueError(f"Invalid IP or CIDR '{value}': {e}") from e
+    if network.version != 4:
+        raise ValueError(f"Invalid IP or CIDR '{value}': IPv6 is not supported.")
+    return value
+
+
+class EgressRestrictions(custom_types.ConfigModel):
+    """Egress network restrictions for a model version.
+
+    Setting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or
+    ``[]`` blocks all outbound network egress. Omitting the
+    ``egress_restrictions`` block (or setting it to ``null``) preserves the
+    default behavior of allowing all egress.
+    """
+
+    ip_allow_list: Optional[list[str]] = pydantic.Field(
+        default=None,
+        description=(
+            "Allowed outbound IPv4 addresses or CIDR ranges. Use null or [] "
+            "alongside an equally restrictive fqdn_allow_list to block all "
+            "egress."
+        ),
+        examples=[["1.1.1.1", "8.8.8.8/32"]],
+    )
+    fqdn_allow_list: Optional[list[str]] = pydantic.Field(
+        default=None,
+        description=(
+            "Allowed outbound fully-qualified domain names. Supports "
+            "wildcards: '*' may appear anywhere in a label."
+        ),
+        examples=[["*.baseten.co", "huggingface.co"]],
+    )
+
+    @pydantic.field_validator("ip_allow_list")
+    @classmethod
+    def _validate_ip_allow_list(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        return [_validate_ip_or_cidr(entry) for entry in v]
+
+    @pydantic.field_validator("fqdn_allow_list")
+    @classmethod
+    def _validate_fqdn_allow_list(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        return [_validate_fqdn(entry) for entry in v]
+
+
 class Runtime(custom_types.ConfigModel):
     """Runtime settings for your model instance."""
 
@@ -632,6 +726,13 @@ class Runtime(custom_types.ConfigModel):
     remote_ssh: RemoteSSH = pydantic.Field(
         default_factory=RemoteSSH,
         description="Configuration for SSH access to running model instances.",
+    )
+    egress_restrictions: Optional[EgressRestrictions] = pydantic.Field(
+        default=None,
+        description=(
+            "Egress network restrictions for the model version. When unset, "
+            "all egress is allowed (default)."
+        ),
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
@@ -1070,6 +1171,22 @@ class CheckpointList(custom_types.ConfigModel):
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
     )
+    loops_checkpoint_ids: list[str] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Loops checkpoint IDs to deploy. Mutually exclusive with artifact_references."
+        ),
+    )
+
+    @pydantic.model_validator(mode="after")
+    def _no_mixing(self) -> "CheckpointList":
+        if self.artifact_references and self.loops_checkpoint_ids:
+            raise ValueError(
+                "Cannot mix training job checkpoints and loops checkpoints in "
+                "the same deploy. Use either artifact_references / checkpoints "
+                "or loops_checkpoint_ids, not both."
+            )
+        return self
 
 
 # TODO: remove just use normal python version instead of this.
@@ -1188,6 +1305,11 @@ class TrussConfig(custom_types.ConfigModel):
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
         default=None,
         description="Configuration for deploying from training checkpoints.",
+    )
+
+    bis_llm: Optional[BISLLM] = pydantic.Field(
+        default=None,
+        description="Configuration options for BIS LLM deployments. This field may change in the future.",
     )
 
     # Internal / Legacy.

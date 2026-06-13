@@ -2,13 +2,17 @@ import inspect
 import json
 import os
 import sys
+import tarfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
+import requests
 import rich.table
 import rich_click as click
+import yaml
 from rich import console as rich_console
 from rich import progress
 
@@ -18,8 +22,9 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
-from truss.base.truss_config import Build, ModelServer, TransportKind
+from truss.base.truss_config import Build, ModelServer, TransportKind, TrussConfig
 from truss.cli import remote_cli
+from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.resolvers.model_team_resolver import (
@@ -39,6 +44,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService, URLConfig
+from truss.remote.baseten.user_agent import set_client_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
@@ -71,6 +77,11 @@ click.rich_click.COMMAND_GROUPS = {
             "name": "Train",
             "commands": ["train"],
             "table_styles": {"row_styles": ["magenta"]},  # type: ignore
+        },
+        {
+            "name": "Loops",
+            "commands": ["loops"],
+            "table_styles": {"row_styles": ["cyan"]},  # type: ignore
         },
     ]
 }
@@ -159,6 +170,7 @@ def _start_watch_mode(
 @common.common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
+    set_client_name("truss-cli")
     # Click "stacks" the root command and group/subcommands, to avoid running the
     # middleware twice, we don't add it via decorator to the root command, but instead
     # selective run it here inline.
@@ -169,16 +181,15 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
+@click.option("--browser", is_flag=True, help="Log in via browser (OAuth device flow).")
 @click.option("--api-key", type=str, required=False, help="API key for authentication.")
+@click.option("--remote", type=str, default=None, help="Remote name to create.")
 @common.common_options()
-def login(api_key: Optional[str]):
-    from truss.api import login
+def login(browser: bool, api_key: Optional[str], remote: Optional[str]):
+    do_login(browser=browser, api_key=api_key, remote=remote)
 
-    if not api_key:
-        remote_config = remote_cli.inquire_remote_config()
-        RemoteFactory.update_remote_config(remote_config)
-    else:
-        login(api_key)
+
+truss_cli.add_command(auth_group)
 
 
 @truss_cli.command()
@@ -266,18 +277,16 @@ def whoami(remote: Optional[str], show_oidc: bool):
 
 @truss_cli.command()
 def configure():
-    # Read the original file content
-    with open(USER_TRUSSRC_PATH, "r") as f:
-        original_content = f.read()
+    original_content = (
+        USER_TRUSSRC_PATH.read_text() if USER_TRUSSRC_PATH.exists() else ""
+    )
 
-    # Open the editor and get the modified content
     edited_content = click.edit(original_content)
 
-    # If the content was modified, save it
     if edited_content is not None and edited_content != original_content:
-        with open(USER_TRUSSRC_PATH, "w") as f:
-            f.write(edited_content)
-            click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
+        USER_TRUSSRC_PATH.parent.mkdir(parents=True, exist_ok=True)
+        USER_TRUSSRC_PATH.write_text(edited_content)
+        click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
     else:
         click.echo("No changes made.")
 
@@ -925,7 +934,16 @@ def push(
         labels=labels_dict,
     )
 
-    console.print(f"✨ Model {model_name} was successfully pushed ✨")
+    console.print(f"✨ Model {model_name} was successfully pushed ✨\n")
+
+    if isinstance(service, BasetenService):
+        common.print_deployment_links(
+            model_id=service.model_id,
+            version_id=service.model_version_id,
+            hostname=service.hostname,
+            logs_url=service.logs_url,
+        )
+        console.print()
 
     if service.is_draft:
         draft_model_text = """
@@ -947,10 +965,6 @@ def push(
             f"deploys, it will become the next {environment} deployment of your model."
         )
         console.print(promotion_text, style="green")
-
-    console.print(
-        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
-    )
 
     if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
         service, BasetenService
@@ -1021,8 +1035,7 @@ def push(
             )
             if watch_no_sleep:
                 model_hostname = resolved_model["hostname"]
-                api_key = bt_remote._auth_service.authenticate().value
-                common.start_keepalive(model_hostname, api_key)
+                common.start_keepalive(model_hostname, bt_remote.fetch_auth_header)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -1051,30 +1064,296 @@ def push(
 @click.option(
     "--remote", type=str, required=False, help="Name of the remote in .trussrc."
 )
-@click.option("--model-id", type=str, required=True)
-@click.option("--deployment-id", type=str, required=True)
-@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--tail",
+    is_flag=True,
+    help="Stream new logs as they arrive. Cannot be combined with the time-range or filter flags.",
+)
+@click.option(
+    "--start",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S%z",
+        ]
+    ),
+    default=None,
+    help=(
+        "Start of the log time range (ISO 8601). No-timezone values are local. "
+        "Defaults to a short look-back ending at --end. Window must be <= 7 days."
+    ),
+)
+@click.option(
+    "--end",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S%z",
+        ]
+    ),
+    default=None,
+    help=(
+        "End of the log time range (ISO 8601). No-timezone values are local. "
+        "Defaults to now. Window must be <= 7 days."
+    ),
+)
+@click.option(
+    "--since",
+    type=str,
+    default=None,
+    help=(
+        "Logs from a relative time ago until now, as <N><unit> with unit "
+        "s/m/h/d (e.g. '90s', '2h', '3d'). Max '7d'. Excludes --start/--end."
+    ),
+)
+@click.option(
+    "--min-level",
+    type=click.Choice(["debug", "info", "warning", "error"], case_sensitive=False),
+    default=None,
+    help=(
+        "Minimum log severity. Defaults to all lines. Any value returns lines "
+        "at or above that severity and drops lines with no level."
+    ),
+)
+@click.option(
+    "--includes",
+    type=str,
+    multiple=True,
+    help="Case-sensitive substring that must appear in the message (repeatable).",
+)
+@click.option(
+    "--excludes",
+    type=str,
+    multiple=True,
+    help="Case-sensitive substring that drops any line containing it (repeatable).",
+)
+@click.option(
+    "--search-pattern",
+    type=str,
+    default=None,
+    help="RE2 regex matched against the message. Prefer --includes/--excludes.",
+)
+@click.option(
+    "--replica",
+    type=str,
+    default=None,
+    help="Only return logs emitted by this replica (5-char short ID).",
+)
+@click.option(
+    "--request-id",
+    type=str,
+    default=None,
+    help="Only return logs tagged with this inference request ID.",
+)
 @common.common_options()
 def model_logs(
-    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    tail: bool = False,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    since: Optional[str] = None,
+    min_level: Optional[str] = None,
+    includes: tuple[str, ...] = (),
+    excludes: tuple[str, ...] = (),
+    search_pattern: Optional[str] = None,
+    replica: Optional[str] = None,
+    request_id: Optional[str] = None,
 ) -> None:
     """
-    Fetches logs for the packaged model
+    Fetches logs for the packaged model.
+
+    Defaults to a short look-back window. Use --start/--end or --since to scope
+    the window (max 7 days), the filter flags to narrow results, or --tail to
+    stream live logs.
     """
+    if tail and (
+        start is not None
+        or end is not None
+        or since is not None
+        or min_level is not None
+        or replica is not None
+        or request_id is not None
+        or search_pattern is not None
+        or includes
+        or excludes
+    ):
+        raise click.UsageError(
+            "--tail cannot be combined with the time-range or filter flags."
+        )
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
-    if not tail:
-        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
-    else:
+
+    if tail:
         log_watcher = ModelDeploymentLogWatcher(
             remote_provider.api, model_id, deployment_id
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
+        return
+
+    start_ms, end_ms = cli_log_utils.resolve_log_time_range(start, end, since)
+    logs = remote_provider.api.get_model_deployment_logs(
+        model_id,
+        deployment_id,
+        start_ms,
+        end_ms,
+        # Backend LogLevelV1 values are uppercase, but the flag accepts any case.
+        min_level=min_level.upper() if min_level else None,
+        replica=replica,
+        request_id=request_id,
+        search_pattern=search_pattern,
+        includes=list(includes),
+        excludes=list(excludes),
+    )
+    for log in cli_log_utils.parse_logs(logs):
+        cli_log_utils.output_log(log)
+
+
+@truss_cli.command()
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--out-file",
+    type=click.Path(dir_okay=False),
+    required=False,
+    help="Save the truss as a tar file at this path.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False),
+    required=False,
+    help="Extract the truss into this directory.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Allow overwriting an existing file or non-empty directory.",
+)
+@common.common_options()
+def download(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    out_file: Optional[str],
+    out_dir: Optional[str],
+    overwrite: bool,
+) -> None:
+    """
+    Downloads the truss for a deployed model.
+    """
+    if out_file and out_dir:
+        raise click.UsageError("Cannot specify both --out-file and --out-dir.")
+
+    if not out_file and not out_dir:
+        raise click.UsageError("Must specify either --out-file or --out-dir.")
+
+    out_path = Path(out_file or out_dir)  # type: ignore[arg-type]
+
+    if not out_path.parent.exists():
+        raise click.UsageError(f"Parent directory does not exist: {out_path.parent}")
+
+    if not overwrite:
+        if out_file and out_path.exists():
+            raise click.UsageError(
+                f"File already exists: {out_path}. Use --overwrite to replace it."
+            )
+        if out_dir and out_path.exists() and any(out_path.iterdir()):
+            raise click.UsageError(
+                f"Directory is not empty: {out_path}. Use --overwrite to write into it."
+            )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    console.print("Fetching download URL...")
+    download_url = remote_provider.api.get_deployment_download_url(
+        model_id, deployment_id
+    )
+
+    console.print("Downloading truss...")
+    with requests.get(download_url, stream=True, timeout=(10, None)) as response:
+        response.raise_for_status()
+        response.raw.decode_content = True
+
+        if out_file:
+            with open(out_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            console.print(f"Saved to {out_path}")
+        else:
+            out_path.mkdir(exist_ok=True)
+            with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
+                # filter="data" prevents path traversal; only available in 3.12+
+                if sys.version_info >= (3, 12):
+                    tar.extractall(path=out_path, filter="data")
+                else:
+                    tar.extractall(path=out_path)
+            console.print(f"Extracted to {out_path}")
+
+
+@truss_cli.command(name="model-config")
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'text' prints the original config.yaml (or the parsed config "
+        "rendered as YAML if no original is stored). 'json' emits the full response "
+        "{config, raw_config} as JSON to stdout."
+    ),
+)
+@common.common_options()
+@json_command
+def model_config(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    output_format: str = "text",
+) -> None:
+    """
+    Fetches the config of a deployed model.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    response = remote_provider.api.get_deployment_config(model_id, deployment_id)
+
+    if output_format == "json":
+        print(json.dumps(response))
+        return
+
+    raw_config = response.get("raw_config")
+    if raw_config is not None:
+        click.echo(raw_config, nl=False)
+    else:
+        parsed = TrussConfig.from_dict(response.get("config") or {})
+        click.echo(
+            yaml.safe_dump(parsed.to_dict(verbose=False), sort_keys=False), nl=False
+        )
 
 
 @truss_cli.command()
@@ -1172,16 +1451,17 @@ def watch(
     logs_url = URLConfig.model_logs_url(
         remote_provider.remote_url, model_id, dev_version_id
     )
-    console.print(
-        f"🪵  View logs for your development model at {common.format_link(logs_url)}"
-    )
-
     model_hostname = resolved_model.get("hostname")
     if not model_hostname:
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
 
-    api_key = remote_provider._auth_service.authenticate().value
+    common.print_deployment_links(
+        model_id=model_id,
+        version_id=dev_version_id,
+        hostname=model_hostname,
+        logs_url=logs_url,
+    )
 
     common.wait_for_development_model_ready(
         model_hostname=model_hostname,
@@ -1189,11 +1469,10 @@ def watch(
         dev_version_id=dev_version_id,
         remote_provider=remote_provider,
         console=console,
-        api_key=api_key,
     )
 
     if no_sleep:
-        common.start_keepalive(model_hostname, api_key)
+        common.start_keepalive(model_hostname, remote_provider.fetch_auth_header)
 
     if tail:
         _start_tail(remote_provider, model_id, dev_version_id, in_background=True)
@@ -1361,6 +1640,7 @@ def kill_all() -> None:
 # These imports are needed to register the subcommands
 from truss.cli import (  # noqa: F401
     chains_commands,
+    loops_commands,
     migrate_commands,
     ssh_commands,
     train_commands,

@@ -4,10 +4,12 @@ use baseten_performance_client_core::{
     CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
-    HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-    RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-    DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-    MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+    Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
+    EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
+    PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
+    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
+    RETRY_BUDGET_PERCENTAGE,
 };
 
 use ndarray::Array2;
@@ -16,6 +18,7 @@ use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -369,6 +372,105 @@ impl HttpClientWrapper {
     }
 }
 
+#[pyclass(name = "Endpoint")]
+#[derive(Clone)]
+struct PyEndpoint {
+    inner: CoreEndpoint,
+}
+
+#[pymethods]
+impl PyEndpoint {
+    #[new]
+    #[pyo3(signature = (
+        base_url,
+        api_key,
+        client_wrapper,
+        deep_health_url = None,
+        deployment_health_path = None,
+        health_check_interval_s = None,
+        health_check_timeout_s = None,
+        health_check_retries = None,
+        health_fail_on_first = false,
+        deployment_timeout_is_no_vote = None,
+        deep_timeout_is_no_vote = None
+    ))]
+    fn new(
+        base_url: String,
+        api_key: String,
+        client_wrapper: HttpClientWrapper,
+        deep_health_url: Option<String>,
+        deployment_health_path: Option<String>,
+        health_check_interval_s: Option<f64>,
+        health_check_timeout_s: Option<f64>,
+        health_check_retries: Option<u32>,
+        health_fail_on_first: bool,
+        deployment_timeout_is_no_vote: Option<bool>,
+        deep_timeout_is_no_vote: Option<bool>,
+    ) -> PyResult<Self> {
+        let mut config = CoreEndpointConfig::new(base_url, api_key, client_wrapper.inner);
+        if let Some(interval_s) = health_check_interval_s {
+            config =
+                config.with_health_check_interval(std::time::Duration::from_secs_f64(interval_s));
+        }
+        if let Some(timeout_s) = health_check_timeout_s {
+            config =
+                config.with_health_check_timeout(std::time::Duration::from_secs_f64(timeout_s));
+        }
+        if let Some(retries) = health_check_retries {
+            config = config.with_health_check_retries(retries);
+        }
+        config = config.with_standard_health_checks(
+            deep_health_url,
+            health_fail_on_first,
+            deployment_health_path,
+            deployment_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+            deep_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+        );
+
+        let inner = CoreEndpoint::new(config)
+            .map_err(|e| PyValueError::new_err(format!("Invalid endpoint configuration: {}", e)))?;
+        Ok(Self { inner })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Endpoint(base_url={:?})", self.inner.base_url())
+    }
+}
+
+#[pyclass(name = "EndpointPool")]
+struct PyEndpointPool {
+    inner: Arc<CoreEndpointPool>,
+}
+
+#[pymethods]
+impl PyEndpointPool {
+    #[new]
+    #[pyo3(signature = (
+        endpoints,
+        endpoint_weights = None
+    ))]
+    fn new(endpoints: Vec<PyEndpoint>, endpoint_weights: Option<Vec<f64>>) -> PyResult<Self> {
+        if endpoints.is_empty() {
+            return Err(PyValueError::new_err("endpoints must not be empty"));
+        }
+
+        let mut config = EndpointPoolConfig::new(
+            endpoints
+                .into_iter()
+                .map(|endpoint| endpoint.inner)
+                .collect(),
+        );
+        if let Some(weights) = endpoint_weights {
+            config = config.with_weights(weights);
+        }
+
+        let inner = CoreEndpointPool::new(config).map_err(|e| {
+            PyValueError::new_err(format!("Invalid endpoint pool configuration: {}", e))
+        })?;
+        Ok(Self { inner })
+    }
+}
+
 /// User-facing configuration for request processing with budget percentages.
 /// CancellationToken for cancelling async operations
 #[derive(Debug, Clone)]
@@ -409,6 +511,8 @@ pub struct RequestProcessingPreference {
     #[pyo3(get, set)]
     pub max_chars_per_request: Option<usize>,
     #[pyo3(get, set)]
+    pub pin_initial_endpoint_once: bool,
+    #[pyo3(get, set)]
     pub timeout_s: f64,
     #[pyo3(get, set)]
     pub hedge_delay: Option<f64>,
@@ -428,7 +532,44 @@ pub struct RequestProcessingPreference {
     pub primary_api_key_override: Option<String>,
     #[pyo3(get, set)]
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
-    inner: RustRequestProcessingPreference,
+    #[pyo3(get, set)]
+    pub non_retryable_status_codes: HashSet<u16>,
+}
+
+impl RequestProcessingPreference {
+    fn to_rust_preference(&self) -> RustRequestProcessingPreference {
+        let non_retryable_status_codes = if self.non_retryable_status_codes.is_empty() {
+            None
+        } else {
+            Some(self.non_retryable_status_codes.clone())
+        };
+
+        RustRequestProcessingPreference {
+            max_concurrent_requests: Some(self.max_concurrent_requests),
+            batch_size: Some(self.batch_size),
+            max_chars_per_request: self.max_chars_per_request,
+            pin_initial_endpoint_once: Some(self.pin_initial_endpoint_once),
+            timeout_s: Some(self.timeout_s),
+            hedge_delay: self.hedge_delay,
+            total_timeout_s: self.total_timeout_s,
+            hedge_budget_pct: Some(self.hedge_budget_pct),
+            retry_budget_pct: Some(self.retry_budget_pct),
+            max_retries: Some(self.max_retries),
+            initial_backoff_ms: Some(self.initial_backoff_ms),
+            cancel_token: self.cancel_token.as_ref().map(|token| token.inner.clone()),
+            primary_api_key_override: self.primary_api_key_override.clone(),
+            extra_headers: self.extra_headers.clone(),
+            non_retryable_status_codes,
+        }
+    }
+}
+
+fn rust_preference_from_py(
+    preference: Option<&RequestProcessingPreference>,
+) -> RustRequestProcessingPreference {
+    preference
+        .map(RequestProcessingPreference::to_rust_preference)
+        .unwrap_or_default()
 }
 
 #[pymethods]
@@ -439,6 +580,7 @@ impl RequestProcessingPreference {
         batch_size = None,
         timeout_s = None,
         max_chars_per_request = None,
+        pin_initial_endpoint_once = None,
         hedge_delay = None,
         total_timeout_s = None,
         hedge_budget_pct = None,
@@ -447,13 +589,15 @@ impl RequestProcessingPreference {
         initial_backoff_ms = None,
         cancel_token = None,
         primary_api_key_override = None,
-        extra_headers = None
+        extra_headers = None,
+        non_retryable_status_codes = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
         batch_size: Option<usize>,
         timeout_s: Option<f64>,
         max_chars_per_request: Option<usize>,
+        pin_initial_endpoint_once: Option<bool>,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
         hedge_budget_pct: Option<f64>,
@@ -463,11 +607,13 @@ impl RequestProcessingPreference {
         cancel_token: Option<CancellationToken>,
         primary_api_key_override: Option<String>,
         extra_headers: Option<std::collections::HashMap<String, String>>,
+        non_retryable_status_codes: Option<HashSet<u16>>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
             batch_size,
             max_chars_per_request,
+            pin_initial_endpoint_once,
             timeout_s,
             hedge_delay,
             total_timeout_s,
@@ -476,8 +622,9 @@ impl RequestProcessingPreference {
             max_retries,
             initial_backoff_ms,
             cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
-            primary_api_key_override: primary_api_key_override,
-            extra_headers: extra_headers,
+            primary_api_key_override,
+            extra_headers,
+            non_retryable_status_codes,
         };
 
         // Apply defaults using the same method as Rust core
@@ -489,17 +636,18 @@ impl RequestProcessingPreference {
                 .unwrap_or(DEFAULT_CONCURRENCY),
             batch_size: complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE),
             max_chars_per_request: complete.max_chars_per_request,
+            pin_initial_endpoint_once: complete.pin_initial_endpoint_once.unwrap_or(false),
             timeout_s: complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S),
             hedge_delay: complete.hedge_delay,
             total_timeout_s: complete.total_timeout_s,
             hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(HEDGE_BUDGET_PERCENTAGE),
             retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
-            max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
+            max_retries: complete.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             cancel_token,
             primary_api_key_override: complete.primary_api_key_override,
             extra_headers: complete.extra_headers,
-            inner: rust_pref,
+            non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
         }
     }
 
@@ -507,23 +655,26 @@ impl RequestProcessingPreference {
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
-            None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None,
         ))
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?})",
             self.max_concurrent_requests,
             self.batch_size,
+            self.pin_initial_endpoint_once,
             self.timeout_s,
             self.hedge_delay,
             self.total_timeout_s,
             self.hedge_budget_pct,
             self.retry_budget_pct,
             self.max_retries,
-            self.initial_backoff_ms
+            self.initial_backoff_ms,
+            self.non_retryable_status_codes
         ))
     }
 
@@ -565,18 +716,26 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None))]
     fn new(
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
         proxy: Option<String>,
+        endpoint_pool: Option<&PyEndpointPool>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
-        let core_client =
-            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
-                .map_err(Self::convert_core_error_to_py_err)?;
+        let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
+        let core_client = PerformanceClientCore::new(
+            base_url,
+            api_key,
+            http_version,
+            wrapper,
+            proxy,
+            endpoint_pool,
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
             core_client,
@@ -646,7 +805,7 @@ impl PerformanceClient {
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -728,7 +887,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Extract cancellation token if present
         let cancel_token = preference.and_then(|p| p.cancel_token.clone());
@@ -791,7 +950,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -846,7 +1005,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -899,7 +1058,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -950,7 +1109,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -1010,12 +1169,12 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-                .map_err(|e| PyValueError::new_err(e))?;
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
+                .map_err(PyValueError::new_err)?;
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1101,12 +1260,12 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+        let rust_preference = rust_preference_from_py(preference);
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-                .map_err(|e| PyValueError::new_err(e))?;
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
+                .map_err(PyValueError::new_err)?;
 
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client
@@ -1164,6 +1323,8 @@ impl PerformanceClient {
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
     m.add_class::<HttpClientWrapper>()?;
+    m.add_class::<PyEndpoint>()?;
+    m.add_class::<PyEndpointPool>()?;
     m.add_class::<RequestProcessingPreference>()?;
     m.add_class::<CancellationToken>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
@@ -1177,4 +1338,51 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<BatchPostResponse>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn request_processing_preference_to_rust_uses_mutated_public_fields() {
+        let mut preference = RequestProcessingPreference::new(
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None,
+        );
+
+        preference.max_concurrent_requests = 64;
+        preference.batch_size = 32;
+        preference.timeout_s = 45.0;
+        preference.hedge_delay = Some(0.5);
+        preference.total_timeout_s = Some(90.0);
+        preference.hedge_budget_pct = 0.15;
+        preference.retry_budget_pct = 0.08;
+        preference.max_retries = 3;
+        preference.initial_backoff_ms = 250;
+        preference.non_retryable_status_codes = HashSet::from([429, 529]);
+
+        let rust_preference = preference.to_rust_preference();
+
+        assert_eq!(rust_preference.max_concurrent_requests, Some(64));
+        assert_eq!(rust_preference.batch_size, Some(32));
+        assert_eq!(rust_preference.timeout_s, Some(45.0));
+        assert_eq!(rust_preference.hedge_delay, Some(0.5));
+        assert_eq!(rust_preference.total_timeout_s, Some(90.0));
+        assert_eq!(rust_preference.hedge_budget_pct, Some(0.15));
+        assert_eq!(rust_preference.retry_budget_pct, Some(0.08));
+        assert_eq!(rust_preference.max_retries, Some(3));
+        assert_eq!(rust_preference.initial_backoff_ms, Some(250));
+        assert_eq!(
+            rust_preference.non_retryable_status_codes,
+            Some(HashSet::from([429, 529]))
+        );
+
+        preference.non_retryable_status_codes.clear();
+        assert!(preference
+            .to_rust_preference()
+            .non_retryable_status_codes
+            .is_none());
+    }
 }

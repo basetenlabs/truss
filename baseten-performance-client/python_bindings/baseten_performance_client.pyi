@@ -220,12 +220,13 @@ class RequestProcessingPreference:
         max_concurrent_requests: Maximum number of parallel requests (default: 128).
         batch_size: Number of items per batch (default: 128).
         max_chars_per_request: Optional character-based batching limit.
+        pin_initial_endpoint_once: If True, select one endpoint for all initial requests in a top-level operation.
         timeout_s: Per-request timeout in seconds (default: 3600.0).
         hedge_delay: Optional request hedging delay in seconds.
         total_timeout_s: Optional total timeout for the entire operation in seconds.
         hedge_budget_pct: Hedge budget percentage (default: 0.10).
         retry_budget_pct: Retry budget percentage (default: 0.05).
-        max_retries: Maximum number of HTTP retries (default: 4).
+            max_retries: Maximum number of HTTP retries (default: 5).
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         cancel_token: Optional CancellationToken for cancelling operations.
         extra_headers: Optional dictionary of custom headers to include with all requests.
@@ -266,6 +267,7 @@ class RequestProcessingPreference:
         max_concurrent_requests: typing.Optional[int] = None,
         batch_size: typing.Optional[int] = None,
         max_chars_per_request: typing.Optional[int] = None,
+        pin_initial_endpoint_once: typing.Optional[bool] = None,
         timeout_s: typing.Optional[float] = None,
         hedge_delay: typing.Optional[float] = None,
         total_timeout_s: typing.Optional[float] = None,
@@ -274,7 +276,9 @@ class RequestProcessingPreference:
         max_retries: typing.Optional[int] = None,
         initial_backoff_ms: typing.Optional[int] = None,
         cancel_token: typing.Optional[CancellationToken] = None,
+        primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
+        non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -283,21 +287,25 @@ class RequestProcessingPreference:
             max_concurrent_requests: Maximum parallel requests (default: 128).
             batch_size: Number of items per batch (default: 128).
             max_chars_per_request: Optional character-based batching limit.
+            pin_initial_endpoint_once: If True, send all initial requests in one operation to a single selected endpoint.
             timeout_s: Per-request timeout in seconds (default: 3600.0).
             hedge_delay: Optional request hedging delay in seconds.
             total_timeout_s: Optional total timeout for the entire operation in seconds.
             hedge_budget_pct: Hedge budget percentage (default: 0.10).
             retry_budget_pct: Retry budget percentage (default: 0.05).
-            max_retries: Maximum number of HTTP retries (default: 4).
+        max_retries: Maximum number of HTTP retries (default: 5).
             initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
             cancel_token: Optional CancellationToken for cancelling operations.
+            primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
+            non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
         """
 
     # Property definitions with type hints
     max_concurrent_requests: builtins.int
     batch_size: builtins.int
     max_chars_per_request: typing.Optional[builtins.int]
+    pin_initial_endpoint_once: builtins.bool
     timeout_s: builtins.float
     hedge_delay: typing.Optional[builtins.float]
     total_timeout_s: typing.Optional[builtins.float]
@@ -306,7 +314,9 @@ class RequestProcessingPreference:
     max_retries: builtins.int
     initial_backoff_ms: builtins.int
     cancel_token: typing.Optional[CancellationToken]
+    primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
+    non_retryable_status_codes: typing.Set[builtins.int]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":
@@ -425,6 +435,65 @@ class HttpClientWrapper:
         """
         ...
 
+class Endpoint:
+    """
+    Reusable endpoint configuration with its own shared health state and background health worker.
+    """
+
+    def __init__(
+        self,
+        base_url: builtins.str,
+        api_key: builtins.str,
+        client_wrapper: HttpClientWrapper,
+        deep_health_url: typing.Optional[builtins.str] = None,
+        deployment_health_path: typing.Optional[builtins.str] = None,
+        health_check_interval_s: typing.Optional[builtins.float] = None,
+        health_check_timeout_s: typing.Optional[builtins.float] = None,
+        health_check_retries: typing.Optional[builtins.int] = None,
+        health_fail_on_first: builtins.bool = False,
+        deployment_timeout_is_no_vote: typing.Optional[builtins.bool] = None,
+        deep_timeout_is_no_vote: typing.Optional[builtins.bool] = None,
+    ) -> None:
+        """
+        Args:
+            base_url: Deployment base URL.
+            api_key: API key used by this endpoint's background health worker.
+            client_wrapper: Required HttpClientWrapper used by this endpoint's background
+                health-check worker. Reuse the same Endpoint instance across multiple pools
+                to avoid duplicate probes.
+            deep_health_url: Optional absolute deep health URL for this endpoint.
+            deployment_health_path: Optional base-url health path override (default `/health`).
+            health_check_interval_s: Optional background health check interval in seconds.
+            health_check_timeout_s: Optional per-health-check timeout in seconds.
+            health_check_retries: Optional number of retries per configured health check.
+                One successful retry is enough for that check to count as healthy.
+            health_fail_on_first: If true, stop evaluating additional checks after the first
+                hard failing check in an endpoint refresh cycle.
+            deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
+                Defaults to the library-wide timeout policy.
+            deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
+                Defaults to the library-wide timeout policy.
+        """
+        ...
+
+class EndpointPool:
+    """
+    Endpoint pool configuration used by PerformanceClient for weighted endpoint routing.
+    """
+
+    def __init__(
+        self,
+        endpoints: builtins.list[Endpoint],
+        endpoint_weights: typing.Optional[builtins.list[builtins.float]] = None,
+    ) -> None:
+        """
+        Args:
+            endpoints: List of reusable Endpoint objects.
+            endpoint_weights: Optional per-endpoint traffic weights used for deterministic
+                weighted routing.
+        """
+        ...
+
 class PerformanceClient:
     """
     Baseten.co API client for embedding, reranking, and classification, and custom workloads.
@@ -448,6 +517,7 @@ class PerformanceClient:
         http_version: builtins.int = 1,
         client_wrapper: typing.Optional[HttpClientWrapper] = None,
         proxy: typing.Optional[builtins.str] = None,
+        endpoint_pool: typing.Optional[EndpointPool] = None,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -460,6 +530,7 @@ class PerformanceClient:
             client_wrapper: Optional HttpClientWrapper instance to reuse connection pooling
                 across multiple PerformanceClient instances.
             proxy: Optional proxy URL to route all HTTP requests through (e.g., "http://proxy:8080").
+            endpoint_pool: Optional EndpointPool for weighted endpoint routing and background health checks.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)

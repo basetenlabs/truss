@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from enum import Enum
@@ -8,10 +9,11 @@ from pydantic import BaseModel, Field
 
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.auth import ApiKey, AuthService
+from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,11 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
+def resolve_rest_api_url(remote_url: str) -> str:
+    """Map an app remote_url (e.g. https://app.baseten.co) to its REST API base."""
+    return API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+
+
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
         f'model_name: "{oracle.model_name}"',
@@ -125,16 +132,15 @@ class BasetenApi:
 
     def __init__(self, remote_url: str, auth_service: AuthService) -> None:
         graphql_api_url = f"{remote_url}/graphql/"
-        # Ensure we strip off trailing '/' to denormalize URLs.
-        rest_api_url = API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+        rest_api_url = resolve_rest_api_url(remote_url)
 
         self._remote_url = remote_url
         self._graphql_api_url = graphql_api_url
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
-        self._auth_token = self._auth_service.authenticate()
         self._rest_api_client = RestAPIClient(
-            base_url=self._rest_api_url, headers=self._auth_token.header()
+            base_url=self._rest_api_url,
+            header_provider=self._auth_service.fetch_auth_header,
         )
 
     @property
@@ -146,10 +152,6 @@ class BasetenApi:
         return self._rest_api_url
 
     @property
-    def auth_token(self) -> ApiKey:
-        return self._auth_token
-
-    @property
     def suppress_error_print(self) -> bool:
         return self._rest_api_client.suppress_error_print
 
@@ -158,7 +160,7 @@ class BasetenApi:
         self._rest_api_client.suppress_error_print = value
 
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
-        headers = self._auth_token.header()
+        headers = with_user_agent(self._auth_service.fetch_auth_header())
         payload: Dict[str, Any] = {"query": query}
         if variables is not None:
             payload["variables"] = variables
@@ -212,9 +214,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -228,6 +231,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -249,6 +253,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -267,9 +274,10 @@ class BasetenApi:
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -282,6 +290,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -305,6 +314,9 @@ class BasetenApi:
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
                 else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
+                else None,
             },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
@@ -320,9 +332,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -332,6 +345,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -354,6 +368,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -543,7 +560,14 @@ class BasetenApi:
     def get_models_for_watch(
         self, team_id: Optional[str] = None, chainlets_only: Optional[bool] = False
     ):
-        """Get models with full version info needed for watch disambiguation."""
+        """Get lightweight model info (id/name/team) for watch disambiguation.
+
+        Only the fields needed to identify and disambiguate a model by name are
+        requested. Version info (including the potentially large ``truss_signature``)
+        is loaded separately for the single resolved model via
+        :meth:`get_model_with_versions_by_id`, to avoid fetching signatures for
+        every model in the team.
+        """
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
             filter_arg = f'team_id: "{team_id}"'
@@ -558,6 +582,27 @@ class BasetenApi:
         query_string = f"""
         {{
             models({filter_arg}) {{
+                id
+                name
+                team {{
+                    id
+                    name
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_model_with_versions_by_id(self, model_id: str):
+        """Get a single model with full version info needed for watch.
+
+        Returns the model identified by ``model_id`` along with its versions,
+        including ``truss_hash`` and ``truss_signature`` used to compute patches.
+        """
+        query_string = f"""
+        {{
+            model(id: "{model_id}") {{
                 id
                 name
                 hostname
@@ -875,6 +920,33 @@ class BasetenApi:
         )
         return resp_json
 
+    def list_loops_runs(
+        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+    ):
+        params: Dict[str, str] = {}
+        if run_id is not None:
+            params["run_id"] = run_id
+        if base_model is not None:
+            params["base_model"] = base_model
+        resp_json = self._rest_api_client.get("v1/loops/runs", url_params=params)
+        return resp_json["runs"]
+
+    def list_loops_checkpoints(
+        self,
+        run_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+        checkpoint_path: Optional[str] = None,
+    ):
+        params: Dict[str, str] = {}
+        if run_id is not None:
+            params["run_id"] = run_id
+        if base_model is not None:
+            params["base_model"] = base_model
+        if checkpoint_path is not None:
+            params["checkpoint_path"] = checkpoint_path
+        resp_json = self._rest_api_client.get("v1/loops/checkpoints", url_params=params)
+        return resp_json
+
     def get_training_job_isession(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/auth_codes"
@@ -1002,19 +1074,77 @@ class BasetenApi:
         response = requests.get(presigned_url)
         return response.content
 
+    def get_deployment_download_url(self, model_id: str, deployment_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/download"
+        )
+        return response["download_url"]
+
+    def get_deployment_config(
+        self, model_id: str, deployment_id: str
+    ) -> Dict[str, Any]:
+        return self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/config"
+        )
+
     def get_model_deployment_logs(
         self,
         model_id: str,
         deployment_id: str,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
+        min_level: Optional[str] = None,
+        replica: Optional[str] = None,
+        request_id: Optional[str] = None,
+        search_pattern: Optional[str] = None,
+        includes: Optional[List[str]] = None,
+        excludes: Optional[List[str]] = None,
     ):
+        body: Dict[str, Any] = dict(
+            self._prepare_time_range_query(start_epoch_millis, end_epoch_millis)
+        )
+        if min_level:
+            body["min_level"] = min_level
+        if replica:
+            body["replica"] = replica
+        if request_id:
+            body["request_id"] = request_id
+        if search_pattern:
+            body["search_pattern"] = search_pattern
+        if includes:
+            body["includes"] = includes
+        if excludes:
+            body["excludes"] = excludes
+
         resp_json = self._rest_api_client.post(
-            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
-            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs", body=body
         )
 
         # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
+
+    def get_loops_deployment_logs(
+        self,
+        loops_deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        """Fetch logs for a Loops deployment.
+
+        Backend endpoint is GET-only — uses query params, not a request body
+        like the training-job / model-deployment endpoints.
+        """
+        params: Dict[str, str] = {}
+        if start_epoch_millis:
+            params["start_epoch_millis"] = str(start_epoch_millis)
+        if end_epoch_millis:
+            params["end_epoch_millis"] = str(end_epoch_millis)
+
+        resp_json = self._rest_api_client.get(
+            f"v1/loops/deployments/{loops_deployment_id}/logs", url_params=params
+        )
+        # Reverse so latest logs are at the end (matches the training-job /
+        # model-deployment helpers above).
         return resp_json["logs"][::-1]
 
     def create_model_version_from_inference_template(self, request_data: dict):
@@ -1031,6 +1161,7 @@ class BasetenApi:
                 model_version {
                     id
                     name
+                    model_id
                 }
                 truss_config
             }
@@ -1125,3 +1256,84 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    def create_bis_llm_model(self, body: dict, team_id: Optional[str] = None) -> dict:
+        endpoint = f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
+        return self._rest_api_client.post(endpoint, body=body)
+
+    def create_bis_llm_model_version(self, model_id: str, body: dict) -> dict:
+        return self._rest_api_client.post(
+            f"v1/llm_models/{model_id}/deployments", body=body
+        )
+
+    def create_loops_session(self, training_project_id: Optional[str] = None) -> dict:
+        body: Dict[str, Any] = {}
+        if training_project_id is not None:
+            body["training_project_id"] = training_project_id
+        resp_json = self._rest_api_client.post("v1/loops/sessions", body=body)
+        return resp_json["session"]
+
+    def create_loops_run(
+        self, session_id: str, base_model: str, seed: Optional[int] = None
+    ) -> dict:
+        body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
+        if seed is not None:
+            body["seed"] = seed
+        resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
+        return resp_json["run"]
+
+    def get_loops_session(self, session_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/sessions/{session_id}")
+        return resp_json["session"]
+
+    def get_loops_run(self, run_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/runs/{run_id}")
+        return resp_json["run"]
+
+    def get_loops_sampler(self, sampler_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/samplers/{sampler_id}")
+        return resp_json["sampler"]
+
+    def list_loops_deployments(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/deployments")
+        return resp_json["deployments"]
+
+    def get_loops_deployment(self, deployment_id: str) -> dict:
+        resp_json = self._rest_api_client.get(f"v1/loops/deployments/{deployment_id}")
+        return resp_json["deployment"]
+
+    def list_loops_samplers(self) -> List[Dict[str, Any]]:
+        resp_json = self._rest_api_client.get("v1/loops/samplers")
+        return resp_json["samplers"]
+
+    def list_loops_checkpoint_files(
+        self, checkpoint_id: str, page_size: int = 1000
+    ) -> List[Dict[str, str]]:
+        """Fetch all presigned URLs for files under a Loops checkpoint."""
+        all_presigned_urls: List[Dict[str, str]] = []
+        page_token: Optional[str] = None
+        max_iterations = 1000
+        for _ in range(max_iterations):
+            params: Dict[str, str] = {"page_size": str(page_size)}
+            if page_token:
+                params["page_token"] = page_token
+            response = self._rest_api_client.get(
+                f"v1/loops/checkpoints/{checkpoint_id}/files", url_params=params
+            )
+            all_presigned_urls.extend(response.get("presigned_urls", []))
+            page_token = response.get("next_page_token")
+            if not page_token:
+                break
+        else:
+            logging.error(
+                "Reached maximum iteration limit (%d) while paginating Loops "
+                "checkpoint files for checkpoint_id=%s",
+                max_iterations,
+                checkpoint_id,
+            )
+        return all_presigned_urls
+
+    def deactivate_loops_deployment(self, deployment_id: str) -> None:
+        self._rest_api_client.post(
+            f"v1/loops/deployments/{deployment_id}/deactivate", body={}
+        )

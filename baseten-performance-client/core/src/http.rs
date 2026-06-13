@@ -33,7 +33,7 @@ impl From<HttpMethod> for reqwest::Method {
 
 impl HttpMethod {
     /// Parse a string into an HttpMethod, defaulting to POST for None or empty strings
-    pub fn from_str(method: Option<&str>) -> Result<Self, String> {
+    pub fn from_optional_str(method: Option<&str>) -> Result<Self, String> {
         match method {
             Some("GET") => Ok(HttpMethod::GET),
             Some("PUT") => Ok(HttpMethod::PUT),
@@ -121,7 +121,7 @@ pub struct CoreOpenAIEmbeddingsResponse {
 }
 
 // --- Core Rerank Structures ---
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -169,7 +169,7 @@ impl CoreRerankResponse {
 }
 
 // --- Core Classification Structures ---
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -200,6 +200,21 @@ def format_link(url: str, display_text: Optional[str] = None) -> str:
     return f"[link={url}]{display_text}[/link]"
 
 
+def print_deployment_links(
+    *, model_id: str, version_id: str, logs_url: str, hostname: Optional[str] = None
+) -> None:
+    """Print a labeled block of deployment identifiers and links.
+
+    Shared across deployment-touching commands (`truss push`, `truss watch`,
+    `truss train ... deploy_checkpoints`) so they render the same format.
+    """
+    console.print(f"   [bold]{'Model ID:':<14}[/bold] {model_id}")
+    console.print(f"   [bold]{'Deployment ID:':<14}[/bold] {version_id}")
+    if hostname:
+        console.print(f"   [bold]{'Endpoint:':<14}[/bold] {hostname}")
+    console.print(f"   [bold]{'Logs:':<14}[/bold] {format_link(logs_url)}")
+
+
 def is_human_log_level(ctx: click.Context) -> bool:
     return get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL
 
@@ -265,13 +280,13 @@ def wait_for_development_model_ready(
     dev_version_id: str,
     remote_provider: BasetenRemote,
     console: "rich_console.Console",
-    api_key: str,
 ) -> None:
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
-    headers = {"Authorization": f"Api-Key {api_key}"}
     try:
-        requests_lib.post(wake_url, headers=headers, timeout=10)
+        requests_lib.post(
+            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+        )
     except requests_lib.RequestException:
         # best effort
         pass
@@ -307,21 +322,26 @@ def wait_for_development_model_ready(
                 sys.exit(1)
 
 
-def start_keepalive(model_hostname: str, api_key: str) -> threading.Event:
+def start_keepalive(
+    model_hostname: str, header_provider: Callable[[], dict[str, str]]
+) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
     console.print("💤 --no-sleep enabled: keeping development model warm")
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(
-        target=keepalive_loop, args=(model_hostname, api_key, stop_event), daemon=True
+        target=keepalive_loop,
+        args=(model_hostname, header_provider, stop_event),
+        daemon=True,
     )
     keepalive_thread.start()
     return stop_event
 
 
 def keepalive_loop(
-    model_hostname: str, api_key: str, stop_event: threading.Event
+    model_hostname: str,
+    header_provider: Callable[[], dict[str, str]],
+    stop_event: threading.Event,
 ) -> None:
-    headers = {"Authorization": f"Api-Key {api_key}"}
     consecutive_failures = 0
     start_time = time.time()
     keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
@@ -348,7 +368,9 @@ def keepalive_loop(
             warning_emitted = True
 
         try:
-            resp = requests_lib.get(keepalive_url, headers=headers, timeout=10)
+            resp = requests_lib.get(
+                keepalive_url, headers=header_provider(), timeout=10
+            )
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:

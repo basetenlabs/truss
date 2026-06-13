@@ -1,9 +1,90 @@
 {
   "$defs": {
     "AcceleratorSpec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "AdditionalAutoscalingConfig": {
+      "description": "Additional autoscaling configuration for in-flight token metrics.",
+      "properties": {
+        "metrics": {
+          "description": "List of metric targets for autoscaling.",
+          "items": {
+            "$ref": "#/$defs/AutoscalingMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "title": "AdditionalAutoscalingConfig",
+      "type": "object"
+    },
+    "AutoscalingMetric": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ],
+      "title": "AutoscalingMetric",
+      "type": "object"
+    },
+    "BISLLM": {
       "additionalProperties": true,
-      "title": "AcceleratorSpec",
-      "type": "string"
+      "description": "Configuration options for BIS LLM deployments.",
+      "properties": {
+        "config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration options for BIS LLM deployments.",
+          "title": "Config"
+        },
+        "version": {
+          "default": "",
+          "description": "The version of the BIS LLM deployment stack.",
+          "title": "Version",
+          "type": "string"
+        },
+        "additional_autoscaling_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdditionalAutoscalingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Additional autoscaling configuration"
+        }
+      },
+      "title": "BISLLM",
+      "type": "object"
     },
     "BaseImage": {
       "additionalProperties": true,
@@ -98,6 +179,14 @@
             "$ref": "#/$defs/TrainingArtifactReference"
           },
           "title": "Artifact References",
+          "type": "array"
+        },
+        "loops_checkpoint_ids": {
+          "description": "Loops checkpoint IDs to deploy. Mutually exclusive with artifact_references.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Loops Checkpoint Ids",
           "type": "array"
         }
       },
@@ -335,6 +424,58 @@
         "liveness_endpoint"
       ],
       "title": "DockerServer",
+      "type": "object"
+    },
+    "EgressRestrictions": {
+      "additionalProperties": true,
+      "description": "Egress network restrictions for a model version.\n\nSetting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or\n``[]`` blocks all outbound network egress. Omitting the\n``egress_restrictions`` block (or setting it to ``null``) preserves the\ndefault behavior of allowing all egress.",
+      "properties": {
+        "ip_allow_list": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed outbound IPv4 addresses or CIDR ranges. Use null or [] alongside an equally restrictive fqdn_allow_list to block all egress.",
+          "examples": [
+            [
+              "1.1.1.1",
+              "8.8.8.8/32"
+            ]
+          ],
+          "title": "Ip Allow List"
+        },
+        "fqdn_allow_list": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed outbound fully-qualified domain names. Supports wildcards: '*' may appear anywhere in a label.",
+          "examples": [
+            [
+              "*.baseten.co",
+              "huggingface.co"
+            ]
+          ],
+          "title": "Fqdn Allow List"
+        }
+      },
+      "title": "EgressRestrictions",
       "type": "object"
     },
     "ExternalData": {
@@ -804,6 +945,18 @@
         },
         "remote_ssh": {
           "$ref": "#/$defs/RemoteSSH"
+        },
+        "egress_restrictions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EgressRestrictions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Egress network restrictions for the model version. When unset, all egress is allowed (default)."
         },
         "truss_server_version_override": {
           "anyOf": [
@@ -1996,6 +2149,18 @@
       ],
       "default": null,
       "description": "Configuration for deploying from training checkpoints."
+    },
+    "bis_llm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BISLLM"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configuration options for BIS LLM deployments. This field may change in the future."
     },
     "input_type": {
       "default": "Any",

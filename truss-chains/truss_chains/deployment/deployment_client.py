@@ -89,6 +89,9 @@ def _collect_external_package_dirs(
     seen: set[pathlib.Path] = set()
     result: list[pathlib.Path] = []
     for desc in chainlet_descriptors:
+        if desc.is_truss_chainlet:
+            # TrussChainlet packages are bundled separately by Truss's `archive_dir`
+            continue
         ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
         if not ext_dirs:
             continue
@@ -105,6 +108,78 @@ def _collect_external_package_dirs(
                     f'Consider naming it "packages" instead.'
                 )
     return result
+
+
+def _is_relative_to(path: pathlib.Path, other: pathlib.Path) -> bool:
+    try:
+        path.relative_to(other)
+        return True
+    except ValueError:
+        return False
+
+
+def _get_descriptor_watch_paths(
+    descriptor: private_types.ChainletAPIDescriptor,
+) -> list[pathlib.Path]:
+    if descriptor.is_truss_chainlet:
+        if not descriptor.truss_dir:
+            return []
+        handle = truss_handle.TrussHandle(descriptor.truss_dir)
+        return [descriptor.truss_dir, *handle.spec.external_package_dirs_paths]
+
+    # Watch the directory containing the chainlet module (not just the single
+    # module file) for symmetry with the truss-chainlet branch above, which
+    # watches the whole `truss_dir`. This restores patching for sibling modules
+    # and local sub-packages that the chainlet imports and that are bundled into
+    # the deployment, while still keeping cross-chainlet isolation across
+    # different subtrees.
+    watch_paths = [pathlib.Path(descriptor.src_path).parent]
+    watch_paths.extend(_collect_external_package_dirs([descriptor]))
+    return watch_paths
+
+
+def _get_watch_root(path: pathlib.Path) -> pathlib.Path:
+    if path.is_dir():
+        return path
+    return path.parent
+
+
+def _get_chain_watch_paths(
+    default_root: pathlib.Path,
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+    included_chainlets: Optional[set[str]] = None,
+) -> tuple[list[pathlib.Path], Optional[list[pathlib.Path]]]:
+    roots: list[pathlib.Path] = []
+    chainlet_descriptors = list(chainlet_descriptors)
+    if included_chainlets:
+        watch_paths = [
+            watch_path
+            for desc in chainlet_descriptors
+            if desc.display_name in included_chainlets
+            for watch_path in _get_descriptor_watch_paths(desc)
+        ]
+        watch_root_candidates = [_get_watch_root(path) for path in watch_paths]
+        included_paths = [path.resolve() for path in watch_paths]
+    else:
+        watch_root_candidates = [
+            default_root,
+            *_collect_external_package_dirs(chainlet_descriptors),
+        ]
+        included_paths = None
+
+    for root in watch_root_candidates:
+        resolved_root = root.resolve()
+        if any(
+            _is_relative_to(resolved_root, existing_root) for existing_root in roots
+        ):
+            continue
+        roots = [
+            existing_root
+            for existing_root in roots
+            if not _is_relative_to(existing_root, resolved_root)
+        ]
+        roots.append(resolved_root)
+    return roots, included_paths
 
 
 class ChainService(abc.ABC):
@@ -468,7 +543,7 @@ class BasetenChainService(ChainService):
 
         Returns:
             The JSON response."""
-        headers = self._remote._auth_service.authenticate().header()
+        headers = self._remote.fetch_auth_header()
         response = requests.post(
             self.run_remote_url, json=json_data, headers=headers, stream=True
         )
@@ -591,10 +666,25 @@ def _create_baseten_chain(
 # Watch / Live Patching ################################################################
 
 
-def _create_watch_filter(root_dir: pathlib.Path):
+def _matches_watch_path(path: pathlib.Path, watch_path: pathlib.Path) -> bool:
+    if path == watch_path:
+        return True
+    return watch_path.is_dir() and _is_relative_to(path, watch_path)
+
+
+def _create_watch_filter(
+    root_dir: pathlib.Path, included_paths: Optional[list[pathlib.Path]] = None
+):
     ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(root_dir)
+    included_paths = included_paths or []
 
     def watch_filter(_: watchfiles.Change, path: str) -> bool:
+        resolved_path = pathlib.Path(path).resolve()
+        if included_paths and not any(
+            _matches_watch_path(resolved_path, included_path)
+            for included_path in included_paths
+        ):
+            return False
         return not truss_path.is_ignored(pathlib.Path(path), ignore_patterns)
 
     logging.getLogger("watchfiles.main").disabled = True
@@ -712,6 +802,8 @@ class _Watcher:
     _remote_provider: b10_remote.BasetenRemote
     _chainlet_data: Mapping[str, b10_types.DeployedChainlet]
     _watch_filter: Callable[[watchfiles.Change, str], bool]
+    _watch_roots: list[pathlib.Path]
+    _included_watch_paths: Optional[list[pathlib.Path]]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
@@ -746,20 +838,22 @@ class _Watcher:
                 name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
             )
             self._chain_root = _get_chain_root(entrypoint_cls)
-            chainlet_names = set(
-                desc.display_name
-                for desc in _get_ordered_dependencies([entrypoint_cls])
+            chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
+            chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
+            if included_chainlets:
+                if not_matched := (set(included_chainlets) - chainlet_names):
+                    raise public_types.ChainsDeploymentError(
+                        "Requested to watch specific chainlets, but did not find "
+                        f"{not_matched} among available chainlets {chainlet_names}."
+                    )
+                self._included_chainlets = set(included_chainlets)
+            else:
+                self._included_chainlets = chainlet_names
+            self._watch_roots, self._included_watch_paths = _get_chain_watch_paths(
+                self._chain_root,
+                chainlet_descriptors,
+                self._included_chainlets if included_chainlets else None,
             )
-
-        if included_chainlets:
-            if not_matched := (set(included_chainlets) - chainlet_names):
-                raise public_types.ChainsDeploymentError(
-                    "Requested to watch specific chainlets, but did not find "
-                    f"{not_matched} among available chainlets {chainlet_names}."
-                )
-            self._included_chainlets = set(included_chainlets)
-        else:
-            self._included_chainlets = chainlet_names
 
         resolved_chain = resolve_chain_for_watch(
             self._remote_provider, self._deployed_chain_name, provided_team_name
@@ -788,7 +882,7 @@ class _Watcher:
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
         self._ignore_patterns, self._watch_filter = _create_watch_filter(
-            self._chain_root
+            self._chain_root, self._included_watch_paths
         )
 
     @property
@@ -935,7 +1029,9 @@ class _Watcher:
             self._patch(executor)
             self._console.print("👀 Watching for new changes.", style="blue")
             for _ in watchfiles.watch(
-                self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
+                *self._watch_roots,
+                watch_filter=self._watch_filter,
+                raise_interrupt=False,
             ):
                 self._patch(executor)
                 self._console.print("👀 Watching for new changes.", style="blue")

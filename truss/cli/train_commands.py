@@ -32,7 +32,12 @@ from truss.cli.train.cache import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
-from truss.cli.train.types import DeploySuccessResult
+from truss.cli.train.workstation import (
+    DEFAULT_BASE_IMAGE,
+    SUPPORTED_WORKSTATION_ACCELERATORS,
+    build_workstation_project,
+    copy_workstation_templates,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -530,10 +535,7 @@ def deploy_checkpoints(
     dry_run: bool,
     truss_config_output_dir: Optional[str],
 ):
-    """
-    Deploy a LoRA checkpoint via vLLM.
-    """
-
+    """Deploy a LoRA checkpoint via vLLM."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -548,6 +550,7 @@ def deploy_checkpoints(
         train_cli.DeployCheckpointArgs(
             project_id=project_id,
             job_id=job_id,
+            run_id=None,
             deploy_config_path=config,
             dry_run=dry_run,
         ),
@@ -556,35 +559,10 @@ def deploy_checkpoints(
     if dry_run:
         console.print("did not deploy because --dry-run flag provided", style="yellow")
 
-    _write_truss_config(result, truss_config_output_dir, dry_run)
+    train_cli.write_truss_config(result, truss_config_output_dir, dry_run)
 
     if not dry_run:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
-
-
-def _write_truss_config(
-    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
-) -> None:
-    if not result.truss_config:
-        return
-    # format: 20251006_123456
-    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    folder_name = (
-        f"{result.model_version.name}_{result.model_version.id}"
-        if result.model_version
-        else f"dry_run_{datestamp}"
-    )
-    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
-    output_dir = Path(output_dir_str)
-    output_path = output_dir / "config.yaml"
-    os.makedirs(output_dir, exist_ok=True)
-    console.print(f"Writing truss config to {output_path}", style="yellow")
-    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
-    if dry_run:
-        console.print(
-            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
-        )
-    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")
@@ -843,7 +821,7 @@ def list_checkpoints(
     order: str,
     output_format: str,
 ):
-    """List checkpoints for a training job"""
+    """List checkpoints for a training job."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -1109,3 +1087,178 @@ def capacity(remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     train_cli.display_training_capacity(remote_provider)
+
+
+@train.command(name="workstation")
+@click.option(
+    "--accelerator",
+    type=click.Choice(SUPPORTED_WORKSTATION_ACCELERATORS, case_sensitive=False),
+    default="H100",
+    help="GPU accelerator type (default: H100).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Mutually exclusive with --node-count.",
+)
+@click.option(
+    "--project-id",
+    type=str,
+    required=False,
+    help="Project name (default: workstation-<accelerator>).",
+)
+@click.option(
+    "--node-count",
+    "node_count",
+    type=click.IntRange(1, 16),
+    default=None,
+    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+)
+@click.option(
+    "--orchestrator",
+    type=click.Choice(["slurm"], case_sensitive=False),
+    default="slurm",
+    help="Multi-node orchestrator (default: slurm).",
+)
+@click.option(
+    "--image",
+    type=str,
+    required=False,
+    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
+)
+@click.option(
+    "--enable-checkpointing",
+    is_flag=True,
+    default=False,
+    help="Enable checkpoint storage.",
+)
+@click.option(
+    "--checkpoint-path",
+    type=str,
+    required=False,
+    help="Path inside the container to save checkpoints.",
+)
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    required=False,
+    help="Checkpoint volume size in GiB.",
+)
+@click.option(
+    "--checkpoint-from-job",
+    type=str,
+    required=False,
+    help="Job ID to load the latest checkpoint from.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@common.common_options()
+def workstation(
+    accelerator: str,
+    gpu_count: Optional[int],
+    project_id: Optional[str],
+    node_count: Optional[int],
+    orchestrator: str,
+    image: Optional[str],
+    enable_checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
+    checkpoint_from_job: Optional[str],
+    remote: Optional[str],
+    tail: bool,
+):
+    """Spin up an SSH workstation on Baseten training infrastructure."""
+    import tempfile
+
+    from truss_train.public_api import push
+
+    if gpu_count is not None and node_count is not None:
+        raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
+
+    if node_count is not None:
+        # SLURM mode: each node gets 8 GPUs
+        gpu_count = 8
+    else:
+        # Single-node mode
+        gpu_count = gpu_count or 1
+        node_count = 1
+
+    accelerator = accelerator.upper()
+    if not project_id:
+        project_id = f"workstation-{accelerator}"
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    base_image = image or DEFAULT_BASE_IMAGE
+    training_project = build_workstation_project(
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        project_id=project_id,
+        base_image=base_image,
+        node_count=node_count,
+        orchestrator=orchestrator,
+        enable_checkpointing=enable_checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
+        checkpoint_from_job=checkpoint_from_job,
+    )
+
+    node_str = f"{node_count}x " if node_count > 1 else ""
+    console.print(
+        f"Launching workstation [cyan]{project_id}[/cyan] "
+        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
+    )
+
+    # Use a temp dir as source so we don't upload the user's cwd.
+    # For multi-node, copy the SLURM setup scripts into it.
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        if node_count > 1:
+            copy_workstation_templates(Path(tmp_dir))
+        job_resp = push(
+            config=training_project, remote=remote, source_dir=Path(tmp_dir)
+        )
+
+    job_id = job_resp["id"]
+    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
+    if node_count > 1:
+        ssh_lines += " (leader)"
+        for i in range(1, node_count):
+            ssh_lines += (
+                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
+            )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
+    console.print(
+        f"\n[green]Workstation created![/green]\n"
+        f"\n"
+        f"Once the job is running, SSH in with:\n"
+        f"{ssh_lines}\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+    if tail:
+        remote_provider: BasetenRemote = cast(
+            BasetenRemote, RemoteFactory.create(remote=remote)
+        )
+        project_resp_id = job_resp["training_project"]["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)

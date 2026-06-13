@@ -393,7 +393,12 @@ class TestResolveModelForWatch:
             name: TeamType(**team_data) for name, team_data in teams.items()
         }
         mock_api.get_teams.return_value = teams_with_type
+        # Identification uses the lightweight query...
         mock_api.get_models_for_watch.return_value = {"models": models}
+        # ...and full version info is loaded for only the resolved model by id.
+        mock_api.get_model_with_versions_by_id.side_effect = lambda model_id: {
+            "model": next(m for m in models if m["id"] == model_id)
+        }
         return mock_remote
 
     def test_single_model_found(self):
@@ -508,6 +513,9 @@ class TestResolveModelForWatch:
         }
         mock_api.get_teams.return_value = teams_with_type
         mock_api.get_models_for_watch.return_value = {"models": models_team1}
+        mock_api.get_model_with_versions_by_id.side_effect = lambda model_id: {
+            "model": next(m for m in models_team1 if m["id"] == model_id)
+        }
 
         model, versions = resolve_model_for_watch(
             mock_remote, "my-model", provided_team_name="Team Alpha"
@@ -518,6 +526,8 @@ class TestResolveModelForWatch:
         mock_api.get_models_for_watch.assert_called_once_with(
             team_id="team1", chainlets_only=False
         )
+        # Full version info is loaded for only the resolved model.
+        mock_api.get_model_with_versions_by_id.assert_called_once_with("model1")
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""
@@ -698,8 +708,11 @@ class TestNonInteractiveResolution:
 class TestInquireTeamEdgeCases:
     """Test edge cases for inquire_team with team names containing '(default)'."""
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_team_name_containing_default_not_default_team(self, mock_select):
+    def test_team_name_containing_default_not_default_team(
+        self, mock_select, mock_interactive
+    ):
         """Team named 'My Team (default)' that is NOT the default should return exact name."""
         teams = {
             "My Team (default)": TeamType(
@@ -715,8 +728,11 @@ class TestInquireTeamEdgeCases:
 
         assert result == "My Team (default)"
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_team_name_containing_default_is_default_team(self, mock_select):
+    def test_team_name_containing_default_is_default_team(
+        self, mock_select, mock_interactive
+    ):
         """Team named 'My Team (default)' that IS the default should return exact name."""
         teams = {
             "My Team (default)": TeamType(
@@ -732,8 +748,11 @@ class TestInquireTeamEdgeCases:
 
         assert result == "My Team (default)"
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_regular_default_team_returns_clean_name(self, mock_select):
+    def test_regular_default_team_returns_clean_name(
+        self, mock_select, mock_interactive
+    ):
         """Regular team that is default should return clean name without suffix."""
         teams = {
             "Team Alpha": TeamType(id="team1", name="Team Alpha", default=True),
@@ -746,3 +765,20 @@ class TestInquireTeamEdgeCases:
         result = inquire_team(existing_teams=teams)
 
         assert result == "Team Alpha"
+
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=False)
+    def test_non_interactive_raises_usage_error(self, mock_interactive):
+        """When not interactive, inquire_team should raise UsageError listing teams."""
+        teams = {
+            "Team Alpha": TeamType(id="team1", name="Team Alpha", default=True),
+            "Team Beta": TeamType(id="team2", name="Team Beta", default=False),
+        }
+
+        with pytest.raises(click.UsageError) as exc_info:
+            inquire_team(existing_teams=teams)
+
+        message = str(exc_info.value)
+        assert "non-interactive" in message
+        assert "--team" in message
+        assert "Team Alpha" in message
+        assert "Team Beta" in message

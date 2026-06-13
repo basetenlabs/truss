@@ -192,7 +192,7 @@ class ArgConfig(enum.Enum):
         args: _ArgsType
         if descriptor.arg_config == ArgConfig.NONE:
             args = ()
-        if descriptor.arg_config == ArgConfig.INPUTS_ONLY:
+        elif descriptor.arg_config == ArgConfig.INPUTS_ONLY:
             args = (inputs,)
         elif descriptor.arg_config == ArgConfig.REQUEST_ONLY:
             args = (request,)

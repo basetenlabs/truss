@@ -25,7 +25,7 @@ from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
-from truss_train.definitions import DeployCheckpointsConfig
+from truss_train.definitions import CheckpointList, DeployCheckpointsConfig
 
 QUEUED_JOB_STATUSES = ["TRAINING_JOB_PENDING"]
 
@@ -311,13 +311,35 @@ def view_training_job_metrics(
 def create_model_version_from_inference_template(
     remote_provider: BasetenRemote, args: DeployCheckpointArgs
 ) -> DeploySuccessResult:
+    if args.deploy_config_path and args.checkpoint_ids:
+        raise click.UsageError(
+            "--checkpoint-ids cannot be combined with --config. "
+            "Pick one source of checkpoint identifiers."
+        )
+
+    if args.checkpoint_ids:
+        config = DeployCheckpointsConfig(
+            checkpoint_details=CheckpointList(loops_checkpoint_ids=args.checkpoint_ids)
+        )
+        return deploy_checkpoints.create_model_version_from_inference_template(
+            remote_provider,
+            config,
+            args.project_id,
+            args.job_id,
+            args.run_id,
+            args.dry_run,
+            args.is_loops_command,
+        )
+
     if not args.deploy_config_path:
         return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider,
             DeployCheckpointsConfig(),
             args.project_id,
             args.job_id,
+            args.run_id,
             args.dry_run,
+            args.is_loops_command,
         )
     # User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
@@ -328,8 +350,34 @@ def create_model_version_from_inference_template(
             checkpoint_deploy,
             args.project_id,
             args.job_id,
+            args.run_id,
             args.dry_run,
+            args.is_loops_command,
         )
+
+
+def write_truss_config(
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
+) -> None:
+    if not result.truss_config:
+        return
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = (
+        f"{result.model_version.name}_{result.model_version.id}"
+        if result.model_version
+        else f"dry_run_{datestamp}"
+    )
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
+    os.makedirs(output_dir, exist_ok=True)
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
+        )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 def _get_checkpoint_names(
@@ -345,6 +393,15 @@ def print_deploy_checkpoints_success_message(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
     checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
+    if not checkpoint_names:
+        # Loops checkpoint deploys reference checkpoints by ID; the client
+        # doesn't know each name without an extra API call. Skip the
+        # name-specific guidance.
+        console.print(
+            Text("\nDeployment succeeded. Set the `model` parameter on each "),
+            Text("request to the Loops checkpoint name (e.g. `step-100`)."),
+        )
+        return
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),

@@ -17,10 +17,10 @@ RUN /usr/local/bin/python3 -c "import sys; \
     else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have 3.9 <= python <= 3.14"; exit 1; }
 RUN if [ -f /etc/apt/sources.list ]; then \
-    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list; \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/US.txt|g' /etc/apt/sources.list; \
 fi
 RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
-    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/US.txt|g' /etc/apt/sources.list.d/ubuntu.sources; \
 fi
 RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
 RUN if ! command -v uv >/dev/null 2>&1; then \

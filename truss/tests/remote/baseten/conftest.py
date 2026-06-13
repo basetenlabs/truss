@@ -10,6 +10,7 @@ def mock_auth_service():
     auth_service = mock.Mock()
     auth_token = mock.Mock(headers=lambda: {"Authorization": "Api-Key token"})
     auth_service.authenticate.return_value = auth_token
+    auth_service.fetch_auth_header.return_value = {"Authorization": "Api-Key token"}
     return auth_service
 
 

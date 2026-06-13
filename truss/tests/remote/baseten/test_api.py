@@ -125,6 +125,20 @@ def mock_deploy_chain_deployment_response():
     return response
 
 
+def mock_create_bis_llm_model_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"id": "llm-model-123"})
+    return response
+
+
+def mock_create_bis_llm_model_version_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"id": "llm-model-version-123"})
+    return response
+
+
 @mock.patch("requests.post", return_value=mock_successful_response())
 def test_post_graphql_query_success(mock_post, baseten_api):
     response_data = {"data": {"status": "success"}}
@@ -178,6 +192,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -209,6 +224,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
@@ -242,6 +258,7 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
@@ -274,6 +291,7 @@ def test_create_model_version_from_truss_with_deploy_timeout_minutes(
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -320,6 +338,7 @@ def test_create_model_from_truss(mock_post, baseten_api):
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert 'version_name: "deployment_name"' in gql_mutation
 
@@ -345,6 +364,7 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "version_name: " not in gql_mutation
 
@@ -368,6 +388,7 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
 
@@ -391,6 +412,7 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: " not in gql_mutation
@@ -416,6 +438,7 @@ def test_create_development_model_from_truss_with_deploy_timeout_minutes(
     assert {
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
         "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: 300" in gql_mutation
@@ -676,3 +699,108 @@ def test_create_development_model_from_truss_with_labels(mock_post, baseten_api)
 
     assert "user_deploy_metadata: $userDeployMetadata" in gql_mutation
     assert variables["userDeployMetadata"] == '{"git_sha": "abc123"}'
+
+
+@mock.patch("requests.post", return_value=mock_create_bis_llm_model_response())
+def test_create_bis_llm_model_team_routing(mock_post, baseten_api):
+    baseten_api.create_bis_llm_model(body={"name": "my-llm"}, team_id="team-abc")
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/teams/team-abc/llm_models"
+    )
+
+    baseten_api.create_bis_llm_model(body={"name": "my-llm"})
+    assert mock_post.call_args[0][0] == "https://api.baseten.co/v1/llm_models"
+
+
+@mock.patch("requests.post", return_value=mock_create_bis_llm_model_version_response())
+def test_create_bis_llm_model_version_routing(mock_post, baseten_api):
+    baseten_api.create_bis_llm_model_version(
+        model_id="llm-model-123", body={"name": "my-llm"}
+    )
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
+    )
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_is_lightweight(mock_post, baseten_api):
+    # Identification query must not pull version signatures for every model.
+    baseten_api.get_models_for_watch()
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert "all: true" in query
+    assert "id" in query
+    assert "name" in query
+    assert "team" in query
+    assert "versions" not in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_with_team_and_chainlets(mock_post, baseten_api):
+    baseten_api.get_models_for_watch(team_id="team1", chainlets_only=True)
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'team_id: "team1"' in query
+    assert "chainlets_only: true" in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_model_with_versions_by_id_includes_signature(mock_post, baseten_api):
+    # The resolved model is loaded by id with full version info for patching.
+    baseten_api.get_model_with_versions_by_id("model123")
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'model(id: "model123")' in query
+    assert "versions" in query
+    assert "truss_hash" in query
+    assert "truss_signature" in query
+
+
+def test_get_model_deployment_logs_passes_filters(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1",
+        "deploy-1",
+        start_epoch_millis=1000,
+        end_epoch_millis=2000,
+        min_level="INFO",
+        replica="abcde",
+        request_id="req-1",
+        search_pattern="oops.*",
+        includes=["foo", "bar"],
+        excludes=["noise"],
+    )
+
+    args, kwargs = mock_rest_client.post.call_args
+    assert args[0] == "v1/models/model-1/deployments/deploy-1/logs"
+    assert kwargs["body"] == {
+        "start_epoch_millis": 1000,
+        "end_epoch_millis": 2000,
+        "min_level": "INFO",
+        "replica": "abcde",
+        "request_id": "req-1",
+        "search_pattern": "oops.*",
+        "includes": ["foo", "bar"],
+        "excludes": ["noise"],
+    }
+
+
+def test_get_model_deployment_logs_omits_unset_filters(baseten_api):
+    # Unset/empty filters and bounds are left out of the body entirely so the
+    # server applies its own defaults.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1", "deploy-1", includes=[], excludes=[]
+    )
+
+    assert mock_rest_client.post.call_args[1]["body"] == {}

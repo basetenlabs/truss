@@ -17,6 +17,7 @@ from typing import (
 )
 
 import pydantic
+from typing_extensions import Self
 
 from truss.base import custom_types, truss_config
 
@@ -492,6 +493,11 @@ class RemoteConfig(custom_types.SafeModelNonSerializable):
     assets: Assets = Assets()
     name: Optional[str] = None
     options: ChainletOptions = ChainletOptions()
+    build_commands: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Shell commands run during the Docker image build, after system "
+        "packages and before chain code (same as Truss `config.yaml` `build_commands`).",
+    )
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -722,9 +728,8 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
-class DeployedServiceDescriptor(custom_types.SafeModel):
-    """Bundles values to establish an RPC session to a dependency chainlet,
-    specifically with ``StubBase``."""
+class ServiceDescriptorUrls(custom_types.SafeModel):
+    """Predict and internal URLs from ``dynamic_chainlet_config``"""
 
     class InternalURL(custom_types.SafeModel):
         gateway_run_remote_url: str  # Includes `https` and endpoint.
@@ -733,23 +738,27 @@ class DeployedServiceDescriptor(custom_types.SafeModel):
         def __str__(self) -> str:
             return f"{self.gateway_run_remote_url} (-> {self.hostname})"
 
-    name: str
-    display_name: str
-    options: RPCOptions
     predict_url: Optional[str] = None
     internal_url: Optional[InternalURL] = pydantic.Field(
         None, description="If provided, takes precedence over `predict_url`."
     )
 
     @pydantic.model_validator(mode="after")
-    def check_at_least_one_url(
-        self: "DeployedServiceDescriptor",
-    ) -> "DeployedServiceDescriptor":
+    def check_at_least_one_url(self) -> Self:
         if not self.predict_url and not self.internal_url:
             raise ValueError(
                 "At least one of 'predict_url' or 'internal_url' must be provided."
             )
         return self
+
+
+class DeployedServiceDescriptor(ServiceDescriptorUrls):
+    """Bundles values to establish an RPC session to a dependency chainlet,
+    specifically with ``StubBase``."""
+
+    name: str
+    display_name: str
+    options: RPCOptions
 
 
 class Environment(custom_types.SafeModel):

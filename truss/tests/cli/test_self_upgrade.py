@@ -281,10 +281,11 @@ class TestNotifyIfOutdated:
         self_upgrade.notify_if_outdated("0.11.0")
 
         captured = capsys.readouterr()
-        assert "0.12.3" in captured.out
-        assert "0.11.0" in captured.out
-        assert "truss upgrade" in captured.out
-        assert "check_for_updates" in captured.out
+        assert captured.out == ""
+        assert "0.12.3" in captured.err
+        assert "0.11.0" in captured.err
+        assert "truss upgrade" in captured.err
+        assert "check_for_updates" in captured.err
 
     def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
         mock_state = mock.Mock()

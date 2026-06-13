@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
@@ -21,11 +19,13 @@ pub(crate) const MAX_BATCH_SIZE: usize = 1024;
 pub const DEFAULT_BATCH_SIZE: usize = 128;
 
 // Retry constants
-pub const MAX_HTTP_RETRIES: u32 = 4;
+pub const DEFAULT_MAX_RETRIES: u32 = 5;
+pub const MAX_HTTP_RETRIES: u32 = 6;
 pub const INITIAL_BACKOFF_MS: u64 = 125;
 pub(crate) const MIN_BACKOFF_MS: u64 = 50;
-pub(crate) const MAX_BACKOFF_MS: u64 = 30000; // 30 seconds
-pub(crate) const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60);
+pub(crate) const MAX_BACKOFF_MS: u64 = 45000; // 45 seconds
+pub const DEFAULT_RETRY_ATTEMPT_CONCURRENCY_LIMIT: usize = 64;
+pub(crate) const MIN_RETRY_ATTEMPT_CONCURRENCY_LIMIT: usize = 4;
 
 pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
 pub const RETRY_BUDGET_PERCENTAGE: f64 = 0.05;
@@ -39,6 +39,8 @@ pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 // Slow providers where customers have reported issues
 pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
+pub(crate) const REQUEST_TIMEOUT_HEADER_NAME: &str = "Request-Timeout-Ms";
+pub(crate) const REQUEST_DEADLINE_HEADER_NAME: &str = "Request-Deadline-Ms";
 
 // Logging constants
 pub const DEFAULT_LOG_LEVEL: &str = "warn";
