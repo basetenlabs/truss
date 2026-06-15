@@ -331,6 +331,7 @@ def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
@@ -530,6 +531,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
         assert container.logs()
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v1"
     tr = TrussHandle(truss_dir)
@@ -644,6 +646,7 @@ EXPECTED_CACHE_V2 = [
 ]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile_v2(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)

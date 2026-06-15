@@ -2,6 +2,7 @@ import json
 import pathlib
 import shutil
 
+import pytest
 import truss_transfer
 
 print(f"truss_transfer version: {truss_transfer.__version__}")
@@ -122,6 +123,7 @@ def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_dolly():
     # fix the below models
     models = [
@@ -183,6 +185,7 @@ def test_dolly():
     print("✓ BasetenPointer structure validation passed")
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_qwen3():
     models = [
         truss_transfer.PyModelRepo(
@@ -204,6 +207,7 @@ def test_qwen3():
     print(json.dumps(manifest, indent=2))
 
 
+@pytest.mark.skip(reason="Skipping HF direct download test due to flaky CDN 403s")
 def test_direct_download():
     models = [
         truss_transfer.PyModelRepo(
