@@ -90,7 +90,9 @@ def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
     # apt/munge install around them. Raises (failing loudly) if those lines move.
     lines = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text().splitlines()
     start = next(
-        i for i, line in enumerate(lines) if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
+        i
+        for i, line in enumerate(lines)
+        if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
     )
     end = next(i for i, line in enumerate(lines) if line.startswith("SLURM_DIR="))
     snippet = "\n".join(lines[start : end + 1])
@@ -105,8 +107,12 @@ def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
 def test_slurm_rendezvous_dir_is_job_scoped():
     # Concurrent jobs share the project cache, so their dirs must differ.
     cache = "/root/.cache/user_artifacts"
-    job_a = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"})
-    job_b = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"})
+    job_a = _eval_slurm_dir(
+        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"}
+    )
+    job_b = _eval_slurm_dir(
+        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"}
+    )
 
     assert job_a.stdout.strip() == f"{cache}/slurm_wdgep4w"
     assert job_b.stdout.strip() == f"{cache}/slurm_3125g1w"
