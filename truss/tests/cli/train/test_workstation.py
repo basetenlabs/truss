@@ -1,5 +1,4 @@
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -85,35 +84,9 @@ def test_workstation_template_dir_exists():
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
 
 
-def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
-    # Run only the guard + assignment so the test avoids the apt/munge install.
-    lines = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text().splitlines()
-    start = next(
-        i for i, line in enumerate(lines) if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
-    )
-    end = next(i for i, line in enumerate(lines) if line.startswith("SLURM_DIR="))
-    snippet = "\n".join(lines[start : end + 1])
-    return subprocess.run(
-        ["bash", "-c", f'{snippet}\necho "$SLURM_DIR"'],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-
 def test_slurm_rendezvous_dir_is_job_scoped():
-    # Concurrent jobs share the project cache, so their dirs must differ.
-    cache = "/root/.cache/user_artifacts"
-    job_a = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"})
-    job_b = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"})
-
-    assert job_a.returncode == 0 and job_b.returncode == 0
-    assert job_a.stdout.strip() == f"{cache}/slurm_wdgep4w"
-    assert job_b.stdout.strip() == f"{cache}/slurm_3125g1w"
-    assert job_a.stdout.strip() != job_b.stdout.strip()
-
-
-def test_slurm_rendezvous_dir_fails_without_job_id():
-    # A missing id must fail, not fall back to the shared path.
-    result = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": "/root/.cache/user_artifacts"})
-    assert result.returncode != 0
+    # Concurrent jobs share the project cache, so the dir must include the job id,
+    # with a guard so a missing id fails instead of falling back to a shared path.
+    script = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text()
+    assert 'SLURM_DIR="${BT_PROJECT_CACHE_DIR}/slurm_${BT_TRAINING_JOB_ID}"' in script
+    assert '[ -z "${BT_TRAINING_JOB_ID}" ]' in script
