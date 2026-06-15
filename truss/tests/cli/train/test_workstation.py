@@ -1,9 +1,16 @@
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+# These tests run the shell template's real lines, so they need a POSIX bash; on
+# Windows `bash` is the WSL launcher and isn't a usable shell here.
+requires_posix_bash = pytest.mark.skipif(
+    sys.platform == "win32", reason="needs a POSIX bash"
+)
 
 from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.cli.train.workstation import (
@@ -104,6 +111,7 @@ def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
     )
 
 
+@requires_posix_bash
 def test_slurm_rendezvous_dir_is_job_scoped():
     # Concurrent jobs share the project cache, so their dirs must differ.
     cache = "/root/.cache/user_artifacts"
@@ -118,6 +126,7 @@ def test_slurm_rendezvous_dir_is_job_scoped():
     assert job_b.stdout.strip() == f"{cache}/slurm_3125g1w"
 
 
+@requires_posix_bash
 def test_slurm_rendezvous_dir_fails_without_job_id():
     # A missing id must fail, not fall back to the shared path.
     result = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": "/root/.cache/user_artifacts"})
