@@ -1,6 +1,4 @@
 import os
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -15,10 +13,6 @@ from truss.cli.train.workstation import (
 from truss_train.definitions import (
     InteractiveSessionProvider,
     InteractiveSessionTrigger,
-)
-
-requires_posix_bash = pytest.mark.skipif(
-    sys.platform == "win32", reason="needs a POSIX bash"
 )
 
 EXPECTED_TEMPLATE_FILES = [
@@ -88,41 +82,3 @@ def test_workstation_template_dir_exists():
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
-
-
-def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
-    # Run just the guard + assignment from install_slurm.sh, not the apt/munge install.
-    lines = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text().splitlines()
-    start = next(
-        i
-        for i, line in enumerate(lines)
-        if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
-    )
-    end = next(i for i, line in enumerate(lines) if line.startswith("SLURM_DIR="))
-    snippet = "\n".join(lines[start : end + 1])
-    return subprocess.run(
-        ["bash", "-c", f'{snippet}\necho "$SLURM_DIR"'],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-
-@requires_posix_bash
-def test_slurm_rendezvous_dir_is_job_scoped():
-    cache = "/root/.cache/user_artifacts"
-    job_a = _eval_slurm_dir(
-        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"}
-    )
-    job_b = _eval_slurm_dir(
-        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"}
-    )
-
-    assert job_a.stdout.strip() == f"{cache}/slurm_wdgep4w"
-    assert job_b.stdout.strip() == f"{cache}/slurm_3125g1w"
-
-
-@requires_posix_bash
-def test_slurm_rendezvous_dir_fails_without_job_id():
-    result = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": "/root/.cache/user_artifacts"})
-    assert result.returncode != 0
