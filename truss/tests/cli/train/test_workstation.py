@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
@@ -79,21 +80,13 @@ def test_copy_workstation_templates():
 
 
 def test_workstation_template_dir_exists():
-    from truss.base.constants import WORKSTATION_TEMPLATE_DIR
-
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
 
 
 def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
-    """Evaluate install_slurm.sh's SLURM_DIR guard + assignment and echo the result.
-
-    Extracts the BT_TRAINING_JOB_ID guard through the SLURM_DIR assignment so the
-    test exercises the fail-loud check without running apt-get/munge setup.
-    """
-    from truss.base.constants import WORKSTATION_TEMPLATE_DIR
-
+    # Run only the guard + assignment so the test avoids the apt/munge install.
     lines = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text().splitlines()
     start = next(
         i for i, line in enumerate(lines) if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
@@ -109,9 +102,7 @@ def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
 
 
 def test_slurm_rendezvous_dir_is_job_scoped():
-    # Two concurrent jobs in the same project share BT_PROJECT_CACHE_DIR; the
-    # rendezvous dir must be distinct per job so they don't clobber each other's
-    # node registry / munge key / slurm.conf.
+    # Concurrent jobs share the project cache, so their dirs must differ.
     cache = "/root/.cache/user_artifacts"
     job_a = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"})
     job_b = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"})
@@ -123,7 +114,6 @@ def test_slurm_rendezvous_dir_is_job_scoped():
 
 
 def test_slurm_rendezvous_dir_fails_without_job_id():
-    # Falling back to a shared path on a missing job id would silently reintroduce
-    # the cross-job collision, so the assignment must fail loud instead.
+    # A missing id must fail, not fall back to the shared path.
     result = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": "/root/.cache/user_artifacts"})
     assert result.returncode != 0

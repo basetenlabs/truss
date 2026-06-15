@@ -2,11 +2,7 @@
 # Common SLURM + munge installation for all workstation nodes.
 # This script is sourced (not executed) by setup_slurm.sh.
 
-# Scope the SLURM rendezvous dir by job id: BT_PROJECT_CACHE_DIR is shared across
-# all jobs in a project, so two concurrent multinode jobs would otherwise collide
-# on the rank-keyed node registry, munge.key, and slurm.conf, producing a merged
-# cluster with mismatched munge keys. A missing job id must fail loudly rather than
-# fall back to a shared path and silently reintroduce the collision.
+# Per-job dir: the project cache is shared, so concurrent jobs must not share it.
 if [ -z "${BT_TRAINING_JOB_ID}" ]; then
     echo "ERROR: BT_TRAINING_JOB_ID must be set to scope the SLURM rendezvous dir" >&2
     exit 1
