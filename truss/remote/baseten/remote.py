@@ -213,6 +213,9 @@ class BasetenRemote(TrussRemote):
                     chainlet["id"],
                 ),
                 oracle_name=chainlet["oracle"]["name"],
+                oracle_id=chainlet["oracle"]["id"],
+                oracle_version_id=chainlet["oracle_version"]["id"],
+                hostname=chainlet["oracle"].get("hostname"),
             )
             for chainlet in self._api.get_chainlets_by_deployment_id(
                 chain_deployment_id

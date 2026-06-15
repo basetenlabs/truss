@@ -322,15 +322,37 @@ def wait_for_development_model_ready(
                 sys.exit(1)
 
 
+def _keepalive_url(
+    model_hostname: str, is_draft: bool, deployment_id: Optional[str]
+) -> str:
+    """Build the warm-up endpoint for a deployment.
+
+    Draft (development) deployments expose `/development/...`, while published
+    deployments are pinged via their specific `/deployment/{id}/...` endpoint.
+    """
+    if is_draft:
+        return f"{model_hostname}/development/sync/v1/models/model"
+    if not deployment_id:
+        raise ValueError(
+            "deployment_id is required to keep a published deployment warm."
+        )
+    return f"{model_hostname}/deployment/{deployment_id}/sync/v1/models/model"
+
+
 def start_keepalive(
-    model_hostname: str, header_provider: Callable[[], dict[str, str]]
+    model_hostname: str,
+    header_provider: Callable[[], dict[str, str]],
+    *,
+    is_draft: bool = True,
+    deployment_id: Optional[str] = None,
 ) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
-    console.print("💤 --no-sleep enabled: keeping development model warm")
+    keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id)
+    console.print("💤 --no-sleep enabled: keeping model warm")
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(
         target=keepalive_loop,
-        args=(model_hostname, header_provider, stop_event),
+        args=(keepalive_url, header_provider, stop_event),
         daemon=True,
     )
     keepalive_thread.start()
@@ -338,13 +360,12 @@ def start_keepalive(
 
 
 def keepalive_loop(
-    model_hostname: str,
+    keepalive_url: str,
     header_provider: Callable[[], dict[str, str]],
     stop_event: threading.Event,
 ) -> None:
     consecutive_failures = 0
     start_time = time.time()
-    keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
     warning_emitted = False
 
     while not stop_event.is_set():

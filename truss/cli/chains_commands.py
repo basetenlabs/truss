@@ -1,3 +1,4 @@
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple, cast
@@ -74,6 +75,10 @@ def _make_chains_curl_snippet(
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
+    return _build_chains_table(service, service.get_info())
+
+
+def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, List[str]]:
     """Creates a status table similar to:
 
                                           ⛓️   ItestChain - Chain  ⛓️
@@ -106,7 +111,6 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     table.add_column("Chainlet", min_width=20)
     table.add_column("Logs UI")
     statuses = []
-    status_iterable = service.get_info()
     # Organize status_iterable s.t. entrypoint is first.
     entrypoint = next(x for x in status_iterable if x.is_entrypoint)
     sorted_chainlets = sorted(
@@ -236,6 +240,16 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Team name for the chain deployment",
 )
+@click.option(
+    "--watch-no-sleep",
+    type=bool,
+    required=False,
+    default=True,
+    help=(
+        "Keep development chainlet models warm by preventing scale-to-zero while "
+        "watching. Requires --watch."
+    ),
+)
 @click.pass_context
 @common.common_options()
 def push_chain(
@@ -255,6 +269,7 @@ def push_chain(
     disable_chain_download: bool = False,
     deployment_name: Optional[str] = None,
     provided_team_name: Optional[str] = None,
+    watch_no_sleep: bool = True,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -271,6 +286,12 @@ def push_chain(
 
     if experimental_watch_chainlet_names:
         watch = True
+
+    if (
+        ctx.get_parameter_source("watch_no_sleep") != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
+        and not watch
+    ):
+        raise click.UsageError("--watch-no-sleep requires --watch.")
 
     if watch:
         if publish or promote:
@@ -376,6 +397,16 @@ def push_chain(
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
+    # Keep early-ready chainlets warm while slower ones still deploy, so they
+    # don't scale to zero before the whole chain is ready. This applies to both
+    # development and published pushes: draft chainlets are warmed via their
+    # `/development/...` endpoint and published chainlets via their specific
+    # `/deployment/{id}/...` endpoint (see `_start_keepalives_for_ready_chainlets`).
+    # `watch_no_sleep` only governs keepalive during the subsequent `--watch`, not
+    # the push wait loop. The map of warmed `oracle_id` -> stop event is shared
+    # with the watch so we don't start duplicate keepalive threads.
+    started_keepalives: dict[str, threading.Event] = {}
+    keep_warm_during_push = True
     if wait:
         num_services = len(statuses)
         success = False
@@ -387,8 +418,13 @@ def push_chain(
             rich.live.Live(table, refresh_per_second=4) as live,
         ):
             while True:
-                table, statuses = _create_chains_table(service)
+                chainlets = service.get_info()
+                table, statuses = _build_chains_table(service, chainlets)
                 live.update(table)
+                if keep_warm_during_push and remote_provider is not None:
+                    deployment_client._start_keepalives_for_ready_chainlets(
+                        chainlets, remote_provider, started_keepalives
+                    )
                 num_active = sum(s == ACTIVE_STATUS for s in statuses)
                 num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
                 if num_active == num_services:
@@ -432,6 +468,8 @@ def push_chain(
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
                     provided_team_name=resolved_team_name,
+                    no_sleep=watch_no_sleep,
+                    started_keepalives=started_keepalives,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -476,6 +514,12 @@ def push_chain(
     required=False,
     help="Team name for the chain to watch",
 )
+@click.option(
+    "--no-sleep",
+    type=bool,
+    default=True,
+    help="Keep development chainlet models warm by preventing scale-to-zero while watching.",
+)
 @click.pass_context
 @common.common_options()
 def watch_chains(
@@ -486,6 +530,7 @@ def watch_chains(
     remote: Optional[str],
     experimental_chainlet_names: Optional[str],
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = True,
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.
@@ -518,6 +563,7 @@ def watch_chains(
         show_stack_trace=not common.is_human_log_level(ctx),
         included_chainlets=included_chainlets,
         provided_team_name=provided_team_name,
+        no_sleep=no_sleep,
     )
 
 
