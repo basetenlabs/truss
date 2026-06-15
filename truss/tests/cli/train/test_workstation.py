@@ -1,8 +1,17 @@
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+# These tests run install_slurm.sh's real lines, so they need a POSIX bash; on
+# Windows `bash` is the WSL launcher, not a usable shell. The scripts themselves
+# only ever run in the Linux training pod, so skipping on Windows loses nothing.
+requires_posix_bash = pytest.mark.skipif(
+    sys.platform == "win32", reason="needs a POSIX bash"
+)
 
 from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.cli.train.workstation import (
@@ -84,9 +93,42 @@ def test_workstation_template_dir_exists():
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
 
 
+def _eval_slurm_dir(env: dict) -> subprocess.CompletedProcess:
+    # Run the real guard + assignment lines from install_slurm.sh, skipping the
+    # apt/munge install around them. Raises (failing loudly) if those lines move.
+    lines = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text().splitlines()
+    start = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith('if [ -z "${BT_TRAINING_JOB_ID}')
+    )
+    end = next(i for i, line in enumerate(lines) if line.startswith("SLURM_DIR="))
+    snippet = "\n".join(lines[start : end + 1])
+    return subprocess.run(
+        ["bash", "-c", f'{snippet}\necho "$SLURM_DIR"'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+@requires_posix_bash
 def test_slurm_rendezvous_dir_is_job_scoped():
-    # Concurrent jobs share the project cache, so the dir must include the job id,
-    # with a guard so a missing id fails instead of falling back to a shared path.
-    script = (WORKSTATION_TEMPLATE_DIR / "install_slurm.sh").read_text()
-    assert 'SLURM_DIR="${BT_PROJECT_CACHE_DIR}/slurm_${BT_TRAINING_JOB_ID}"' in script
-    assert '[ -z "${BT_TRAINING_JOB_ID}" ]' in script
+    # Concurrent jobs share the project cache, so their dirs must differ.
+    cache = "/root/.cache/user_artifacts"
+    job_a = _eval_slurm_dir(
+        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "wdgep4w"}
+    )
+    job_b = _eval_slurm_dir(
+        {"BT_PROJECT_CACHE_DIR": cache, "BT_TRAINING_JOB_ID": "3125g1w"}
+    )
+
+    assert job_a.stdout.strip() == f"{cache}/slurm_wdgep4w"
+    assert job_b.stdout.strip() == f"{cache}/slurm_3125g1w"
+
+
+@requires_posix_bash
+def test_slurm_rendezvous_dir_fails_without_job_id():
+    # A missing id must fail, not fall back to the shared path.
+    result = _eval_slurm_dir({"BT_PROJECT_CACHE_DIR": "/root/.cache/user_artifacts"})
+    assert result.returncode != 0
