@@ -2,7 +2,12 @@
 # Common SLURM + munge installation for all workstation nodes.
 # This script is sourced (not executed) by setup_slurm.sh.
 
-SLURM_DIR="${BT_PROJECT_CACHE_DIR}/slurm_workstation"
+# Per-job dir: the project cache is shared, so concurrent jobs must not share it.
+if [ -z "${BT_TRAINING_JOB_ID}" ]; then
+    echo "ERROR: BT_TRAINING_JOB_ID must be set to scope the SLURM rendezvous dir" >&2
+    exit 1
+fi
+SLURM_DIR="${BT_PROJECT_CACHE_DIR}/slurm_${BT_TRAINING_JOB_ID}"
 mkdir -p "$SLURM_DIR"
 
 export DEBIAN_FRONTEND=noninteractive

@@ -209,7 +209,7 @@ def test_keepalive_loop_emits_30min_warning():
                 stop_event.wait = mock_wait
 
                 common.keepalive_loop(
-                    model_hostname="https://test.baseten.co",
+                    keepalive_url="https://test.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
@@ -337,7 +337,10 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["daemon"] is True
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
-    assert thread_args[0] == "https://model-abc123.api.baseten.co"
+    assert (
+        thread_args[0]
+        == "https://model-abc123.api.baseten.co/development/sync/v1/models/model"
+    )
     assert thread_args[1] is remote_provider.fetch_auth_header
     mock_thread.start.assert_called_once()
 
@@ -362,7 +365,7 @@ def test_keepalive_loop_constructs_correct_url():
 
             with patch.object(stop_event, "wait", side_effect=stop_after_first):
                 common.keepalive_loop(
-                    model_hostname="https://model-abc123.api.baseten.co",
+                    keepalive_url="https://model-abc123.api.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )

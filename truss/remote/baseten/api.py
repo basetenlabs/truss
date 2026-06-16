@@ -505,6 +505,7 @@ class BasetenApi:
                     oracle {{
                         id
                         name
+                        hostname
                     }}
                     oracle_version {{
                         id

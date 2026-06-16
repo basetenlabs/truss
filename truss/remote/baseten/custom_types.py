@@ -16,6 +16,9 @@ class DeployedChainlet(pydantic.BaseModel):
     status: str
     logs_url: str
     oracle_name: str
+    oracle_id: str
+    oracle_version_id: str
+    hostname: Optional[str] = None
 
 
 class ChainletArtifact(pydantic.BaseModel):

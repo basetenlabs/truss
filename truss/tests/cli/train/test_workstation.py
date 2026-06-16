@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
@@ -78,8 +79,6 @@ def test_copy_workstation_templates():
 
 
 def test_workstation_template_dir_exists():
-    from truss.base.constants import WORKSTATION_TEMPLATE_DIR
-
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
