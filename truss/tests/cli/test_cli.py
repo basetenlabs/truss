@@ -209,7 +209,7 @@ def test_keepalive_loop_emits_30min_warning():
                 stop_event.wait = mock_wait
 
                 common.keepalive_loop(
-                    model_hostname="https://test.baseten.co",
+                    keepalive_url="https://test.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
@@ -337,7 +337,10 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["daemon"] is True
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
-    assert thread_args[0] == "https://model-abc123.api.baseten.co"
+    assert (
+        thread_args[0]
+        == "https://model-abc123.api.baseten.co/development/sync/v1/models/model"
+    )
     assert thread_args[1] is remote_provider.fetch_auth_header
     mock_thread.start.assert_called_once()
 
@@ -362,7 +365,7 @@ def test_keepalive_loop_constructs_correct_url():
 
             with patch.object(stop_event, "wait", side_effect=stop_after_first):
                 common.keepalive_loop(
-                    model_hostname="https://model-abc123.api.baseten.co",
+                    keepalive_url="https://model-abc123.api.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
@@ -1628,3 +1631,108 @@ def test_model_config_requires_model_id_and_deployment_id():
     result = _invoke_model_config([])
     assert result.exit_code != 0
     assert "--model-id" in result.output
+
+
+def test_model_logs_passes_filters():
+    mock_remote = Mock()
+    mock_remote.api.get_model_deployment_logs.return_value = []
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "model-logs",
+                "--remote",
+                "remote1",
+                "--model-id",
+                "m1",
+                "--deployment-id",
+                "d1",
+                "--min-level",
+                "info",  # lower-case input normalized to the backend's casing
+                "--replica",
+                "abcde",
+                "--request-id",
+                "r1",
+                "--search-pattern",
+                "oops.*",
+                "--includes",
+                "foo",
+                "--includes",
+                "bar",
+                "--excludes",
+                "noise",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_model_deployment_logs.assert_called_once_with(
+        "m1",
+        "d1",
+        None,
+        None,
+        min_level="INFO",
+        replica="abcde",
+        request_id="r1",
+        search_pattern="oops.*",
+        includes=["foo", "bar"],
+        excludes=["noise"],
+    )
+
+
+def test_model_logs_defaults_omit_filters():
+    mock_remote = Mock()
+    mock_remote.api.get_model_deployment_logs.return_value = []
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "model-logs",
+                "--remote",
+                "remote1",
+                "--model-id",
+                "m1",
+                "--deployment-id",
+                "d1",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_model_deployment_logs.assert_called_once_with(
+        "m1",
+        "d1",
+        None,
+        None,
+        min_level=None,
+        replica=None,
+        request_id=None,
+        search_pattern=None,
+        includes=[],
+        excludes=[],
+    )
+
+
+def test_model_logs_tail_with_filter_errors():
+    mock_remote = Mock()
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "model-logs",
+                "--remote",
+                "remote1",
+                "--model-id",
+                "m1",
+                "--deployment-id",
+                "d1",
+                "--tail",
+                "--min-level",
+                "info",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "cannot be combined" in result.output
+    mock_remote.api.get_model_deployment_logs.assert_not_called()
