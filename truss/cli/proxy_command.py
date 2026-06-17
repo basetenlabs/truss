@@ -59,9 +59,17 @@ BASETEN_REST_API_URL = os.environ.get("BASETEN_BASE_URL", "https://api.baseten.c
 
 STATUS_OK = 0x00
 
+# Set to True in main_sign() so error() suppresses stderr output (the message
+# is saved to the sign-error cache instead and printed by main_proxy()).
+_sign_mode = False
+_last_error_msg: Optional[str] = None
+
 
 def error(msg):
-    print(f"baseten-ssh: {msg}", file=sys.stderr)
+    global _last_error_msg
+    _last_error_msg = msg
+    if not _sign_mode:
+        print(f"baseten-ssh: {msg}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -364,6 +372,30 @@ def load_jwt_cache(parsed):
         return None
 
 
+# --- Sign-error cache: written by sign mode, read by proxy mode ---
+
+
+def _sign_error_cache_path(hostname: str) -> Path:
+    safe = hostname.replace(".", "-")
+    return JWT_CACHE_DIR / f"{safe}.sign-error"
+
+
+def _save_sign_error(hostname: str, msg: str) -> None:
+    JWT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    _sign_error_cache_path(hostname).write_text(msg)
+
+
+def _load_sign_error(hostname: str) -> Optional[str]:
+    path = _sign_error_cache_path(hostname)
+    return path.read_text() if path.exists() else None
+
+
+def _clear_sign_error(hostname: str) -> None:
+    path = _sign_error_cache_path(hostname)
+    if path.exists():
+        path.unlink()
+
+
 # --- Sign mode (Match exec) ---
 
 
@@ -391,7 +423,14 @@ def main_sign():
 
     Signs the certificate, writes it to disk, and caches the JWT for
     the ProxyCommand to use. Always exits 0 so the Match block applies.
+
+    On failure the error is saved to a sign-error cache file so that
+    main_proxy() can display it instead of SSH emitting a confusing
+    "Could not resolve hostname" DNS error.
     """
+    global _sign_mode
+    _sign_mode = True
+
     if len(sys.argv) < 3:
         error("Usage: proxy-command.py --sign <hostname>")
 
@@ -399,20 +438,25 @@ def main_sign():
 
     key_path = find_key_path()
     if not key_path:
-        print(
-            "baseten-ssh: SSH keypair not found. Run 'truss ssh setup' first.",
-            file=sys.stderr,
+        _save_sign_error(
+            hostname, "SSH keypair not found. Run 'truss ssh setup' first."
         )
-        sys.exit(0)  # Exit 0 so Match still applies; ProxyCommand will show error too
+        sys.exit(0)
 
-    parsed = parse_hostname(hostname)
-    config = _read_trussrc()
-    remote = resolve_remote(parsed.remote, config)
-    api_key, _ = load_trussrc(remote, config)
-    rest_url = resolve_rest_api_url(parsed.api_prefix)
+    try:
+        parsed = parse_hostname(hostname)
+        config = _read_trussrc()
+        remote = resolve_remote(parsed.remote, config)
+        api_key, _ = load_trussrc(remote, config)
+        rest_url = resolve_rest_api_url(parsed.api_prefix)
 
-    jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
-    save_jwt_cache(parsed, jwt_token, proxy_address)
+        jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
+        save_jwt_cache(parsed, jwt_token, proxy_address)
+        _clear_sign_error(hostname)  # Remove any stale error from a previous attempt
+    except SystemExit:
+        if _last_error_msg:
+            _save_sign_error(hostname, _last_error_msg)
+        sys.exit(0)
 
 
 # --- Proxy mode (ProxyCommand) ---
@@ -517,6 +561,14 @@ def main_proxy():
         error("Usage: proxy-command.py <hostname>")
 
     hostname = sys.argv[1]
+
+    # If sign mode failed it saved the error here rather than exiting non-zero
+    # (which would have caused SSH to skip ProxyCommand and emit a confusing
+    # "Could not resolve hostname" error instead).
+    sign_err = _load_sign_error(hostname)
+    if sign_err:
+        _clear_sign_error(hostname)
+        error(sign_err)
 
     key_path = find_key_path()
     if not key_path:
