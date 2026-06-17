@@ -45,9 +45,29 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_loops_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_loops_run.assert_called_once_with(
-        session_id="session_abc123", base_model="Qwen/Qwen3-8B"
+        session_id="session_abc123", base_model="Qwen/Qwen3-8B", replicas=None
     )
     assert "Qwen/Qwen3-8B" in result.output
+
+
+def test_push_with_replicas(mock_remote):
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "4"], mock_remote
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.create_loops_run.assert_called_once_with(
+        session_id="session_abc123", base_model="Qwen/Qwen3-8B", replicas=4
+    )
+
+
+def test_push_rejects_non_positive_replicas(mock_remote):
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--replicas", "0"], mock_remote
+    )
+
+    assert result.exit_code != 0
+    mock_remote.create_loops_run.assert_not_called()
 
 
 def test_push_with_project_id(mock_remote):
