@@ -3,14 +3,69 @@ from pydantic import ValidationError
 
 from truss.base import truss_config
 from truss_train.definitions import (
+    BasetenCheckpoint,
     CheckpointList,
     Compute,
     Image,
+    LoadCheckpointConfig,
+    LoopsCheckpoint,
     LoRACheckpoint,
     ModelWeightsFormat,
     Runtime,
     TrainingJob,
 )
+
+
+class TestLoopsCheckpoint:
+    def test_from_checkpoint_defaults_to_trainer_target(self):
+        ckpt = LoopsCheckpoint.from_checkpoint(
+            run_id="run123", checkpoint_name="step-100"
+        )
+        assert ckpt.model_dump() == {
+            "typ": "loops_checkpoint",
+            "run_id": "run123",
+            "checkpoint_name": "step-100",
+            "target": "trainer",
+        }
+
+    def test_serializes_in_load_checkpoint_config(self):
+        config = LoadCheckpointConfig(
+            enabled=True,
+            checkpoints=[
+                LoopsCheckpoint.from_checkpoint(
+                    run_id="run123", checkpoint_name="step-100", target="sampler"
+                )
+            ],
+        )
+        dumped = config.model_dump()
+        assert dumped["checkpoints"][0]["typ"] == "loops_checkpoint"
+        assert dumped["checkpoints"][0]["target"] == "sampler"
+
+    def test_invalid_target_raises(self):
+        with pytest.raises(ValidationError):
+            LoopsCheckpoint.from_checkpoint(
+                run_id="run123", checkpoint_name="step-100", target="bogus"
+            )
+
+    def test_mixed_checkpoint_types_round_trip(self):
+        """A Baseten and a Loops checkpoint in the same list each keep their
+        own discriminator through serialization (the SDK union is matched
+        left-to-right, so a regression here would silently mis-tag entries)."""
+        config = LoadCheckpointConfig(
+            enabled=True,
+            checkpoints=[
+                BasetenCheckpoint.from_named_checkpoint(
+                    checkpoint_name="step-1", job_id="lqz4pw4"
+                ),
+                LoopsCheckpoint.from_checkpoint(
+                    run_id="run123", checkpoint_name="step-100", target="sampler"
+                ),
+            ],
+        )
+        dumped = config.model_dump()
+        assert dumped["checkpoints"][0]["typ"] == "baseten_named_checkpoint"
+        assert dumped["checkpoints"][1]["typ"] == "loops_checkpoint"
+        assert dumped["checkpoints"][1]["run_id"] == "run123"
 
 
 def _minimal_job(**kwargs):
