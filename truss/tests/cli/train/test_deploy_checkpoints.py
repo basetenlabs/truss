@@ -357,6 +357,59 @@ def test_ensure_loops_checkpoint_details_picker_emits_ids_and_base_model(
     )
 
 
+def test_ensure_loops_checkpoint_details_picker_filters_trainer_target(
+    mock_loops_remote,
+):
+    """Trainer-target checkpoints are not deployable and must be excluded from the
+    picker. A sampler and trainer checkpoint can share a name, so only filtering
+    out the trainer one leaves a unique, deployable choice."""
+    mock_loops_remote.api.list_loops_checkpoints.return_value = {
+        "checkpoints": [
+            {
+                "id": "vL3pQrS8",
+                "checkpoint_id": "step-100",
+                "base_model": "Qwen/Qwen3-8B",
+                "checkpoint_type": "lora",
+                "lora_adapter_config": {"r": 16},
+                "target": "sampler",
+            },
+            {
+                "id": "wK4tUvW9",
+                "checkpoint_id": "step-100",
+                "base_model": "Qwen/Qwen3-8B",
+                "checkpoint_type": "lora",
+                "lora_adapter_config": {"r": 16},
+                "target": "trainer",
+            },
+        ]
+    }
+    result = _ensure_loops_checkpoint_details(
+        mock_loops_remote, checkpoint_details=None, run_id="trnr_xyz"
+    )
+    assert result.loops_checkpoint_ids == ["vL3pQrS8"]
+
+
+def test_ensure_loops_checkpoint_details_picker_raises_when_only_trainer_targets(
+    mock_loops_remote,
+):
+    mock_loops_remote.api.list_loops_checkpoints.return_value = {
+        "checkpoints": [
+            {
+                "id": "wK4tUvW9",
+                "checkpoint_id": "step-100",
+                "base_model": "Qwen/Qwen3-8B",
+                "checkpoint_type": "lora",
+                "lora_adapter_config": {"r": 16},
+                "target": "trainer",
+            }
+        ]
+    }
+    with pytest.raises(click.UsageError, match="No deployable checkpoints"):
+        _ensure_loops_checkpoint_details(
+            mock_loops_remote, checkpoint_details=None, run_id="trnr_xyz"
+        )
+
+
 def test_hydrate_deploy_config_rejects_run_id_with_config_checkpoints(
     mock_loops_remote,
 ):
