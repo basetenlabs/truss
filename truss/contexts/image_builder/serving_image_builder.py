@@ -174,14 +174,16 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
     }
 
 
+def _is_docker_server_build(config: TrussConfig) -> bool:
+    return config.docker_server is not None and not config.docker_server.no_build
+
+
+def _docker_server_slim_enabled() -> bool:
+    return os.getenv("BT_USE_DOCKER_SERVER_SLIM", "").strip().lower() == "true"
+
+
 def _should_use_docker_server_slim(config: TrussConfig) -> bool:
-    if os.getenv("BT_USE_DOCKER_SERVER_SLIM", "").strip().lower() != "true":
-        return False
-    if config.docker_server is None:
-        return False
-    if config.docker_server.no_build:
-        return False
-    return True
+    return _is_docker_server_build(config) and _docker_server_slim_enabled()
 
 
 class RemoteCache(ABC):
@@ -726,10 +728,8 @@ class ServingImageBuilder(ImageBuilder):
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
-        if (
-            config.docker_server is not None
-            and config.docker_server.no_build is not True
-            and not _should_use_docker_server_slim(config)
+        if _is_docker_server_build(config) and not _should_use_docker_server_slim(
+            config
         ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
