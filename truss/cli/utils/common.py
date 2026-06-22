@@ -327,13 +327,17 @@ def _keepalive_url(
 ) -> str:
     """Build the wake endpoint used to keep a deployment warm.
 
-    We hit the deployment's `wake` endpoint (rather than the readiness/health
-    endpoint) because wake is the autoscaler-aware primitive that prevents/
-    recovers scale-to-zero. A GET to the readiness endpoint returns 200 but is
-    not counted as activity, so the model would still scale to zero while we
-    falsely reported "keeping warm". Draft (development) deployments expose
-    `/development/wake`, while published deployments use their specific
-    `/deployment/{id}/wake` endpoint.
+    We hit the deployment's `wake` endpoint because it is the purpose-built
+    keepalive primitive: it needs no inference payload, returns `202` quickly,
+    and — like a predict request — is proxied to the model's Knative revision, so
+    the queue-proxy/activator counts it as real request activity. That request
+    activity (not a separate "timer") is what holds the revision above zero for
+    the duration of Knative's scale-down-delay window. Draft (development)
+    deployments expose `/development/wake`, while published deployments use their
+    specific `/deployment/{id}/wake` endpoint. For Chains, each chainlet is its
+    own deployment with its own hostname, so the caller must wake every chainlet
+    individually (waking only the entrypoint lets dependency chainlets scale to
+    zero).
     """
     if is_draft:
         return f"{model_hostname}/development/wake"
