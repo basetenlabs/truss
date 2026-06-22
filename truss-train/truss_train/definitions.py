@@ -70,6 +70,13 @@ class _BasetenNamedCheckpoint(_CheckpointBase):
     typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
 
 
+class _LoopsCheckpoint(_CheckpointBase):
+    run_id: str
+    checkpoint_name: str
+    target: Literal["trainer", "sampler"] = "trainer"
+    typ: Literal["loops_checkpoint"] = "loops_checkpoint"
+
+
 class BasetenCheckpoint:
     @staticmethod
     def from_latest_checkpoint(
@@ -86,11 +93,25 @@ class BasetenCheckpoint:
         return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
 
 
+class LoopsCheckpoint:
+    @staticmethod
+    def from_checkpoint(
+        run_id: str,
+        checkpoint_name: str,
+        target: Literal["trainer", "sampler"] = "trainer",
+    ) -> _LoopsCheckpoint:
+        """Load a checkpoint from a Loops run. ``target`` selects 'trainer'
+        (full training state, the default) or 'sampler' (inference weights)."""
+        return _LoopsCheckpoint(
+            run_id=run_id, checkpoint_name=checkpoint_name, target=target
+        )
+
+
 class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
-    checkpoints: List[Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint]] = [
-        _BasetenLatestCheckpoint()
-    ]
+    checkpoints: List[
+        Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint, _LoopsCheckpoint]
+    ] = [_BasetenLatestCheckpoint()]
     download_folder: str = constants.DEFAULT_TRAINING_CHECKPOINT_FOLDER
 
 
