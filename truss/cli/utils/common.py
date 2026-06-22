@@ -325,18 +325,23 @@ def wait_for_development_model_ready(
 def _keepalive_url(
     model_hostname: str, is_draft: bool, deployment_id: Optional[str]
 ) -> str:
-    """Build the warm-up endpoint for a deployment.
+    """Build the wake endpoint used to keep a deployment warm.
 
-    Draft (development) deployments expose `/development/...`, while published
-    deployments are pinged via their specific `/deployment/{id}/...` endpoint.
+    We hit the deployment's `wake` endpoint (rather than the readiness/health
+    endpoint) because wake is the autoscaler-aware primitive that prevents/
+    recovers scale-to-zero. A GET to the readiness endpoint returns 200 but is
+    not counted as activity, so the model would still scale to zero while we
+    falsely reported "keeping warm". Draft (development) deployments expose
+    `/development/wake`, while published deployments use their specific
+    `/deployment/{id}/wake` endpoint.
     """
     if is_draft:
-        return f"{model_hostname}/development/sync/v1/models/model"
+        return f"{model_hostname}/development/wake"
     if not deployment_id:
         raise ValueError(
             "deployment_id is required to keep a published deployment warm."
         )
-    return f"{model_hostname}/deployment/{deployment_id}/sync/v1/models/model"
+    return f"{model_hostname}/deployment/{deployment_id}/wake"
 
 
 def start_keepalive(
@@ -389,16 +394,26 @@ def keepalive_loop(
             warning_emitted = True
 
         try:
-            resp = requests_lib.get(
+            resp = requests_lib.post(
                 keepalive_url, headers=header_provider(), timeout=10
             )
-            if resp.status_code == 200:
+            # Wake accepts the request asynchronously (202); 200 is also treated
+            # as success for forward/backward compatibility.
+            if resp.status_code in (200, 202):
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:
-                # Ignore 4xx errors
-                pass
+                # A 4xx (e.g. auth/misroute, or a model briefly unavailable
+                # during patching) means the wake didn't land. Surface it instead
+                # of silently swallowing it -- otherwise the model can scale to
+                # zero while we believe it's warm -- but don't tear down the watch
+                # session over what may be a transient condition.
+                console.print(
+                    f"⚠️  Keepalive wake returned status {resp.status_code} for "
+                    f"{keepalive_url}; model may scale to zero.",
+                    style="yellow",
+                )
             else:
-                # Count 5xx errors as failures
+                # Count 5xx errors as failures.
                 consecutive_failures += 1
         except requests_lib.RequestException:
             consecutive_failures += 1
