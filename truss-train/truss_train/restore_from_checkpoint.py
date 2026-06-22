@@ -3,6 +3,7 @@ from truss_train import (
     CheckpointingConfig,
     Image,
     LoadCheckpointConfig,
+    LoopsCheckpoint,
     Runtime,
     TrainingJob,
     TrainingProject,
@@ -21,10 +22,18 @@ load_from_named_checkpoint = BasetenCheckpoint.from_named_checkpoint(
     checkpoint_name="checkpoint-24", job_id="lqz4pw4"
 )
 
+load_from_loops_checkpoint = LoopsCheckpoint.from_checkpoint(
+    run_id="abc123", checkpoint_name="step-100", target="trainer"
+)
+
 load_checkpoint_config = LoadCheckpointConfig(
     enabled=True,
     download_folder="/tmp/custom_location",  # default is None -> default path set by server-side
-    checkpoints=[load_from_most_recent_checkpoint, load_from_named_checkpoint],
+    checkpoints=[
+        load_from_most_recent_checkpoint,
+        load_from_named_checkpoint,
+        load_from_loops_checkpoint,
+    ],
 )
 
 checkpointing_config = CheckpointingConfig(enabled=True)
