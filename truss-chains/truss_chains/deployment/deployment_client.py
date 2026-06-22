@@ -33,6 +33,7 @@ from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
+from truss.remote.baseten.utils.status import get_displayable_status
 from truss.truss_handle import truss_handle
 from truss.util import log_utils, user_config
 from truss.util import path as truss_path
@@ -1099,7 +1100,9 @@ def _start_keepalives_for_ready_chainlets(
     for chainlet in chainlet_data:
         if chainlet.oracle_id in started_keepalives:
             continue
-        if chainlet.status not in _KEEPALIVE_READY_STATUSES:
+        # `chainlet.status` is the raw model-state (e.g. `MODEL_READY`); normalize
+        # it to the displayable status (e.g. `ACTIVE`) before comparing.
+        if get_displayable_status(chainlet.status) not in _KEEPALIVE_READY_STATUSES:
             continue
         hostname = _resolve_chainlet_hostname(
             chainlet, remote_provider, resolved_hostnames

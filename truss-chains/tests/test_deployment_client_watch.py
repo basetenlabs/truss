@@ -211,7 +211,7 @@ def _chainlet(
     oracle_id: Optional[str] = None,
     oracle_version_id: str = "version_id",
     is_draft: bool = True,
-    status: str = "ACTIVE",
+    status: str = "MODEL_READY",
 ) -> b10_types.DeployedChainlet:
     return b10_types.DeployedChainlet(
         name=name,
@@ -357,10 +357,10 @@ def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
 
 def test_start_keepalives_warms_ready_chainlets_including_published():
     chainlets = [
-        _chainlet("Entrypoint", status="ACTIVE"),
-        _chainlet("Loading", status="LOADING_MODEL"),
-        _chainlet("Building", status="BUILDING"),
-        _chainlet("Published", status="ACTIVE", is_draft=False),
+        _chainlet("Entrypoint", status="MODEL_READY"),
+        _chainlet("Loading", status="MODEL_LOADING"),
+        _chainlet("Building", status="BUILDING_MODEL"),
+        _chainlet("Published", status="MODEL_READY", is_draft=False),
     ]
     remote_provider = MagicMock()
     started_keepalives: dict = {}
@@ -390,7 +390,7 @@ def test_start_keepalives_warms_ready_chainlets_including_published():
 
 
 def test_start_keepalives_is_idempotent_per_oracle_id():
-    chainlet = _chainlet("Entrypoint", status="ACTIVE")
+    chainlet = _chainlet("Entrypoint", status="MODEL_READY")
     remote_provider = MagicMock()
     started_keepalives: dict = {}
 
