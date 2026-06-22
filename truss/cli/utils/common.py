@@ -325,27 +325,18 @@ def wait_for_development_model_ready(
 def _keepalive_url(
     model_hostname: str, is_draft: bool, deployment_id: Optional[str]
 ) -> str:
-    """Build the wake endpoint used to keep a deployment warm.
+    """Build the warm-up endpoint for a deployment.
 
-    We hit the deployment's `wake` endpoint because it is the purpose-built
-    keepalive primitive: it needs no inference payload, returns `202` quickly,
-    and — like a predict request — is proxied to the model's Knative revision, so
-    the queue-proxy/activator counts it as real request activity. That request
-    activity (not a separate "timer") is what holds the revision above zero for
-    the duration of Knative's scale-down-delay window. Draft (development)
-    deployments expose `/development/wake`, while published deployments use their
-    specific `/deployment/{id}/wake` endpoint. For Chains, each chainlet is its
-    own deployment with its own hostname, so the caller must wake every chainlet
-    individually (waking only the entrypoint lets dependency chainlets scale to
-    zero).
+    Draft (development) deployments expose `/development/...`, while published
+    deployments are pinged via their specific `/deployment/{id}/...` endpoint.
     """
     if is_draft:
-        return f"{model_hostname}/development/wake"
+        return f"{model_hostname}/development/sync/v1/models/model"
     if not deployment_id:
         raise ValueError(
             "deployment_id is required to keep a published deployment warm."
         )
-    return f"{model_hostname}/deployment/{deployment_id}/wake"
+    return f"{model_hostname}/deployment/{deployment_id}/sync/v1/models/model"
 
 
 def start_keepalive(
@@ -398,26 +389,16 @@ def keepalive_loop(
             warning_emitted = True
 
         try:
-            resp = requests_lib.post(
+            resp = requests_lib.get(
                 keepalive_url, headers=header_provider(), timeout=10
             )
-            # Wake accepts the request asynchronously (202); 200 is also treated
-            # as success for forward/backward compatibility.
-            if resp.status_code in (200, 202):
+            if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:
-                # A 4xx (e.g. auth/misroute, or a model briefly unavailable
-                # during patching) means the wake didn't land. Surface it instead
-                # of silently swallowing it -- otherwise the model can scale to
-                # zero while we believe it's warm -- but don't tear down the watch
-                # session over what may be a transient condition.
-                console.print(
-                    f"⚠️  Keepalive wake returned status {resp.status_code} for "
-                    f"{keepalive_url}; model may scale to zero.",
-                    style="yellow",
-                )
+                # Ignore 4xx errors
+                pass
             else:
-                # Count 5xx errors as failures.
+                # Count 5xx errors as failures
                 consecutive_failures += 1
         except requests_lib.RequestException:
             consecutive_failures += 1

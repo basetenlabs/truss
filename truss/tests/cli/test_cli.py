@@ -66,7 +66,7 @@ def test_successful_ping_resets_failure_count():
             resp.status_code = 200
         return resp
 
-    with patch("truss.cli.utils.common.requests_lib.post", side_effect=mock_get):
+    with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
         with patch("truss.cli.utils.common.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
@@ -83,7 +83,7 @@ def test_exits_after_max_consecutive_failures():
     stop_event = threading.Event()
     mock_resp = Mock()
     mock_resp.status_code = 500
-    with patch("truss.cli.utils.common.requests_lib.post", return_value=mock_resp):
+    with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console") as _mock_console:
             with patch(
                 "truss.cli.utils.common.os._exit",
@@ -103,7 +103,7 @@ def test_request_exception_counts_as_failure():
     stop_event = threading.Event()
 
     with patch(
-        "truss.cli.utils.common.requests_lib.post",
+        "truss.cli.utils.common.requests_lib.get",
         side_effect=requests.RequestException("connection error"),
     ):
         with patch("truss.cli.utils.common.console"):
@@ -122,7 +122,7 @@ def test_request_exception_counts_as_failure():
 
 
 def test_model_not_ready_does_not_count_as_failure():
-    """4xx responses are surfaced but stay non-fatal (no watch teardown)."""
+    """4xx errors (like model not ready during patching) should be ignored."""
     stop_event = threading.Event()
     call_count = 0
 
@@ -131,14 +131,14 @@ def test_model_not_ready_does_not_count_as_failure():
         call_count += 1
         resp = Mock()
         if call_count <= 25:
-            # 4xx errors should not trigger a fatal exit.
+            # 4xx errors should be ignored
             resp.status_code = 400
         else:
             stop_event.set()
-            resp.status_code = 202
+            resp.status_code = 200
         return resp
 
-    with patch("truss.cli.utils.common.requests_lib.post", side_effect=mock_get):
+    with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
         with patch("truss.cli.utils.common.console"):
             with patch(
                 "truss.cli.utils.common.os._exit",
@@ -160,7 +160,7 @@ def test_5xx_errors_count_as_failures():
     mock_resp = Mock()
     mock_resp.status_code = 503  # Service unavailable
 
-    with patch("truss.cli.utils.common.requests_lib.post", return_value=mock_resp):
+    with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console"):
             with patch(
                 "truss.cli.utils.common.os._exit",
@@ -200,8 +200,8 @@ def test_keepalive_loop_emits_30min_warning():
     with patch("truss.cli.utils.common.time.time", side_effect=mock_time):
         with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_response = MagicMock()
-            mock_response.status_code = 202
-            mock_requests.post.return_value = mock_response
+            mock_response.status_code = 200
+            mock_requests.get.return_value = mock_response
             mock_requests.RequestException = requests.RequestException
 
             with patch("truss.cli.utils.common.console.print") as mock_console_print:
@@ -209,7 +209,7 @@ def test_keepalive_loop_emits_30min_warning():
                 stop_event.wait = mock_wait
 
                 common.keepalive_loop(
-                    keepalive_url="https://test.baseten.co/development/wake",
+                    keepalive_url="https://test.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
@@ -337,13 +337,16 @@ def test_watch_no_sleep_starts_keepalive_thread():
     assert kwargs["daemon"] is True
     assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
-    assert thread_args[0] == "https://model-abc123.api.baseten.co/development/wake"
+    assert (
+        thread_args[0]
+        == "https://model-abc123.api.baseten.co/development/sync/v1/models/model"
+    )
     assert thread_args[1] is remote_provider.fetch_auth_header
     mock_thread.start.assert_called_once()
 
 
 def test_keepalive_loop_constructs_correct_url():
-    """Keepalive loop should POST to the wake URL from hostname."""
+    """Keepalive loop should construct the correct health check URL from hostname."""
     stop_event = threading.Event()
 
     with patch("truss.cli.utils.common.time.time") as mock_time:
@@ -352,8 +355,8 @@ def test_keepalive_loop_constructs_correct_url():
 
         with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_requests.RequestException = requests.RequestException
-            mock_response = Mock(status_code=202)
-            mock_requests.post.return_value = mock_response
+            mock_response = Mock(status_code=200)
+            mock_requests.get.return_value = mock_response
 
             # Stop after first iteration
             def stop_after_first(*args, **kwargs):
@@ -362,14 +365,14 @@ def test_keepalive_loop_constructs_correct_url():
 
             with patch.object(stop_event, "wait", side_effect=stop_after_first):
                 common.keepalive_loop(
-                    keepalive_url="https://model-abc123.api.baseten.co/development/wake",
+                    keepalive_url="https://model-abc123.api.baseten.co/development/sync/v1/models/model",
                     header_provider=lambda: {"Authorization": "Api-Key test-key"},
                     stop_event=stop_event,
                 )
 
             # Verify the URL was constructed correctly
-            mock_requests.post.assert_called_once_with(
-                "https://model-abc123.api.baseten.co/development/wake",
+            mock_requests.get.assert_called_once_with(
+                "https://model-abc123.api.baseten.co/development/sync/v1/models/model",
                 headers={"Authorization": "Api-Key test-key"},
                 timeout=10,
             )
@@ -495,7 +498,7 @@ def test_keepalive_loop_continues_before_max_duration():
     stop_event = threading.Event()
 
     with patch("truss.cli.utils.common.requests_lib") as mock_requests:
-        mock_requests.post.return_value = Mock(status_code=202)
+        mock_requests.get.return_value = Mock(status_code=200)
         mock_requests.RequestException = requests.RequestException
 
         with patch("truss.cli.utils.common.time.time") as mock_time:
@@ -519,7 +522,7 @@ def test_keepalive_loop_continues_before_max_duration():
                             stop_event,
                         )
 
-    assert mock_requests.post.call_count == 2
+    assert mock_requests.get.call_count == 2
     mock_exit.assert_called_once_with(0)
 
 
