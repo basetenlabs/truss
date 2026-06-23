@@ -917,18 +917,12 @@ class ServingImageBuilder(ImageBuilder):
             )
 
     def _setup_build_hash_directory(self, build_dir: Path) -> None:
+        # Snapshot the build context; its hash determines whether the image needs to be
+        # rebuilt. We hash the full config, so any config change triggers a rebuild.
         build_hash_path = build_dir / "build_hash"
         if build_hash_path.exists():
             shutil.rmtree(build_hash_path)
         shutil.copytree(build_dir, build_hash_path)
-
-        # Produce the TrussConfig copy used to determine if we need to rebuild the image.
-        # We currently hash the full config; clear_runtime_fields is a placeholder hook for
-        # excluding fields from this rebuild signal in the future.
-        config_file_path = build_hash_path / "config.yaml"
-        if config_file_path.exists():
-            truss_config = TrussConfig.from_yaml(config_file_path)
-            truss_config.write_to_yaml_file(config_file_path)
 
     def _filter_reserved_environment_variables(
         self, config: TrussConfig
