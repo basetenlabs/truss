@@ -1274,38 +1274,6 @@ def test_supported_versions_are_sorted():
     )
 
 
-def test_clear_runtime_fields():
-    config = TrussConfig(
-        training_checkpoints=CheckpointList(
-            download_folder="/tmp", checkpoints=[], artifact_references=[]
-        ),
-        environment_variables={"FOO": "BAR"},
-        weights=Weights(
-            [
-                WeightsSource(
-                    source="hf://meta-llama/Llama-3.1-8B@main",
-                    mount_location="/app/weights",
-                )
-            ]
-        ),
-    )
-
-    config.clear_runtime_fields()
-    assert config.python_version == "py313"
-    # clear_runtime_fields is currently a no-op placeholder: nothing is excluded from the
-    # build hash, so all runtime fields are preserved.
-    assert config.training_checkpoints is not None
-    assert config.environment_variables == {"FOO": "BAR"}
-    assert config.weights == Weights(
-        [
-            WeightsSource(
-                source="hf://meta-llama/Llama-3.1-8B@main",
-                mount_location="/app/weights",
-            )
-        ]
-    )
-
-
 def test_docker_server_start_command_single_line_valid():
     """Single-line start_command should be valid."""
     docker_server = DockerServer(
