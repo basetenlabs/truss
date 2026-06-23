@@ -17,7 +17,7 @@ def _active_chainlet() -> b10_types.DeployedChainlet:
         name="Entrypoint",
         is_entrypoint=True,
         is_draft=True,
-        status="ACTIVE",
+        status="MODEL_READY",
         logs_url="https://app.baseten.co/logs",
         oracle_name="Entrypoint-oracle",
         oracle_id="oracle-id",
