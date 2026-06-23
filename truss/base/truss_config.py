@@ -1509,13 +1509,6 @@ class TrussConfig(custom_types.ConfigModel):
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
 
-    # NB(nikhil): clear_runtime_fields will remove all runtime specific fields from the config so
-    # we can more optimally detect whether a new image build is needed.
-    def clear_runtime_fields(self) -> None:
-        self.training_checkpoints = None
-        self.environment_variables = {}
-        self.weights = Weights([])
-
     def _detect_requirements_file_type(self) -> RequirementsFileType:
         if not self.requirements_file:
             return RequirementsFileType.NOT_PROVIDED
