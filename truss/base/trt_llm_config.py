@@ -367,12 +367,6 @@ pip install truss==0.10.8
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
         if self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
-            if self.max_seq_len:
-                logger.info(
-                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used for embedding models, "
-                    "and only respected for SequenceClassification models. "
-                    "Automatically inferred from the model repo config.json -> `max_position_embeddings`"
-                )
             # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
