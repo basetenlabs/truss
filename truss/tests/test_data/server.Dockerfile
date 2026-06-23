@@ -42,10 +42,10 @@ RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-syst
 WORKDIR $APP_HOME
 COPY --chown=root:root ./data ${APP_HOME}/data
 COPY --chown=root:root ./server ${APP_HOME}
-COPY --chown=root:root ./config.yaml ${APP_HOME}/config.yaml
 COPY --chown=root:root ./model ${APP_HOME}/model
 RUN mkdir -p /packages
 COPY --chown=root:root ./packages /packages
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="/usr/local/bin/python3 /app/main.py"
+COPY --chown=0:0 ./config.yaml ${APP_HOME}/config.yaml
 ENTRYPOINT ["/usr/local/bin/python3", "/app/main.py"]

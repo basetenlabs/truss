@@ -788,7 +788,7 @@ def _assert_copied(src_path: str, dest_path: str):
             )
 
 
-def test_hash_dir_sanitization(custom_model_truss_dir):
+def test_hash_dir_includes_runtime_fields(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_environment_variable("foo", "bar")
     image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
@@ -796,8 +796,9 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
+        # The build hash now reflects the full config (no runtime fields are excluded).
         truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
-        assert truss_config.environment_variables == {}
+        assert truss_config.environment_variables == {"foo": "bar"}
 
 
 class TestDockerServerSupervisordConfig:

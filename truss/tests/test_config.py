@@ -1292,9 +1292,18 @@ def test_clear_runtime_fields():
 
     config.clear_runtime_fields()
     assert config.python_version == "py313"
-    assert config.training_checkpoints is None
-    assert config.environment_variables == {}
-    assert config.weights == Weights([])
+    # clear_runtime_fields is currently a no-op placeholder: nothing is excluded from the
+    # build hash, so all runtime fields are preserved.
+    assert config.training_checkpoints is not None
+    assert config.environment_variables == {"FOO": "BAR"}
+    assert config.weights == Weights(
+        [
+            WeightsSource(
+                source="hf://meta-llama/Llama-3.1-8B@main",
+                mount_location="/app/weights",
+            )
+        ]
+    )
 
 
 def test_docker_server_start_command_single_line_valid():

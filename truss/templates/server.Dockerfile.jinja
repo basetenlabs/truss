@@ -84,7 +84,6 @@ COPY --chown={{ default_owner }} ./truss_chains ${APP_HOME}/truss_chains
 COPY --chown={{ default_owner }} ./truss ${APP_HOME}/truss
 {%- endif %} {#- endif use_local_src #}
 
-COPY --chown={{ default_owner }} ./config.yaml ${APP_HOME}/config.yaml
 {%- if requires_live_reload %}
 RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
 RUN {{ clean_uv_env }} uv venv /control/.env --python {{ control_python_version }}
@@ -108,6 +107,9 @@ RUN mkdir -p {{ workspace_dir }}
 RUN chown -R {{ run_as_user_id }}:{{ run_as_user_id }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
 USER {{ run_as_user_id }}
 {%- endif %}
+{# Copy config last (after the chown/user switch, right before ENTRYPOINT) so that runtime-only #}
+{# config changes don't invalidate earlier (expensive) layers. #}
+COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./config.yaml ${APP_HOME}/config.yaml
 {%- endmacro -%}
 
 {%- if build_commands %}

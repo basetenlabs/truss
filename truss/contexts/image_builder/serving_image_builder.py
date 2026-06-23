@@ -922,8 +922,9 @@ class ServingImageBuilder(ImageBuilder):
             shutil.rmtree(build_hash_path)
         shutil.copytree(build_dir, build_hash_path)
 
-        # Clear runtime attributes, which will produce a sanitized copy of the original TrussConfig,
-        # used to determine if we need to rebuild the image or not.
+        # Produce the TrussConfig copy used to determine if we need to rebuild the image.
+        # We currently hash the full config; clear_runtime_fields is a placeholder hook for
+        # excluding fields from this rebuild signal in the future.
         config_file_path = build_hash_path / "config.yaml"
         if config_file_path.exists():
             truss_config = TrussConfig.from_yaml(config_file_path)
