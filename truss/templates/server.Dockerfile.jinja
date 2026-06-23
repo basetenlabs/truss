@@ -107,8 +107,11 @@ RUN mkdir -p {{ workspace_dir }}
 RUN chown -R {{ run_as_user_id }}:{{ run_as_user_id }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
 USER {{ run_as_user_id }}
 {%- endif %}
-{# Copy config last (after the chown/user switch, right before ENTRYPOINT) so that runtime-only #}
-{# config changes don't invalidate earlier (expensive) layers. #}
+{%- endmacro -%}
+
+{# Copy config as the final filesystem layer (after build commands and the expensive setup, right #}
+{# before ENTRYPOINT) so that runtime-only config changes don't invalidate earlier, costly layers. #}
+{%- macro copy_config_yaml() -%}
 COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./config.yaml ${APP_HOME}/config.yaml
 {%- endmacro -%}
 
@@ -122,6 +125,7 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- if docker_server_slim %}
 ENV SERVER_START_CMD={{ config.docker_server.start_command | tojson }}
 {{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["sh", "-c"]
 CMD [{{ config.docker_server.start_command | tojson }}]
 {%- else %}
@@ -146,6 +150,7 @@ RUN rm -f /etc/nginx/sites-enabled/default
 RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 {%- endif %} {#- endif docker_server_slim #}
 
@@ -155,12 +160,14 @@ ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
 {{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
 
 {%- else %} {#- else (default inference server) #}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
 {{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
 {%- endif %} {#- endif config.docker_server / live_reload #}
 
