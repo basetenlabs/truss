@@ -1509,12 +1509,6 @@ class TrussConfig(custom_types.ConfigModel):
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
 
-    # NB: Hook for excluding fields from the build hash that decides whether a new image
-    # build is needed. We currently hash the full config (nothing excluded). Add fields
-    # here to skip them from the rebuild signal in the future.
-    def clear_runtime_fields(self) -> None:
-        pass
-
     def _detect_requirements_file_type(self) -> RequirementsFileType:
         if not self.requirements_file:
             return RequirementsFileType.NOT_PROVIDED
