@@ -928,7 +928,6 @@ class ServingImageBuilder(ImageBuilder):
         config_file_path = build_hash_path / "config.yaml"
         if config_file_path.exists():
             truss_config = TrussConfig.from_yaml(config_file_path)
-            truss_config.clear_runtime_fields()
             truss_config.write_to_yaml_file(config_file_path)
 
     def _filter_reserved_environment_variables(
