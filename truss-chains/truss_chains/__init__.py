@@ -1,5 +1,10 @@
 from truss.base.truss_config import WeightsSource
-from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
+from truss_chains.framework import (
+    ChainletBase,
+    EngineBuilderLLMChainlet,
+    ModelBase,
+    TrussChainlet,
+)
 from truss_chains.public_api import (
     depends,
     depends_context,
@@ -48,6 +53,7 @@ __all__ = [
     "RemoteConfig",
     "RemoteErrorDetail",
     "StubBase",
+    "TrussChainlet",
     "WebSocketProtocol",
     "WeightsSource",
     "depends",

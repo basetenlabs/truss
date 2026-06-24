@@ -5,6 +5,7 @@ import json
 import logging
 import pathlib
 import textwrap
+import threading
 import traceback
 import uuid
 from typing import (
@@ -24,6 +25,7 @@ import requests
 import tenacity
 import watchfiles
 
+from truss.cli.utils import common as cli_common
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -31,6 +33,7 @@ from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
+from truss.remote.baseten.utils.status import get_displayable_status
 from truss.truss_handle import truss_handle
 from truss.util import log_utils, user_config
 from truss.util import path as truss_path
@@ -89,6 +92,9 @@ def _collect_external_package_dirs(
     seen: set[pathlib.Path] = set()
     result: list[pathlib.Path] = []
     for desc in chainlet_descriptors:
+        if desc.is_truss_chainlet:
+            # TrussChainlet packages are bundled separately by Truss's `archive_dir`
+            continue
         ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
         if not ext_dirs:
             continue
@@ -105,6 +111,78 @@ def _collect_external_package_dirs(
                     f'Consider naming it "packages" instead.'
                 )
     return result
+
+
+def _is_relative_to(path: pathlib.Path, other: pathlib.Path) -> bool:
+    try:
+        path.relative_to(other)
+        return True
+    except ValueError:
+        return False
+
+
+def _get_descriptor_watch_paths(
+    descriptor: private_types.ChainletAPIDescriptor,
+) -> list[pathlib.Path]:
+    if descriptor.is_truss_chainlet:
+        if not descriptor.truss_dir:
+            return []
+        handle = truss_handle.TrussHandle(descriptor.truss_dir)
+        return [descriptor.truss_dir, *handle.spec.external_package_dirs_paths]
+
+    # Watch the directory containing the chainlet module (not just the single
+    # module file) for symmetry with the truss-chainlet branch above, which
+    # watches the whole `truss_dir`. This restores patching for sibling modules
+    # and local sub-packages that the chainlet imports and that are bundled into
+    # the deployment, while still keeping cross-chainlet isolation across
+    # different subtrees.
+    watch_paths = [pathlib.Path(descriptor.src_path).parent]
+    watch_paths.extend(_collect_external_package_dirs([descriptor]))
+    return watch_paths
+
+
+def _get_watch_root(path: pathlib.Path) -> pathlib.Path:
+    if path.is_dir():
+        return path
+    return path.parent
+
+
+def _get_chain_watch_paths(
+    default_root: pathlib.Path,
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+    included_chainlets: Optional[set[str]] = None,
+) -> tuple[list[pathlib.Path], Optional[list[pathlib.Path]]]:
+    roots: list[pathlib.Path] = []
+    chainlet_descriptors = list(chainlet_descriptors)
+    if included_chainlets:
+        watch_paths = [
+            watch_path
+            for desc in chainlet_descriptors
+            if desc.display_name in included_chainlets
+            for watch_path in _get_descriptor_watch_paths(desc)
+        ]
+        watch_root_candidates = [_get_watch_root(path) for path in watch_paths]
+        included_paths = [path.resolve() for path in watch_paths]
+    else:
+        watch_root_candidates = [
+            default_root,
+            *_collect_external_package_dirs(chainlet_descriptors),
+        ]
+        included_paths = None
+
+    for root in watch_root_candidates:
+        resolved_root = root.resolve()
+        if any(
+            _is_relative_to(resolved_root, existing_root) for existing_root in roots
+        ):
+            continue
+        roots = [
+            existing_root
+            for existing_root in roots
+            if not _is_relative_to(existing_root, resolved_root)
+        ]
+        roots.append(resolved_root)
+    return roots, included_paths
 
 
 class ChainService(abc.ABC):
@@ -591,10 +669,25 @@ def _create_baseten_chain(
 # Watch / Live Patching ################################################################
 
 
-def _create_watch_filter(root_dir: pathlib.Path):
+def _matches_watch_path(path: pathlib.Path, watch_path: pathlib.Path) -> bool:
+    if path == watch_path:
+        return True
+    return watch_path.is_dir() and _is_relative_to(path, watch_path)
+
+
+def _create_watch_filter(
+    root_dir: pathlib.Path, included_paths: Optional[list[pathlib.Path]] = None
+):
     ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(root_dir)
+    included_paths = included_paths or []
 
     def watch_filter(_: watchfiles.Change, path: str) -> bool:
+        resolved_path = pathlib.Path(path).resolve()
+        if included_paths and not any(
+            _matches_watch_path(resolved_path, included_path)
+            for included_path in included_paths
+        ):
+            return False
         return not truss_path.is_ignored(pathlib.Path(path), ignore_patterns)
 
     logging.getLogger("watchfiles.main").disabled = True
@@ -712,6 +805,8 @@ class _Watcher:
     _remote_provider: b10_remote.BasetenRemote
     _chainlet_data: Mapping[str, b10_types.DeployedChainlet]
     _watch_filter: Callable[[watchfiles.Change, str], bool]
+    _watch_roots: list[pathlib.Path]
+    _included_watch_paths: Optional[list[pathlib.Path]]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
@@ -746,20 +841,22 @@ class _Watcher:
                 name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
             )
             self._chain_root = _get_chain_root(entrypoint_cls)
-            chainlet_names = set(
-                desc.display_name
-                for desc in _get_ordered_dependencies([entrypoint_cls])
+            chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
+            chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
+            if included_chainlets:
+                if not_matched := (set(included_chainlets) - chainlet_names):
+                    raise public_types.ChainsDeploymentError(
+                        "Requested to watch specific chainlets, but did not find "
+                        f"{not_matched} among available chainlets {chainlet_names}."
+                    )
+                self._included_chainlets = set(included_chainlets)
+            else:
+                self._included_chainlets = chainlet_names
+            self._watch_roots, self._included_watch_paths = _get_chain_watch_paths(
+                self._chain_root,
+                chainlet_descriptors,
+                self._included_chainlets if included_chainlets else None,
             )
-
-        if included_chainlets:
-            if not_matched := (set(included_chainlets) - chainlet_names):
-                raise public_types.ChainsDeploymentError(
-                    "Requested to watch specific chainlets, but did not find "
-                    f"{not_matched} among available chainlets {chainlet_names}."
-                )
-            self._included_chainlets = set(included_chainlets)
-        else:
-            self._included_chainlets = chainlet_names
 
         resolved_chain = resolve_chain_for_watch(
             self._remote_provider, self._deployed_chain_name, provided_team_name
@@ -788,7 +885,7 @@ class _Watcher:
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
         self._ignore_patterns, self._watch_filter = _create_watch_filter(
-            self._chain_root
+            self._chain_root, self._included_watch_paths
         )
 
     @property
@@ -935,10 +1032,127 @@ class _Watcher:
             self._patch(executor)
             self._console.print("👀 Watching for new changes.", style="blue")
             for _ in watchfiles.watch(
-                self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
+                *self._watch_roots,
+                watch_filter=self._watch_filter,
+                raise_interrupt=False,
             ):
                 self._patch(executor)
                 self._console.print("👀 Watching for new changes.", style="blue")
+
+
+# Statuses for which a chainlet exposes a usable inference endpoint, so keepalive
+# can be started even while slower chainlets are still deploying.
+_KEEPALIVE_READY_STATUSES = (b10_core.ACTIVE_STATUS, "LOADING_MODEL")
+
+
+def _resolve_chainlet_hostname(
+    chainlet: b10_types.DeployedChainlet,
+    remote_provider: b10_remote.BasetenRemote,
+    resolved_hostnames: dict[str, str],
+    *,
+    required: bool = False,
+) -> Optional[str]:
+    """Resolve a chainlet's hostname, falling back to a model lookup by id.
+
+    Results are cached (keyed by ``oracle_id``) so repeated calls for the same
+    chainlet don't trigger extra API requests. When ``required`` is set, a
+    missing hostname raises; otherwise ``None`` is returned so callers polling
+    a still-deploying chain can retry on a later poll.
+    """
+    if chainlet.oracle_id in resolved_hostnames:
+        return resolved_hostnames[chainlet.oracle_id]
+
+    hostname = chainlet.hostname
+    if not hostname:
+        model = remote_provider.api.get_model_by_id(chainlet.oracle_id).get("model")
+        if model:
+            hostname = model.get("hostname")
+
+    if hostname:
+        resolved_hostnames[chainlet.oracle_id] = hostname
+        return hostname
+
+    if required:
+        raise public_types.ChainsDeploymentError(
+            f"Could not determine hostname for Chainlet `{chainlet.name}`."
+        )
+    return None
+
+
+def _start_keepalives_for_ready_chainlets(
+    chainlet_data: Iterable[b10_types.DeployedChainlet],
+    remote_provider: b10_remote.BasetenRemote,
+    started_keepalives: dict[str, threading.Event],
+    resolved_hostnames: Optional[dict[str, str]] = None,
+) -> None:
+    """Start keepalive for each chainlet that has a usable inference endpoint.
+
+    Both draft (development) and published chainlets are warmed: draft chainlets
+    via the `/development/...` endpoint and published chainlets via their specific
+    `/deployment/{id}/...` endpoint. Each chainlet is warmed at most once;
+    ``started_keepalives`` maps already-warmed ``oracle_id`` -> stop event and is
+    mutated in place so the same set can be shared across the push wait loop and
+    the subsequent watch.
+    """
+    if resolved_hostnames is None:
+        resolved_hostnames = {}
+
+    for chainlet in chainlet_data:
+        if chainlet.oracle_id in started_keepalives:
+            continue
+        # `chainlet.status` is the raw model-state (e.g. `MODEL_READY`); normalize
+        # it to the displayable status (e.g. `ACTIVE`) before comparing.
+        if get_displayable_status(chainlet.status) not in _KEEPALIVE_READY_STATUSES:
+            continue
+        hostname = _resolve_chainlet_hostname(
+            chainlet, remote_provider, resolved_hostnames
+        )
+        if not hostname:
+            continue
+        started_keepalives[chainlet.oracle_id] = cli_common.start_keepalive(
+            hostname,
+            remote_provider.fetch_auth_header,
+            is_draft=chainlet.is_draft,
+            deployment_id=chainlet.oracle_version_id,
+        )
+
+
+def _prepare_chainlet_models_for_watch(
+    chainlet_data: Mapping[str, b10_types.DeployedChainlet],
+    included_chainlets: set[str],
+    remote_provider: b10_remote.BasetenRemote,
+    console: "rich_console.Console",
+    no_sleep: bool,
+    started_keepalives: Optional[dict[str, threading.Event]] = None,
+) -> None:
+    resolved_hostnames: dict[str, str] = {}
+
+    for chainlet_name, chainlet in chainlet_data.items():
+        if chainlet_name not in included_chainlets:
+            continue
+        chainlet_hostname = _resolve_chainlet_hostname(
+            chainlet, remote_provider, resolved_hostnames, required=True
+        )
+        assert chainlet_hostname is not None  # `required=True` guarantees this.
+        cli_common.wait_for_development_model_ready(
+            model_hostname=chainlet_hostname,
+            model_id=chainlet.oracle_id,
+            dev_version_id=chainlet.oracle_version_id,
+            remote_provider=remote_provider,
+            console=console,
+        )
+
+    if not no_sleep:
+        return
+
+    if started_keepalives is None:
+        started_keepalives = {}
+    _start_keepalives_for_ready_chainlets(
+        chainlet_data.values(),
+        remote_provider,
+        started_keepalives,
+        resolved_hostnames=resolved_hostnames,
+    )
 
 
 @framework.raise_validation_errors_before
@@ -952,6 +1166,8 @@ def watch(
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = True,
+    started_keepalives: Optional[dict[str, threading.Event]] = None,
 ) -> None:
     console.print(
         (
@@ -970,6 +1186,14 @@ def watch(
         show_stack_trace,
         included_chainlets,
         provided_team_name,
+    )
+    _prepare_chainlet_models_for_watch(
+        patcher._chainlet_data,
+        patcher._included_chainlets,
+        patcher._remote_provider,
+        console,
+        no_sleep,
+        started_keepalives=started_keepalives,
     )
     patcher.watch()
 

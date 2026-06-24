@@ -505,6 +505,7 @@ class BasetenApi:
                     oracle {{
                         id
                         name
+                        hostname
                     }}
                     oracle_version {{
                         id
@@ -560,7 +561,14 @@ class BasetenApi:
     def get_models_for_watch(
         self, team_id: Optional[str] = None, chainlets_only: Optional[bool] = False
     ):
-        """Get models with full version info needed for watch disambiguation."""
+        """Get lightweight model info (id/name/team) for watch disambiguation.
+
+        Only the fields needed to identify and disambiguate a model by name are
+        requested. Version info (including the potentially large ``truss_signature``)
+        is loaded separately for the single resolved model via
+        :meth:`get_model_with_versions_by_id`, to avoid fetching signatures for
+        every model in the team.
+        """
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
             filter_arg = f'team_id: "{team_id}"'
@@ -575,6 +583,27 @@ class BasetenApi:
         query_string = f"""
         {{
             models({filter_arg}) {{
+                id
+                name
+                team {{
+                    id
+                    name
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_model_with_versions_by_id(self, model_id: str):
+        """Get a single model with full version info needed for watch.
+
+        Returns the model identified by ``model_id`` along with its versions,
+        including ``truss_hash`` and ``truss_signature`` used to compute patches.
+        """
+        query_string = f"""
+        {{
+            model(id: "{model_id}") {{
                 id
                 name
                 hostname
@@ -1065,10 +1094,31 @@ class BasetenApi:
         deployment_id: str,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
+        min_level: Optional[str] = None,
+        replica: Optional[str] = None,
+        request_id: Optional[str] = None,
+        search_pattern: Optional[str] = None,
+        includes: Optional[List[str]] = None,
+        excludes: Optional[List[str]] = None,
     ):
+        body: Dict[str, Any] = dict(
+            self._prepare_time_range_query(start_epoch_millis, end_epoch_millis)
+        )
+        if min_level:
+            body["min_level"] = min_level
+        if replica:
+            body["replica"] = replica
+        if request_id:
+            body["request_id"] = request_id
+        if search_pattern:
+            body["search_pattern"] = search_pattern
+        if includes:
+            body["includes"] = includes
+        if excludes:
+            body["excludes"] = excludes
+
         resp_json = self._rest_api_client.post(
-            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
-            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs", body=body
         )
 
         # NB(nikhil): reverse order so latest logs are at the end
@@ -1225,11 +1275,17 @@ class BasetenApi:
         return resp_json["session"]
 
     def create_loops_run(
-        self, session_id: str, base_model: str, seed: Optional[int] = None
+        self,
+        session_id: str,
+        base_model: str,
+        seed: Optional[int] = None,
+        replicas: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
             body["seed"] = seed
+        if replicas is not None:
+            body["replicas"] = replicas
         resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
         return resp_json["run"]
 

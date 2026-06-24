@@ -213,6 +213,9 @@ class BasetenRemote(TrussRemote):
                     chainlet["id"],
                 ),
                 oracle_name=chainlet["oracle"]["name"],
+                oracle_id=chainlet["oracle"]["id"],
+                oracle_version_id=chainlet["oracle_version"]["id"],
+                hostname=chainlet["oracle"].get("hostname"),
             )
             for chainlet in self._api.get_chainlets_by_deployment_id(
                 chain_deployment_id
@@ -1026,7 +1029,7 @@ class BasetenRemote(TrussRemote):
     def create_loops_session(self, training_project_id=None):
         return self._api.create_loops_session(training_project_id=training_project_id)
 
-    def create_loops_run(self, session_id, base_model, seed=None):
+    def create_loops_run(self, session_id, base_model, seed=None, replicas=None):
         return self._api.create_loops_run(
-            session_id=session_id, base_model=base_model, seed=seed
+            session_id=session_id, base_model=base_model, seed=seed, replicas=replicas
         )

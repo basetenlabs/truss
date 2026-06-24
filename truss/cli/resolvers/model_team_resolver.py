@@ -93,22 +93,31 @@ def resolve_model_for_watch(
             raise click.ClickException(
                 f"Model '{model_name}' not found in team '{provided_team_name}'."
             )
-        return matching[0], matching[0].get("versions", [])
+        model = matching[0]
+    else:
+        matching_models = _get_matching_models(
+            model_name,
+            existing_teams,
+            lambda: remote_provider.api.get_models_for_watch(
+                chainlets_only=chainlets_only
+            ),
+        )
 
-    matching_models = _get_matching_models(
-        model_name,
-        existing_teams,
-        lambda: remote_provider.api.get_models_for_watch(chainlets_only=chainlets_only),
-    )
+        if not matching_models:
+            raise click.ClickException(f"Model '{model_name}' not found.")
 
-    if not matching_models:
-        raise click.ClickException(f"Model '{model_name}' not found.")
+        if len(matching_models) == 1:
+            model = matching_models[0]
+        else:
+            model = _prompt_for_team_from_models(
+                matching_models, existing_teams, prompt
+            )
 
-    if len(matching_models) == 1:
-        return matching_models[0], matching_models[0].get("versions", [])
-
-    model = _prompt_for_team_from_models(matching_models, existing_teams, prompt)
-    return model, model.get("versions", [])
+    # Load full version info (including truss_signature) for only the resolved
+    # model. Identification above uses a lightweight query, so we avoid fetching
+    # signatures for every model in the team.
+    resolved = remote_provider.api.get_model_with_versions_by_id(model["id"])["model"]
+    return resolved, resolved.get("versions", [])
 
 
 def resolve_model_team_name(

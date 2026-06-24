@@ -32,6 +32,7 @@ from .deploy_lora_checkpoints import hydrate_lora_checkpoint
 from .deploy_whisper_checkpoints import hydrate_whisper_checkpoint
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
+TRAINER_CHECKPOINT_TARGET = "trainer"
 # If we change this, make sure to update the logic in backend codebase
 CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
@@ -71,11 +72,8 @@ def create_model_version_from_inference_template(
         model_version = None
         if result and result.get("model_version"):
             console.print(
-                f"Successfully created deployment: {result['model_version']['name']}",
+                f"Successfully created deployment: {result['model_version']['name']}\n",
                 style="green",
-            )
-            console.print(
-                f"Deployment ID: {result['model_version']['id']}", style="yellow"
             )
             model_version = DeploySuccessModelVersion.model_validate(
                 result["model_version"]
@@ -83,8 +81,10 @@ def create_model_version_from_inference_template(
             logs_url = URLConfig.model_logs_url(
                 remote_provider.remote_url, model_version.model_id, model_version.id
             )
-            console.print(
-                f"🪵  View logs for your deployment at {cli_common.format_link(logs_url)}"
+            cli_common.print_deployment_links(
+                model_id=model_version.model_id,
+                version_id=model_version.id,
+                logs_url=logs_url,
             )
         elif not dry_run:
             console.print(
@@ -435,17 +435,26 @@ def _prompt_user_for_loops_checkpoint_details(
 ) -> CheckpointList:
     run = _resolve_loops_run(remote_provider, run_id)
     response = remote_provider.api.list_loops_checkpoints(run_id=run["id"])
+    deployable_checkpoints = [
+        checkpoint
+        for checkpoint in response["checkpoints"]
+        if checkpoint.get("target") != TRAINER_CHECKPOINT_TARGET
+    ]
+    if not deployable_checkpoints:
+        raise click.UsageError(
+            f"No deployable checkpoints found for Loops run {run['id']}. Trainer "
+            "checkpoints hold training state and cannot be served; only sampler "
+            "checkpoints can be deployed."
+        )
     # Pick by checkpoint_name in the UI; map back to Loops-checkpoint
     # database IDs for the wire so the server doesn't need to re-resolve names.
     name_to_pk = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint["id"])
-        for checkpoint in response["checkpoints"]
+        for checkpoint in deployable_checkpoints
     )
-    if not name_to_pk:
-        raise click.UsageError(f"No checkpoints found for Loops run {run['id']}.")
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
-        for checkpoint in response["checkpoints"]
+        for checkpoint in deployable_checkpoints
     )
     selected_names = _get_checkpoint_ids_to_deploy(
         list(name_to_pk.keys()), response_checkpoints

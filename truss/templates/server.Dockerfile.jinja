@@ -84,7 +84,6 @@ COPY --chown={{ default_owner }} ./truss_chains ${APP_HOME}/truss_chains
 COPY --chown={{ default_owner }} ./truss ${APP_HOME}/truss
 {%- endif %} {#- endif use_local_src #}
 
-COPY --chown={{ default_owner }} ./config.yaml ${APP_HOME}/config.yaml
 {%- if requires_live_reload %}
 RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
 RUN {{ clean_uv_env }} uv venv /control/.env --python {{ control_python_version }}
@@ -110,6 +109,12 @@ USER {{ run_as_user_id }}
 {%- endif %}
 {%- endmacro -%}
 
+{# Copy config as the final filesystem layer (after build commands and the expensive setup, right #}
+{# before ENTRYPOINT) so that runtime-only config changes don't invalidate earlier, costly layers. #}
+{%- macro copy_config_yaml() -%}
+COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./config.yaml ${APP_HOME}/config.yaml
+{%- endmacro -%}
+
 {%- if build_commands %}
 {% for command in build_commands %}
 RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
@@ -117,6 +122,13 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- endif %} {#- endif build_commands #}
 
 {%- if config.docker_server %}
+{%- if docker_server_slim %}
+ENV SERVER_START_CMD={{ config.docker_server.start_command | tojson }}
+{{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
+ENTRYPOINT ["sh", "-c"]
+CMD [{{ config.docker_server.start_command | tojson }}]
+{%- else %}
 RUN {{ apt_cache_mount }}apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %}
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
@@ -138,7 +150,9 @@ RUN rm -f /etc/nginx/sites-enabled/default
 RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
+{%- endif %} {#- endif docker_server_slim #}
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
@@ -146,12 +160,14 @@ ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
 {{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
 
 {%- else %} {#- else (default inference server) #}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
 {{ chown_and_switch_to_regular_user_if_enabled() }}
+{{ copy_config_yaml() }}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
 {%- endif %} {#- endif config.docker_server / live_reload #}
 

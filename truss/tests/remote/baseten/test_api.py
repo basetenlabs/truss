@@ -722,3 +722,85 @@ def test_create_bis_llm_model_version_routing(mock_post, baseten_api):
         mock_post.call_args[0][0]
         == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
     )
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_is_lightweight(mock_post, baseten_api):
+    # Identification query must not pull version signatures for every model.
+    baseten_api.get_models_for_watch()
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert "all: true" in query
+    assert "id" in query
+    assert "name" in query
+    assert "team" in query
+    assert "versions" not in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_with_team_and_chainlets(mock_post, baseten_api):
+    baseten_api.get_models_for_watch(team_id="team1", chainlets_only=True)
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'team_id: "team1"' in query
+    assert "chainlets_only: true" in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_model_with_versions_by_id_includes_signature(mock_post, baseten_api):
+    # The resolved model is loaded by id with full version info for patching.
+    baseten_api.get_model_with_versions_by_id("model123")
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'model(id: "model123")' in query
+    assert "versions" in query
+    assert "truss_hash" in query
+    assert "truss_signature" in query
+
+
+def test_get_model_deployment_logs_passes_filters(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1",
+        "deploy-1",
+        start_epoch_millis=1000,
+        end_epoch_millis=2000,
+        min_level="INFO",
+        replica="abcde",
+        request_id="req-1",
+        search_pattern="oops.*",
+        includes=["foo", "bar"],
+        excludes=["noise"],
+    )
+
+    args, kwargs = mock_rest_client.post.call_args
+    assert args[0] == "v1/models/model-1/deployments/deploy-1/logs"
+    assert kwargs["body"] == {
+        "start_epoch_millis": 1000,
+        "end_epoch_millis": 2000,
+        "min_level": "INFO",
+        "replica": "abcde",
+        "request_id": "req-1",
+        "search_pattern": "oops.*",
+        "includes": ["foo", "bar"],
+        "excludes": ["noise"],
+    }
+
+
+def test_get_model_deployment_logs_omits_unset_filters(baseten_api):
+    # Unset/empty filters and bounds are left out of the body entirely so the
+    # server applies its own defaults.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1", "deploy-1", includes=[], excludes=[]
+    )
+
+    assert mock_rest_client.post.call_args[1]["body"] == {}

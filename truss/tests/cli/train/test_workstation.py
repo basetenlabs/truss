@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.cli.train.workstation import (
+    SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
 )
@@ -37,14 +39,15 @@ def test_build_workstation_project_defaults():
     assert job.interactive_session.session_provider == InteractiveSessionProvider.SSH
 
 
-def test_build_workstation_project_h200_multi_gpu():
+@pytest.mark.parametrize("accelerator", SUPPORTED_WORKSTATION_ACCELERATORS)
+def test_build_workstation_project_supported_accelerators_multi_gpu(accelerator):
     project = build_workstation_project(
-        accelerator="H200", gpu_count=4, project_id="my-workstation"
+        accelerator=accelerator, gpu_count=4, project_id="my-workstation"
     )
     assert project.name == "my-workstation"
 
     job = project.job
-    assert job.compute.accelerator.accelerator.value == "H200"
+    assert job.compute.accelerator.accelerator.value == accelerator
     assert job.compute.accelerator.count == 4
 
 
@@ -76,8 +79,6 @@ def test_copy_workstation_templates():
 
 
 def test_workstation_template_dir_exists():
-    from truss.base.constants import WORKSTATION_TEMPLATE_DIR
-
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"

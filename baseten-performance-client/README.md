@@ -207,8 +207,9 @@ const texts = ["Hello world", "Example text", "Another sample"];
 const preference = new RequestProcessingPreference(
     32,        // maxConcurrentRequests
     4,         // batchSize
-    10000,     // maxCharsPerRequest
     360.0,     // timeoutS
+    10000,     // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     0.5        // hedgeDelay
 );
 const response = await client.embed(
@@ -316,8 +317,9 @@ const payload2 = { model: "my_model", input: ["Batch request sample 2"] };
 const preference = new RequestProcessingPreference(
     32,        // maxConcurrentRequests
     undefined, // batchSize
-    undefined, // maxCharsPerRequest
     360.0,     // timeoutS
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     0.5,       // hedgeDelay
     360.0      // totalTimeoutS
 );
@@ -521,7 +523,9 @@ preference = RequestProcessingPreference(
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)
     retry_budget_pct=0.08,            # Retry budget percentage (default: 0.05)
-    total_timeout_s=300.0              # Total operation timeout (default: None)
+    max_retries=3,                    # Maximum HTTP status-code retries (default: 5)
+    initial_backoff_ms=250,           # Initial backoff in milliseconds (default: 125)
+    total_timeout_s=300.0             # Total operation timeout (default: None)
 )
 
 # Use with any method
@@ -539,12 +543,15 @@ const { RequestProcessingPreference } = require('baseten-performance-client');
 const preference = new RequestProcessingPreference(
     64,        // maxConcurrentRequests (default: 128)
     32,        // batchSize (default: 128)
-    undefined, // maxCharsPerRequest
     30.0,      // timeoutS (default: 3600.0)
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     0.5,       // hedgeDelay
     undefined, // totalTimeoutS
     0.15,      // hedgeBudgetPct (default: 0.10)
-    0.08       // retryBudgetPct (default: 0.05)
+    0.08,      // retryBudgetPct (default: 0.05)
+    3,         // maxRetries (default: 5)
+    250        // initialBackoffMs (default: 125)
 );
 
 // Use with any method
@@ -560,6 +567,14 @@ const response = await client.embed(
 - `hedge_budget_pct`: Percentage of total requests allocated for hedging (default: 10%)
 - `retry_budget_pct`: Percentage of total requests allocated for retries (default: 5%)
 - Maximum allowed: 300% for both budgets
+
+**Retry Configuration:**
+- HTTP status-code retries are controlled by `max_retries` / `maxRetries`, not by `retry_budget_pct`.
+- Retryable status codes by default: `408`, `409`, `429`, and `500` through `599`.
+- Use `non_retryable_status_codes={529}` in Python or `nonRetryableStatusCodes=[529]` in Node.js to opt specific statuses out of the default retry policy.
+- `max_retries` / `maxRetries`: Maximum HTTP status-code retries per request (default: 5, max: 6). Set to 0 to disable these retries.
+- `retry_budget_pct`: Budget for timeout and network-error retry paths (default: 5%, max: 300%).
+- Backoff starts at `initial_backoff_ms` / `initialBackoffMs` (default: 125ms, range: 50-45000ms), multiplies by 4 after each retry, caps at 45000ms, and adds 0-99ms jitter. With defaults, the retry sleeps are about 125ms, 500ms, 2000ms, 8000ms, and 32000ms; a sixth retry sleeps about 45000ms.
 
 #### HTTP Version Selection
 Choose between HTTP/1.1 and HTTP/2 for optimal performance:
@@ -779,8 +794,9 @@ const cancelToken = new CancellationToken();
 const preference = new RequestProcessingPreference(
     32,        // maxConcurrentRequests
     16,        // batchSize
-    undefined, // maxCharsPerRequest
     360.0,     // timeoutS
+    undefined, // maxCharsPerRequest
+    undefined, // pinInitialEndpointOnce
     undefined, // hedgeDelay
     undefined, // totalTimeoutS
     undefined, // hedgeBudgetPct

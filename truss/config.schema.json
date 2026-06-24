@@ -426,6 +426,58 @@
       "title": "DockerServer",
       "type": "object"
     },
+    "EgressRestrictions": {
+      "additionalProperties": true,
+      "description": "Egress network restrictions for a model version.\n\nSetting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or\n``[]`` blocks all outbound network egress. Omitting the\n``egress_restrictions`` block (or setting it to ``null``) preserves the\ndefault behavior of allowing all egress.",
+      "properties": {
+        "ip_allow_list": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed outbound IPv4 addresses or CIDR ranges. Use null or [] alongside an equally restrictive fqdn_allow_list to block all egress.",
+          "examples": [
+            [
+              "1.1.1.1",
+              "8.8.8.8/32"
+            ]
+          ],
+          "title": "Ip Allow List"
+        },
+        "fqdn_allow_list": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed outbound fully-qualified domain names. Supports wildcards: '*' may appear anywhere in a label.",
+          "examples": [
+            [
+              "*.baseten.co",
+              "huggingface.co"
+            ]
+          ],
+          "title": "Fqdn Allow List"
+        }
+      },
+      "title": "EgressRestrictions",
+      "type": "object"
+    },
     "ExternalData": {
       "description": "[Experimental] External data is data that is not contained in the Truss folder.\n\nTypically, this will be data stored remotely. This data is guaranteed to be made\navailable under the data directory of the truss.",
       "items": {
@@ -893,6 +945,18 @@
         },
         "remote_ssh": {
           "$ref": "#/$defs/RemoteSSH"
+        },
+        "egress_restrictions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EgressRestrictions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Egress network restrictions for the model version. When unset, all egress is allowed (default)."
         },
         "truss_server_version_override": {
           "anyOf": [

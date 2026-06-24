@@ -21,6 +21,7 @@ from truss.base.truss_config import (
     DockerAuthSettings,
     DockerAuthType,
     DockerServer,
+    EgressRestrictions,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -1273,29 +1274,6 @@ def test_supported_versions_are_sorted():
     )
 
 
-def test_clear_runtime_fields():
-    config = TrussConfig(
-        training_checkpoints=CheckpointList(
-            download_folder="/tmp", checkpoints=[], artifact_references=[]
-        ),
-        environment_variables={"FOO": "BAR"},
-        weights=Weights(
-            [
-                WeightsSource(
-                    source="hf://meta-llama/Llama-3.1-8B@main",
-                    mount_location="/app/weights",
-                )
-            ]
-        ),
-    )
-
-    config.clear_runtime_fields()
-    assert config.python_version == "py313"
-    assert config.training_checkpoints is None
-    assert config.environment_variables == {}
-    assert config.weights == Weights([])
-
-
 def test_docker_server_start_command_single_line_valid():
     """Single-line start_command should be valid."""
     docker_server = DockerServer(
@@ -1841,3 +1819,167 @@ class TestCheckpointListNoMixing:
         ckpt_list = CheckpointList()
         assert ckpt_list.artifact_references == []
         assert ckpt_list.loops_checkpoint_ids == []
+
+
+class TestEgressRestrictions:
+    """Egress allow lists under runtime.egress_restrictions."""
+
+    def test_default_is_none(self):
+        config = TrussConfig()
+        assert config.runtime.egress_restrictions is None
+
+    def test_allow_lists_with_ips_and_fqdns(self, tmp_path):
+        yaml_content = """
+        runtime:
+          egress_restrictions:
+            ip_allow_list:
+              - 1.1.1.1/32
+              - 8.8.8.8/32
+            fqdn_allow_list:
+              - "*.baseten.co"
+              - huggingface.co
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        restrictions = config.runtime.egress_restrictions
+        assert restrictions is not None
+        assert restrictions.ip_allow_list == ["1.1.1.1/32", "8.8.8.8/32"]
+        assert restrictions.fqdn_allow_list == ["*.baseten.co", "huggingface.co"]
+
+    def test_null_allow_lists_block_all_egress(self, tmp_path):
+        yaml_content = """
+        runtime:
+          egress_restrictions:
+            ip_allow_list: null
+            fqdn_allow_list: null
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        restrictions = config.runtime.egress_restrictions
+        assert restrictions is not None
+        assert restrictions.ip_allow_list is None
+        assert restrictions.fqdn_allow_list is None
+
+    def test_empty_lists_block_all_egress(self):
+        restrictions = EgressRestrictions(ip_allow_list=[], fqdn_allow_list=[])
+        assert restrictions.ip_allow_list == []
+        assert restrictions.fqdn_allow_list == []
+
+    def test_egress_restrictions_null_means_allow_all(self, tmp_path):
+        yaml_content = """
+        runtime:
+          egress_restrictions: null
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        assert config.runtime.egress_restrictions is None
+
+    def test_omitted_means_allow_all(self, tmp_path):
+        yaml_content = """
+        runtime:
+          predict_concurrency: 2
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        assert config.runtime.egress_restrictions is None
+
+    def test_invalid_cidr_raises(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid IP or CIDR"):
+            EgressRestrictions(ip_allow_list=["not-an-ip"])
+
+    def test_bare_ip_accepted(self):
+        restrictions = EgressRestrictions(ip_allow_list=["1.2.3.4"])
+        assert restrictions.ip_allow_list == ["1.2.3.4"]
+
+    def test_cidr_with_host_bits_accepted(self):
+        restrictions = EgressRestrictions(ip_allow_list=["10.0.0.5/24"])
+        assert restrictions.ip_allow_list == ["10.0.0.5/24"]
+
+    def test_ipv6_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="IPv6 is not supported"):
+            EgressRestrictions(ip_allow_list=["2001:db8::/32"])
+
+    def test_invalid_fqdn_raises(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["-bad.com"])
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["bad-.com"])
+        with pytest.raises(pydantic.ValidationError, match="cannot be empty"):
+            EgressRestrictions(fqdn_allow_list=[""])
+
+    def test_wildcards(self):
+        EgressRestrictions(fqdn_allow_list=["*.baseten.co"])
+        EgressRestrictions(fqdn_allow_list=["foo.*.baseten.co"])
+        EgressRestrictions(fqdn_allow_list=["*"])
+        EgressRestrictions(fqdn_allow_list=["sub*domain.example.com"])
+
+    def test_underscores_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["bad_label.com"])
+
+    def test_trailing_dot_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["example.com."])
+
+    def test_label_too_long_rejected(self):
+        with pytest.raises(pydantic.ValidationError, match="Invalid FQDN"):
+            EgressRestrictions(fqdn_allow_list=["a" * 64 + ".com"])
+
+    def test_single_label_accepted(self):
+        EgressRestrictions(fqdn_allow_list=["localhost"])
+
+    def test_serialization_roundtrip(self, tmp_path):
+        config = TrussConfig()
+        config.runtime.egress_restrictions = EgressRestrictions(
+            ip_allow_list=["1.1.1.1/32"], fqdn_allow_list=["huggingface.co"]
+        )
+
+        out_path = tmp_path / "out.yaml"
+        config.write_to_yaml_file(out_path, verbose=False)
+
+        dumped = yaml.safe_load(out_path.read_text())
+        assert dumped["runtime"]["egress_restrictions"]["ip_allow_list"] == [
+            "1.1.1.1/32"
+        ]
+        assert dumped["runtime"]["egress_restrictions"]["fqdn_allow_list"] == [
+            "huggingface.co"
+        ]
+
+        config_new = TrussConfig.from_yaml(out_path)
+        assert config_new.runtime.egress_restrictions is not None
+        assert config_new.runtime.egress_restrictions.ip_allow_list == ["1.1.1.1/32"]
+        assert config_new.runtime.egress_restrictions.fqdn_allow_list == [
+            "huggingface.co"
+        ]
+
+    def test_block_all_serialization_roundtrip(self, tmp_path):
+        config = TrussConfig()
+        config.runtime.egress_restrictions = EgressRestrictions(
+            ip_allow_list=None, fqdn_allow_list=None
+        )
+
+        out_path = tmp_path / "out.yaml"
+        config.write_to_yaml_file(out_path, verbose=True)
+
+        config_new = TrussConfig.from_yaml(out_path)
+        assert config_new.runtime.egress_restrictions is not None
+        assert config_new.runtime.egress_restrictions.ip_allow_list is None
+        assert config_new.runtime.egress_restrictions.fqdn_allow_list is None
+
+    def test_assignment_validation(self):
+        config = TrussConfig()
+        config.runtime.egress_restrictions = EgressRestrictions(
+            ip_allow_list=["1.1.1.1/32"]
+        )
+        with pytest.raises(pydantic.ValidationError, match="Invalid IP or CIDR"):
+            config.runtime.egress_restrictions = EgressRestrictions(
+                ip_allow_list=["999.999.999.999/32"]
+            )

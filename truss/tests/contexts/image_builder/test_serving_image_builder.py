@@ -25,6 +25,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
 
 BASE_DIR = Path(__file__).parent
@@ -331,6 +332,7 @@ def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
@@ -530,6 +532,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
         assert container.logs()
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v1"
     tr = TrussHandle(truss_dir)
@@ -644,6 +647,7 @@ EXPECTED_CACHE_V2 = [
 ]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile_v2(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)
@@ -784,7 +788,7 @@ def _assert_copied(src_path: str, dest_path: str):
             )
 
 
-def test_hash_dir_sanitization(custom_model_truss_dir):
+def test_hash_dir_includes_runtime_fields(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_environment_variable("foo", "bar")
     image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
@@ -792,8 +796,9 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
+        # The build hash now reflects the full config (no runtime fields are excluded).
         truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
-        assert truss_config.environment_variables == {}
+        assert truss_config.environment_variables == {"foo": "bar"}
 
 
 class TestDockerServerSupervisordConfig:
@@ -1057,3 +1062,88 @@ def test_nginx_config_disables_disk_writes(tmp_path):
     assert "fastcgi_temp_path /dev/shm/nginx_fastcgi_temp;" in nginx_config
     assert "uwsgi_temp_path /dev/shm/nginx_uwsgi_temp;" in nginx_config
     assert "scgi_temp_path /dev/shm/nginx_scgi_temp;" in nginx_config
+
+
+class TestDockerServerSlimBuild:
+    def _make_docker_server_truss(self, tmp_path, transport_kind="http"):
+        truss_dir = tmp_path / f"docker_server_truss_{transport_kind}"
+        th = TrussHandle(init_directory(truss_dir))
+        th.update_python_version("py311")
+        th.set_base_image("python:3.11-slim", "/usr/local/bin/python3")
+        config = th.spec.config
+        config.docker_server = DockerServer(
+            start_command="python main.py --port 8000",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        config.runtime.transport = {"kind": transport_kind}
+        with (truss_dir / "config.yaml").open("w") as f:
+            yaml.dump(config.to_dict(verbose=True), f)
+        return truss_dir
+
+    @pytest.mark.parametrize("transport_kind", ["http", "grpc"])
+    def test_slim_dockerfile_omits_nginx_and_supervisord(
+        self, tmp_path, transport_kind
+    ):
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, transport_kind=transport_kind
+        )
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / f"build_{transport_kind}"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "SERVER_START_CMD" in dockerfile
+        assert 'ENTRYPOINT ["sh", "-c"]' in dockerfile
+        assert "nginx" not in dockerfile.lower()
+        assert "supervisord" not in dockerfile.lower()
+        assert not (build_dir / "proxy.conf").exists()
+        assert not (build_dir / "supervisord.conf").exists()
+        assert not (build_dir / "docker_server_requirements.txt").exists()
+
+    def test_legacy_dockerfile_unchanged_when_flag_off(self, tmp_path):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        builder = ServingImageBuilderContext.run(truss_dir)
+        build_dir = tmp_path / "build"
+        builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "supervisord" in dockerfile
+        assert "nginx" in dockerfile
+        assert (build_dir / "proxy.conf").exists()
+        assert (build_dir / "supervisord.conf").exists()
+        assert (build_dir / "docker_server_requirements.txt").exists()
+
+    @pytest.mark.parametrize("env_value", ["", "false", "False", "0", "no", "1"])
+    def test_legacy_dockerfile_when_flag_value_is_not_true(self, tmp_path, env_value):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": env_value}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / f"build_{env_value or 'empty'}"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "supervisord" in dockerfile
+        assert "nginx" in dockerfile
+
+    def test_no_build_skips_slim_branch_even_with_flag_on(self, tmp_path):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        config_path = truss_dir / "config.yaml"
+        with config_path.open() as f:
+            cfg = yaml.safe_load(f)
+        cfg["docker_server"]["no_build"] = True
+        with config_path.open("w") as f:
+            yaml.dump(cfg, f)
+
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / "build_no_build_slim"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "SERVER_START_CMD" not in dockerfile
+        assert "nginx" not in dockerfile.lower()
+        assert "supervisord" not in dockerfile.lower()

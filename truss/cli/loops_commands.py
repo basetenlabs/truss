@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List, Optional, cast
 
 import rich.table
@@ -37,10 +38,24 @@ truss_cli.add_command(loops)
     required=False,
     help="Training project ID to associate the deployment with.",
 )
+@click.option(
+    "--replicas",
+    type=int,
+    required=False,
+    help=(
+        "Number of data-parallel trainer replicas to provision. The trainer "
+        "deployment runs this many copies of the model's preset node group "
+        "(e.g. --replicas 4 on a 4-node preset → 16 nodes, 4 DP workers). "
+        "Must be a positive integer; defaults to 1."
+    ),
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_loops_deployment(
-    base_model: str, project_id: Optional[str], remote: Optional[str]
+    base_model: str,
+    project_id: Optional[str],
+    replicas: Optional[int],
+    remote: Optional[str],
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
 
@@ -48,6 +63,11 @@ def push_loops_deployment(
     the project already has an active Loops deployment for this base
     model, the command fails with a validation error.
     """
+    if replicas is not None and replicas < 1:
+        raise click.BadParameter(
+            "--replicas must be a positive integer.", param_hint="--replicas"
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -63,7 +83,9 @@ def push_loops_deployment(
         f"Provisioning Loops run and sampler for [cyan]{base_model}[/cyan]...",
         spinner="dots",
     ):
-        remote_provider.create_loops_run(session_id=session_id, base_model=base_model)
+        remote_provider.create_loops_run(
+            session_id=session_id, base_model=base_model, replicas=replicas
+        )
 
     # Readiness is now the loops SDK's responsibility — clients block on
     # construction (TrainingClient → /health, SamplingClient → deployment
@@ -121,8 +143,19 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     default=False,
     help="Include deployments in terminal states (STOPPED, FAILED).",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default) or json.",
+)
 @common.common_options()
-def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
+def view_loops_deployments(
+    remote: Optional[str], show_all: bool, output_format: str
+) -> None:
     """List the caller's Loops deployments.
 
     By default, deployments in terminal states (STOPPED, FAILED) are hidden.
@@ -135,22 +168,30 @@ def view_loops_deployments(remote: Optional[str], show_all: bool) -> None:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     deployments = remote_provider.api.list_loops_deployments()
-    if not deployments:
+    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
+
+    if not deployments and is_human_output:
         console.print("No Loops deployments.", style="yellow")
         return
+
     if not show_all:
         deployments = [
             deployment
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-        if not deployments:
+        if not deployments and is_human_output:
             console.print(
                 "No active Loops deployments. Pass --all to include "
                 "STOPPED and FAILED deployments.",
                 style="yellow",
             )
             return
+
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_deployments_json(deployments)
+        return
+
     _render_loops_deployments(deployments)
 
 
@@ -241,17 +282,39 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table.add_column("Sampler Status")
     table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
-        sampler = deployment["sampler"]
+        sampler = deployment.get("sampler")
         table.add_row(
             deployment["id"],
             deployment["base_model"],
             deployment["status"]["name"],
             deployment["base_url"],
-            sampler["deployment_id"],
-            sampler["status"]["name"],
-            sampler["base_url"],
+            sampler["deployment_id"] if sampler else "—",
+            sampler["status"]["name"] if sampler else "—",
+            sampler["base_url"] if sampler else "—",
         )
     console.print(table)
+
+
+def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
+    """
+    Print the deployments as jsonl. Closely follows the columns in the default format.
+    """
+    for deployment in deployments:
+        sampler = deployment.get("sampler")
+        output = {
+            "id": deployment["id"],
+            "base_model": deployment["base_model"],
+            "base_url": deployment["base_url"],
+            "status": deployment["status"]["name"],
+            "sampler": {
+                "deployment_id": sampler["deployment_id"],
+                "base_url": sampler["base_url"],
+                "status": sampler["status"]["name"],
+            }
+            if sampler
+            else None,
+        }
+        print(json.dumps(output))
 
 
 def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
