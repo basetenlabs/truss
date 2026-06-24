@@ -4,6 +4,7 @@ from typing import Optional
 
 from truss.base import truss_config
 from truss.base.constants import WORKSTATION_TEMPLATE_DIR
+from truss.base.truss_config import Accelerator
 from truss_train.definitions import (
     BasetenCheckpoint,
     CacheConfig,
@@ -20,7 +21,9 @@ from truss_train.definitions import (
 )
 
 DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
-SUPPORTED_WORKSTATION_ACCELERATORS = ("H100", "H200", "B200")
+SUPPORTED_WORKSTATION_ACCELERATORS = [
+    acc.value for acc in Accelerator if acc.value != Accelerator._B10.value
+]
 
 
 def copy_workstation_templates(target_dir: Path) -> None:

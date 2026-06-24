@@ -79,10 +79,12 @@ def _get_active_job(
     remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> dict:
     jobs = remote_provider.api.search_training_jobs(
-        statuses=ACTIVE_JOB_STATUSES, project_id=project_id, job_id=job_id
+        statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES,
+        project_id=project_id,
+        job_id=job_id,
     )
     if not jobs:
-        raise click.UsageError("No running jobs found.")
+        raise click.UsageError("No queued or running jobs found.")
     if len(jobs) > 1:
         display_training_jobs(
             jobs, remote_provider.remote_url, title="Active Training Jobs"
@@ -281,10 +283,10 @@ def view_training_details(
 
 def stop_all_jobs(remote_provider: BasetenRemote, project_id: Optional[str]):
     active_jobs = remote_provider.api.search_training_jobs(
-        project_id=project_id, statuses=ACTIVE_JOB_STATUSES
+        project_id=project_id, statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES
     )
     if not active_jobs:
-        console.print("No active jobs found.", style="yellow")
+        console.print("No queued or active jobs found.", style="yellow")
         return
     confirm = inquirer.confirm(
         message=f"Are you sure you want to stop {len(active_jobs)} active jobs?",
