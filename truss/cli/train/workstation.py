@@ -18,9 +18,10 @@ from truss_train.definitions import (
     TrainingJob,
     TrainingProject,
 )
+from truss.base.truss_config import Accelerator
 
 DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
-SUPPORTED_WORKSTATION_ACCELERATORS = ("H100", "H200", "B200")
+SUPPORTED_WORKSTATION_ACCELERATORS = [acc.value for acc in Accelerator if acc.value != Accelerator._B10.value]
 
 
 def copy_workstation_templates(target_dir: Path) -> None:
