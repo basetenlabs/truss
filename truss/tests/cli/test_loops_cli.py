@@ -20,9 +20,22 @@ def mock_remote():
     remote.create_loops_run.return_value = {
         "id": "abc123",
         "base_url": "https://trainer-xyz456.api.baseten.co/trainer",
+        "workload_plane": {
+            "id": "wp_trainer",
+            "name": "trainer-plane",
+            "region": "us-west-2",
+            "platform": "AWS",
+        },
         "sampler": {
             "id": "sampler_def789",
+            "deployment_id": "ov_def789",
             "base_url": "https://model-def789.api.baseten.co/deployment/v1/sync",
+            "workload_plane": {
+                "id": "wp_sampler",
+                "name": "sampler-plane",
+                "region": "us-east-1",
+                "platform": "AWS",
+            },
         },
     }
     remote.fetch_auth_header.return_value = {"Authorization": "Api-Key test_key"}
@@ -59,6 +72,18 @@ def test_push_with_replicas(mock_remote):
     mock_remote.create_loops_run.assert_called_once_with(
         session_id="session_abc123", base_model="Qwen/Qwen3-8B", replicas=4
     )
+
+
+def test_push_verbose_prints_workload_planes(mock_remote):
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", "--verbose"], mock_remote
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Trainer Workload Plane" in result.output
+    assert "trainer-plane" in result.output
+    assert "Sampler Workload Plane" in result.output
+    assert "sampler-plane" in result.output
 
 
 def test_push_rejects_non_positive_replicas(mock_remote):
@@ -256,11 +281,23 @@ def _deployment(deployment_id: str, status_name: str) -> dict:
         "base_model": "Qwen/Qwen3-8B",
         "base_url": f"https://trainer-{deployment_id}.api.baseten.co/trainer",
         "status": {"name": status_name},
+        "workload_plane": {
+            "id": f"wp_trainer_{deployment_id}",
+            "name": f"trainer-plane-{deployment_id}",
+            "region": "us-west-2",
+            "platform": "AWS",
+        },
         "sampler": {
             "id": f"sampler_{deployment_id}",
             "deployment_id": f"ov_{deployment_id}",
             "base_url": f"https://model-{deployment_id}.api.baseten.co/deployment/v1/sync",
             "status": {"name": "ACTIVE"},
+            "workload_plane": {
+                "id": f"wp_sampler_{deployment_id}",
+                "name": f"sampler-plane-{deployment_id}",
+                "region": "us-east-1",
+                "platform": "AWS",
+            },
         },
     }
 
@@ -293,6 +330,20 @@ def test_view_all_flag_includes_terminal_states(mock_remote):
     assert "dep_failed" in result.output
 
 
+def test_view_verbose_renders_workload_planes(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _deployment("dep", "RUNNING")
+    ]
+    result = _invoke(
+        ["loops", "view", "--remote", "test_remote", "--verbose"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "Trainer Workload Plane" in result.output
+    assert "trainer-plane-dep" in result.output
+    assert "Sampler Workload Plane" in result.output
+    assert "sampler-plane-dep" in result.output
+
+
 def test_view_empty_after_filter_hints_at_all_flag(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         _deployment("dep_stopped", "STOPPED"),
@@ -323,11 +374,23 @@ def test_view_json_output_emits_one_object_per_deployment(mock_remote):
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
             "status": {"name": "RUNNING"},
+            "workload_plane": {
+                "id": "wp_trainer",
+                "name": "trainer-plane",
+                "region": "us-west-2",
+                "platform": "AWS",
+            },
             "sampler": {
                 "id": "sampler_def",
                 "deployment_id": "ov_def123",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
                 "status": {"name": "ACTIVE"},
+                "workload_plane": {
+                    "id": "wp_sampler",
+                    "name": "sampler-plane",
+                    "region": "us-east-1",
+                    "platform": "AWS",
+                },
             },
         }
     ]
@@ -342,10 +405,22 @@ def test_view_json_output_emits_one_object_per_deployment(mock_remote):
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-abc.api.baseten.co/trainer",
             "status": "RUNNING",
+            "workload_plane": {
+                "id": "wp_trainer",
+                "name": "trainer-plane",
+                "region": "us-west-2",
+                "platform": "AWS",
+            },
             "sampler": {
                 "deployment_id": "ov_def123",
                 "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
                 "status": "ACTIVE",
+                "workload_plane": {
+                    "id": "wp_sampler",
+                    "name": "sampler-plane",
+                    "region": "us-east-1",
+                    "platform": "AWS",
+                },
             },
         }
     ]
@@ -444,6 +519,7 @@ def test_view_json_output_renders_null_sampler(mock_remote):
             "base_model": "Qwen/Qwen3-8B",
             "base_url": "https://trainer-orphan.api.baseten.co/trainer",
             "status": "RUNNING",
+            "workload_plane": None,
             "sampler": None,
         }
     ]

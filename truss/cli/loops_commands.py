@@ -50,12 +50,19 @@ truss_cli.add_command(loops)
     ),
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show trainer and sampler workload plane routing details.",
+)
 @common.common_options()
 def push_loops_deployment(
     base_model: str,
     project_id: Optional[str],
     replicas: Optional[int],
     remote: Optional[str],
+    verbose: bool,
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
 
@@ -83,7 +90,7 @@ def push_loops_deployment(
         f"Provisioning Loops run and sampler for [cyan]{base_model}[/cyan]...",
         spinner="dots",
     ):
-        remote_provider.create_loops_run(
+        run = remote_provider.create_loops_run(
             session_id=session_id, base_model=base_model, replicas=replicas
         )
 
@@ -95,6 +102,24 @@ def push_loops_deployment(
         f"   Trainer and sampler will finish coming up in the background",
         style="green",
     )
+    if verbose:
+        sampler = run.get("sampler") or {}
+        console.print(f"   [bold]{'Run ID:':<25}[/bold] {run.get('id', '—')}")
+        console.print(
+            f"   [bold]{'Trainer Workload Plane:':<25}[/bold] "
+            f"{_format_workload_plane(run.get('workload_plane'))}"
+        )
+        console.print(
+            f"   [bold]{'Sampler Deployment ID:':<25}[/bold] "
+            f"{sampler.get('deployment_id', '—')}"
+        )
+        console.print(
+            f"   [bold]{'Sampler Workload Plane:':<25}[/bold] "
+            f"{_format_workload_plane(sampler.get('workload_plane'))}"
+        )
+        console.print(
+            f"   [bold]{'Sampler Base URL:':<25}[/bold] {sampler.get('base_url', '—')}"
+        )
 
 
 @loops.command(name="deactivate")
@@ -152,9 +177,15 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
     help="Output format: cli-table (default) or json.",
 )
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show trainer and sampler workload plane routing details.",
+)
 @common.common_options()
 def view_loops_deployments(
-    remote: Optional[str], show_all: bool, output_format: str
+    remote: Optional[str], show_all: bool, output_format: str, verbose: bool
 ) -> None:
     """List the caller's Loops deployments.
 
@@ -192,7 +223,7 @@ def view_loops_deployments(
         _render_loops_deployments_json(deployments)
         return
 
-    _render_loops_deployments(deployments)
+    _render_loops_deployments(deployments, verbose=verbose)
 
 
 @loops.group(name="runs")
@@ -266,7 +297,21 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
+def _format_workload_plane(workload_plane: Optional[Dict[str, Any]]) -> str:
+    if not workload_plane:
+        return "—"
+    name = workload_plane.get("name")
+    region = workload_plane.get("region")
+    platform = workload_plane.get("platform")
+    details = [part for part in (region, platform) if part]
+    if name and details:
+        return f"{name} ({', '.join(details)})"
+    return name or "—"
+
+
+def _render_loops_deployments(
+    deployments: List[Dict[str, Any]], *, verbose: bool = False
+) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -277,21 +322,34 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table.add_column("Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
     table.add_column("Deployment Status")
+    if verbose:
+        table.add_column("Trainer Workload Plane")
     table.add_column("Deployment Base URL", style="blue")
     table.add_column("Sampler Deployment ID", style="cyan")
     table.add_column("Sampler Status")
+    if verbose:
+        table.add_column("Sampler Workload Plane")
     table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
         sampler = deployment.get("sampler")
-        table.add_row(
-            deployment["id"],
-            deployment["base_model"],
-            deployment["status"]["name"],
-            deployment["base_url"],
-            sampler["deployment_id"] if sampler else "—",
-            sampler["status"]["name"] if sampler else "—",
-            sampler["base_url"] if sampler else "—",
+        row = [deployment["id"], deployment["base_model"], deployment["status"]["name"]]
+        if verbose:
+            row.append(_format_workload_plane(deployment.get("workload_plane")))
+        row.extend(
+            [
+                deployment["base_url"],
+                sampler["deployment_id"] if sampler else "—",
+                sampler["status"]["name"] if sampler else "—",
+            ]
         )
+        if verbose:
+            row.append(
+                _format_workload_plane(
+                    sampler.get("workload_plane") if sampler else None
+                )
+            )
+        row.append(sampler["base_url"] if sampler else "—")
+        table.add_row(*row)
     console.print(table)
 
 
@@ -306,10 +364,12 @@ def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
             "base_model": deployment["base_model"],
             "base_url": deployment["base_url"],
             "status": deployment["status"]["name"],
+            "workload_plane": deployment.get("workload_plane"),
             "sampler": {
                 "deployment_id": sampler["deployment_id"],
                 "base_url": sampler["base_url"],
                 "status": sampler["status"]["name"],
+                "workload_plane": sampler.get("workload_plane"),
             }
             if sampler
             else None,
