@@ -20,9 +20,11 @@ def download_external_data(external_data: Optional[ExternalData], data_dir: Path
     b10cp_path = _b10cp_path()
 
     # ensure parent directories exist
+    data_dir_resolved = data_dir.resolve()
     for item in external_data.items:
-        path = data_dir / item.local_data_path
-        if data_dir not in path.parents:
+        # resolve before the containment check so ".." cannot escape data_dir
+        path = (data_dir / item.local_data_path).resolve()
+        if path != data_dir_resolved and data_dir_resolved not in path.parents:
             raise ValueError(
                 "Local data path of external data cannot point to outside data directory"
             )
