@@ -901,3 +901,308 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
         )
     assert result.exit_code != 0
     mock_create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# `truss loops runs metrics` — request volume / concurrency per run window.
+# ---------------------------------------------------------------------------
+
+
+def _series(values, start_ts=1700000000):
+    return [{"timestamp": start_ts + i * 15, "value": v} for i, v in enumerate(values)]
+
+
+def _setup_run_metrics_mocks(
+    mock_remote,
+    *,
+    trainer_volume,
+    trainer_concurrent,
+    sampler_volume=(),
+    sampler_concurrent=(),
+    sampler_deployment_id="ov_sampler",
+    run_base_model="Qwen/Qwen3-8B",
+    deployments_base_models=None,
+):
+    """Wire up the four API methods the metrics command calls.
+
+    `deployments_base_models` is a list of (deployment_id, base_model, status_name);
+    if omitted, defaults to one active deployment matching the run's base model.
+    """
+    mock_remote.api.get_loops_run.return_value = {
+        "id": "trnr_xyz",
+        "base_model": run_base_model,
+        "created_at": "2026-05-07T12:34:56Z",
+        "sampler": (
+            {"deployment_id": sampler_deployment_id} if sampler_deployment_id else None
+        ),
+    }
+    if deployments_base_models is None:
+        deployments_base_models = [("dep_trainer", run_base_model, "RUNNING")]
+    mock_remote.api.list_loops_deployments.return_value = [
+        {"id": dep_id, "base_model": bm, "status": {"name": status}}
+        for dep_id, bm, status in deployments_base_models
+    ]
+    mock_remote.api.get_loops_deployment_metrics.return_value = {
+        "metrics": {
+            "inference_volume": _series(trainer_volume),
+            "concurrent_requests": _series(trainer_concurrent),
+        }
+    }
+    mock_remote.api.get_model_deployment_range_metrics.return_value = {
+        "inference_volume": _series(list(sampler_volume)),
+        "model_concurrent_requests": _series(list(sampler_concurrent)),
+    }
+
+
+def test_runs_metrics_snapshot_renders_table_with_trainer_and_sampler(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote,
+        trainer_volume=[1.0, 2.5, 3.0],
+        trainer_concurrent=[1.0, 2.0, 1.5],
+        sampler_volume=[0.2, 0.4, 0.8],
+        sampler_concurrent=[1.0, 1.0, 2.0],
+    )
+    result = _invoke(
+        ["loops", "runs", "metrics", "--remote", "test_remote", "--run-id", "trnr_xyz"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Trainer" in result.output
+    assert "Sampler" in result.output
+    assert "dep_trainer" in result.output
+    assert "ov_sampler" in result.output
+    # Latest values surface in the right-justified value columns.
+    assert "3.00" in result.output  # trainer request volume latest
+    assert "0.80" in result.output  # sampler request volume latest
+
+
+def test_runs_metrics_snapshot_json_emits_single_document(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote,
+        trainer_volume=[1.0, 2.0],
+        trainer_concurrent=[3.0, 4.0],
+        sampler_volume=[0.5],
+        sampler_concurrent=[1.5],
+    )
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    records = _parse_jsonl(result.output)
+    assert len(records) == 1
+    doc = records[0]
+    assert doc["run_id"] == "trnr_xyz"
+    assert doc["trainer_deployment_id"] == "dep_trainer"
+    assert doc["sampler_deployment_id"] == "ov_sampler"
+    assert doc["trainer"]["request_volume"][-1]["value"] == 2.0
+    assert doc["trainer"]["concurrent_requests"][-1]["value"] == 4.0
+    assert doc["sampler"]["request_volume"][-1]["value"] == 0.5
+    assert doc["sampler"]["concurrent_requests"][-1]["value"] == 1.5
+    assert "start" in doc["window"] and "end" in doc["window"]
+
+
+def test_runs_metrics_json_output_file_writes_to_path_not_stdout(mock_remote, tmp_path):
+    _setup_run_metrics_mocks(
+        mock_remote, trainer_volume=[1.0], trainer_concurrent=[2.0]
+    )
+    out = tmp_path / "metrics.json"
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "-o",
+            "json",
+            "--output-file",
+            str(out),
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    # stdout stays empty so it's safe to redirect; payload lands in the file.
+    assert result.output.strip() == ""
+    written = out.read_text().splitlines()
+    assert len(written) == 1
+    doc = json.loads(written[0])
+    assert doc["run_id"] == "trnr_xyz"
+
+
+def test_runs_metrics_since_and_start_are_mutually_exclusive(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--since",
+            "1h",
+            "--start",
+            "2026-06-10T00:00:00Z",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "--since and --start are mutually exclusive" in result.output
+
+
+def test_runs_metrics_output_file_requires_json(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--output-file",
+            "/tmp/x.json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "--output-file requires -o json" in result.output
+
+
+def test_runs_metrics_invalid_duration_is_rejected(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote, trainer_volume=[1.0], trainer_concurrent=[2.0]
+    )
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--since",
+            "5x",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "Invalid duration" in result.output
+
+
+def test_runs_metrics_no_active_deployment_for_base_model_errors(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote,
+        trainer_volume=[],
+        trainer_concurrent=[],
+        deployments_base_models=[("dep_other", "OtherModel", "RUNNING")],
+    )
+    result = _invoke(
+        ["loops", "runs", "metrics", "--remote", "test_remote", "--run-id", "trnr_xyz"],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "No active Loops deployment found for base model" in result.output
+
+
+def test_runs_metrics_ignores_inactive_deployments_when_resolving(mock_remote):
+    # A STOPPED deployment with the same base_model must not be picked as the
+    # trainer — only active ones qualify.
+    _setup_run_metrics_mocks(
+        mock_remote,
+        trainer_volume=[1.0, 2.0],
+        trainer_concurrent=[1.0, 1.0],
+        deployments_base_models=[
+            ("dep_old", "Qwen/Qwen3-8B", "STOPPED"),
+            ("dep_trainer", "Qwen/Qwen3-8B", "RUNNING"),
+        ],
+    )
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    doc = _parse_jsonl(result.output)[0]
+    assert doc["trainer_deployment_id"] == "dep_trainer"
+
+
+def test_runs_metrics_handles_run_without_sampler(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote,
+        trainer_volume=[1.0, 2.0],
+        trainer_concurrent=[1.0, 1.0],
+        sampler_deployment_id=None,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    doc = _parse_jsonl(result.output)[0]
+    assert doc["sampler_deployment_id"] is None
+    assert doc["sampler"]["request_volume"] == []
+    mock_remote.api.get_model_deployment_range_metrics.assert_not_called()
+
+
+def test_runs_metrics_since_overrides_default_window(mock_remote):
+    _setup_run_metrics_mocks(
+        mock_remote, trainer_volume=[1.0], trainer_concurrent=[1.0]
+    )
+    result = _invoke(
+        [
+            "loops",
+            "runs",
+            "metrics",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--since",
+            "1h",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    # With --since 1h, the trainer-metrics call uses a start roughly one
+    # hour before now (not run.created_at = 2026-05-07).
+    call_kwargs = mock_remote.api.get_loops_deployment_metrics.call_args.kwargs
+    assert call_kwargs["start_epoch_millis"] is not None
+    # Sanity: start should be after the run's created_at of 2026-05-07.
+    run_created_ms = 1746621296000  # 2026-05-07T12:34:56Z
+    assert call_kwargs["start_epoch_millis"] > run_created_ms
