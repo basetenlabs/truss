@@ -158,6 +158,17 @@ def recreate_training_job(
     return job_resp
 
 
+def update_training_job_priority(
+    remote_provider: BasetenRemote, job_id: str, priority: int
+) -> Dict[str, Any]:
+    job = _get_job_by_job_id(remote_provider, job_id)
+    project_id = job["training_project"]["id"]
+    job_id = job["id"]
+    return remote_provider.api.update_pending_training_job_priority(
+        project_id, job_id, priority
+    )
+
+
 def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table = rich.table.Table(
         show_header=True,

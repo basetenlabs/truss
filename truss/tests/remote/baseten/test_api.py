@@ -578,6 +578,28 @@ def test_upsert_training_project(mock_post, baseten_api):
     assert "training-project" == upsert_body["name"]
 
 
+def mock_update_training_job_priority_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"training_job": {"id": "job_id", "priority": 42}}
+    )
+    return response
+
+
+@mock.patch("requests.patch", return_value=mock_update_training_job_priority_response())
+def test_update_pending_training_job_priority(mock_patch, baseten_api):
+    result = baseten_api.update_pending_training_job_priority(
+        "project_id", "job_id", 42
+    )
+
+    assert result == {"id": "job_id", "priority": 42}
+
+    called_url = mock_patch.call_args[0][0]
+    assert called_url.endswith("/v1/training_projects/project_id/jobs/job_id")
+    assert mock_patch.call_args[1]["json"] == {"priority": 42}
+
+
 # Mock responses for training job logs pagination tests
 def mock_training_job_logs_response(logs, has_more=True):
     """Helper function to create mock training job logs response"""

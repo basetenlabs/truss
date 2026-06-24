@@ -920,6 +920,42 @@ def update_session(
         sys.exit(1)
 
 
+@train.command(name="update_priority")
+@click.option(
+    "--job-id", type=str, required=True, help="Job ID of the PENDING training job."
+)
+@click.option(
+    "--priority",
+    type=int,
+    required=True,
+    help="New queue priority. Higher values are dequeued first. Only PENDING jobs can have their priority changed.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def update_priority(job_id: str, priority: int, remote: Optional[str]):
+    """Update the queue priority of a PENDING training job."""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    try:
+        job = train_cli.update_training_job_priority(
+            remote_provider=remote_provider, job_id=job_id, priority=priority
+        )
+    except Exception as e:
+        error_console.print(f"Failed to update training job priority: {str(e)}")
+        sys.exit(1)
+
+    console.print(
+        f"Training job {job['id']} priority updated to {job.get('priority')}.",
+        style="green",
+    )
+
+
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use.")

@@ -126,3 +126,51 @@ class TestRecreateTrainingJob:
             # Should raise UsageError when user cancels
             with pytest.raises(click.UsageError, match="Training job not recreated"):
                 train_cli.recreate_training_job(remote_provider=mock_remote)
+
+
+class TestUpdateTrainingJobPriority:
+    """Test cases for the update_training_job_priority function."""
+
+    def test_update_training_job_priority_success(self, mock_remote):
+        """Test updating the priority of a training job with a specific job ID."""
+        mock_remote.api.search_training_jobs.return_value = [
+            {
+                "id": "test_job_123",
+                "training_project": {
+                    "id": "project_456",
+                    "name": "aghilan-anime-project",
+                },
+            }
+        ]
+        mock_remote.api.update_pending_training_job_priority.return_value = {
+            "id": "test_job_123",
+            "priority": 42,
+            "training_project": {"id": "project_456", "name": "aghilan-anime-project"},
+        }
+
+        result = train_cli.update_training_job_priority(
+            remote_provider=mock_remote, job_id="test_job_123", priority=42
+        )
+
+        assert result["id"] == "test_job_123"
+        assert result["priority"] == 42
+
+        mock_remote.api.search_training_jobs.assert_called_once_with(
+            job_id="test_job_123"
+        )
+        mock_remote.api.update_pending_training_job_priority.assert_called_once_with(
+            "project_456", "test_job_123", 42
+        )
+
+    def test_update_training_job_priority_no_job_found(self, mock_remote):
+        """Test updating priority for a non-existent job ID."""
+        mock_remote.api.search_training_jobs.return_value = []
+
+        with pytest.raises(
+            RuntimeError, match="No training job found with ID: nonexistent_job"
+        ):
+            train_cli.update_training_job_priority(
+                remote_provider=mock_remote, job_id="nonexistent_job", priority=42
+            )
+
+        mock_remote.api.update_pending_training_job_priority.assert_not_called()

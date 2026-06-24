@@ -911,6 +911,15 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def update_pending_training_job_priority(
+        self, project_id: str, job_id: str, priority: int
+    ):
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}",
+            body={"priority": priority},
+        )
+        return resp_json["training_job"]
+
     def get_training_capacity(self) -> list[dict]:
         resp_json = self._rest_api_client.get("v1/training/capacity")
         return resp_json.get("gpu_capacities", [])
