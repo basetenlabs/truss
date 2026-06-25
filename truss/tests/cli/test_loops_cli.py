@@ -423,6 +423,71 @@ def test_view_renders_deployment_with_null_sampler(mock_remote):
     assert "dep_orphan" in result.output
 
 
+def test_view_default_requests_caller_scope(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_deployments.assert_called_once_with(scope=None)
+
+
+def test_view_org_flag_requests_org_scope(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_deployments.assert_called_once_with(scope="org")
+
+
+def test_view_org_flag_renders_owner_column(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "user": {"email": "owner@baseten.co"},
+            "sampler": None,
+        }
+    ]
+    result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "Owner" in result.output
+    assert "owner@baseten.co" in result.output
+
+
+def test_view_without_org_flag_hides_owner_column(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "user": {"email": "owner@baseten.co"},
+            "sampler": None,
+        }
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "Owner" not in result.output
+    assert "owner@baseten.co" not in result.output
+
+
+def test_view_org_flag_owner_placeholder_when_user_missing(mock_remote):
+    # Older backend with no ``user`` field: Owner degrades to a placeholder.
+    mock_remote.api.list_loops_deployments.return_value = [
+        {
+            "id": "dep_abc",
+            "base_model": "Qwen/Qwen3-8B",
+            "base_url": "https://trainer-abc.api.baseten.co/trainer",
+            "status": {"name": "RUNNING"},
+            "sampler": None,
+        }
+    ]
+    result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "Owner" in result.output
+    assert "dep_abc" in result.output
+
+
 def test_view_json_output_renders_null_sampler(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         {
