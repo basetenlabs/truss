@@ -318,7 +318,7 @@ class Compute:
         Furthermore, the ``predict_concurrency`` of a single instance is implemented in
         two ways:
 
-        - Via python's ``asyncio``, if ``run_remote`` is an async def. This
+        - Through Python's ``asyncio``, if ``run_remote`` is an async def. This
           requires that ``run_remote`` yields to the event loop.
 
         - With a threadpool if it's a synchronous function. This requires
@@ -416,7 +416,7 @@ class Assets:
               chainlet should have access to. You can manage secrets on baseten
               `here <https://app.baseten.co/settings/secrets>`_.
             external_data: Data to be downloaded from public URLs and made available
-              in the deployment (via ``context.data_dir``). See
+              in the deployment (through ``context.data_dir``). See
               `here <https://docs.baseten.co/reference/config#external-data>`_ for
               more details.
             weights: One or more ``truss_config.WeightsSource`` objects for MDN
