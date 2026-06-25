@@ -26,11 +26,24 @@ class SecretReference(custom_types.SafeModelNoExtra):
     name: str
 
 
+class AvailabilityModel(str, enum.Enum):
+    """Capacity guarantee under which a training job is scheduled.
+
+    ``DEDICATED`` is on-demand capacity that is not preempted (the default). ``SPOT`` is
+    interruptible capacity that may be preempted; the user is responsible for
+    checkpointing their own progress.
+    """
+
+    DEDICATED = "dedicated"
+    SPOT = "spot"
+
+
 class Compute(custom_types.SafeModelNoExtra):
     node_count: int = 1
     cpu_count: int = 1
     memory: str = "2Gi"
     accelerator: Optional[truss_config.AcceleratorSpec] = None
+    availability_model: AvailabilityModel = AvailabilityModel.DEDICATED
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -39,6 +52,7 @@ class Compute(custom_types.SafeModelNoExtra):
                 "accelerator": self.accelerator.accelerator.value,
                 "count": self.accelerator.count,
             }
+        data["availability_model"] = self.availability_model.value
         return data
 
     def to_truss_config(self) -> truss_config.Resources:

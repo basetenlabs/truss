@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from truss.base import truss_config
 from truss_train.definitions import (
+    AvailabilityModel,
     BasetenCheckpoint,
     CheckpointList,
     Compute,
@@ -66,6 +67,20 @@ class TestLoopsCheckpoint:
         assert dumped["checkpoints"][0]["typ"] == "baseten_named_checkpoint"
         assert dumped["checkpoints"][1]["typ"] == "loops_checkpoint"
         assert dumped["checkpoints"][1]["run_id"] == "run123"
+
+
+class TestComputeAvailabilityModel:
+    def test_defaults_to_dedicated(self):
+        assert Compute().availability_model == AvailabilityModel.DEDICATED
+        assert Compute().model_dump()["availability_model"] == "dedicated"
+
+    def test_spot_serializes_to_string_value(self):
+        dumped = Compute(availability_model=AvailabilityModel.SPOT).model_dump()
+        assert dumped["availability_model"] == "spot"
+
+    def test_invalid_value_raises(self):
+        with pytest.raises(ValidationError):
+            Compute(availability_model="on_demand")
 
 
 def _minimal_job(**kwargs):
