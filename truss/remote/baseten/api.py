@@ -1301,8 +1301,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.get(f"v1/loops/samplers/{sampler_id}")
         return resp_json["sampler"]
 
-    def list_loops_deployments(self) -> List[Dict[str, Any]]:
-        resp_json = self._rest_api_client.get("v1/loops/deployments")
+    def list_loops_deployments(
+        self, scope: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        # scope="org" lists every deployment in the caller's org (each with its
+        # owning user); omit/"mine" lists just the caller's.
+        url_params = {"scope": scope} if scope else {}
+        resp_json = self._rest_api_client.get(
+            "v1/loops/deployments", url_params=url_params
+        )
         return resp_json["deployments"]
 
     def get_loops_deployment(self, deployment_id: str) -> dict:

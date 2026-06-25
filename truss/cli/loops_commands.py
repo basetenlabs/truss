@@ -144,6 +144,13 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     help="Include deployments in terminal states (STOPPED, FAILED).",
 )
 @click.option(
+    "--org",
+    "org_wide",
+    is_flag=True,
+    default=False,
+    help="List every Loops deployment in your organization (with its owner), not just your own.",
+)
+@click.option(
     "-o",
     "--output-format",
     type=click.Choice(
@@ -154,12 +161,13 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
 )
 @common.common_options()
 def view_loops_deployments(
-    remote: Optional[str], show_all: bool, output_format: str
+    remote: Optional[str], show_all: bool, org_wide: bool, output_format: str
 ) -> None:
-    """List the caller's Loops deployments.
+    """List Loops deployments.
 
-    By default, deployments in terminal states (STOPPED, FAILED) are hidden.
-    Pass --all to include them.
+    Lists your own deployments by default; pass --org to list every deployment
+    in your organization, with an Owner column. Deployments in terminal states
+    (STOPPED, FAILED) are hidden unless you pass --all.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -167,7 +175,9 @@ def view_loops_deployments(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    deployments = remote_provider.api.list_loops_deployments()
+    deployments = remote_provider.api.list_loops_deployments(
+        scope="org" if org_wide else None
+    )
     is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
 
     if not deployments and is_human_output:
@@ -192,7 +202,7 @@ def view_loops_deployments(
         _render_loops_deployments_json(deployments)
         return
 
-    _render_loops_deployments(deployments)
+    _render_loops_deployments(deployments, show_owner=org_wide)
 
 
 @loops.group(name="runs")
@@ -266,7 +276,9 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
+def _render_loops_deployments(
+    deployments: List[Dict[str, Any]], show_owner: bool = False
+) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -275,6 +287,8 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
         border_style="blue",
     )
     table.add_column("Deployment ID", style="cyan")
+    if show_owner:
+        table.add_column("Owner", style="magenta")
     table.add_column("Base Model", style="green")
     table.add_column("Deployment Status")
     table.add_column("Deployment Base URL", style="blue")
@@ -283,15 +297,20 @@ def _render_loops_deployments(deployments: List[Dict[str, Any]]) -> None:
     table.add_column("Sampler Base URL", style="blue")
     for deployment in deployments:
         sampler = deployment.get("sampler")
-        table.add_row(
-            deployment["id"],
-            deployment["base_model"],
-            deployment["status"]["name"],
-            deployment["base_url"],
-            sampler["deployment_id"] if sampler else "—",
-            sampler["status"]["name"] if sampler else "—",
-            sampler["base_url"] if sampler else "—",
+        row = [deployment["id"]]
+        if show_owner:
+            row.append((deployment.get("user") or {}).get("email") or "—")
+        row.extend(
+            [
+                deployment["base_model"],
+                deployment["status"]["name"],
+                deployment["base_url"],
+                sampler["deployment_id"] if sampler else "—",
+                sampler["status"]["name"] if sampler else "—",
+                sampler["base_url"] if sampler else "—",
+            ]
         )
+        table.add_row(*row)
     console.print(table)
 
 
