@@ -578,7 +578,7 @@ def test_upsert_training_project(mock_post, baseten_api):
     assert "training-project" == upsert_body["name"]
 
 
-def mock_update_training_job_priority_response():
+def mock_update_training_job_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
@@ -587,11 +587,9 @@ def mock_update_training_job_priority_response():
     return response
 
 
-@mock.patch("requests.patch", return_value=mock_update_training_job_priority_response())
-def test_update_pending_training_job_priority(mock_patch, baseten_api):
-    result = baseten_api.update_pending_training_job_priority(
-        "project_id", "job_id", 42
-    )
+@mock.patch("requests.patch", return_value=mock_update_training_job_response())
+def test_update_training_job(mock_patch, baseten_api):
+    result = baseten_api.update_training_job("project_id", "job_id", priority=42)
 
     assert result == {"id": "job_id", "priority": 42}
 

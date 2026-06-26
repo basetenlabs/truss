@@ -911,12 +911,14 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
-    def update_pending_training_job_priority(
-        self, project_id: str, job_id: str, priority: int
+    def update_training_job(
+        self, project_id: str, job_id: str, *, priority: Optional[int] = None
     ):
+        body: Dict[str, Any] = {}
+        if priority is not None:
+            body["priority"] = priority
         resp_json = self._rest_api_client.patch(
-            f"v1/training_projects/{project_id}/jobs/{job_id}",
-            body={"priority": priority},
+            f"v1/training_projects/{project_id}/jobs/{job_id}", body=body
         )
         return resp_json["training_job"]
 

@@ -920,20 +920,21 @@ def update_session(
         sys.exit(1)
 
 
-@train.command(name="update_priority")
-@click.option(
-    "--job-id", type=str, required=True, help="Job ID of the PENDING training job."
-)
+@train.command(name="update")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option(
     "--priority",
     type=int,
-    required=True,
+    required=False,
     help="New queue priority. Higher values are dequeued first. Only PENDING jobs can have their priority changed.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def update_priority(job_id: str, priority: int, remote: Optional[str]):
-    """Update the queue priority of a PENDING training job."""
+def update(job_id: str, priority: Optional[int], remote: Optional[str]):
+    """Update a training job. At least one field to update must be provided."""
+
+    if priority is None:
+        raise click.UsageError("At least one field to update must be provided.")
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -943,17 +944,14 @@ def update_priority(job_id: str, priority: int, remote: Optional[str]):
     )
 
     try:
-        job = train_cli.update_training_job_priority(
+        job = train_cli.update_training_job(
             remote_provider=remote_provider, job_id=job_id, priority=priority
         )
     except Exception as e:
-        error_console.print(f"Failed to update training job priority: {str(e)}")
+        error_console.print(f"Failed to update training job: {str(e)}")
         sys.exit(1)
 
-    console.print(
-        f"Training job {job['id']} priority updated to {job.get('priority')}.",
-        style="green",
-    )
+    console.print(f"Training job {job['id']} updated.", style="green")
 
 
 @train.command(name="isession")
