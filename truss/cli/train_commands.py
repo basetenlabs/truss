@@ -920,6 +920,40 @@ def update_session(
         sys.exit(1)
 
 
+@train.command(name="update")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
+@click.option(
+    "--priority",
+    type=int,
+    required=False,
+    help="New queue priority. Higher values are dequeued first. Only PENDING jobs can have their priority changed.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def update(job_id: str, priority: Optional[int], remote: Optional[str]):
+    """Update a training job. At least one field to update must be provided."""
+
+    if priority is None:
+        raise click.UsageError("At least one field to update must be provided.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    try:
+        job = train_cli.update_training_job(
+            remote_provider=remote_provider, job_id=job_id, priority=priority
+        )
+    except Exception as e:
+        error_console.print(f"Failed to update training job: {str(e)}")
+        sys.exit(1)
+
+    console.print(f"Training job {job['id']} updated.", style="green")
+
+
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
