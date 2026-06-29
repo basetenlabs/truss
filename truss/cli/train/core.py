@@ -452,6 +452,9 @@ def display_training_job(
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Priority", str(job.get("priority") or 0))
+    table.add_row(
+        "Availability Model", str(job.get("availability_model") or "dedicated")
+    )
     if user_email := job.get("user", {}).get("email"):
         table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
