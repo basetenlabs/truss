@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 import pytest
@@ -220,7 +221,9 @@ def test_legacy_plaintext_round_trip(trussrc):
     assert "auth_type" not in loaded.configs
 
 
-def test_keyring_offload_round_trip(memory_keyring, trussrc):
+def test_api_key_stays_plaintext(memory_keyring, trussrc):
+    # API keys are deliberately kept inline in the trussrc (never offloaded to
+    # the keyring) so the SSH proxy command can read them; only OAuth offloads.
     RemoteFactory.update_remote_config(
         RemoteConfig(
             name="baseten",
@@ -233,13 +236,57 @@ def test_keyring_offload_round_trip(memory_keyring, trussrc):
         )
     )
     text = trussrc.read_text()
-    assert "api_key = " not in text
+    assert "api_key = secret" in text
     assert "auth_type = api_key" in text
-    assert memory_keyring.get_password(KEYRING_SERVICE, "baseten") is not None
+    assert memory_keyring.get_password(KEYRING_SERVICE, "baseten") is None
 
     loaded = RemoteFactory.load_remote_config("baseten")
     assert loaded.configs["api_key"] == "secret"
     assert loaded.configs["auth_type"] == "api_key"
+
+
+def test_legacy_keyring_api_key_still_reads(memory_keyring, trussrc):
+    # API keys stored in the keyring by an older truss version (auth_type set,
+    # nothing inline) must still load for normal operations even though new
+    # logins no longer offload api_keys. SSH is the only thing that can't use
+    # these, since its proxy command reads the plaintext trussrc directly.
+    trussrc.write_text(
+        "[baseten]\n"
+        "remote_provider = baseten\n"
+        "auth_type = api_key\n"
+        "remote_url = http://x\n"
+    )
+    memory_keyring.set_password(
+        KEYRING_SERVICE,
+        "baseten",
+        json.dumps({"auth_type": "api_key", "api_key": "secret"}),
+    )
+    loaded = RemoteFactory.load_remote_config("baseten")
+    assert loaded.configs["api_key"] == "secret"
+
+
+def test_keyring_offload_round_trip(memory_keyring, trussrc):
+    RemoteFactory.update_remote_config(
+        RemoteConfig(
+            name="baseten",
+            configs={
+                "remote_provider": "baseten",
+                "auth_type": "oauth",
+                "oauth_access_token": "access",
+                "oauth_refresh_token": "refresh",
+                "oauth_expires_at": "123",
+                "remote_url": "http://x",
+            },
+        )
+    )
+    text = trussrc.read_text()
+    assert "oauth_access_token = " not in text
+    assert "auth_type = oauth" in text
+    assert memory_keyring.get_password(KEYRING_SERVICE, "baseten") is not None
+
+    loaded = RemoteFactory.load_remote_config("baseten")
+    assert loaded.configs["oauth_access_token"] == "access"
+    assert loaded.configs["auth_type"] == "oauth"
 
 
 def test_env_disabled_keeps_inline_silently(
@@ -252,18 +299,20 @@ def test_env_disabled_keeps_inline_silently(
                 name="baseten",
                 configs={
                     "remote_provider": "baseten",
-                    "auth_type": "api_key",
-                    "api_key": "secret",
+                    "auth_type": "oauth",
+                    "oauth_access_token": "access",
+                    "oauth_refresh_token": "refresh",
+                    "oauth_expires_at": "123",
                     "remote_url": "http://x",
                 },
             )
         )
     assert caplog.records == []
-    assert "api_key = secret" in trussrc.read_text()
+    assert "oauth_access_token = access" in trussrc.read_text()
     assert memory_keyring.get_password(KEYRING_SERVICE, "baseten") is None
 
     loaded = RemoteFactory.load_remote_config("baseten")
-    assert loaded.configs["api_key"] == "secret"
+    assert loaded.configs["oauth_access_token"] == "access"
 
 
 def test_unusable_backend_warns_and_keeps_inline(fail_keyring, trussrc, caplog):
@@ -273,17 +322,19 @@ def test_unusable_backend_warns_and_keeps_inline(fail_keyring, trussrc, caplog):
                 name="baseten",
                 configs={
                     "remote_provider": "baseten",
-                    "auth_type": "api_key",
-                    "api_key": "secret",
+                    "auth_type": "oauth",
+                    "oauth_access_token": "access",
+                    "oauth_refresh_token": "refresh",
+                    "oauth_expires_at": "123",
                     "remote_url": "http://x",
                 },
             )
         )
     assert any("plaintext" in r.message for r in caplog.records)
-    assert "api_key = secret" in trussrc.read_text()
+    assert "oauth_access_token = access" in trussrc.read_text()
 
     loaded = RemoteFactory.load_remote_config("baseten")
-    assert loaded.configs["api_key"] == "secret"
+    assert loaded.configs["oauth_access_token"] == "access"
 
 
 def test_load_raises_when_secret_missing_and_keyring_unavailable(fail_keyring, trussrc):
@@ -326,8 +377,10 @@ def test_remove_remote_config_drops_section_and_keyring(memory_keyring, trussrc)
             name="baseten",
             configs={
                 "remote_provider": "baseten",
-                "auth_type": "api_key",
-                "api_key": "secret",
+                "auth_type": "oauth",
+                "oauth_access_token": "access",
+                "oauth_refresh_token": "refresh",
+                "oauth_expires_at": "123",
                 "remote_url": "http://x",
             },
         )

@@ -254,6 +254,15 @@ def _offload_secrets_from_config(remote_config: RemoteConfig) -> None:
     auth_type = configs.get("auth_type")
     if not isinstance(auth_type, str):
         return
+    # API keys are intentionally left plaintext in ~/.trussrc rather than
+    # offloaded to the OS keyring. The SSH proxy command run by the system SSH
+    # client executes under a stock Python interpreter with no keyring backend,
+    # so it can only read an api_key that lives inline in the trussrc. OAuth
+    # credentials still go to the keyring below. Existing keyring-stored api_keys
+    # remain readable via _apply_secrets_to_config; this only keeps new logins
+    # inline.
+    if auth_type == AuthType.API_KEY:
+        return
     secret_keys = _INLINE_SECRET_KEYS_BY_AUTH_TYPE.get(auth_type)
     if secret_keys is None or not all(key in configs for key in secret_keys):
         return

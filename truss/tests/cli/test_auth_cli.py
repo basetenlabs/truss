@@ -118,24 +118,26 @@ def test_status_keyring_source(memory_keyring, trussrc):
             configs={
                 "remote_provider": "baseten",
                 "remote_url": "http://x",
-                "auth_type": "api_key",
-                "api_key": "secret",
+                "auth_type": "oauth",
+                "oauth_access_token": "access",
+                "oauth_refresh_token": "refresh",
+                "oauth_expires_at": "123",
             },
         )
     )
     result = CliRunner().invoke(truss_cli, ["auth", "status"])
     assert result.exit_code == 0, result.output
-    assert "auth_type: api_key" in result.output
+    assert "auth_type: oauth" in result.output
     assert "source: keyring" in result.output
 
 
-def test_status_legacy_plaintext(trussrc):
+def test_status_inline_plaintext(trussrc):
     trussrc.write_text(
-        "[baseten]\nremote_provider = baseten\nremote_url = http://x\napi_key = legacy\n"
+        "[baseten]\nremote_provider = baseten\nremote_url = http://x\napi_key = plain\n"
     )
     result = CliRunner().invoke(truss_cli, ["auth", "status"])
     assert result.exit_code == 0, result.output
-    assert "legacy plaintext" in result.output
+    assert "api_key (plaintext)" in result.output
     assert "source: trussrc-inline" in result.output
 
 
