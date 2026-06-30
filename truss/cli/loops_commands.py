@@ -11,10 +11,7 @@ from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.loops_deployment_log_watcher import LoopsDeploymentLogWatcher
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
-from truss.cli.loops_checkpoint_viewer import (
-    resolve_most_recent_run_for_base_model,
-    view_loops_checkpoint_list,
-)
+from truss.cli.loops_checkpoint_viewer import view_loops_checkpoint_list
 from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.utils import common
 from truss.cli.utils.output import console
@@ -409,7 +406,7 @@ def loops_checkpoints() -> None:
     "--base-model",
     type=str,
     required=False,
-    help="Base model name. Resolves to the most recent Loops run for that model.",
+    help="Base model name. Shows checkpoints across all your runs of that model.",
 )
 @click.option(
     "--sort",
@@ -455,8 +452,8 @@ def view_loops_checkpoints(
 ) -> None:
     """List checkpoints for a Loops run.
 
-    Identify the run with --run-id, or pass --base-model to pick the most
-    recent run for that base model.
+    Identify a single run with --run-id, or pass --base-model to list
+    checkpoints across all your runs of that base model.
     """
     if run_id and base_model:
         raise click.UsageError("Pass either --run-id or --base-model, not both.")
@@ -470,20 +467,10 @@ def view_loops_checkpoints(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    if run_id:
-        resolved_run_id = run_id
-    else:
-        try:
-            assert base_model is not None  # narrowed by the validation above
-            resolved_run_id = resolve_most_recent_run_for_base_model(
-                remote_provider, base_model
-            )
-        except ValueError as e:
-            raise click.UsageError(str(e))
-
     view_loops_checkpoint_list(
         remote_provider=remote_provider,
-        run_id=resolved_run_id,
+        run_id=run_id,
+        base_model=base_model,
         sort_by=sort,
         order=order,
         output_format=output_format,
