@@ -5,7 +5,7 @@ import urllib.parse
 from collections.abc import Mapping
 from typing import Any, Optional
 
-from pythonjsonlogger import json as json_logger
+from pythonjsonlogger import jsonlogger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
 
@@ -46,7 +46,7 @@ class _MetricsFilter(logging.Filter):
         return "/metrics" not in record.getMessage()
 
 
-class _AccessJsonFormatter(json_logger.JsonFormatter):
+class _AccessJsonFormatter(jsonlogger.JsonFormatter):
     def add_fields(
         self, log_record: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:
@@ -72,7 +72,7 @@ class _AccessJsonFormatter(json_logger.JsonFormatter):
         return super().format(record)
 
 
-class _DefaultJsonFormatter(json_logger.JsonFormatter):
+class _DefaultJsonFormatter(jsonlogger.JsonFormatter):
     def add_fields(
         self, log_record: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:

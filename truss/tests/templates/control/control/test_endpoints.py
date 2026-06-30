@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -34,6 +35,10 @@ def client_ws(app):
     return ws
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="websocket proxy uses asyncio.TaskGroup/ExceptionGroup, only available on Python 3.11+",
+)
 @pytest.mark.asyncio
 async def test_proxy_ws_bidirectional_messaging(client_ws):
     client_queue = asyncio.Queue()
@@ -70,6 +75,10 @@ async def test_proxy_ws_bidirectional_messaging(client_ws):
     client_ws.close.assert_called()
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="websocket proxy uses asyncio.TaskGroup/ExceptionGroup, only available on Python 3.11+",
+)
 @pytest.mark.asyncio
 async def test_proxy_ws_binary_message(client_ws):
     test_bytes = b"binary data"
