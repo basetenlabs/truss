@@ -87,7 +87,7 @@ def auth_status(remote: Optional[str]) -> None:
     auth_type = section.get("auth_type")
     if not auth_type:
         if "api_key" in section:
-            auth_type = "api_key (legacy plaintext)"
+            auth_type = "api_key (plaintext)"
             source = "trussrc-inline"
         else:
             raise click.ClickException(
