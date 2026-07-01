@@ -926,6 +926,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.get("v1/training/capacity")
         return resp_json.get("gpu_capacities", [])
 
+    def update_team_training_gpu_capacity(
+        self, team_id: str, gpu_type: str, max_gpus: int
+    ) -> dict:
+        resp_json = self._rest_api_client.patch(
+            "v1/training/capacity",
+            body={"team_id": team_id, "gpu_type": gpu_type, "max_gpus": max_gpus},
+        )
+        return resp_json["team_gpu_capacity"]
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"

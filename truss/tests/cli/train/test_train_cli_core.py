@@ -1,11 +1,18 @@
 from unittest.mock import Mock, patch
 
+import click
+import pytest
+
 from truss.cli.train.cache import (
     calculate_directory_sizes,
     create_file_summary_with_directory_sizes,
 )
-from truss.cli.train.core import display_training_capacity, view_training_job_metrics
-from truss.remote.baseten.custom_types import FileSummary
+from truss.cli.train.core import (
+    display_training_capacity,
+    update_team_training_gpu_capacity,
+    view_training_job_metrics,
+)
+from truss.remote.baseten.custom_types import FileSummary, TeamType
 
 
 @patch("truss.cli.train.metrics_watcher.time.sleep")
@@ -477,3 +484,47 @@ def test_display_training_capacity_empty(capsys):
     display_training_capacity(mock_remote)
 
     assert "No Training GPU capacity limits." in capsys.readouterr().out
+
+
+def test_update_team_training_gpu_capacity_resolves_team_and_calls_api():
+    """Team name is resolved to a team_id before calling the update API."""
+    mock_api = Mock()
+    mock_api.get_teams.return_value = {
+        "ml-research": TeamType(id="team_abc", name="ml-research", default=False)
+    }
+    mock_api.update_team_training_gpu_capacity.return_value = {
+        "team_id": "team_abc",
+        "team_name": "ml-research",
+        "gpu_type": "H100",
+        "baseline": 0,
+        "limit": 32,
+        "usage_count": 0,
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    result = update_team_training_gpu_capacity(
+        mock_remote, team_name="ml-research", gpu_type="H100", capacity=32
+    )
+
+    mock_api.update_team_training_gpu_capacity.assert_called_once_with(
+        team_id="team_abc", gpu_type="H100", max_gpus=32
+    )
+    assert result["limit"] == 32
+
+
+def test_update_team_training_gpu_capacity_unknown_team_raises():
+    """An unknown team name raises a ClickException listing the available teams."""
+    mock_api = Mock()
+    mock_api.get_teams.return_value = {
+        "ml-research": TeamType(id="team_abc", name="ml-research", default=False)
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with pytest.raises(click.ClickException, match="ml-research"):
+        update_team_training_gpu_capacity(
+            mock_remote, team_name="does-not-exist", gpu_type="H100", capacity=32
+        )
+
+    mock_api.update_team_training_gpu_capacity.assert_not_called()
