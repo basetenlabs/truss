@@ -165,7 +165,7 @@ async def test_trt_llm_truss_missing_model_py(
         mock_predict_called = False
 
         # Need to import from the same path as ModelWrapper for retries to work.
-        errors_module = sys.modules["common.errors"]
+        errors_module = sys.modules["_truss_common.errors"]
 
         # NB(nikhil): The underlying .load() takes longer on CI, so we wrap predict until the model is ready.
         @retry(
