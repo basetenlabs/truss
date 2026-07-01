@@ -1113,13 +1113,62 @@ def _patch_sessions(
 @train.command(name="capacity")
 @common.common_options()
 @click.option("--remote", type=str, required=False, help="Name of the remote to use")
-def capacity(remote: Optional[str]):
-    """Show GPU capacity limits and current usage for the organization."""
+@click.option("--team", type=str, required=False, help="Team to set GPU capacity for.")
+@click.option(
+    "--gpu-type",
+    type=str,
+    required=False,
+    help="GPU type to set capacity for (e.g. H100).",
+)
+@click.option(
+    "--capacity",
+    "team_capacity",
+    type=int,
+    required=False,
+    help="Max concurrent GPUs of this type the team may use. Org-admin only.",
+)
+def capacity(
+    remote: Optional[str],
+    team: Optional[str],
+    gpu_type: Optional[str],
+    team_capacity: Optional[int],
+):
+    """Show GPU capacity limits and current usage for the organization.
+
+    Pass --team, --gpu-type, and --capacity together to set a team's GPU capacity limit.
+    """
+    is_update = team or gpu_type or team_capacity is not None
+    if is_update and not (team and gpu_type and team_capacity is not None):
+        raise click.UsageError(
+            "--team, --gpu-type, and --capacity must all be provided together."
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+
+    if is_update:
+        assert team and gpu_type and team_capacity is not None
+        try:
+            item = train_cli.update_team_training_gpu_capacity(
+                remote_provider=remote_provider,
+                team_name=team,
+                gpu_type=gpu_type,
+                capacity=team_capacity,
+            )
+        except click.ClickException:
+            raise
+        except Exception as e:
+            error_console.print(f"Failed to update team capacity: {str(e)}")
+            sys.exit(1)
+        console.print(
+            f"Set {item['team_name']}'s {item['gpu_type']} capacity to {item['limit']}.",
+            style="green",
+        )
+        return
+
     train_cli.display_training_capacity(remote_provider)
 
 

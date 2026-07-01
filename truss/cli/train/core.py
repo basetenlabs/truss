@@ -14,6 +14,7 @@ import rich
 from InquirerPy import inquirer
 from rich.text import Text
 
+from truss.cli import remote_cli
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import (
@@ -827,3 +828,19 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         )
 
     console.print(table)
+
+
+def update_team_training_gpu_capacity(
+    remote_provider: BasetenRemote, team_name: str, gpu_type: str, capacity: int
+) -> Dict[str, Any]:
+    """Set the max concurrent GPUs of a given type a team may use. Org-admin only."""
+    existing_teams = remote_provider.api.get_teams()
+    team = existing_teams.get(team_name)
+    if team is None:
+        raise click.ClickException(
+            f"Team '{team_name}' does not exist. "
+            f"Available teams: {remote_cli.format_available_teams(existing_teams)}"
+        )
+    return remote_provider.api.update_team_training_gpu_capacity(
+        team_id=team.id, gpu_type=gpu_type, max_gpus=capacity
+    )
