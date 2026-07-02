@@ -1157,7 +1157,7 @@ def update_capacity(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     try:
-        item = train_cli.update_team_training_gpu_capacity(
+        updated_capacity = train_cli.update_team_training_gpu_capacity(
             remote_provider=remote_provider,
             team_name=team,
             gpu_type=gpu_type,
@@ -1169,7 +1169,8 @@ def update_capacity(
         error_console.print(f"Failed to update team capacity: {str(e)}")
         sys.exit(1)
     console.print(
-        f"Updated {item['team_name']}'s {item['gpu_type']} capacity to {item['limit']}.",
+        f"Updated {updated_capacity['team_name']}'s {updated_capacity['gpu_type']} "
+        f"capacity to {updated_capacity['limit']}.",
         style="green",
     )
 
