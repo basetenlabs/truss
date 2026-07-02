@@ -534,6 +534,9 @@ def create_bis_llm_service(
     else:
         response = api.create_bis_llm_model_version(model_id=model_id, body=body)
 
+    for warning in response.get("warnings", []):
+        console.print(f"[bold yellow]⚠ Warning:[/bold yellow] {warning}")
+
     return ModelVersionHandle(
         model_id=response["model_id"],
         version_id=response["version_id"],
