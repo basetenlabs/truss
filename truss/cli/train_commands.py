@@ -1128,15 +1128,17 @@ def view_capacity(remote: Optional[str]):
     train_cli.display_training_capacity(remote_provider)
 
 
-@capacity.command(name="set")
+@capacity.command(name="update")
 @common.common_options()
 @click.option("--remote", type=str, required=False, help="Name of the remote to use")
-@click.option("--team", type=str, required=True, help="Team to set GPU capacity for.")
+@click.option(
+    "--team", type=str, required=True, help="Team to update GPU capacity for."
+)
 @click.option(
     "--gpu-type",
     type=str,
     required=True,
-    help="GPU type to set capacity for (e.g. H100).",
+    help="GPU type to update capacity for (e.g. H100).",
 )
 @click.option(
     "--capacity",
@@ -1145,8 +1147,10 @@ def view_capacity(remote: Optional[str]):
     required=True,
     help="Max concurrent GPUs of this type the team may use. Org-admin only.",
 )
-def set_capacity(remote: Optional[str], team: str, gpu_type: str, team_capacity: int):
-    """Set a team's GPU capacity limit. Org-admin only."""
+def update_capacity(
+    remote: Optional[str], team: str, gpu_type: str, team_capacity: int
+):
+    """Update a team's GPU capacity limit. Org-admin only."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
@@ -1165,7 +1169,7 @@ def set_capacity(remote: Optional[str], team: str, gpu_type: str, team_capacity:
         error_console.print(f"Failed to update team capacity: {str(e)}")
         sys.exit(1)
     console.print(
-        f"Set {item['team_name']}'s {item['gpu_type']} capacity to {item['limit']}.",
+        f"Updated {item['team_name']}'s {item['gpu_type']} capacity to {item['limit']}.",
         style="green",
     )
 
