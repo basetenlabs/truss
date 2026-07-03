@@ -79,6 +79,21 @@ CASES = [
         input="2026-02-17T13:00:00+00:00",
         expected="1h 0m",
     ),
+    FormatTimeTillExpiryTestCase(
+        desc="infinite timeout (10 years out) shows No timeout",
+        input=_utc_iso(NOW + timedelta(days=365 * 10)),
+        expected="No timeout",
+    ),
+    FormatTimeTillExpiryTestCase(
+        desc="just over one year still shows No timeout",
+        input=_utc_iso(NOW + timedelta(days=366)),
+        expected="No timeout",
+    ),
+    FormatTimeTillExpiryTestCase(
+        desc="just under one year shows hours/minutes",
+        input=_utc_iso(NOW + timedelta(days=364)),
+        expected="8736h 0m",
+    ),
 ]
 
 
