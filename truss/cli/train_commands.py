@@ -1110,10 +1110,15 @@ def _patch_sessions(
     return messages
 
 
-@train.command(name="capacity")
+@train.group(name="capacity")
+def capacity():
+    """Capacity-related subcommands for truss train"""
+
+
+@capacity.command(name="view")
 @common.common_options()
 @click.option("--remote", type=str, required=False, help="Name of the remote to use")
-def capacity(remote: Optional[str]):
+def view_capacity(remote: Optional[str]):
     """Show GPU capacity limits and current usage for the organization."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -1121,6 +1126,53 @@ def capacity(remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     train_cli.display_training_capacity(remote_provider)
+
+
+@capacity.command(name="update")
+@common.common_options()
+@click.option("--remote", type=str, required=False, help="Name of the remote to use")
+@click.option(
+    "--team", type=str, required=True, help="Team to update GPU capacity for."
+)
+@click.option(
+    "--gpu-type",
+    type=str,
+    required=True,
+    help="GPU type to update capacity for (e.g. H100).",
+)
+@click.option(
+    "--capacity",
+    "team_capacity",
+    type=int,
+    required=True,
+    help="Max concurrent GPUs of this type the team may use. Org-admin only.",
+)
+def update_capacity(
+    remote: Optional[str], team: str, gpu_type: str, team_capacity: int
+):
+    """Update a team's GPU capacity limit. Org-admin only."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    try:
+        updated_capacity = train_cli.update_team_training_gpu_capacity(
+            remote_provider=remote_provider,
+            team_name=team,
+            gpu_type=gpu_type,
+            capacity=team_capacity,
+        )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        error_console.print(f"Failed to update team capacity: {str(e)}")
+        sys.exit(1)
+    console.print(
+        f"Updated {updated_capacity['team_name']}'s {updated_capacity['gpu_type']} "
+        f"capacity to {updated_capacity['limit']}.",
+        style="green",
+    )
 
 
 @train.command(name="workstation")
