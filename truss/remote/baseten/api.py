@@ -922,9 +922,12 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
-    def get_training_capacity(self) -> list[dict]:
-        resp_json = self._rest_api_client.get("v1/training/capacity")
-        return resp_json.get("gpu_capacities", [])
+    def get_training_capacity(self) -> dict:
+        """Return the org- and team-level GPU capacity payload.
+
+        Shape: ``{"gpu_capacities": [...], "team_gpu_capacities": [...]}``.
+        """
+        return self._rest_api_client.get("v1/training/capacity")
 
     def update_team_training_gpu_capacity(
         self, team_id: str, gpu_type: str, max_gpus: int

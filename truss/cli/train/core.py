@@ -800,34 +800,58 @@ def view_cache_summary_by_project(
 
 
 def display_training_capacity(remote_provider: BasetenRemote) -> None:
-    """Fetch and display GPU capacity limits and usage for the organization."""
-    gpu_capacities = remote_provider.api.get_training_capacity()
+    """Fetch and display org- and team-level GPU capacity limits and usage."""
+    capacity = remote_provider.api.get_training_capacity()
+    gpu_capacities = capacity.get("gpu_capacities", [])
+    team_gpu_capacities = capacity.get("team_gpu_capacities", [])
 
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold magenta",
-        title="Training GPU Capacity",
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    table.add_column("GPU Type", style="cyan")
-    table.add_column("Baseline", justify="right")
-    table.add_column("Limit", justify="right")
-    table.add_column("Usage", justify="right")
-
-    if not gpu_capacities:
+    if not gpu_capacities and not team_gpu_capacities:
         console.print("No Training GPU capacity limits.")
         return
 
-    for item in gpu_capacities:
-        table.add_row(
-            item.get("gpu_type", ""),
-            str(item.get("baseline", 0)),
-            str(item.get("limit", 0)),
-            str(item.get("usage_count", 0)),
+    if gpu_capacities:
+        org_table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Training GPU Capacity",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
         )
+        org_table.add_column("GPU Type", style="cyan")
+        org_table.add_column("Baseline", justify="right")
+        org_table.add_column("Limit", justify="right")
+        org_table.add_column("Usage", justify="right")
+        for item in gpu_capacities:
+            org_table.add_row(
+                item.get("gpu_type", ""),
+                str(item.get("baseline", 0)),
+                str(item.get("limit", 0)),
+                str(item.get("usage_count", 0)),
+            )
+        console.print(org_table)
 
-    console.print(table)
+    if team_gpu_capacities:
+        team_table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Team Training GPU Capacity",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        team_table.add_column("Team", style="cyan")
+        team_table.add_column("GPU Type", style="cyan")
+        team_table.add_column("Baseline", justify="right")
+        team_table.add_column("Limit", justify="right")
+        team_table.add_column("Usage", justify="right")
+        for item in team_gpu_capacities:
+            team_table.add_row(
+                item.get("team_name", ""),
+                item.get("gpu_type", ""),
+                str(item.get("baseline", 0)),
+                str(item.get("limit", 0)),
+                str(item.get("usage_count", 0)),
+            )
+        console.print(team_table)
 
 
 def update_team_training_gpu_capacity(

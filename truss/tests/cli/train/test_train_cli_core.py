@@ -454,10 +454,12 @@ def test_calculate_directory_sizes_max_depth():
 def test_display_training_capacity(capsys):
     """Table is printed with GPU type, baseline, limit, and usage for each entry."""
     mock_api = Mock()
-    mock_api.get_training_capacity.return_value = [
-        {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32},
-        {"gpu_type": "A10G", "baseline": 0, "limit": 8, "usage_count": 0},
-    ]
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32},
+            {"gpu_type": "A10G", "baseline": 0, "limit": 8, "usage_count": 0},
+        ]
+    }
     mock_remote = Mock()
     mock_remote.api = mock_api
 
@@ -474,10 +476,75 @@ def test_display_training_capacity(capsys):
     assert rows["A10G"] == ["A10G", "0", "8", "0"]
 
 
+def test_display_training_capacity_with_teams(capsys):
+    """Team capacities are rendered in a second table with a Team column."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
+        ],
+        "team_gpu_capacities": [
+            {
+                "team_id": "team_abc",
+                "team_name": "ml-research",
+                "gpu_type": "H100",
+                "baseline": 0,
+                "limit": 32,
+                "usage_count": 8,
+            }
+        ],
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    rows = {
+        cells[0]: cells
+        for line in lines
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
+
+    assert "Team Training GPU Capacity" in out
+    assert rows["H100"] == ["H100", "16", "64", "32"]
+    assert rows["ml-research"] == ["ml-research", "H100", "0", "32", "8"]
+
+
+def test_display_training_capacity_teams_only(capsys):
+    """A team table is shown even when there are no org-level capacities."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [],
+        "team_gpu_capacities": [
+            {
+                "team_id": "team_abc",
+                "team_name": "ml-research",
+                "gpu_type": "H100",
+                "baseline": 0,
+                "limit": 32,
+                "usage_count": 0,
+            }
+        ],
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    out = capsys.readouterr().out
+    assert "Team Training GPU Capacity" in out
+    assert "No Training GPU capacity limits." not in out
+
+
 def test_display_training_capacity_empty(capsys):
     """Empty state message is printed when there are no GPU capacities."""
     mock_api = Mock()
-    mock_api.get_training_capacity.return_value = []
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [],
+        "team_gpu_capacities": [],
+    }
     mock_remote = Mock()
     mock_remote.api = mock_api
 
