@@ -365,6 +365,201 @@ def _render_loops_runs(runs: List[Dict[str, Any]]) -> None:
     console.print(table)
 
 
+@loops.command(name="metrics")
+@click.option(
+    "--deployment-id",
+    type=str,
+    required=False,
+    help="Loops deployment ID to fetch metrics for.",
+)
+@click.option(
+    "--base-model",
+    type=str,
+    required=False,
+    help=(
+        "Base model name; resolves to the caller's active Loops deployment "
+        "for that model. Errors if zero or more than one active deployment "
+        "matches."
+    ),
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def loops_metrics(
+    deployment_id: Optional[str], base_model: Optional[str], remote: Optional[str]
+) -> None:
+    """Show utilization + request metrics for a Loops deployment.
+
+    Pass exactly one of ``--deployment-id`` or ``--base-model``. Prints a
+    single-snapshot view of GPU/CPU/memory utilization per pod plus
+    service-level request metrics from the Knative queue-proxy.
+    """
+    if deployment_id and base_model:
+        raise click.UsageError("Pass either --deployment-id or --base-model, not both.")
+    if not deployment_id and not base_model:
+        raise click.UsageError(
+            "Pass --deployment-id or --base-model to identify a Loops deployment."
+        )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    resolved_deployment_id = deployment_id or _resolve_deployment_id_by_base_model(
+        remote_provider, cast(str, base_model)
+    )
+    payload = remote_provider.api.get_loops_deployment_metrics(
+        deployment_id=resolved_deployment_id
+    )
+    _render_loops_metrics(payload)
+
+
+def _resolve_deployment_id_by_base_model(
+    remote_provider: BasetenRemote, base_model: str
+) -> str:
+    deployments = remote_provider.api.list_loops_deployments()
+    matches = [d for d in deployments if d.get("base_model") == base_model]
+    if not matches:
+        raise click.UsageError(
+            f"No active Loops deployment found for base model {base_model!r}."
+        )
+    if len(matches) > 1:
+        ids = ", ".join(d.get("id", "?") for d in matches)
+        raise click.UsageError(
+            f"Multiple active Loops deployments match {base_model!r}: {ids}. "
+            "Pass --deployment-id to disambiguate."
+        )
+    return matches[0]["id"]
+
+
+def _render_loops_metrics(payload: Dict[str, Any]) -> None:
+    metrics = payload.get("metrics") or {}
+    deployment_id = payload.get("deployment_id", "")
+
+    console.print(
+        f"[bold]Loops deployment metrics[/bold] for [cyan]{deployment_id}[/cyan]"
+    )
+
+    service_table = _build_service_metrics_table(metrics)
+    console.print(service_table)
+
+    per_node_table = _build_per_node_table(metrics.get("per_node_metrics") or [])
+    if per_node_table is not None:
+        console.print(per_node_table)
+    else:
+        console.print("No per-node compute metrics in this window.", style="yellow")
+
+
+def _build_service_metrics_table(metrics: Dict[str, Any]) -> rich.table.Table:
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Service-level (latest)",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+
+    rate = _latest_value(metrics.get("inference_volume"))
+    concurrent = _latest_value(metrics.get("concurrent_requests"))
+    latencies = (metrics.get("response_time_stats") or [None])[-1] or {}
+
+    table.add_row("Request rate (RPS)", _fmt_float(rate))
+    table.add_row("Concurrent requests", _fmt_float(concurrent))
+    table.add_row("Latency p50 (ms)", _fmt_float(latencies.get("p50")))
+    table.add_row("Latency p95 (ms)", _fmt_float(latencies.get("p95")))
+    table.add_row("Latency p99 (ms)", _fmt_float(latencies.get("p99")))
+
+    by_status = (metrics.get("inference_volume_by_status") or [None])[-1] or {}
+    table.add_row("2xx rate", _fmt_float(by_status.get("status_2xx")))
+    table.add_row("4xx rate", _fmt_float(by_status.get("status_4xx")))
+    table.add_row("5xx rate", _fmt_float(by_status.get("status_5xx")))
+
+    return table
+
+
+def _build_per_node_table(nodes: List[Dict[str, Any]]) -> Optional[rich.table.Table]:
+    if not nodes:
+        return None
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Per-node compute (latest)",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Node", style="cyan")
+    table.add_column("CPU (cores)", justify="right")
+    table.add_column("CPU mem", justify="right")
+    table.add_column("GPU util", justify="right")
+    table.add_column("GPU mem", justify="right")
+    table.add_column("Eph. storage util", justify="right")
+
+    for node in nodes:
+        cpu = _fmt_float(_latest_value(node.get("cpu_usage")))
+        cpu_mem = _fmt_bytes(_latest_value(node.get("cpu_memory_usage_bytes")))
+        gpu_util = _fmt_gpu_map(node.get("gpu_utilization") or {}, as_percent=True)
+        gpu_mem = _fmt_gpu_map(node.get("gpu_memory_usage_bytes") or {}, as_bytes=True)
+        eph_storage = node.get("ephemeral_storage") or {}
+        eph_util = _fmt_percent(_latest_value(eph_storage.get("utilization")))
+        table.add_row(
+            str(node.get("node_id", "")), cpu, cpu_mem, gpu_util, gpu_mem, eph_util
+        )
+    return table
+
+
+def _latest_value(series: Optional[List[Dict[str, Any]]]) -> Optional[float]:
+    if not series:
+        return None
+    last = series[-1]
+    val = last.get("value")
+    return float(val) if val is not None else None
+
+
+def _fmt_float(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}"
+
+
+def _fmt_percent(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    return f"{value * 100:.1f}%"
+
+
+def _fmt_bytes(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    for unit, divisor in (("TB", 2**40), ("GB", 2**30), ("MB", 2**20), ("KB", 2**10)):
+        if value >= divisor:
+            return f"{value / divisor:.2f} {unit}"
+    return f"{value:.0f} B"
+
+
+def _fmt_gpu_map(
+    per_gpu: Dict[str, List[Dict[str, Any]]],
+    *,
+    as_percent: bool = False,
+    as_bytes: bool = False,
+) -> str:
+    """Latest value per GPU rank, joined as ``"0:val 1:val"``."""
+    if not per_gpu:
+        return "—"
+    parts: List[str] = []
+    for rank in sorted(per_gpu.keys(), key=lambda r: int(r) if r.isdigit() else r):
+        latest = _latest_value(per_gpu[rank])
+        if as_percent:
+            parts.append(f"{rank}:{_fmt_percent(latest)}")
+        elif as_bytes:
+            parts.append(f"{rank}:{_fmt_bytes(latest)}")
+        else:
+            parts.append(f"{rank}:{_fmt_float(latest)}")
+    return " ".join(parts)
+
+
 def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
     if not samplers:
         console.print("No Loops samplers found.", style="yellow")

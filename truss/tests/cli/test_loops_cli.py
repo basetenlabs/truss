@@ -966,3 +966,177 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
         )
     assert result.exit_code != 0
     mock_create.assert_not_called()
+
+
+# ── loops metrics ────────────────────────────────────────────────────────────
+
+
+_FAKE_METRICS_PAYLOAD = {
+    "deployment_id": "trn_abc123",
+    "metrics": {
+        "inference_volume": [{"timestamp": "2026-05-13T12:00:00Z", "value": 12.5}],
+        "concurrent_requests": [{"timestamp": "2026-05-13T12:00:00Z", "value": 3.0}],
+        "response_time_stats": [
+            {"timestamp": "2026-05-13T12:00:00Z", "p50": 0.04, "p95": 0.18, "p99": 0.31}
+        ],
+        "inference_volume_by_status": [
+            {
+                "timestamp": "2026-05-13T12:00:00Z",
+                "status_2xx": 11.0,
+                "status_4xx": 0.5,
+                "status_5xx": 1.0,
+            }
+        ],
+        "gpu_memory_usage_bytes": {
+            "0": [{"timestamp": "2026-05-13T12:00:00Z", "value": 5e9}]
+        },
+        "gpu_utilization": {
+            "0": [{"timestamp": "2026-05-13T12:00:00Z", "value": 0.75}]
+        },
+        "cpu_usage": [{"timestamp": "2026-05-13T12:00:00Z", "value": 1.4}],
+        "cpu_memory_usage_bytes": [
+            {"timestamp": "2026-05-13T12:00:00Z", "value": 2 * 2**30}
+        ],
+        "ephemeral_storage": {
+            "usage_bytes": [{"timestamp": "2026-05-13T12:00:00Z", "value": 3 * 2**30}],
+            "utilization": [{"timestamp": "2026-05-13T12:00:00Z", "value": 0.42}],
+        },
+        "per_node_metrics": [
+            {
+                "node_id": "g00r0",
+                "gpu_memory_usage_bytes": {
+                    "0": [{"timestamp": "2026-05-13T12:00:00Z", "value": 5e9}]
+                },
+                "gpu_utilization": {
+                    "0": [{"timestamp": "2026-05-13T12:00:00Z", "value": 0.75}]
+                },
+                "cpu_usage": [{"timestamp": "2026-05-13T12:00:00Z", "value": 1.4}],
+                "cpu_memory_usage_bytes": [
+                    {"timestamp": "2026-05-13T12:00:00Z", "value": 2 * 2**30}
+                ],
+                "ephemeral_storage": {
+                    "usage_bytes": [
+                        {"timestamp": "2026-05-13T12:00:00Z", "value": 3 * 2**30}
+                    ],
+                    "utilization": [
+                        {"timestamp": "2026-05-13T12:00:00Z", "value": 0.42}
+                    ],
+                },
+            }
+        ],
+    },
+}
+
+
+def test_metrics_with_deployment_id(mock_remote):
+    mock_remote.api.get_loops_deployment_metrics.return_value = _FAKE_METRICS_PAYLOAD
+
+    result = _invoke(
+        [
+            "loops",
+            "metrics",
+            "--deployment-id",
+            "trn_abc123",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_deployment_metrics.assert_called_once_with(
+        deployment_id="trn_abc123"
+    )
+    # Latest snapshot values are present in the rendered output.
+    assert "12.5" in result.output or "12.50" in result.output
+    assert "g00r0" in result.output
+
+
+def test_metrics_with_base_model_resolves_active_deployment(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {"id": "trn_abc123", "base_model": "Qwen/Qwen3-8B"}
+    ]
+    mock_remote.api.get_loops_deployment_metrics.return_value = _FAKE_METRICS_PAYLOAD
+
+    result = _invoke(
+        [
+            "loops",
+            "metrics",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_deployment_metrics.assert_called_once_with(
+        deployment_id="trn_abc123"
+    )
+
+
+def test_metrics_with_base_model_no_match_fails(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+
+    result = _invoke(
+        [
+            "loops",
+            "metrics",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code != 0
+    mock_remote.api.get_loops_deployment_metrics.assert_not_called()
+
+
+def test_metrics_with_base_model_multiple_matches_fails(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {"id": "trn_a", "base_model": "Qwen/Qwen3-8B"},
+        {"id": "trn_b", "base_model": "Qwen/Qwen3-8B"},
+    ]
+
+    result = _invoke(
+        [
+            "loops",
+            "metrics",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code != 0
+    mock_remote.api.get_loops_deployment_metrics.assert_not_called()
+
+
+def test_metrics_requires_one_selector(mock_remote):
+    result = _invoke(["loops", "metrics", "--remote", "test_remote"], mock_remote)
+
+    assert result.exit_code != 0
+    assert "--deployment-id" in result.output or "--base-model" in result.output
+
+
+def test_metrics_rejects_both_selectors(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "metrics",
+            "--deployment-id",
+            "trn_abc123",
+            "--base-model",
+            "Qwen/Qwen3-8B",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code != 0
