@@ -3,12 +3,13 @@ import sys
 import threading
 from unittest.mock import MagicMock, Mock, patch
 
+import click
 import pytest
 import requests
 import yaml
 from click.testing import CliRunner
 
-from truss.cli.cli import truss_cli
+from truss.cli.cli import _extract_request_data, truss_cli
 from truss.cli.utils import common
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
 from truss.remote.baseten.service import BasetenService
@@ -1757,3 +1758,31 @@ def test_model_logs_tail_with_filter_errors():
     assert result.exit_code != 0
     assert "cannot be combined" in result.output
     mock_remote.api.get_model_deployment_logs.assert_not_called()
+
+
+class TestExtractRequestData:
+    """`truss predict` request-data parsing (-d / -f)."""
+
+    def test_data_only(self):
+        assert _extract_request_data(data='{"x": 1}', file=None) == {"x": 1}
+
+    def test_file_only(self, tmp_path):
+        f = tmp_path / "req.json"
+        f.write_text('{"y": 2}')
+        assert _extract_request_data(data=None, file=f) == {"y": 2}
+
+    def test_both_provided_raises(self, tmp_path):
+        # Passing both -d and -f previously silently used -d and ignored -f;
+        # the "exactly one" contract must be enforced instead.
+        f = tmp_path / "req.json"
+        f.write_text('{"y": 2}')
+        with pytest.raises(click.UsageError, match="exactly one"):
+            _extract_request_data(data='{"x": 1}', file=f)
+
+    def test_neither_provided_raises(self):
+        with pytest.raises(click.UsageError, match="exactly one"):
+            _extract_request_data(data=None, file=None)
+
+    def test_invalid_json_raises(self):
+        with pytest.raises(click.UsageError, match="valid json"):
+            _extract_request_data(data="{not json}", file=None)
