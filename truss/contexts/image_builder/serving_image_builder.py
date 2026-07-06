@@ -89,6 +89,11 @@ from truss.util.path import (
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
+# The shared serving/training package is copied under a namespaced name in the
+# inference server so it lands at /app/_truss_shared and does not shadow a
+# user's own top-level `shared` package. The control server keeps the original
+# name since no user code runs in that process.
+INFERENCE_SERVER_SHARED_DIR_NAME = "_truss_shared"
 BUILD_SERVER_EXTENSIONS_PATH = "extensions"
 BUILD_CHAINS_DIR_NAME = "truss_chains"
 BUILD_TRUSS_DIR_NAME = "truss"
@@ -789,7 +794,7 @@ class ServingImageBuilder(ImageBuilder):
         self._copy_into_build_dir(
             SHARED_SERVING_AND_TRAINING_CODE_DIR,
             build_dir,
-            BUILD_SERVER_DIR_NAME + "/" + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+            BUILD_SERVER_DIR_NAME + "/" + INFERENCE_SERVER_SHARED_DIR_NAME,
         )
 
         # Copy control server code

@@ -13,8 +13,11 @@ from typing import TYPE_CHECKING, Callable, Optional, Union
 import pydantic
 import uvicorn
 import yaml
-from common import errors, tracing
-from common.schema import TrussSchema
+from _truss_common import errors, tracing
+from _truss_common.schema import TrussSchema
+from _truss_shared import log_config, serialization
+from _truss_shared.log_config import chain_request_id_context, request_id_context
+from _truss_shared.secrets_resolver import SecretsResolver
 from fastapi import (
     Depends,
     FastAPI,
@@ -39,9 +42,6 @@ from prometheus_client import (
     process_collector,
 )
 from pydantic import BaseModel
-from shared import log_config, serialization
-from shared.log_config import chain_request_id_context, request_id_context
-from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 

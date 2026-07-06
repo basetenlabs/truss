@@ -88,7 +88,7 @@ async def test_execute_request_sets_request_id_in_context(app_path):
     with (
         _clear_truss_server_modules(),
         _change_directory(app_path),
-        patch("shared.log_config.request_id_context") as mock_request_id_context,
+        patch("_truss_shared.log_config.request_id_context") as mock_request_id_context,
     ):
         endpoints = _get_endpoints(app_path)
 
@@ -107,7 +107,7 @@ async def test_execute_request_sets_none_when_no_request_id_header(app_path):
     with (
         _clear_truss_server_modules(),
         _change_directory(app_path),
-        patch("shared.log_config.request_id_context") as mock_request_id_context,
+        patch("_truss_shared.log_config.request_id_context") as mock_request_id_context,
     ):
         endpoints = _get_endpoints(app_path)
 
@@ -132,7 +132,7 @@ async def test_websocket_sets_request_id_in_context(app_path):
     with (
         _clear_truss_server_modules(),
         _change_directory(app_path),
-        patch("shared.log_config.request_id_context") as mock_request_id_context,
+        patch("_truss_shared.log_config.request_id_context") as mock_request_id_context,
     ):
         endpoints = _get_endpoints(app_path)
 

@@ -11,8 +11,8 @@ import opentelemetry.exporter.otlp.proto.http.trace_exporter as oltp_exporter
 import opentelemetry.sdk.resources as resources
 import opentelemetry.sdk.trace as sdk_trace
 import opentelemetry.sdk.trace.export as trace_export
+from _truss_shared import secrets_resolver
 from opentelemetry import context, trace
-from shared import secrets_resolver
 
 logger = logging.getLogger(__name__)
 
