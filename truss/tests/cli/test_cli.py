@@ -1,13 +1,15 @@
 import json
+import sys
 import threading
 from unittest.mock import MagicMock, Mock, patch
 
+import click
 import pytest
 import requests
 import yaml
 from click.testing import CliRunner
 
-from truss.cli.cli import truss_cli
+from truss.cli.cli import _extract_request_data, truss_cli
 from truss.cli.utils import common
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
 from truss.remote.baseten.service import BasetenService
@@ -1397,6 +1399,10 @@ def _invoke_push_json(runner, truss_dir, remote, extra_args=None):
             return runner.invoke(truss_cli, args)
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_push_json_output_success(custom_model_truss_dir_with_pre_and_post, remote):
     runner = CliRunner()
     remote.push = Mock(return_value=_make_mock_service())
@@ -1412,6 +1418,10 @@ def test_push_json_output_success(custom_model_truss_dir_with_pre_and_post, remo
     assert "deployment" not in data
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_push_json_output_wait_success(
     custom_model_truss_dir_with_pre_and_post, remote
 ):
@@ -1430,6 +1440,10 @@ def test_push_json_output_wait_success(
     assert data["deployment"] == deployment_response
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_push_json_output_wait_deploy_failed(
     custom_model_truss_dir_with_pre_and_post, remote
 ):
@@ -1598,6 +1612,10 @@ def test_model_config_text_with_empty_config_and_no_raw():
     assert "python_version" in parsed
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_model_config_json_output():
     response = {"config": {"model_name": "foo"}, "raw_config": "model_name: foo\n"}
     mock_remote = _patch_model_config_remote(response)
@@ -1612,6 +1630,10 @@ def test_model_config_json_output():
     assert json.loads(result.stdout) == response
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_model_config_json_output_on_error():
     mock_remote = MagicMock()
     mock_remote.api.get_deployment_config.side_effect = RuntimeError("boom")
@@ -1736,3 +1758,31 @@ def test_model_logs_tail_with_filter_errors():
     assert result.exit_code != 0
     assert "cannot be combined" in result.output
     mock_remote.api.get_model_deployment_logs.assert_not_called()
+
+
+class TestExtractRequestData:
+    """`truss predict` request-data parsing (-d / -f)."""
+
+    def test_data_only(self):
+        assert _extract_request_data(data='{"x": 1}', file=None) == {"x": 1}
+
+    def test_file_only(self, tmp_path):
+        f = tmp_path / "req.json"
+        f.write_text('{"y": 2}')
+        assert _extract_request_data(data=None, file=f) == {"y": 2}
+
+    def test_both_provided_raises(self, tmp_path):
+        # Passing both -d and -f previously silently used -d and ignored -f;
+        # the "exactly one" contract must be enforced instead.
+        f = tmp_path / "req.json"
+        f.write_text('{"y": 2}')
+        with pytest.raises(click.UsageError, match="exactly one"):
+            _extract_request_data(data='{"x": 1}', file=f)
+
+    def test_neither_provided_raises(self):
+        with pytest.raises(click.UsageError, match="exactly one"):
+            _extract_request_data(data=None, file=None)
+
+    def test_invalid_json_raises(self):
+        with pytest.raises(click.UsageError, match="valid json"):
+            _extract_request_data(data="{not json}", file=None)

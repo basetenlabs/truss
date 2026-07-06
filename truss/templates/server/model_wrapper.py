@@ -23,16 +23,16 @@ import opentelemetry.sdk.trace as sdk_trace
 import pydantic
 import starlette.requests
 import starlette.responses
+from _truss_common import errors, tracing
+from _truss_common.patches import apply_patches
+from _truss_common.retry import retry
+from _truss_common.schema import TrussSchema
+from _truss_shared import dynamic_config_resolver, serialization
+from _truss_shared.lazy_data_resolver import LazyDataResolverV2
+from _truss_shared.secrets_resolver import SecretsResolver
 from anyio import Semaphore, to_thread
-from common import errors, tracing
-from common.patches import apply_patches
-from common.retry import retry
-from common.schema import TrussSchema
 from fastapi import HTTPException, WebSocket
 from opentelemetry import trace
-from shared import dynamic_config_resolver, serialization
-from shared.lazy_data_resolver import LazyDataResolverV2
-from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
 

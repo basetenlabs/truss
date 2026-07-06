@@ -911,9 +911,32 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
-    def get_training_capacity(self) -> list[dict]:
-        resp_json = self._rest_api_client.get("v1/training/capacity")
-        return resp_json.get("gpu_capacities", [])
+    def update_training_job(
+        self, project_id: str, job_id: str, *, priority: Optional[int] = None
+    ):
+        body: Dict[str, Any] = {}
+        if priority is not None:
+            body["priority"] = priority
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}", body=body
+        )
+        return resp_json["training_job"]
+
+    def get_training_capacity(self) -> dict:
+        """Return the org- and team-level GPU capacity payload.
+
+        Shape: ``{"gpu_capacities": [...], "team_gpu_capacities": [...]}``.
+        """
+        return self._rest_api_client.get("v1/training/capacity")
+
+    def update_team_training_gpu_capacity(
+        self, team_id: str, gpu_type: str, max_gpus: int
+    ) -> dict:
+        resp_json = self._rest_api_client.patch(
+            "v1/training/capacity",
+            body={"team_id": team_id, "gpu_type": gpu_type, "max_gpus": max_gpus},
+        )
+        return resp_json["team_gpu_capacity"]
 
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
@@ -1301,8 +1324,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.get(f"v1/loops/samplers/{sampler_id}")
         return resp_json["sampler"]
 
-    def list_loops_deployments(self) -> List[Dict[str, Any]]:
-        resp_json = self._rest_api_client.get("v1/loops/deployments")
+    def list_loops_deployments(
+        self, scope: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        # scope="org" lists every deployment in the caller's org (each with its
+        # owning user); omit/"mine" lists just the caller's.
+        url_params = {"scope": scope} if scope else {}
+        resp_json = self._rest_api_client.get(
+            "v1/loops/deployments", url_params=url_params
+        )
         return resp_json["deployments"]
 
     def get_loops_deployment(self, deployment_id: str) -> dict:

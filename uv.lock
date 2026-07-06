@@ -3632,7 +3632,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.18.17"
+version = "0.18.18"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -3731,7 +3731,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "rich", specifier = ">=13.4.2,<14" },
-    { name = "rich-click", specifier = ">=1.6.1,<2" },
+    { name = "rich-click", specifier = ">=1.8.9,<2" },
     { name = "ruff", specifier = ">=0.4.8" },
     { name = "tenacity", specifier = ">=8.0.1" },
     { name = "tomlkit", specifier = ">=0.13.2" },

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from truss.templates.server.common.retry import retry
+from truss.templates.server._truss_common.retry import retry
 
 
 class FailForCallCount:
