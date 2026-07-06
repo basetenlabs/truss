@@ -374,6 +374,10 @@ def _extract_and_validate_model_identifier(
 
 
 def _extract_request_data(data: Optional[str], file: Optional[Path]):
+    if data is not None and file is not None:
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
     try:
         if data is not None:
             return json.loads(data)
