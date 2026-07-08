@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List, Optional, cast
+from datetime import datetime
+from typing import Any, Dict, Iterable, List, Optional, cast
 
 import rich.table
 import rich_click as click
@@ -18,8 +19,14 @@ from truss.cli.loops_checkpoint_viewer import (
 from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.utils import common
 from truss.cli.utils.output import console
+from truss.remote.baseten.api import LOOPS_LOGS_MAX_LINES
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+
+# Default cap on lines fetched per `truss loops logs` invocation. The 7-day
+# window bounds how far back you can look, not how much one call may pull;
+# past this, the CLI prints a resume hint instead of buffering more.
+DEFAULT_LOGS_LINE_LIMIT = 10_000
 
 
 @click.group()
@@ -577,6 +584,39 @@ def deploy_loops_checkpoints(
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
 
 
+_MAX_LOG_RANGE_MS = int(cli_log_utils.MAX_LOG_RANGE.total_seconds() * 1000)
+
+
+def _logs_truncation_hint(
+    resume_ms: Optional[int], max_lines: int, end_ms: Optional[int]
+) -> str:
+    """Build the hint shown when a windowed fetch was cut at --limit."""
+    prefix = f"Showing the first {max_lines:,} lines of the window."
+    raise_part = ", or raise --limit" if max_lines < LOOPS_LOGS_MAX_LINES else ""
+
+    if resume_ms is None:
+        return (
+            f"{prefix} All shown lines share one millisecond, which "
+            f"--start cannot advance past{raise_part}."
+        )
+
+    end_part = ""
+    if end_ms is not None:
+        # Keep the pasted command inside the 7-day window check (the --end
+        # bias below plus --start parse-back slack could push an
+        # exactly-7-day window over the limit).
+        resume_ms = max(resume_ms, end_ms + 2 - _MAX_LOG_RANGE_MS)
+        # +1ms bias: --end parse-back error is downward, so biasing up means
+        # the resumed window can only extend past the original end, never
+        # clip its tail.
+        end_part = f' --end "{cli_log_utils.format_flag_datetime(end_ms + 1)}"'
+    resume = cli_log_utils.format_flag_datetime(resume_ms)
+    return (
+        f'{prefix} Continue with --start "{resume}"{end_part}, narrow the '
+        f"window{raise_part}."
+    )
+
+
 def _resolve_sampler_model_id(
     remote_provider: BasetenRemote, sampler_deployment_id: str
 ) -> str:
@@ -623,7 +663,21 @@ def _resolve_sampler_model_id(
     "--tail",
     is_flag=True,
     default=False,
-    help="Continue polling for new log lines until the deployment goes inactive (or Ctrl+C).",
+    help=(
+        "Continue polling for new log lines until the deployment goes inactive "
+        "(or Ctrl+C). Cannot be combined with the time-range flags or --limit."
+    ),
+)
+@cli_log_utils.log_time_range_options
+@click.option(
+    "--limit",
+    type=click.IntRange(1, LOOPS_LOGS_MAX_LINES),
+    default=None,
+    help=(
+        f"Max lines per invocation (default {DEFAULT_LOGS_LINE_LIMIT:,}); when the "
+        "window holds more, the oldest lines are shown with a hint to resume. "
+        "Only applies to --loops-deployment-id windowed fetches."
+    ),
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
@@ -631,6 +685,10 @@ def view_loops_logs(
     loops_deployment_id: Optional[str],
     sampler_deployment_id: Optional[str],
     tail: bool,
+    start: Optional[datetime],
+    end: Optional[datetime],
+    since: Optional[str],
+    limit: Optional[int],
     remote: Optional[str],
 ) -> None:
     """Fetch logs from one half of a Loops deployment.
@@ -638,11 +696,27 @@ def view_loops_logs(
     Pass exactly one of ``--loops-deployment-id`` (the Loops deployment) or
     ``--sampler-deployment-id`` (the sampler's inference deployment). The
     two sides have separate log streams; pick the one you're debugging.
+
+    Defaults to a short look-back window. Use --start/--end or --since to
+    look further back (max 7 days), or --tail to stream live logs by polling
+    the API -- so the stream survives trainer/replica restarts.
     """
     if bool(loops_deployment_id) == bool(sampler_deployment_id):
         raise click.UsageError(
             "Pass exactly one of --loops-deployment-id or --sampler-deployment-id."
         )
+    if tail and (
+        start is not None or end is not None or since is not None or limit is not None
+    ):
+        raise click.UsageError(
+            "--tail cannot be combined with --start/--end/--since/--limit."
+        )
+    if limit is not None and sampler_deployment_id:
+        raise click.UsageError(
+            "--limit only applies to --loops-deployment-id fetches; sampler "
+            "logs come back as a single server-capped page."
+        )
+    start_ms, end_ms = cli_log_utils.resolve_log_time_range(start, end, since)
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -650,31 +724,46 @@ def view_loops_logs(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
+    truncation_hint: Optional[str] = None
+    parsed_logs: Iterable[cli_log_utils.ParsedLog]
     if loops_deployment_id is not None:
         if tail:
-            loops_watcher = LoopsDeploymentLogWatcher(
+            parsed_logs = LoopsDeploymentLogWatcher(
                 remote_provider.api, loops_deployment_id
+            ).watch()
+        elif start_ms is None and end_ms is None and limit is None:
+            # No window or limit flags: one request for the newest server
+            # page. Pagination and resume hints are for explicit windows.
+            parsed_logs = cli_log_utils.parse_logs(
+                remote_provider.api.get_loops_deployment_logs_page(loops_deployment_id)
             )
-            for log in loops_watcher.watch():
-                cli_log_utils.output_log(log)
         else:
-            logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
-            for log in cli_log_utils.parse_logs(logs):
-                cli_log_utils.output_log(log)
-        return
-
-    # --sampler-deployment-id path: reuse the existing model-deployment log machinery.
-    assert sampler_deployment_id is not None  # narrowed by the XOR check above
-    model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
-    if tail:
-        model_watcher = ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, sampler_deployment_id
-        )
-        for log in model_watcher.watch():
-            cli_log_utils.output_log(log)
+            max_lines = limit if limit is not None else DEFAULT_LOGS_LINE_LIMIT
+            window = remote_provider.api.get_loops_deployment_logs(
+                loops_deployment_id, start_ms, end_ms, max_lines=max_lines
+            )
+            parsed_logs = cli_log_utils.parse_logs(window.logs)
+            if window.truncated:
+                truncation_hint = _logs_truncation_hint(
+                    window.resume_start_epoch_millis, max_lines, end_ms
+                )
     else:
-        logs = remote_provider.api.get_model_deployment_logs(
-            model_id, sampler_deployment_id
-        )
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
+        # --sampler-deployment-id path: reuse the existing model-deployment
+        # log machinery. The model id is narrowed by the XOR check above.
+        assert sampler_deployment_id is not None
+        model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
+        if tail:
+            parsed_logs = ModelDeploymentLogWatcher(
+                remote_provider.api, model_id, sampler_deployment_id
+            ).watch()
+        else:
+            parsed_logs = cli_log_utils.parse_logs(
+                remote_provider.api.get_model_deployment_logs(
+                    model_id, sampler_deployment_id, start_ms, end_ms
+                )
+            )
+
+    for log in parsed_logs:
+        cli_log_utils.output_log(log)
+    if truncation_hint:
+        console.print(truncation_hint, style="yellow")

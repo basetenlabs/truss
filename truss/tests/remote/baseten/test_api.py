@@ -824,3 +824,283 @@ def test_get_model_deployment_logs_omits_unset_filters(baseten_api):
     )
 
     assert mock_rest_client.post.call_args[1]["body"] == {}
+
+
+def _loops_log(timestamp_ns, message, replica=None):
+    return {"timestamp": str(timestamp_ns), "message": message, "replica": replica}
+
+
+def _loops_logs_request_starts(mock_rest_client):
+    return [
+        call[1]["url_params"].get("start_epoch_millis")
+        for call in mock_rest_client.get.call_args_list
+    ]
+
+
+def test_get_loops_deployment_logs_single_page(baseten_api):
+    logs = [_loops_log(1_000_000, "a"), _loops_log(2_000_000, "b")]
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.return_value = {"logs": logs}
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1")
+
+    assert result.logs == logs
+    assert result.truncated is False
+    assert result.resume_start_epoch_millis is None
+    mock_rest_client.get.assert_called_once_with(
+        "v1/loops/deployments/loop-1/logs",
+        url_params={"limit": "1000", "direction": "asc"},
+    )
+
+
+def test_get_loops_deployment_logs_passes_time_range(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_loops_deployment_logs(
+        "loop-1", start_epoch_millis=1000, end_epoch_millis=2000
+    )
+
+    assert mock_rest_client.get.call_args[1]["url_params"] == {
+        "limit": "1000",
+        "direction": "asc",
+        "start_epoch_millis": "1000",
+        "end_epoch_millis": "2000",
+    }
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_paginates_without_dropping_boundary_lines(
+    baseten_api,
+):
+    # Millisecond 5 spans the first page boundary: x2 did not fit in page 1,
+    # so page 2 must restart from millisecond 5 (not 6) to pick it up, and the
+    # re-fetched x1 must not be duplicated in the result.
+    a = _loops_log(1_000_000, "a")
+    b = _loops_log(2_000_000, "b")
+    x1 = _loops_log(5_000_000, "x1")
+    x2 = _loops_log(5_000_100, "x2")
+    c = _loops_log(6_000_000, "c")
+
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [a, b, x1]},
+        {"logs": [x1, x2, c]},
+        {"logs": [c]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1", start_epoch_millis=1)
+
+    assert result.logs == [a, b, x1, x2, c]
+    assert result.truncated is False
+    assert _loops_logs_request_starts(mock_rest_client) == ["1", "5", "6"]
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 2)
+def test_get_loops_deployment_logs_skips_past_oversized_millisecond(baseten_api):
+    # Millisecond 5 fills an entire page, so restarting from it can never
+    # advance. The pager must skip to millisecond 6 instead of looping or
+    # giving up on everything after it.
+    x1 = _loops_log(5_000_000, "x1")
+    x2 = _loops_log(5_000_100, "x2")
+    c = _loops_log(6_000_000, "c")
+
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [x1, x2]},
+        {"logs": [x1, x2]},
+        {"logs": [c]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1")
+
+    assert result.logs == [x1, x2, c]
+    assert result.truncated is False
+    assert _loops_logs_request_starts(mock_rest_client) == [None, "5", "6"]
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_MAX_PAGES", 3)
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 1)
+def test_get_loops_deployment_logs_stops_at_max_pages(baseten_api):
+    pages = [
+        {"logs": [_loops_log(ms * 1_000_000, f"line-{ms}")]} for ms in (1, 2, 3, 4)
+    ]
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = pages
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1")
+
+    assert mock_rest_client.get.call_count == 3
+    assert [log["message"] for log in result.logs] == ["line-1", "line-2", "line-3"]
+    # The backstop is a truncation the caller can see and resume from.
+    assert result.truncated is True
+    assert result.resume_start_epoch_millis == 3
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_keeps_distinct_replica_lines(baseten_api):
+    # Two replicas emit the same message with the same ns timestamp in the
+    # boundary millisecond; the dedupe key includes replica, so the second
+    # replica's line must survive the boundary re-fetch.
+    a = _loops_log(1_000_000, "a")
+    b = _loops_log(2_000_000, "b")
+    x1 = _loops_log(5_000_000, "x", replica="r1")
+    x2 = _loops_log(5_000_000, "x", replica="r2")
+    c = _loops_log(6_000_000, "c")
+
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [a, b, x1]},
+        {"logs": [x1, x2, c]},
+        {"logs": [c]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1", start_epoch_millis=1)
+
+    assert result.logs == [a, b, x1, x2, c]
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_preserves_duplicate_lines_across_page_cut(
+    baseten_api,
+):
+    # Millisecond 5 holds three genuinely identical lines, two of which fit in
+    # page 1. The boundary dedupe counts multiplicity, so the third identical
+    # copy in the re-fetched page is kept rather than collapsed away.
+    a = _loops_log(1_000_000, "a")
+    d = _loops_log(5_000_000, "dup")
+    e = _loops_log(6_000_000, "e")
+
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [a, d, d]},
+        {"logs": [d, d, d]},
+        {"logs": [d, d, d]},
+        {"logs": [e]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs("loop-1", start_epoch_millis=1)
+
+    assert result.logs == [a, d, d, d, e]
+    assert _loops_logs_request_starts(mock_rest_client) == ["1", "5", "5", "6"]
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_stops_at_max_lines(baseten_api):
+    # max_lines=4 with 3-line pages: the second page tops up past the cap, so
+    # fetching stops after two requests and the result is trimmed to the cap.
+    lines = [_loops_log(ms * 1_000_000, f"line-{ms}") for ms in range(1, 8)]
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": lines[0:3]},
+        {"logs": lines[2:5]},  # re-serves the boundary line at ms 3
+        {"logs": lines[4:7]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs(
+        "loop-1", start_epoch_millis=1, max_lines=4
+    )
+
+    assert mock_rest_client.get.call_count == 2
+    assert [log["message"] for log in result.logs] == [
+        "line-1",
+        "line-2",
+        "line-3",
+        "line-4",
+    ]
+    assert result.truncated is True
+    # The first hidden line (line-5, ms 5) gives the exact resume cursor.
+    assert result.resume_start_epoch_millis == 5
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 2)
+def test_get_loops_deployment_logs_pins_open_end_once_paginating(baseten_api):
+    # With no end given, the first request leaves end open (server default
+    # window), but follow-up pages carry a pinned end so the fetch can't
+    # chase a server-side "now" that advances with every request.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [_loops_log(1_000_000, "a"), _loops_log(2_000_000, "b")]},
+        {"logs": [_loops_log(3_000_000, "c")]},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_loops_deployment_logs("loop-1")
+
+    first_params = mock_rest_client.get.call_args_list[0][1]["url_params"]
+    second_params = mock_rest_client.get.call_args_list[1][1]["url_params"]
+    assert "end_epoch_millis" not in first_params
+    assert "end_epoch_millis" in second_params
+
+
+def test_get_loops_deployment_logs_page_is_single_request(baseten_api):
+    # The tail watcher's fetch: exactly one request, server defaults (no
+    # limit/direction params), response reversed to oldest-first.
+    a = _loops_log(2_000_000, "newer")
+    b = _loops_log(1_000_000, "older")
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.return_value = {"logs": [a, b]}
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs_page("loop-1", 1000, 2000)
+
+    assert result == [b, a]
+    mock_rest_client.get.assert_called_once_with(
+        "v1/loops/deployments/loop-1/logs",
+        url_params={
+            "direction": "desc",
+            "start_epoch_millis": "1000",
+            "end_epoch_millis": "2000",
+        },
+    )
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_exact_fit_is_not_truncated(baseten_api):
+    # A window holding exactly max_lines lines that ends on a full page is
+    # ambiguous after page 1; the pager disambiguates with one more request
+    # and reports the window complete rather than truncated.
+    a, b, c = (_loops_log(ms * 1_000_000, f"line-{ms}") for ms in (1, 2, 3))
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.side_effect = [
+        {"logs": [a, b, c]},
+        {"logs": [c]},  # only the boundary repeat: nothing hidden
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs(
+        "loop-1", start_epoch_millis=1, max_lines=3
+    )
+
+    assert result.logs == [a, b, c]
+    assert result.truncated is False
+    assert result.resume_start_epoch_millis is None
+
+
+@mock.patch("truss.remote.baseten.api.LOOPS_LOGS_PAGE_LIMIT", 3)
+def test_get_loops_deployment_logs_reports_unresumable_millisecond(baseten_api):
+    # All returned lines share the resume millisecond, so a follow-up fetch
+    # from it would re-return them first: the pager reports truncation with
+    # no usable resume cursor.
+    x1 = _loops_log(5_000_000, "x1")
+    x2 = _loops_log(5_000_100, "x2")
+    x3 = _loops_log(5_000_200, "x3")
+    mock_rest_client = mock.Mock()
+    mock_rest_client.get.return_value = {"logs": [x1, x2, x3]}
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.get_loops_deployment_logs(
+        "loop-1", start_epoch_millis=1, max_lines=2
+    )
+
+    assert result.logs == [x1, x2]
+    assert result.truncated is True
+    assert result.resume_start_epoch_millis is None

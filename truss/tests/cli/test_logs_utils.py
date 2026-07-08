@@ -3,7 +3,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import rich_click as click
 
-from truss.cli.logs.utils import MAX_LOG_RANGE, parse_since, resolve_log_time_range
+from truss.cli.logs.utils import (
+    LOG_RESUME_FORMAT,
+    MAX_LOG_RANGE,
+    format_flag_datetime,
+    parse_since,
+    resolve_log_time_range,
+)
 
 
 def test_parse_since_minutes():
@@ -72,6 +78,8 @@ def test_resolve_since_sets_window_ending_now():
 
 def test_resolve_only_start_leaves_end_none():
     # Omitted --end is deferred to the server (sent as None), not backfilled.
+    # Paginated fetches pin their own end internally (see
+    # get_loops_deployment_logs), so the resolver stays a pure translation.
     start = datetime(2026, 5, 14, 0, 0, 0, tzinfo=timezone.utc)
     start_ms, end_ms = resolve_log_time_range(start, None, None)
     assert start_ms == int(start.timestamp() * 1000)
@@ -80,11 +88,24 @@ def test_resolve_only_start_leaves_end_none():
 
 def test_resolve_only_start_skips_window_check():
     # With end deferred, a far-past start is not rejected client-side; the
-    # server enforces the window once it backfills end.
+    # server enforces the 7-day window.
     start = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     start_ms, end_ms = resolve_log_time_range(start, None, None)
     assert start_ms == int(start.timestamp() * 1000)
     assert end_ms is None
+
+
+def test_format_flag_datetime_round_trip_error_is_bounded_downward():
+    # Hint callers bias by +/-1ms in their safe direction; that only works
+    # if the render->parse round trip loses at most 1ms and never gains.
+    # Samples include a known float-truncation case (2150399568319) and a
+    # DST fall-back-hour epoch (1762065000000), which the %z-aware format
+    # must round-trip without the 1-hour ambiguity.
+    for epoch_ms in (1782968142946, 2150399568319, 1762065000000):
+        rendered = format_flag_datetime(epoch_ms)
+        parsed = datetime.strptime(rendered, LOG_RESUME_FORMAT)
+        delta = int(parsed.timestamp() * 1000) - epoch_ms
+        assert -1 <= delta <= 0
 
 
 def test_resolve_only_end_leaves_start_none():

@@ -30,7 +30,10 @@ class LoopsDeploymentLogWatcher(LogWatcher):
     def fetch_logs(
         self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]
     ) -> List[Any]:
-        return self.api.get_loops_deployment_logs(
+        # Deliberately the single-page fetch: tail polls re-fetch
+        # overlapping windows every few seconds and want the newest lines
+        # of each, not a multi-request crawl of the whole window.
+        return self.api.get_loops_deployment_logs_page(
             self._loops_deployment_id, start_epoch_millis, end_epoch_millis
         )
 

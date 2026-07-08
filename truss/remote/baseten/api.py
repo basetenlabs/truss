@@ -1,6 +1,8 @@
 import base64
 import json
 import logging
+import time
+from collections import Counter
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -18,6 +20,36 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
 PARAMS_INDENT = "\n                    "
+
+# Server-side max page size for the Loops deployment /logs endpoint.
+LOOPS_LOGS_PAGE_LIMIT = 1000
+# Ceiling for a caller-requested max_lines (the CLI's --limit IntRange).
+LOOPS_LOGS_MAX_LINES = 100_000
+# Backstop on pages fetched per call: 2x the pages the line ceiling needs,
+# since boundary-dedupe repeats consume page slots without adding lines.
+LOOPS_LOGS_MAX_PAGES = 2 * LOOPS_LOGS_MAX_LINES // LOOPS_LOGS_PAGE_LIMIT
+# Padding added to a client-computed window end, absorbing clock skew and
+# log-ingest delay (like the tail watcher's clock-skew buffer).
+LOOPS_LOGS_END_PIN_BUFFER_MS = 60_000
+
+
+def _loops_log_key(log: Dict[str, Any]) -> tuple:
+    """Full identity of a loops log line, matching ParsedLog's fields."""
+    return (log["timestamp"], log.get("message"), log.get("replica"))
+
+
+class LoopsLogsWindow(SafeModel):
+    """Result of a windowed (paginated) Loops log fetch."""
+
+    logs: List[Dict[str, Any]]
+    # True when the fetch stopped before exhausting the window (max_lines
+    # reached, or the page backstop fired).
+    truncated: bool
+    # Millisecond cursor a follow-up fetch can start from (inclusive; the
+    # boundary millisecond is re-fetched). None when not truncated, or when
+    # no cursor can make progress because a single millisecond holds more
+    # lines than were returned.
+    resume_start_epoch_millis: Optional[int]
 
 
 class ChainAWSCredential(SafeModel):
@@ -1147,29 +1179,156 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
-    def get_loops_deployment_logs(
+    def get_loops_deployment_logs_page(
         self,
         loops_deployment_id: str,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        """Fetch logs for a Loops deployment.
+        """Fetch a single (newest) page of logs for a Loops deployment.
 
-        Backend endpoint is GET-only — uses query params, not a request body
-        like the training-job / model-deployment endpoints.
+        One request for the newest lines of the window (the server's default
+        page size), returned oldest-first. Used by the tail watcher, whose
+        poll loop re-fetches overlapping windows and wants the newest lines
+        of each — for full-window fetches use get_loops_deployment_logs,
+        which paginates.
         """
-        params: Dict[str, str] = {}
-        if start_epoch_millis:
+        # direction is pinned explicitly because the reversal below (and the
+        # tail watcher's correctness) depend on newest-first responses.
+        params: Dict[str, str] = {"direction": "desc"}
+        if start_epoch_millis is not None:
             params["start_epoch_millis"] = str(start_epoch_millis)
-        if end_epoch_millis:
+        if end_epoch_millis is not None:
             params["end_epoch_millis"] = str(end_epoch_millis)
 
         resp_json = self._rest_api_client.get(
             f"v1/loops/deployments/{loops_deployment_id}/logs", url_params=params
         )
-        # Reverse so latest logs are at the end (matches the training-job /
-        # model-deployment helpers above).
+        # Server default order is newest-first; reverse so latest logs are
+        # at the end, matching the other log helpers.
         return resp_json["logs"][::-1]
+
+    def get_loops_deployment_logs(
+        self,
+        loops_deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+        max_lines: Optional[int] = None,
+    ) -> LoopsLogsWindow:
+        """Fetch logs for a Loops deployment, paginating across the whole
+        [start_epoch_millis, end_epoch_millis) window.
+
+        The GET endpoint returns at most one page (server max 1000 lines)
+        with no truncation signal, so we page in ascending order, treating a
+        full page as "maybe more". Timestamps are nanoseconds but the
+        endpoint filters at millisecond granularity, so each follow-up
+        request restarts from the last line's millisecond and the boundary
+        repeats are dropped. Logs are oldest-first. When max_lines is set,
+        the oldest max_lines of the window are returned and the result
+        carries whether the window was cut and where to resume. For a
+        single newest-page fetch (tail polling) use
+        get_loops_deployment_logs_page.
+        """
+        logs: List[Dict[str, Any]] = []
+        # Multiset of the lines already fetched for the millisecond the next
+        # request starts at -- only these can come back again. Keyed on the
+        # full line identity and counted, so neither distinct same-timestamp
+        # lines nor genuine duplicates straddling a page cut are over-dropped.
+        boundary_counts: Counter = Counter()
+        cursor = start_epoch_millis
+        truncated = False
+        resume_ms: Optional[int] = None
+
+        for _ in range(LOOPS_LOGS_MAX_PAGES):
+            params: Dict[str, str] = {
+                "limit": str(LOOPS_LOGS_PAGE_LIMIT),
+                "direction": "asc",
+            }
+            if cursor is not None:
+                params["start_epoch_millis"] = str(cursor)
+            if end_epoch_millis is not None:
+                params["end_epoch_millis"] = str(end_epoch_millis)
+
+            resp_json = self._rest_api_client.get(
+                f"v1/loops/deployments/{loops_deployment_id}/logs", url_params=params
+            )
+            page = resp_json["logs"]
+            new_logs = []
+            for log in page:
+                key = _loops_log_key(log)
+                if boundary_counts[key]:
+                    boundary_counts[key] -= 1
+                else:
+                    new_logs.append(log)
+            logs.extend(new_logs)
+
+            if max_lines is not None and len(logs) > max_lines:
+                # The first hidden line's millisecond is an exact resume
+                # cursor: start_epoch_millis is inclusive server-side.
+                truncated = True
+                resume_ms = int(logs[max_lines]["timestamp"]) // 1_000_000
+                logs = logs[:max_lines]
+                break
+
+            if len(page) < LOOPS_LOGS_PAGE_LIMIT:
+                break  # short page -- caught up to `end` (or to "now")
+
+            last_millis = int(page[-1]["timestamp"]) // 1_000_000
+
+            if end_epoch_millis is None:
+                # Pin an open window end before paginating so follow-up
+                # pages don't chase a server-side "now" that advances with
+                # every request; the max() guards against a lagging client
+                # clock inverting the window below the cursor.
+                end_epoch_millis = (
+                    max(int(time.time() * 1000), last_millis + 1)
+                    + LOOPS_LOGS_END_PIN_BUFFER_MS
+                )
+            if new_logs:
+                cursor = last_millis
+                boundary_counts = Counter(
+                    _loops_log_key(log)
+                    for log in page
+                    if int(log["timestamp"]) // 1_000_000 == last_millis
+                )
+            else:
+                # A full page with nothing new: a single millisecond holds at
+                # least a full page of lines, so restarting from it can never
+                # advance. Skip past it; any of its lines beyond the first
+                # page are unreachable through this endpoint.
+                logger.warning(
+                    "Loops deployment %s has a full page (%d) of log lines "
+                    "in one millisecond; some of its lines may be omitted.",
+                    loops_deployment_id,
+                    LOOPS_LOGS_PAGE_LIMIT,
+                )
+                cursor = last_millis + 1
+                boundary_counts = Counter()
+        else:
+            truncated = True
+            resume_ms = cursor  # where the next page would have started
+            logger.warning(
+                "Reached maximum page limit (%d) fetching logs for Loops "
+                "deployment %s; output may be truncated. Narrow the "
+                "requested time range.",
+                LOOPS_LOGS_MAX_PAGES,
+                loops_deployment_id,
+            )
+
+        if (
+            truncated
+            and resume_ms is not None
+            and logs
+            and int(logs[0]["timestamp"]) // 1_000_000 >= resume_ms
+        ):
+            # Every returned line sits at or past the resume millisecond: a
+            # follow-up fetch from it would re-return them all first, so no
+            # cursor can make progress at this max_lines.
+            resume_ms = None
+
+        return LoopsLogsWindow(
+            logs=logs, truncated=truncated, resume_start_epoch_millis=resume_ms
+        )
 
     def create_model_version_from_inference_template(self, request_data: dict):
         """

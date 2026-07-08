@@ -13,6 +13,69 @@ MAX_LOG_RANGE = timedelta(days=7)
 _SINCE_RE = re.compile(r"^(\d+)([smhd])$")
 _SINCE_UNIT_TO_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
+# The sub-second form is what truncation resume hints emit (see
+# format_flag_datetime); it must stay in _LOG_DATETIME_FORMATS so hint output
+# is always parseable by --start/--end.
+LOG_RESUME_FORMAT = "%Y-%m-%dT%H:%M:%S.%f%z"
+
+_LOG_DATETIME_FORMATS = [
+    "%Y-%m-%d",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%Y-%m-%d %H:%M:%S%z",
+    LOG_RESUME_FORMAT,
+]
+
+
+def format_flag_datetime(epoch_ms: int) -> str:
+    """Render an epoch-ms value as a --start/--end flag value.
+
+    Timezone-aware (immune to DST fall-back ambiguity), millisecond
+    precision. Parse-back error is at most 1ms and only ever downward:
+    safe for --start values as-is; --end values must be biased +1ms by the
+    caller so the error cannot clip the window's tail.
+    """
+    dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).astimezone()
+    return dt.strftime(LOG_RESUME_FORMAT)
+
+
+def log_time_range_options(f):
+    """Add the shared --start/--end/--since options to a logs command.
+
+    The three values are meant to be resolved together via
+    resolve_log_time_range(). Options are applied in reverse so they render
+    in --help as --start, --end, --since.
+    """
+    f = click.option(
+        "--since",
+        type=str,
+        default=None,
+        help=(
+            "Logs from a relative time ago until now, as <N><unit> with unit "
+            "s/m/h/d (e.g. '90s', '2h', '3d'). Max '7d'. Excludes --start/--end."
+        ),
+    )(f)
+    f = click.option(
+        "--end",
+        type=click.DateTime(formats=_LOG_DATETIME_FORMATS),
+        default=None,
+        help=(
+            "End of the log time range (ISO 8601). No-timezone values are local. "
+            "Defaults to now. Window must be <= 7 days."
+        ),
+    )(f)
+    f = click.option(
+        "--start",
+        type=click.DateTime(formats=_LOG_DATETIME_FORMATS),
+        default=None,
+        help=(
+            "Start of the log time range (ISO 8601). No-timezone values are local. "
+            "Defaults to a short look-back ending at --end. Window must be <= 7 days."
+        ),
+    )(f)
+    return f
+
 
 class ParsedLog(pydantic.BaseModel):
     timestamp: str

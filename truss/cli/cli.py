@@ -1075,49 +1075,7 @@ def push(
     is_flag=True,
     help="Stream new logs as they arrive. Cannot be combined with the time-range or filter flags.",
 )
-@click.option(
-    "--start",
-    type=click.DateTime(
-        formats=[
-            "%Y-%m-%d",
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S%z",
-            "%Y-%m-%d %H:%M:%S%z",
-        ]
-    ),
-    default=None,
-    help=(
-        "Start of the log time range (ISO 8601). No-timezone values are local. "
-        "Defaults to a short look-back ending at --end. Window must be <= 7 days."
-    ),
-)
-@click.option(
-    "--end",
-    type=click.DateTime(
-        formats=[
-            "%Y-%m-%d",
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S%z",
-            "%Y-%m-%d %H:%M:%S%z",
-        ]
-    ),
-    default=None,
-    help=(
-        "End of the log time range (ISO 8601). No-timezone values are local. "
-        "Defaults to now. Window must be <= 7 days."
-    ),
-)
-@click.option(
-    "--since",
-    type=str,
-    default=None,
-    help=(
-        "Logs from a relative time ago until now, as <N><unit> with unit "
-        "s/m/h/d (e.g. '90s', '2h', '3d'). Max '7d'. Excludes --start/--end."
-    ),
-)
+@cli_log_utils.log_time_range_options
 @click.option(
     "--min-level",
     type=click.Choice(["debug", "info", "warning", "error"], case_sensitive=False),
