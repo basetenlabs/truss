@@ -976,10 +976,20 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
     mock_create.assert_not_called()
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(result):
+    # Rich styles flag tokens with ANSI codes when color is on (e.g. on CI)
+    # and wraps output to the terminal width; strip codes and collapse
+    # whitespace so assertions on message text are environment-independent.
+    return " ".join(_ANSI_RE.sub("", result.output).split())
+
+
 def test_logs_requires_exactly_one_deployment_id(mock_remote):
     result = _invoke(["loops", "logs", "--remote", "test_remote"], mock_remote)
     assert result.exit_code != 0
-    assert "exactly one" in result.output
+    assert "exactly one" in _plain(result)
 
     result = _invoke(
         [
@@ -995,7 +1005,7 @@ def test_logs_requires_exactly_one_deployment_id(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "exactly one" in result.output
+    assert "exactly one" in _plain(result)
 
 
 def test_logs_tail_rejects_time_range_flags(mock_remote):
@@ -1014,7 +1024,7 @@ def test_logs_tail_rejects_time_range_flags(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "--tail cannot be combined" in result.output
+    assert "--tail cannot be combined" in _plain(result)
     mock_remote.api.get_loops_deployment_logs.assert_not_called()
 
 
@@ -1031,8 +1041,8 @@ def test_logs_bare_invocation_uses_single_newest_page(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.api.get_loops_deployment_logs_page.assert_called_once_with("dep-1")
     mock_remote.api.get_loops_deployment_logs.assert_not_called()
-    assert "hello world" in result.output
-    assert "Showing the first" not in result.output
+    assert "hello world" in _plain(result)
+    assert "Showing the first" not in _plain(result)
 
 
 def test_logs_since_passes_resolved_time_range(mock_remote):
@@ -1112,11 +1122,11 @@ def test_logs_limit_truncation_prints_resume_hint(mock_remote):
     mock_remote.api.get_loops_deployment_logs.assert_called_once_with(
         "dep-1", None, None, max_lines=2
     )
-    assert "two" in result.output
-    assert "Showing the first 2 lines" in result.output
-    assert "--start" in result.output
+    assert "two" in _plain(result)
+    assert "Showing the first 2 lines" in _plain(result)
+    assert "--start" in _plain(result)
     # No explicit window end was given, so the hint must not suggest --end.
-    assert "--end" not in result.output
+    assert "--end" not in _plain(result)
 
 
 def test_logs_exact_fit_prints_no_hint(mock_remote):
@@ -1144,7 +1154,7 @@ def test_logs_exact_fit_prints_no_hint(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    assert "Showing the first" not in result.output
+    assert "Showing the first" not in _plain(result)
 
 
 def test_logs_truncation_hint_preserves_window_end(mock_remote):
@@ -1174,8 +1184,8 @@ def test_logs_truncation_hint_preserves_window_end(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    assert "Showing the first 2 lines" in result.output
-    assert '--end "' in result.output
+    assert "Showing the first 2 lines" in _plain(result)
+    assert '--end "' in _plain(result)
 
 
 def test_logs_stuck_millisecond_hint_omits_unusable_resume(mock_remote):
@@ -1203,9 +1213,9 @@ def test_logs_stuck_millisecond_hint_omits_unusable_resume(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    assert "share one millisecond" in result.output
-    assert "--start" not in result.output.replace("--start cannot", "")
-    assert "raise --limit" in result.output
+    assert "share one millisecond" in _plain(result)
+    assert "--start" not in _plain(result).replace("--start cannot", "")
+    assert "raise --limit" in _plain(result)
 
 
 @patch("truss.cli.loops_commands.LOOPS_LOGS_MAX_LINES", 2)
@@ -1232,8 +1242,8 @@ def test_logs_hint_drops_raise_limit_clause_at_ceiling(mock_remote):
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    assert "Showing the first 2 lines" in result.output
-    assert "raise --limit" not in result.output
+    assert "Showing the first 2 lines" in _plain(result)
+    assert "raise --limit" not in _plain(result)
 
 
 def test_logs_limit_rejected_with_tail(mock_remote):
@@ -1252,7 +1262,7 @@ def test_logs_limit_rejected_with_tail(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "--tail cannot be combined" in result.output
+    assert "--tail cannot be combined" in _plain(result)
 
 
 def test_logs_limit_rejected_with_sampler(mock_remote):
@@ -1270,7 +1280,7 @@ def test_logs_limit_rejected_with_sampler(mock_remote):
         mock_remote,
     )
     assert result.exit_code != 0
-    assert "--limit only applies" in result.output
+    assert "--limit only applies" in _plain(result)
 
 
 def test_logs_truncation_hint_command_survives_seven_day_check():
