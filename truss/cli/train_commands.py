@@ -1131,26 +1131,37 @@ def view_capacity(remote: Optional[str]):
 @capacity.command(name="update")
 @common.common_options()
 @click.option("--remote", type=str, required=False, help="Name of the remote to use")
+@click.option("--team", type=str, help="Team to update GPU capacity for.")
 @click.option(
-    "--team", type=str, required=True, help="Team to update GPU capacity for."
-)
-@click.option(
-    "--gpu-type",
-    type=str,
-    required=True,
-    help="GPU type to update capacity for (e.g. H100).",
+    "--gpu-type", type=str, help="GPU type to update capacity for (e.g. H100)."
 )
 @click.option(
     "--capacity",
     "team_capacity",
     type=int,
-    required=True,
     help="Max concurrent GPUs of this type the team may use. Org-admin only.",
 )
 def update_capacity(
-    remote: Optional[str], team: str, gpu_type: str, team_capacity: int
+    remote: Optional[str],
+    team: Optional[str],
+    gpu_type: Optional[str],
+    team_capacity: Optional[int],
 ):
     """Update a team's GPU capacity limit. Org-admin only."""
+    # Report every missing required option at once rather than one per run.
+    missing = [
+        name
+        for name, value in (
+            ("--team", team),
+            ("--gpu-type", gpu_type),
+            ("--capacity", team_capacity),
+        )
+        if value is None
+    ]
+    if missing:
+        raise click.UsageError(f"Missing required option(s): {', '.join(missing)}.")
+    assert team is not None and gpu_type is not None and team_capacity is not None
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
