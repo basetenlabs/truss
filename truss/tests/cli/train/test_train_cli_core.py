@@ -509,7 +509,8 @@ def test_display_training_capacity_with_teams(capsys):
 
     assert "Team Training GPU Capacity" in out
     assert rows["H100"] == ["H100", "16", "64", "32"]
-    assert rows["ml-research"] == ["ml-research", "H100", "0", "32", "8"]
+    assert rows["ml-research"] == ["ml-research", "H100", "32", "8"]
+    assert "Baseline" not in rows["Team"]
 
 
 def test_display_training_capacity_teams_only(capsys):
