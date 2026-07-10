@@ -840,14 +840,12 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         )
         team_table.add_column("Team", style="cyan")
         team_table.add_column("GPU Type", style="cyan")
-        team_table.add_column("Baseline", justify="right")
         team_table.add_column("Limit", justify="right")
         team_table.add_column("Usage", justify="right")
         for item in team_gpu_capacities:
             team_table.add_row(
                 item.get("team_name", ""),
                 item.get("gpu_type", ""),
-                str(item.get("baseline", 0)),
                 str(item.get("limit", 0)),
                 str(item.get("usage_count", 0)),
             )

@@ -1425,6 +1425,22 @@ class TestWeightsSource:
         assert source.source == "r2://account_id.bucket/models/llama"
         assert source.is_huggingface is False
 
+    def test_cw_source_basic(self):
+        """CoreWeave source should work without revision."""
+        source = WeightsSource(
+            source="cw://my-bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="cw_credentials",
+        )
+        assert source.source == "cw://my-bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_cw_source_bucket_only(self):
+        """CoreWeave source should work with a bucket and no path."""
+        source = WeightsSource(source="cw://my-bucket", mount_location="/models/llama")
+        assert source.source == "cw://my-bucket"
+        assert source.is_huggingface is False
+
     def test_https_source_basic(self):
         """HTTPS source should work for direct URL downloads."""
         source = WeightsSource(
@@ -1494,6 +1510,13 @@ class TestWeightsSource:
                 source="r2://account_id.bucket/path@main",
                 mount_location="/models/llama",
             )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="cw://bucket/path@main", mount_location="/models/llama"
+            )
 
     def test_source_cannot_be_empty(self):
         """source must have at least 1 character."""
@@ -1543,6 +1566,11 @@ class TestWeightsSource:
         """R2 URI without bucket should error."""
         with pytest.raises(pydantic.ValidationError, match="Invalid R2 URI format"):
             WeightsSource(source="r2://", mount_location="/models/llama")
+
+    def test_invalid_cw_uri_format(self):
+        """CoreWeave URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid CW URI format"):
+            WeightsSource(source="cw://", mount_location="/models/llama")
 
     def test_invalid_hf_uri_format(self):
         """HuggingFace URI without repo should error."""
