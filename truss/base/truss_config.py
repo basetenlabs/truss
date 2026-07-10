@@ -383,7 +383,7 @@ class WeightsAuth(AuthFieldsMixin):
 
 
 # URI prefixes for cloud storage sources
-_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://", "cw://"})
 # HuggingFace prefix
 _HF_PREFIX = "hf://"
 # HTTPS prefix for direct URL downloads
@@ -401,6 +401,7 @@ class WeightsSource(custom_types.ConfigModel):
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
     - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
+    - cw:// -> CoreWeave AI Object Storage (e.g., "cw://bucket/path")
     - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
@@ -417,7 +418,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, cw://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
