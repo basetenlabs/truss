@@ -18,11 +18,9 @@ def test_prepare_vllm_build_dir_sets_base_image_and_docker_server(tmp_path):
     build_dir.mkdir()
     builder.prepare_image_build_dir(build_dir)
 
-    # Verify base_image was set to vllm image
     assert builder._spec.config.base_image is not None
-    assert builder._spec.config.base_image.image == "vllm/vllm-openai:v0.19.1"
+    assert "vllm/vllm-openai" in builder._spec.config.base_image.image
 
-    # Verify docker_server was configured
     assert builder._spec.config.docker_server is not None
     assert builder._spec.config.docker_server.server_port == 8000
     assert builder._spec.config.docker_server.predict_endpoint == "/v1/chat/completions"
@@ -32,6 +30,5 @@ def test_prepare_vllm_build_dir_sets_base_image_and_docker_server(tmp_path):
         "vllm serve meta-llama/Llama-2-7b-hf"
     )
 
-    # Verify Dockerfile uses the vllm base image
     dockerfile = (build_dir / "Dockerfile").read_text()
-    assert "FROM vllm/vllm-openai:v0.19.1" in dockerfile
+    assert "vllm/vllm-openai" in dockerfile

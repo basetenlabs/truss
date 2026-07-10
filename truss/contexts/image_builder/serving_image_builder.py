@@ -23,7 +23,6 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 
 from truss.base import constants, truss_config
-from truss.base.truss_config import BaseImage
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
@@ -539,30 +538,6 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    def prepare_vllm_build_dir(self, build_dir: Path):
-        """Prepares the build directory for a vLLM model deployment."""
-        config = self._spec.config
-        assert config.vllm is not None, (
-            "prepare_vllm_build_dir should only be called when vllm is configured"
-        )
-
-        # Hardcode the vLLM base image
-        config.base_image = BaseImage(
-            image=constants.VLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
-        )
-
-        # Build the start command from vllm config
-        start_command = config.vllm.build_start_command()
-
-        # Configure docker_server for deployment
-        config.docker_server = DockerServer(
-            start_command=start_command,
-            server_port=config.vllm.port,
-            predict_endpoint="/v1/chat/completions",
-            readiness_endpoint="/health",
-            liveness_endpoint="/health",
-        )
-
     def prepare_trtllm_inference_stack_v2_build_dir(self, build_dir: Path):
         """prepares the build directory inference_stack v2 tensorrt-llm model"""
         config = self._spec.config
@@ -768,22 +743,16 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-        if config.vllm is not None:
-            self.prepare_vllm_build_dir(build_dir=build_dir)
-
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
         ):
             if config.trt_llm.inference_stack == "v2":
-                # Run the specific inference_stack v2 build
                 self.prepare_trtllm_inference_stack_v2_build_dir(build_dir=build_dir)
             elif config.trt_llm.inference_stack == "v1":
                 if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
-                    # Run the specific encoder build
                     self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
                 elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT:
-                    # Run the specific encoder_bert build
                     self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)

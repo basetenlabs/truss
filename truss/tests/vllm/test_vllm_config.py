@@ -16,6 +16,7 @@ def test_vllm_configuration_build_start_command():
         trust_remote_code=True,
         served_model_name="llama-2-7b",
         extra_args=["--enable-prefix-caching"],
+        patch_kwargs={"max-num-seqs": 32, "enable-lora": True},
     )
     cmd = config.build_start_command()
     assert cmd.startswith("vllm serve meta-llama/Llama-2-7b-hf")
@@ -29,12 +30,40 @@ def test_vllm_configuration_build_start_command():
     assert "--served-model-name llama-2-7b" in cmd
     assert "--trust-remote-code" in cmd
     assert "--enable-prefix-caching" in cmd
+    assert "--max-num-seqs 32" in cmd
+    assert "--enable-lora" in cmd
 
 
 def test_vllm_configuration_minimal():
     config = VLLMConfiguration(model="facebook/opt-125m")
     cmd = config.build_start_command()
     assert cmd == "vllm serve facebook/opt-125m --port 8000 --host 0.0.0.0"
+
+
+def test_vllm_shared_fields_with_trt_llm():
+    from truss.base.llm_config import TrussLLMSharedConfig
+
+    shared = TrussLLMSharedConfig(
+        model="meta-llama/Llama-3-8B",
+        dtype="bfloat16",
+        quantization="fp8",
+        tensor_parallel_size=2,
+        max_model_len=8192,
+        extra_args=["--foo"],
+        patch_kwargs={"bar": 1},
+    )
+    vllm_cfg = VLLMConfiguration(model=shared.model, **shared.model_dump(exclude={"model"}))
+    assert vllm_cfg.dtype == "bfloat16"
+    assert vllm_cfg.tensor_parallel_size == 2
+    assert vllm_cfg.extra_args == ["--foo"]
+
+
+def test_vllm_auto_tp_from_accelerator():
+    config = VLLMConfiguration(model="facebook/opt-125m")
+    cmd = config.build_start_command(accelerator_count=4)
+    assert "--tensor-parallel-size 4" in cmd
+    cmd2 = config.build_start_command(accelerator_count=None)
+    assert "--tensor-parallel-size" not in cmd2
 
 
 def test_vllm_gpu_memory_utilization_validation():

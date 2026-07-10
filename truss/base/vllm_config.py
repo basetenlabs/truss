@@ -1,66 +1,48 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import logging
+from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator, model_validator
+
+from truss.base.llm_config import TrussLLMSharedConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _format_cli_arg(key: str, value: Any) -> str:
-    """Convert a snake_case key to a kebab-case CLI flag."""
     flag = key.replace("_", "-")
     if isinstance(value, bool):
         return f"--{flag}" if value else ""
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        import json
+
+        return f"--{flag} {json.dumps(value)}"
     return f"--{flag} {value}"
 
 
-class VLLMConfiguration(BaseModel):
-    """Configuration for serving models with the vLLM inference engine.
+def _format_patch_kwargs(patch_kwargs: Dict[str, Any]) -> List[str]:
+    parts: List[str] = []
+    for k, v in patch_kwargs.items():
+        cli = _format_cli_arg(k, v)
+        if cli:
+            parts.append(cli)
+    return parts
 
-    When this block is present in config.yaml, Truss will automatically:
-    1. Use the vLLM OpenAI Docker image as the base image.
-    2. Construct a ``vllm serve`` start command from these settings.
-    3. Deploy via the docker_server path (with nginx proxy).
 
-    Most fields map directly to ``vllm serve`` CLI arguments.  Additional
-    arguments can be passed via ``extra_args``.
-    """
-
-    model: str = Field(
-        ...,
-        description="Model ID or local path to serve. e.g. meta-llama/Llama-2-7b-hf",
-    )
-    port: int = Field(
-        default=8000, description="Port for the vLLM OpenAI-compatible server."
-    )
+class VLLMConfiguration(TrussLLMSharedConfig):
+    model: str = Field(..., description="Model ID or local path to serve. e.g. meta-llama/Llama-2-7b-hf")
+    port: int = Field(default=8000, description="Port for the vLLM OpenAI-compatible server.")
     host: str = Field(default="0.0.0.0", description="Host to bind the vLLM server.")
-    tensor_parallel_size: Optional[int] = Field(
-        default=None, description="Number of GPUs for tensor parallelism."
-    )
     gpu_memory_utilization: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Fraction of GPU memory to use (0.0 - 1.0).",
+        default=None, ge=0.0, le=1.0, description="Fraction of GPU memory to use (0.0 - 1.0)."
     )
-    max_model_len: Optional[int] = Field(
-        default=None, description="Maximum sequence length the model can process."
-    )
-    dtype: Optional[str] = Field(
-        default=None,
-        description="Data type for model weights, e.g. auto, half, float16, bfloat16, float32.",
-    )
-    quantization: Optional[str] = Field(
-        default=None,
-        description="Quantization method, e.g. awq, gptq, fp8, squeezellm.",
-    )
-    trust_remote_code: bool = Field(
-        default=False, description="Trust remote code from HuggingFace."
-    )
-    served_model_name: Optional[str] = Field(
-        default=None, description="Name to expose in the OpenAI API."
-    )
-    extra_args: list[str] = Field(
-        default_factory=list, description="Additional CLI arguments for vllm serve."
+    version_overrides: Dict[str, Optional[str]] = Field(
+        default_factory=dict,
+        description="Version overrides, e.g. {vllm_version: '0.19.1'} -> resolved via backend constance. "
+        "Mirrors trt_llm.version_overrides pattern but kept generic for vLLM.",
     )
 
     @field_validator("gpu_memory_utilization")
@@ -70,15 +52,30 @@ class VLLMConfiguration(BaseModel):
             raise ValueError("gpu_memory_utilization must be in (0.0, 1.0]")
         return v
 
-    def build_start_command(self) -> str:
-        """Construct the ``vllm serve`` CLI command from this configuration."""
+    @field_validator("tensor_parallel_size")
+    @classmethod
+    def _validate_tp(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 1:
+            raise ValueError("tensor_parallel_size must be >= 1")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_model(self) -> "VLLMConfiguration":
+        if not self.model:
+            raise ValueError("model must be specified for vLLM")
+        return self
+
+    def build_start_command(self, accelerator_count: Optional[int] = None) -> str:
         cmd_parts = ["vllm serve", self.model]
 
-        # Map fields directly to CLI flags.
+        tp = self.tensor_parallel_size
+        if tp is None and accelerator_count is not None and accelerator_count > 0:
+            tp = accelerator_count
+
         simple_flags = {
             "port": self.port,
             "host": self.host,
-            "tensor_parallel_size": self.tensor_parallel_size,
+            "tensor_parallel_size": tp,
             "gpu_memory_utilization": self.gpu_memory_utilization,
             "max_model_len": self.max_model_len,
             "dtype": self.dtype,
@@ -87,10 +84,15 @@ class VLLMConfiguration(BaseModel):
         }
         for key, value in simple_flags.items():
             if value is not None:
-                cmd_parts.append(_format_cli_arg(key, value))
+                arg = _format_cli_arg(key, value)
+                if arg:
+                    cmd_parts.append(arg)
 
         if self.trust_remote_code:
             cmd_parts.append("--trust-remote-code")
+
+        for arg in _format_patch_kwargs(self.patch_kwargs):
+            cmd_parts.append(arg)
 
         for arg in self.extra_args:
             cmd_parts.append(arg)
