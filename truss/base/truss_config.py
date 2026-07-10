@@ -1495,6 +1495,30 @@ class TrussConfig(custom_types.ConfigModel):
         return self
 
     @pydantic.model_validator(mode="after")
+    def _validate_config(self) -> "TrussConfig":
+        if self.requirements and self.requirements_file:
+            raise ValueError(
+                "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
+        if self.model_cache.models and self.weights.sources:
+            raise ValueError(
+                "Please ensure that only one of `model_cache` and `weights` is specified"
+            )
+        return self
+
+    @pydantic.field_validator("cache_internal", mode="before")
+    def _default_cache_internal_if_none(cls, v: Any) -> CacheInternal:
+        return CacheInternal([]) if v is None else v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_llm_mutual_exclusion(self) -> "TrussConfig":
+        if self.trt_llm is not None and self.vllm is not None:
+            raise ValueError(
+                "vllm and trt_llm cannot both be configured at the same time."
+            )
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
 

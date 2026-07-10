@@ -34,53 +34,58 @@ TRUSS_BUILD_CONTEXT_DIR = working_dir / "build/context"
 def _fill_trt_llm_versions(
     tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
 ):
-    assert tr.spec.config.trt_llm is not None
-
-    if tr.spec.config.trt_llm.inference_stack == "v2":
-        print(f"Using Inference Stack v2 image: {image_versions.v2_llm_image}")
-        tr.set_base_image(image_versions.v2_llm_image, "/usr/bin/python3")
-    elif tr.spec.config.trt_llm.inference_stack == "v1":
-        if (
-            tr.spec.config.trt_llm.build.base_model
-            == trt_llm_config.TrussTRTLLMModel.ENCODER
-        ):
-            print(f"Using BEI image: {image_versions.bei_image}")
-            tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
-        elif (
-            tr.spec.config.trt_llm.build.base_model
-            == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
-        ):
-            accelerator = tr.spec.config.resources.accelerator.accelerator
-            docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
-                Accelerator.L4: "89-",
-                Accelerator.L40S: "89-",
-                Accelerator.A100: "",
-                Accelerator.H100: "hopper-",
-                Accelerator.H100_40GB: "hopper-",
-                Accelerator.A10G: "86-",
-                Accelerator.T4: "turing-",
-                Accelerator.H200: "hopper-",
-                Accelerator.V100: "turing-",
-                Accelerator.B200: "blackwell-",
-                Accelerator.RTX_PRO_6000: "blackwell-",
-                Accelerator.B300: "blackwell-",
-                None: "unsupported none please upgrade truss",
-            }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
-            if docker_image_suffix.startswith("unsupported"):
-                raise ValueError(docker_image_suffix)
-            base_image_prefix, base_image_version = image_versions.beibert_image.split(
-                ":", 1
-            )
-            bei_bert_image_with_accelerator = (
-                f"{base_image_prefix}:{docker_image_suffix}{base_image_version}"
-            )
-            print(f"Using BEI BERT image: {bei_bert_image_with_accelerator}")
-            tr.set_base_image(bei_bert_image_with_accelerator, "/usr/bin/python3")
-        else:
-            print(f"Using Briton image: {image_versions.briton_image}")
-            tr.set_base_image(
-                image_versions.briton_image, constants.TRTLLM_PYTHON_EXECUTABLE
-            )
+    if tr.spec.config.trt_llm is not None:
+        if tr.spec.config.trt_llm.inference_stack == "v2":
+            print(f"Using Inference Stack v2 image: {image_versions.v2_llm_image}")
+            tr.set_base_image(image_versions.v2_llm_image, "/usr/bin/python3")
+        elif tr.spec.config.trt_llm.inference_stack == "v1":
+            if (
+                tr.spec.config.trt_llm.build.base_model
+                == trt_llm_config.TrussTRTLLMModel.ENCODER
+            ):
+                print(f"Using BEI image: {image_versions.bei_image}")
+                tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
+            elif (
+                tr.spec.config.trt_llm.build.base_model
+                == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
+            ):
+                accelerator = tr.spec.config.resources.accelerator.accelerator
+                docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
+                    Accelerator.L4: "89-",
+                    Accelerator.L40S: "89-",
+                    Accelerator.A100: "",
+                    Accelerator.H100: "hopper-",
+                    Accelerator.H100_40GB: "hopper-",
+                    Accelerator.A10G: "86-",
+                    Accelerator.T4: "turing-",
+                    Accelerator.H200: "hopper-",
+                    Accelerator.V100: "turing-",
+                    Accelerator.B200: "blackwell-",
+                    Accelerator.RTX_PRO_6000: "blackwell-",
+                    Accelerator.B300: "blackwell-",
+                    None: "unsupported none please upgrade truss",
+                }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
+                if docker_image_suffix.startswith("unsupported"):
+                    raise ValueError(docker_image_suffix)
+                base_image_prefix, base_image_version = (
+                    image_versions.beibert_image.split(":", 1)
+                )
+                bei_bert_image_with_accelerator = (
+                    f"{base_image_prefix}:{docker_image_suffix}{base_image_version}"
+                )
+                print(f"Using BEI BERT image: {bei_bert_image_with_accelerator}")
+                tr.set_base_image(bei_bert_image_with_accelerator, "/usr/bin/python3")
+            else:
+                print(f"Using Briton image: {image_versions.briton_image}")
+                tr.set_base_image(
+                    image_versions.briton_image, constants.TRTLLM_PYTHON_EXECUTABLE
+                )
+    elif tr.spec.config.vllm is not None:
+        vllm_img = (
+            getattr(image_versions, "vllm_image", None) or constants.VLLM_BASE_IMAGE
+        )
+        print(f"Using vLLM image: {vllm_img}")
+        tr.set_base_image(vllm_img, "/usr/bin/python3")
 
 
 @click.command()
@@ -98,7 +103,9 @@ def docker_build_setup(
     """
     logging.info("Loading truss")
     tr = truss_handle.TrussHandle(TRUSS_SRC_DIR)
-    if tr.spec.config.trt_llm is not None and trt_llm_image_versions_json:
+    if trt_llm_image_versions_json and (
+        tr.spec.config.trt_llm is not None or tr.spec.config.vllm is not None
+    ):
         image_versions = trt_llm_config.ImageVersions.model_validate_json(
             trt_llm_image_versions_json
         )
