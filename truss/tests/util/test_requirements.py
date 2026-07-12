@@ -6,6 +6,7 @@ from truss.util.requirements import (
     _is_valid_requirement,
     parse_requirement_string,
     parse_requirements_from_pyproject,
+    raise_insufficent_revision,
 )
 
 
@@ -174,3 +175,19 @@ def test_parse_requirement_string_filtered():
     assert parse_requirement_string("") is None
     assert parse_requirement_string("# comment") is None
     assert parse_requirement_string("   ") is None
+
+
+def test_raise_insufficent_revision_message_is_actionable():
+    with pytest.raises(ValueError) as exc_info:
+        raise_insufficent_revision("org/model", "main")
+
+    message = str(exc_info.value)
+    assert "org/model" in message
+    assert "main" in message
+    # The message must actually tell the user what to do (it previously read
+    # "Please a suitable commit sha under this", missing a verb).
+    assert "provide a suitable commit sha" in message
+    # And it must surface a plain, usable link rather than the old malformed
+    # literal markdown `[link](...)` that rendered verbatim in the CLI error.
+    assert "https://huggingface.co/org/model/commits/main" in message
+    assert "[link]" not in message

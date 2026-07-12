@@ -41,6 +41,6 @@ def raise_insufficent_revision(repo_id_huggingface: str, revision: str):
     """
     raise ValueError(
         f"Revision '{revision}' is insufficient for repo '{repo_id_huggingface}'. "
-        "Please a suitable commit sha under this "
-        f"`[link](https://huggingface.co/{repo_id_huggingface}/commits/main)`"
+        "Please provide a suitable commit sha; you can find one at "
+        f"https://huggingface.co/{repo_id_huggingface}/commits/main"
     )
