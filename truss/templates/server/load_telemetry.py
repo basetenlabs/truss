@@ -18,8 +18,10 @@ Two invariants:
 import contextlib
 import json
 import logging
+import os
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Iterator, Optional
 
 import opentelemetry.sdk.trace as sdk_trace
@@ -33,6 +35,7 @@ class LoadTelemetry:
         self._logger = logger
         self._tracer = tracer
         self._stage_ms: Dict[str, float] = {}
+        self._load_start_epoch_s = time.time()
         self._pre_load_compile_s: Optional[float] = None
         self._pre_load_gpu_mem_bytes: Optional[int] = None
         self._pre_load_compile_phases: Dict[str, float] = {}
@@ -106,6 +109,16 @@ class LoadTelemetry:
 
             attributed_ms = sum(self._stage_ms.values())
             fields["unattributed_ms"] = round(max(total_ms - attributed_ms, 0.0), 1)
+
+            process_start_s = _process_start_epoch_seconds()
+            if process_start_s is not None:
+                # Interpreter start + server imports + startup code before
+                # load() began. For standard truss images the server process
+                # is the container entrypoint, so this approximates
+                # container start -> load start.
+                fields["server_boot_ms"] = _round_ms(
+                    max(self._load_start_epoch_s - process_start_s, 0.0)
+                )
 
             self._logger.info(
                 f"model load telemetry: {json.dumps(fields, sort_keys=True)}"
@@ -193,6 +206,23 @@ def _torch_compile_counters() -> Dict[str, int]:
     except (TypeError, KeyError):
         pass
     return out
+
+
+def _process_start_epoch_seconds(proc_root: Path = Path("/proc")) -> Optional[float]:
+    """Wall-clock time this process started, from /proc (Linux only; None
+    elsewhere). starttime in /proc/self/stat is in clock ticks since boot;
+    boot time is now minus /proc/uptime."""
+    try:
+        stat = (proc_root / "self" / "stat").read_text()
+        # comm (field 2) can contain spaces/parens; fields resume after the
+        # last ')'. starttime is overall field 22 -> index 19 after comm.
+        after_comm = stat.rsplit(")", 1)[1].split()
+        starttime_ticks = float(after_comm[19])
+        uptime_s = float((proc_root / "uptime").read_text().split()[0])
+        boot_epoch_s = time.time() - uptime_s
+        return boot_epoch_s + starttime_ticks / os.sysconf("SC_CLK_TCK")
+    except Exception:
+        return None
 
 
 def _gpu_memory_allocated_bytes() -> Optional[int]:

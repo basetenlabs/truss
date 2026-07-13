@@ -217,3 +217,40 @@ def test_torch_compile_phase_list_is_bounded(
     # The emitted line keeps only the top N phases by duration.
     assert len(phases) == load_telemetry.MAX_COMPILE_PHASES
     assert set(phases) == {f"phase_{i}" for i in range(15, 20)}
+
+
+def test_process_start_epoch_from_fake_proc(load_telemetry, tmp_path):
+    import os
+    import time
+
+    # Fake /proc: booted 1000s ago, process started 250 ticks after boot.
+    hz = os.sysconf("SC_CLK_TCK")
+    (tmp_path / "self").mkdir()
+    stat_fields = ["x"] * 52
+    stat_fields[21] = str(250 * hz)  # process started 250s after boot
+    (tmp_path / "self" / "stat").write_text(
+        "42 (model (server)) " + " ".join(stat_fields[2:])
+    )
+    (tmp_path / "uptime").write_text("1000.0 800.0\n")
+
+    start = load_telemetry._process_start_epoch_seconds(proc_root=tmp_path)
+    expected = time.time() - 1000.0 + 250.0
+    assert start == pytest.approx(expected, abs=2.0)
+
+
+def test_process_start_none_when_proc_absent(load_telemetry, tmp_path):
+    assert (
+        load_telemetry._process_start_epoch_seconds(proc_root=tmp_path / "nope") is None
+    )
+
+
+def test_server_boot_ms_emitted(telemetry_and_log, load_telemetry, monkeypatch):
+    telemetry, emitted_fields = telemetry_and_log
+    # Process started 3.5s before LoadTelemetry was constructed.
+    monkeypatch.setattr(
+        load_telemetry,
+        "_process_start_epoch_seconds",
+        lambda: telemetry._load_start_epoch_s - 3.5,
+    )
+    telemetry.finalize(total_ms=100.0)
+    assert emitted_fields()["server_boot_ms"] == pytest.approx(3500.0, abs=1.0)
