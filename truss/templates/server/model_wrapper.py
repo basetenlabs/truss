@@ -32,6 +32,7 @@ from _truss_shared.lazy_data_resolver import LazyDataResolverV2
 from _truss_shared.secrets_resolver import SecretsResolver
 from anyio import Semaphore, to_thread
 from fastapi import HTTPException, WebSocket
+from load_telemetry import LoadTelemetry
 from opentelemetry import trace
 
 MODEL_BASENAME = "model"
@@ -459,39 +460,43 @@ class ModelWrapper:
         with self._load_lock:
             self._status = ModelWrapper.Status.LOADING
             self._logger.info("Executing model.load()...")
+            telemetry = LoadTelemetry(self._logger, self._tracer)
             try:
                 start_time = time.perf_counter()
-                self._load_impl()
+                self._load_impl(telemetry)
                 self._status = ModelWrapper.Status.READY
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
+                telemetry.finalize(_elapsed_ms(start_time))
             except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
 
-    def _load_impl(self):
-        data_dir = Path("data")
-        data_dir.mkdir(exist_ok=True)
+    def _load_impl(self, telemetry: LoadTelemetry):
+        with telemetry.stage("setup"):
+            data_dir = Path("data")
+            data_dir.mkdir(exist_ok=True)
 
-        if "bundled_packages_dir" in self._config:
-            bundled_packages_path = Path("/packages")
-            if bundled_packages_path.exists():
-                sys.path.append(str(bundled_packages_path))
+            if "bundled_packages_dir" in self._config:
+                bundled_packages_path = Path("/packages")
+                if bundled_packages_path.exists():
+                    sys.path.append(str(bundled_packages_path))
 
-        secrets = SecretsResolver.get_secrets(self._config)
-        lazy_data_resolver = LazyDataResolverV2(data_dir)
+            secrets = SecretsResolver.get_secrets(self._config)
+            lazy_data_resolver = LazyDataResolverV2(data_dir)
 
-        apply_patches(
-            self._config.get("apply_library_patches", True),
-            self._config["requirements"],
-        )
+            apply_patches(
+                self._config.get("apply_library_patches", True),
+                self._config["requirements"],
+            )
 
-        extensions = _init_extensions(
-            self._config, data_dir, secrets, lazy_data_resolver
-        )
-        for extension in extensions.values():
-            extension.load()
+        with telemetry.stage("extensions_load"):
+            extensions = _init_extensions(
+                self._config, data_dir, secrets, lazy_data_resolver
+            )
+            for extension in extensions.values():
+                extension.load()
 
         model_class_file_path = (
             Path(self._config["model_module_dir"])
@@ -514,7 +519,10 @@ class ModelWrapper:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
             try:
-                spec.loader.exec_module(module)
+                # The customer's model.py imports run here — for torch
+                # models this stage is dominated by `import torch` etc.
+                with telemetry.stage("import_model_module"):
+                    spec.loader.exec_module(module)
             except ImportError as e:
                 if "attempted relative import" in str(e):
                     raise ImportError(
@@ -536,29 +544,34 @@ class ModelWrapper:
             for ext_name, ext in extensions.items():
                 if _signature_accepts_keyword_arg(signature, ext_name):
                     model_init_params[ext_name] = ext.model_args()
-            self._maybe_model = model_class(**model_init_params)
+            with telemetry.stage("model_init"):
+                self._maybe_model = model_class(**model_init_params)
 
         elif TRT_LLM_EXTENSION_NAME in extensions:
             self._logger.info("Loading TRT LLM extension as model.")
             # trt_llm extension allows model.py to be absent. It supplies its
             # own model class in that case.
             trt_llm_extension = extensions["trt_llm"]
-            self._maybe_model = trt_llm_extension.model_override()
+            with telemetry.stage("model_init"):
+                self._maybe_model = trt_llm_extension.model_override()
         else:
             raise RuntimeError("No module class file found")
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
         if self._maybe_model_descriptor.setup_environment:
-            self._initialize_environment_before_load()
+            with telemetry.stage("setup_environment"):
+                self._initialize_environment_before_load()
+        telemetry.snapshot_before_model_load()
         if hasattr(self._model, "load"):
-            retry(
-                self._model.load,
-                NUM_LOAD_RETRIES,
-                self._logger.warning,
-                "Failed to load model.",
-                gap_seconds=1.0,
-            )
+            with telemetry.stage("model_load"):
+                retry(
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warning,
+                    "Failed to load model.",
+                    gap_seconds=1.0,
+                )
         lazy_data_resolver.raise_if_not_collected()
 
     def setup_polling_for_environment_updates(self):
