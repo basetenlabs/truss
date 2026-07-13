@@ -152,3 +152,68 @@ def test_finalize_never_raises(load_telemetry, monkeypatch, caplog):
     telemetry.finalize(total_ms=100.0)  # must not raise
 
     assert any("finalize failed" in r.message for r in caplog.records)
+
+
+def test_torch_compile_phase_breakdown_and_counters(
+    telemetry_and_log, load_telemetry, monkeypatch
+):
+    from collections import Counter, defaultdict
+
+    telemetry, emitted_fields = telemetry_and_log
+    counters = defaultdict(Counter)
+    counters["stats"]["unique_graphs"] = 2
+    counters["inductor"]["fxgraph_cache_miss"] = 2
+    dynamo_utils = SimpleNamespace(
+        compilation_time_metrics={
+            "entire_frame_compile": [1.0],
+            "inductor_compile": [0.6],
+        },
+        counters=counters,
+    )
+    monkeypatch.setitem(sys.modules, "torch._dynamo.utils", dynamo_utils)
+
+    telemetry.snapshot_before_model_load()
+    # load() compiles two more graphs: one cache hit, one miss, one break.
+    dynamo_utils.compilation_time_metrics["entire_frame_compile"] += [2.0, 8.0]
+    dynamo_utils.compilation_time_metrics["inductor_compile"].append(7.5)
+    dynamo_utils.compilation_time_metrics["autotuning"] = [4.0]
+    counters["stats"]["unique_graphs"] = 4
+    counters["graph_break"]["data-dependent branch"] += 1
+    counters["inductor"]["fxgraph_cache_hit"] = 1
+    counters["inductor"]["fxgraph_cache_miss"] = 3
+
+    telemetry.finalize(total_ms=20000.0)
+    fields = emitted_fields()
+
+    # Deltas, not absolutes: pre-load compile state is excluded.
+    assert fields["torch_compile_ms"] == 10000.0
+    assert fields["torch_compile_phases_ms"] == {
+        "entire_frame_compile": 10000.0,
+        "inductor_compile": 7500.0,
+        "autotuning": 4000.0,
+    }
+    assert fields["torch_unique_graphs"] == 2
+    assert fields["torch_graph_breaks"] == 1
+    assert fields["torch_fx_cache_hits"] == 1
+    assert fields["torch_fx_cache_misses"] == 1
+
+
+def test_torch_compile_phase_list_is_bounded(
+    telemetry_and_log, load_telemetry, monkeypatch
+):
+    telemetry, emitted_fields = telemetry_and_log
+    dynamo_utils = SimpleNamespace(
+        compilation_time_metrics={f"phase_{i}": [] for i in range(1, 20)}
+    )
+    monkeypatch.setitem(sys.modules, "torch._dynamo.utils", dynamo_utils)
+
+    telemetry.snapshot_before_model_load()
+    for i, name in enumerate(dynamo_utils.compilation_time_metrics, start=1):
+        dynamo_utils.compilation_time_metrics[name].append(float(i))
+    telemetry.finalize(total_ms=100.0)
+
+    fields = emitted_fields()
+    phases = fields["torch_compile_phases_ms"]
+    # The emitted line keeps only the top N phases by duration.
+    assert len(phases) == load_telemetry.MAX_COMPILE_PHASES
+    assert set(phases) == {f"phase_{i}" for i in range(15, 20)}

@@ -35,6 +35,8 @@ class LoadTelemetry:
         self._stage_ms: Dict[str, float] = {}
         self._pre_load_compile_s: Optional[float] = None
         self._pre_load_gpu_mem_bytes: Optional[int] = None
+        self._pre_load_compile_phases: Dict[str, float] = {}
+        self._pre_load_counters: Dict[str, int] = {}
 
     @contextlib.contextmanager
     def stage(self, name: str) -> Iterator[None]:
@@ -55,6 +57,8 @@ class LoadTelemetry:
         try:
             self._pre_load_compile_s = _torch_compile_seconds()
             self._pre_load_gpu_mem_bytes = _gpu_memory_allocated_bytes()
+            self._pre_load_compile_phases = _torch_compile_phase_seconds()
+            self._pre_load_counters = _torch_compile_counters()
         except Exception:
             self._logger.warning(
                 "load telemetry: pre-load snapshot failed", exc_info=True
@@ -71,6 +75,26 @@ class LoadTelemetry:
                 fields["torch_compile_ms"] = _round_ms(
                     compile_s - (self._pre_load_compile_s or 0.0)
                 )
+                phases = _torch_compile_phase_seconds()
+                phase_delta = {
+                    name: _round_ms(s - self._pre_load_compile_phases.get(name, 0.0))
+                    for name, s in phases.items()
+                    if s - self._pre_load_compile_phases.get(name, 0.0) > 0.001
+                }
+                if phase_delta:
+                    # Top phases only: the full ledger can hold dozens of
+                    # nested entries and the line must stay small.
+                    fields["torch_compile_phases_ms"] = dict(
+                        sorted(phase_delta.items(), key=lambda kv: -kv[1])[
+                            :MAX_COMPILE_PHASES
+                        ]
+                    )
+                counter_delta = {
+                    name: count - self._pre_load_counters.get(name, 0)
+                    for name, count in _torch_compile_counters().items()
+                    if count - self._pre_load_counters.get(name, 0) > 0
+                }
+                fields.update(counter_delta)
 
             gpu_mem_bytes = _gpu_memory_allocated_bytes()
             if gpu_mem_bytes is not None:
@@ -88,6 +112,10 @@ class LoadTelemetry:
             )
         except Exception:
             self._logger.warning("load telemetry: finalize failed", exc_info=True)
+
+
+# Bound the per-phase compile breakdown so the log line stays small.
+MAX_COMPILE_PHASES = 5
 
 
 def _round_ms(seconds: float) -> float:
@@ -117,6 +145,54 @@ def _torch_compile_seconds() -> Optional[float]:
         if durations:
             return float(sum(durations))
     return float(max((sum(v) for v in metrics.values() if v), default=0.0))
+
+
+def _torch_compile_phase_seconds() -> Dict[str, float]:
+    """Per-phase compile wall time (dynamo tracing vs inductor codegen vs
+    autotuning, key names vary by torch version), from the same semi-private
+    ledger as _torch_compile_seconds. Empty when dynamo is absent."""
+    dynamo_utils = sys.modules.get("torch._dynamo.utils")
+    metrics = getattr(dynamo_utils, "compilation_time_metrics", None)
+    if not isinstance(metrics, dict):
+        return {}
+    out: Dict[str, float] = {}
+    for name, durations in metrics.items():
+        try:
+            out[str(name)] = float(sum(durations))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _torch_compile_counters() -> Dict[str, int]:
+    """Compile-health counts from dynamo's counters, normalized to flat
+    fields. Answers *why* a compile was slow: how many distinct graphs, how
+    many graph breaks (each break splits the graph and recompiles), and
+    whether the inductor FX-graph cache hit — a miss means the compile was
+    recomputed from scratch, i.e. persistent compile caching is not working
+    for this model."""
+    dynamo_utils = sys.modules.get("torch._dynamo.utils")
+    counters = getattr(dynamo_utils, "counters", None)
+    if counters is None:
+        return {}
+    out: Dict[str, int] = {}
+    try:
+        stats = counters["stats"]
+        if "unique_graphs" in stats:
+            out["torch_unique_graphs"] = int(stats["unique_graphs"])
+        graph_breaks = counters["graph_break"]
+        if graph_breaks:
+            out["torch_graph_breaks"] = int(sum(graph_breaks.values()))
+        inductor = counters["inductor"]
+        for key, field in (
+            ("fxgraph_cache_hit", "torch_fx_cache_hits"),
+            ("fxgraph_cache_miss", "torch_fx_cache_misses"),
+        ):
+            if key in inductor:
+                out[field] = int(inductor[key])
+    except (TypeError, KeyError):
+        pass
+    return out
 
 
 def _gpu_memory_allocated_bytes() -> Optional[int]:
