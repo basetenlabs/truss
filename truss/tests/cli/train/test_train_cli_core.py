@@ -9,7 +9,10 @@ from truss.cli.train.cache import (
     create_file_summary_with_directory_sizes,
 )
 from truss.cli.train.core import (
+    _format_capacity_type,
+    display_queued_jobs,
     display_training_capacity,
+    display_training_jobs,
     update_team_training_gpu_capacity,
     view_training_job_metrics,
 )
@@ -640,3 +643,65 @@ def test_update_team_training_gpu_capacity_unknown_team_raises():
         )
 
     mock_api.update_team_training_gpu_capacity.assert_not_called()
+
+
+def test_format_capacity_type():
+    """availability_model maps to human-readable labels; absent reads as on-demand."""
+    assert _format_capacity_type({"availability_model": "spot"}) == "Spot"
+    assert _format_capacity_type({"availability_model": "dedicated"}) == "On-demand"
+    # Absent / null predates the field and reads as on-demand.
+    assert _format_capacity_type({}) == "On-demand"
+    assert _format_capacity_type({"availability_model": None}) == "On-demand"
+    # An unknown future value is surfaced rather than dropped.
+    assert _format_capacity_type({"availability_model": "reserved"}) == "Reserved"
+
+
+def _make_job(job_id, availability_model=None, **overrides):
+    job = {
+        "id": job_id,
+        "name": f"{job_id}-name",
+        "training_project": {"id": "proj1", "name": "proj"},
+        "instance_type": {"name": "H100"},
+        "current_status": "TRAINING_JOB_RUNNING",
+        "priority": 0,
+        "created_at": "2026-07-13T00:00:00Z",
+        "user": {"email": "a@b.co"},
+    }
+    if availability_model is not None:
+        job["availability_model"] = availability_model
+    job.update(overrides)
+    return job
+
+
+def test_display_queued_jobs_shows_capacity_type(capsys):
+    """Queued jobs table includes a Capacity Type column mapped from availability_model."""
+    jobs = [
+        _make_job("spotjob", availability_model="spot"),
+        _make_job("dedjob", availability_model="dedicated"),
+        _make_job("oldjob"),  # no availability_model -> on-demand
+    ]
+
+    # Render wide so the extra column isn't truncated at the default 80 cols.
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_queued_jobs(jobs, "https://app.baseten.co")
+
+    out = capsys.readouterr().out
+    assert "Capacity Type" in out
+    assert "Spot" in out
+    assert "On-demand" in out
+
+
+def test_display_training_jobs_shows_capacity_type(capsys):
+    """Active jobs table includes a Capacity Type column mapped from availability_model."""
+    jobs = [
+        _make_job("spotjob", availability_model="spot"),
+        _make_job("dedjob", availability_model="dedicated"),
+    ]
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_jobs(jobs, "https://app.baseten.co")
+
+    out = capsys.readouterr().out
+    assert "Capacity Type" in out
+    assert "Spot" in out
+    assert "On-demand" in out
