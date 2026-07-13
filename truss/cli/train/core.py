@@ -36,6 +36,20 @@ ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_DEPLOYING",
 ]
 
+# Display labels for a job's `availability_model`. The backend serializes
+# "dedicated" (non-preemptible on-demand capacity) or "spot" (interruptible);
+# an absent value predates the field and reads as on-demand.
+_AVAILABILITY_MODEL_LABELS = {"dedicated": "On-demand", "spot": "Spot"}
+
+
+def _format_capacity_type(job: dict) -> str:
+    availability_model = job.get("availability_model")
+    if not availability_model:
+        return "On-demand"
+    return _AVAILABILITY_MODEL_LABELS.get(
+        availability_model, availability_model.title()
+    )
+
 
 def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
@@ -114,6 +128,7 @@ def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
     table.add_column("Project")
     table.add_column("Status")
     table.add_column("Instance Type")
+    table.add_column("Capacity Type")
     table.add_column("Created By")
     table.add_column("Created")
     table.add_column("Job Page", style="bold yellow")
@@ -125,6 +140,7 @@ def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
             job["training_project"]["name"],
             job["current_status"],
             job["instance_type"]["name"],
+            _format_capacity_type(job),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
             cli_common.format_link(
@@ -224,6 +240,7 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
     table.add_column("Job Name")
     table.add_column("Project")
     table.add_column("Instance Type")
+    table.add_column("Capacity Type")
     table.add_column("Priority")
     table.add_column("Created By")
     table.add_column("Queued At")
@@ -239,6 +256,7 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
             job["name"],
             job["training_project"]["name"],
             job["instance_type"]["name"],
+            _format_capacity_type(job),
             str(job.get("priority") or 0),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
