@@ -22,6 +22,7 @@ from truss.base.truss_config import (
     DockerAuthType,
     DockerServer,
     EgressRestrictions,
+    Fabric,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -166,6 +167,19 @@ def test_instance_type_not_serialized_when_none():
     resources = Resources()
     result = resources.to_dict(verbose=True)
     assert "instance_type" not in result
+
+
+def test_parse_resource_fabrics():
+    resources = Resources.model_validate({"fabrics": ["infiniband"]})
+
+    assert resources.fabrics == [Fabric.INFINIBAND]
+    assert resources.to_dict()["fabrics"] == ["infiniband"]
+
+
+@pytest.mark.parametrize("fabrics", [["roce"], ["infiniband", "infiniband"]])
+def test_parse_resource_fabrics_rejects_unsupported_or_duplicate_values(fabrics):
+    with pytest.raises(pydantic.ValidationError):
+        Resources.model_validate({"fabrics": fabrics})
 
 
 @pytest.mark.parametrize(

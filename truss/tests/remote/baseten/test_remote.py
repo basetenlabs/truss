@@ -6,7 +6,7 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM, Weights, WeightsSource
+from truss.base.truss_config import BISLLM, Fabric, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -698,6 +698,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         config={"model": "test-llm"}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    mock_truss_handle.spec.config.resources.fabrics = [Fabric.INFINIBAND]
     mock_truss_handle.spec.config.weights = Weights(
         [
             WeightsSource(source="hf://model-1", mount_location="/models/base"),
@@ -752,6 +753,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         "environment": "production",
     }
     assert isinstance(kwargs["body"]["resources"], dict)
+    assert kwargs["body"]["resources"]["fabrics"] == ["infiniband"]
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"

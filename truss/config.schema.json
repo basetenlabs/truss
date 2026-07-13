@@ -529,6 +529,13 @@
       "title": "ExternalDataItem",
       "type": "object"
     },
+    "Fabric": {
+      "enum": [
+        "infiniband"
+      ],
+      "title": "Fabric",
+      "type": "string"
+    },
     "GRPCOptions": {
       "properties": {
         "kind": {
@@ -871,6 +878,27 @@
           "default": null,
           "description": "Number of nodes for multi-node deployments.",
           "title": "Node Count"
+        },
+        "fabrics": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Fabric"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ordered high-bandwidth fabric preferences. M2 supports infiniband.",
+          "examples": [
+            [
+              "infiniband"
+            ]
+          ],
+          "title": "Fabrics"
         }
       },
       "title": "Resources",
