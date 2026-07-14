@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import pathlib
+import re
 import sys
 import tempfile
 import textwrap
@@ -1251,9 +1252,13 @@ def _patch_termination_timeout(container: Container, seconds: int, truss_contain
 
     local_server_source = pathlib.Path(truss_server.__file__)
     container_server_source = "/app/truss_server.py"
-    modified_content = local_server_source.read_text().replace(
-        "TIMEOUT_GRACEFUL_SHUTDOWN = 120", f"TIMEOUT_GRACEFUL_SHUTDOWN = {seconds}"
+    modified_content, num_subs = re.subn(
+        r"^TIMEOUT_GRACEFUL_SHUTDOWN = \d+$",
+        f"TIMEOUT_GRACEFUL_SHUTDOWN = {seconds}",
+        local_server_source.read_text(),
+        flags=re.MULTILINE,
     )
+    assert num_subs == 1, f"expected exactly one substitution, got {num_subs}"
     with tempfile.NamedTemporaryFile() as patched_file:
         patched_file.write(modified_content.encode("utf-8"))
         patched_file.flush()
@@ -1284,14 +1289,14 @@ async def test_graceful_shutdown(truss_container_fs):
         await predict_request({"seconds": 0, "task": 0})  # Warm up server.
 
         # Test starting two requests, each taking 2 seconds, then terminating server.
-        # They should both finish successfully since the server grace period is 120 s.
+        # They should both finish successfully since the server grace period is 3600 s.
         task_0 = asyncio.create_task(predict_request({"seconds": 2, "task": 0}))
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
         task_1 = asyncio.create_task(predict_request({"seconds": 2, "task": 1}))
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
 
         t0 = time.perf_counter()
-        # Even though the server has 120s grace period, we expect to finish much
+        # Even though the server has a long grace period, we expect to finish much
         # faster in the test here, so use 10s.
         container.stop(10)
         stop_time = time.perf_counter() - t0
