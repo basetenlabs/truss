@@ -15,6 +15,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
 from truss_train.definitions import (
     DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES,
+    AvailabilityModel,
     InteractiveSession,
     InteractiveSessionTrigger,
     TrainingJob,
@@ -332,6 +333,7 @@ def _apply_cli_overrides(
     node_count: Optional[int] = None,
     entrypoint: Optional[str] = None,
     priority: Optional[int] = None,
+    spot: bool = False,
 ) -> None:
     """Apply CLI flag overrides to the training project configuration."""
     if interactive_trigger is not None or interactive_timeout_minutes is not None:
@@ -391,6 +393,12 @@ def _apply_cli_overrides(
             )
         training_project.job.priority = priority
 
+    if spot:
+        # The flag always wins. We don't warn when overriding a config value because
+        # the default (dedicated) is indistinguishable from an explicit dedicated, so a
+        # warning would fire on the common path (no availability_model set in config).
+        training_project.job.compute.availability_model = AvailabilityModel.SPOT
+
 
 def create_training_job(
     remote_provider: BasetenRemote,
@@ -405,6 +413,7 @@ def create_training_job(
     node_count: Optional[int] = None,
     entrypoint: Optional[str] = None,
     priority: Optional[int] = None,
+    spot: bool = False,
 ) -> dict:
     if job_name_from_cli:
         if training_project.job.name:
@@ -426,6 +435,7 @@ def create_training_job(
         node_count=node_count,
         entrypoint=entrypoint,
         priority=priority,
+        spot=spot,
     )
 
     source_dir = config.absolute().parent
