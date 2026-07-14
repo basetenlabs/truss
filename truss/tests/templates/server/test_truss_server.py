@@ -320,6 +320,11 @@ def test_load_emits_load_telemetry_line(app_path, monkeypatch, caplog):
         SimpleNamespace(compilation_time_metrics={"entire_frame_compile": [1.5]}),
     )
 
+    # Earlier tests may have applied the server's dictConfig (e.g. via the
+    # control app), which sets the "uvicorn" logger to propagate=False —
+    # caplog captures at the root logger, so restore propagation for this test.
+    monkeypatch.setattr(logging.getLogger("uvicorn"), "propagate", True)
+
     with _clear_truss_server_modules(), _change_directory(app_path):
         model_wrapper_module = importlib.import_module("model_wrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
