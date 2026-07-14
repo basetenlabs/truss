@@ -301,3 +301,60 @@ def _is_port_available(port):
     except socket.error:
         # Port is already in use
         return False
+
+
+def test_load_emits_load_telemetry_line(app_path, monkeypatch, caplog):
+    """End-to-end through the real server load path: ModelWrapper.load()
+    against the fixture truss must emit the structured load-telemetry line
+    with per-stage timings — and the torch introspection must run (and
+    degrade cleanly) via sys.modules without torch installed."""
+    import logging
+    from types import SimpleNamespace
+
+    # Fake dynamo present before load: the wrapper must read it via
+    # sys.modules (never import torch) and emit compile fields. Pre-seeded
+    # state means the load-attributed delta is exactly zero.
+    monkeypatch.setitem(
+        sys.modules,
+        "torch._dynamo.utils",
+        SimpleNamespace(compilation_time_metrics={"entire_frame_compile": [1.5]}),
+    )
+
+    # Earlier tests may have applied the server's dictConfig (e.g. via the
+    # control app), which sets the "uvicorn" logger to propagate=False —
+    # caplog captures at the root logger, so restore propagation for this test.
+    monkeypatch.setattr(logging.getLogger("uvicorn"), "propagate", True)
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+        wrapper = model_wrapper_module.ModelWrapper(
+            config, sdk_trace.TracerProvider().get_tracer(__name__)
+        )
+        with caplog.at_level(logging.INFO, logger="uvicorn"):
+            wrapper.load()
+
+    assert wrapper.ready, "fixture model must load successfully"
+    lines = [r.message for r in caplog.records if "model load telemetry:" in r.message]
+    assert len(lines) == 1, f"expected exactly one telemetry line, got {lines}"
+    fields = json.loads(lines[0].split("model load telemetry:", 1)[1])
+
+    # Real stage timings from the real load path.
+    for stage in ("setup", "import_model_module", "model_init", "model_load"):
+        assert stage in fields, f"missing stage {stage} in {fields}"
+        assert fields[stage] >= 0
+    assert (
+        fields["load_total_ms"]
+        >= sum(
+            fields[s]
+            for s in ("setup", "import_model_module", "model_init", "model_load")
+        )
+        - 1
+    )  # rounding slack
+    assert fields["unattributed_ms"] >= 0
+
+    # torch fields present via the sys.modules path; pre-seeded compile
+    # state is excluded from the load-attributed delta.
+    assert fields["torch_compile_ms"] == 0.0
+    # No CUDA in the test environment: GPU fields must be absent, not fake.
+    assert "gpu_mem_allocated_gb" not in fields
