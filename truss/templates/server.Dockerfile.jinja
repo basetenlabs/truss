@@ -129,8 +129,10 @@ ENV SERVER_START_CMD={{ config.docker_server.start_command | tojson }}
 ENTRYPOINT ["sh", "-c"]
 CMD [{{ config.docker_server.start_command | tojson }}]
 {%- else %}
+{#- Remove default site (root-only port 80) in the install layer, so no overlayfs whiteout is emitted for it. #}
 RUN {{ apt_cache_mount }}apt-get update -y && apt-get install -y --no-install-recommends \
-        curl nginx{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %}
+        curl nginx{% if not cache_mount_id %} && rm -rf /var/lib/apt/lists/*{% endif %} \
+        && rm -f /etc/nginx/sites-enabled/default
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
@@ -144,8 +146,6 @@ COPY --chown={{ default_owner }} ./proxy.conf {{ proxy_config_path }}
 COPY --chown={{ default_owner }} ./supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
-{#- default configuration uses port 80, which requires root privileges, so we remove it #}
-RUN rm -f /etc/nginx/sites-enabled/default
 {# NB(nikhil): Ensure /dev/shm exists, but we expect this to get overwritten at runtime with volume mounts #}
 RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}

@@ -251,6 +251,10 @@ def test_cache_mount_id_enabled_with_system_pkgs_ssh_and_docker_server(
         "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
         "apt-get update -y && apt-get install -y --no-install-recommends "
     ) in dockerfile
+    # The default-site removal must stay chained into the install RUN (same
+    # layer) so no overlayfs whiteout is emitted for it.
+    assert "&& rm -f /etc/nginx/sites-enabled/default" in dockerfile
+    assert "RUN rm -f /etc/nginx/sites-enabled/default" not in dockerfile
     # docker_server uv install must combine the uv cache mount with
     # `clean_uv_env`, which was extended to forward UV_CACHE_DIR / PIP_CACHE_DIR.
     assert (
