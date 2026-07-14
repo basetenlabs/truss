@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -219,10 +220,10 @@ def test_torch_compile_phase_list_is_bounded(
     assert set(phases) == {f"phase_{i}" for i in range(15, 20)}
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "sysconf"), reason="os.sysconf unavailable (Windows)"
+)
 def test_process_start_epoch_from_fake_proc(load_telemetry, tmp_path):
-    import os
-    import time
-
     # Fake /proc: booted 1000s ago, process started 250 ticks after boot.
     hz = os.sysconf("SC_CLK_TCK")
     (tmp_path / "self").mkdir()
