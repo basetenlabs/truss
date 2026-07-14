@@ -1,5 +1,6 @@
 from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
+    AvailabilityModel,
     AWSIAMDockerAuth,
     BasetenCheckpoint,
     CacheConfig,
@@ -28,6 +29,7 @@ from truss_train.public_api import push
 
 __all__ = [
     "push",
+    "AvailabilityModel",
     "Compute",
     "Runtime",
     "SecretReference",

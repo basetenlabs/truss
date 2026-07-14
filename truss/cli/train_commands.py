@@ -181,6 +181,12 @@ def _resolve_team_name(
     required=False,
     help="Job priority (higher values run first when capacity frees up).",
 )
+@click.option(
+    "--spot",
+    is_flag=True,
+    help="Run on interruptible spot capacity (overrides availability_model in the config). "
+    "You are responsible for checkpointing your own progress.",
+)
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -194,6 +200,7 @@ def push_training_job(
     node_count: Optional[int],
     entrypoint: Optional[str],
     priority: Optional[int],
+    spot: bool,
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -231,6 +238,7 @@ def push_training_job(
                 node_count=node_count,
                 entrypoint=entrypoint,
                 priority=priority,
+                spot=spot,
             )
 
     # Note: This post create logic needs to happen outside the context
