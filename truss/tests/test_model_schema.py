@@ -1,9 +1,9 @@
 import tempfile
-import time
 from pathlib import Path
 
 import pytest
 import requests
+from tenacity import Retrying, retry_if_exception_type, stop_after_delay, wait_fixed
 
 from truss.templates.shared import serialization
 from truss.tests.helpers import create_truss
@@ -78,10 +78,16 @@ class Model:
         tr = TrussHandle(truss_dir)
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
 
-        # Wait a bit for the server to start
-        time.sleep(2)
-
-        schema_response = requests.get(urls.schema_url)
+        # Can't wait for readiness (the failed load keeps the server
+        # unready), so poll until it responds at all.
+        for attempt in Retrying(
+            stop=stop_after_delay(30),
+            wait=wait_fixed(1),
+            retry=retry_if_exception_type(requests.exceptions.ConnectionError),
+            reraise=True,
+        ):
+            with attempt:
+                schema_response = requests.get(urls.schema_url)
 
         # If the load has not successfully completed,
         # we return a 503 instead of 404, so that clients

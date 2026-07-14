@@ -12,6 +12,11 @@ on:
         required: false
         default: false
 
+env:
+  # Pin test image builds to one reliable mirror; the default mirror list
+  # (mirrors.ubuntu.com/US.txt) intermittently serves broken mirrors.
+  BT_APT_MIRROR_URL: http://us-east-1.ec2.archive.ubuntu.com/ubuntu/
+
 jobs:
   determine-python-versions:
     runs-on: ubuntu-22.04
@@ -61,6 +66,13 @@ jobs:
         split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v4
+      # Shards build many multi-GB images and have hit buildkit "no space left
+      # on device"; drop unused preinstalled toolchains to reclaim ~20 GB.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Restore test durations from cache
         uses: actions/cache/restore@v4
         with:

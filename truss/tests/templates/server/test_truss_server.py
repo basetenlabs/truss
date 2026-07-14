@@ -164,19 +164,19 @@ def test_truss_server_termination(truss_container_fs):
     subproc = Process(
         target=_start_truss_server,
         args=(stdout_capture_file.name, truss_container_fs, port),
+        daemon=True,  # Don't block pytest exit if an assertion below fails.
     )
     subproc.start()
     proc_id = subproc.pid
-    time.sleep(2.0)
-    # Port should have been taken up by truss server
-    assert not _is_port_available(port)
+    # The server should come up; poll instead of a fixed sleep, startup can
+    # be slow on CI runners.
+    assert _wait_for(lambda: _is_server_listening(port)), "server never started"
     os.kill(proc_id, signal.SIGTERM)
-    time.sleep(2.0)
+    subproc.join(timeout=30)
     # Print on purpose for help with debugging, otherwise hard to know what's going on
     print(Path(stdout_capture_file.name).read_text())
     assert not subproc.is_alive()
-    # Port should be free now
-    assert _is_port_available(port)
+    assert _wait_for(lambda: not _is_server_listening(port)), "port still in use"
 
 
 @pytest.mark.anyio
@@ -292,12 +292,18 @@ class Model:
         assert result["predict_count"] == 3
 
 
-def _is_port_available(port):
-    try:
-        # Try to bind to the given port
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("localhost", port))
+def _is_server_listening(port):
+    # Connect-based check: only an active listener counts, so lingering
+    # TIME_WAIT sockets from a just-terminated server don't flake the test.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1.0)
+        return s.connect_ex(("localhost", port)) == 0
+
+
+def _wait_for(predicate, timeout_sec=30.0, poll_sec=0.5):
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if predicate():
             return True
-    except socket.error:
-        # Port is already in use
-        return False
+        time.sleep(poll_sec)
+    return predicate()
