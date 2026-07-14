@@ -799,6 +799,20 @@ def view_cache_summary_by_project(
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
 
 
+def _usage_split(item: dict) -> Tuple[str, str]:
+    """Return (on-demand, spot) usage cells for a capacity item.
+
+    The backend splits usage_count into dedicated (on-demand) and spot. A
+    pre-split backend omits the breakdown; fall back to showing the total
+    under on-demand so the column still reflects real usage.
+    """
+    dedicated = item.get("dedicated_usage_count")
+    spot = item.get("spot_usage_count")
+    if dedicated is None and spot is None:
+        return str(item.get("usage_count", 0)), "0"
+    return str(dedicated or 0), str(spot or 0)
+
+
 def display_training_capacity(remote_provider: BasetenRemote) -> None:
     """Fetch and display org- and team-level GPU capacity limits and usage."""
     capacity = remote_provider.api.get_training_capacity()
@@ -820,13 +834,16 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         org_table.add_column("GPU Type", style="cyan")
         org_table.add_column("Baseline", justify="right")
         org_table.add_column("Limit", justify="right")
-        org_table.add_column("Usage", justify="right")
+        org_table.add_column("On-Demand", justify="right")
+        org_table.add_column("Spot", justify="right")
         for item in gpu_capacities:
+            on_demand, spot = _usage_split(item)
             org_table.add_row(
                 item.get("gpu_type", ""),
                 str(item.get("baseline", 0)),
                 str(item.get("limit", 0)),
-                str(item.get("usage_count", 0)),
+                on_demand,
+                spot,
             )
         console.print(org_table)
 
@@ -842,14 +859,17 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         team_table.add_column("GPU Type", style="cyan")
         team_table.add_column("Baseline", justify="right")
         team_table.add_column("Limit", justify="right")
-        team_table.add_column("Usage", justify="right")
+        team_table.add_column("On-Demand", justify="right")
+        team_table.add_column("Spot", justify="right")
         for item in team_gpu_capacities:
+            on_demand, spot = _usage_split(item)
             team_table.add_row(
                 item.get("team_name", ""),
                 item.get("gpu_type", ""),
                 str(item.get("baseline", 0)),
                 str(item.get("limit", 0)),
-                str(item.get("usage_count", 0)),
+                on_demand,
+                spot,
             )
         console.print(team_table)
 
