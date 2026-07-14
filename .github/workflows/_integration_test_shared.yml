@@ -12,6 +12,11 @@ on:
         required: false
         default: false
 
+env:
+  # Pin test image builds to one reliable mirror; the default mirror list
+  # (mirrors.ubuntu.com/US.txt) intermittently serves broken mirrors.
+  BT_APT_MIRROR_URL: http://us-east-1.ec2.archive.ubuntu.com/ubuntu/
+
 jobs:
   determine-python-versions:
     runs-on: ubuntu-22.04
