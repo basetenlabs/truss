@@ -27,6 +27,7 @@ from truss.contexts.image_builder.serving_image_builder import (
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
+from truss.util.jinja import dockerfile_env_value
 
 BASE_DIR = Path(__file__).parent
 
@@ -1069,14 +1070,19 @@ def test_nginx_config_disables_disk_writes(tmp_path):
 
 
 class TestDockerServerSlimBuild:
-    def _make_docker_server_truss(self, tmp_path, transport_kind="http"):
+    def _make_docker_server_truss(
+        self,
+        tmp_path,
+        transport_kind="http",
+        start_command="python main.py --port 8000",
+    ):
         truss_dir = tmp_path / f"docker_server_truss_{transport_kind}"
         th = TrussHandle(init_directory(truss_dir))
         th.update_python_version("py311")
         th.set_base_image("python:3.11-slim", "/usr/local/bin/python3")
         config = th.spec.config
         config.docker_server = DockerServer(
-            start_command="python main.py --port 8000",
+            start_command=start_command,
             server_port=8000,
             predict_endpoint="/predict",
             readiness_endpoint="/health",
@@ -1107,6 +1113,36 @@ class TestDockerServerSlimBuild:
         assert not (build_dir / "proxy.conf").exists()
         assert not (build_dir / "supervisord.conf").exists()
         assert not (build_dir / "docker_server_requirements.txt").exists()
+
+    def test_slim_dockerfile_start_cmd_env_preserves_quotes(self, tmp_path):
+        start_command = (
+            'sh -c "vllm serve /app/model'
+            ' --hf-overrides \'{"text_config": {"sliding_window": 4096}}\''
+            ' --port $PORT"'
+        )
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, start_command=start_command
+        )
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / "build_quoted_start_cmd"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        env_line = next(
+            line
+            for line in dockerfile.splitlines()
+            if line.startswith("ENV SERVER_START_CMD=")
+        )
+        # tojson would have baked \u0027 (') into ENV, which the Dockerfile
+        # parser keeps verbatim. CMD may keep \uXXXX: JSON exec form decodes it.
+        assert "\\u00" not in env_line
+        assert env_line == "ENV SERVER_START_CMD=" + dockerfile_env_value(start_command)
+
+        cmd_line = next(
+            line for line in dockerfile.splitlines() if line.startswith("CMD [")
+        )
+        assert json.loads(cmd_line[len("CMD ") :]) == [start_command]
 
     def test_legacy_dockerfile_unchanged_when_flag_off(self, tmp_path):
         truss_dir = self._make_docker_server_truss(tmp_path)
