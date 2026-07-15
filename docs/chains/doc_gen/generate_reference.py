@@ -5,6 +5,7 @@ import inspect
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -221,4 +222,7 @@ def generate_sphinx_docs(output_dir: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
+    # The mdx_adapter sphinx extension lives next to this script; make it
+    # importable regardless of the CWD the script is invoked from.
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
     generate_sphinx_docs(output_dir=pathlib.Path("/tmp/doc_gen"))
