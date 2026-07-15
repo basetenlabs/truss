@@ -27,7 +27,10 @@ Welcome to Truss Chains's documentation!
 
 
 BUILDER = "mdx_adapter"  # "mdx_adapter" "html" "markdown"
-NON_PUBLIC_SYMBOLS = ["truss_chains.deployment.deployment_client.ChainService"]
+NON_PUBLIC_SYMBOLS = [
+    "truss_chains.deployment.deployment_client.ChainService",
+    "truss_chains.remote_chainlet.truss_chainlet.TrussHandle",
+]
 
 
 SECTION_CHAINLET = (
@@ -35,6 +38,7 @@ SECTION_CHAINLET = (
     "APIs for creating user-defined Chainlets.",
     [
         "truss_chains.ChainletBase",
+        "truss_chains.TrussChainlet",
         "truss_chains.ModelBase",
         "truss_chains.EngineBuilderLLMChainlet",
         "truss_chains.depends",
@@ -71,12 +75,17 @@ SECTION_UTILITIES = (
         "truss_chains.run_local",
         "truss_chains.DeployedServiceDescriptor",
         "truss_chains.StubBase",
+        "truss_chains.remote_chainlet.truss_chainlet.TrussHandle",
         "truss_chains.RemoteErrorDetail",
         "truss_chains.GenericRemoteException",
     ],
 )
 
-UNDOCUMENTED = ["truss_chains.WebSocketProtocol", "truss_chains.EngineBuilderLLMInput"]
+UNDOCUMENTED = [
+    "truss_chains.WebSocketProtocol",
+    "truss_chains.EngineBuilderLLMInput",
+    "truss_chains.WeightsSource",
+]
 
 SECTIONS = [SECTION_CHAINLET, SECTION_CONFIG, SECTION_UTILITIES]
 

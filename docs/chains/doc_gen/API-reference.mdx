@@ -20,6 +20,24 @@ Refer to [the docs](/development/chain/getting-started) and this
 for more guidance on how to create subclasses.
 
 
+### *class* `truss_chains.TrussChainlet`
+
+Declares an existing Truss directory as a non-entry leaf chain member.
+
+Unlike `ChainletBase`, the framework does not generate a `model.py` or a typed
+`StubBase` for this declaration — the Truss directory (a `model.py`
+implementation or a `docker_server` Truss) is deployed as-is.
+
+TrussChainlets cannot be entrypoints and cannot declare deps — they are only
+depended on by `ChainletBase` chainlets via `chains.depends(...)`, which yields
+a [`TrussHandle`](#class-truss-chains-remote-chainlet-truss-chainlet-trusshandle) to the caller.
+
+#### truss_dir *: ClassVar[str]*
+
+The Truss directory to wrap. Relative paths resolve against the file that
+declares the class.
+
+
 ### *class* `truss_chains.ModelBase`
 
 Base class for all standalone models.
@@ -643,6 +661,54 @@ Deprecated synchronous methods:
 * `predict_sync(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel`
 * `predict_sync(inputs: JSON) → JSON`
 
+
+### *class* `truss_chains.remote_chainlet.truss_chainlet.TrussHandle`
+
+Handle for calling a [`TrussChainlet`](#class-truss-chains-trusschainlet) sibling. Returned by
+`chains.depends()` on a `TrussChainlet`. Build once (e.g. in `__init__`), then
+get call arguments per request and pass them to your own HTTP or WebSocket
+client.
+
+**Parameters:**
+
+| Name     | Type                     | Description                                    |
+|----------|--------------------------|------------------------------------------------|
+| `target` | *str\|Type[ABCChainlet]* | The `TrussChainlet` class or its display name. |
+
+#### http_call_args(\*, prefer_internal=False, sync_path=None, api_key=None)
+
+Returns the URL and headers for an HTTP call to the sibling.
+
+`prefer_internal` uses the internal cluster URL with the matching `Host` header
+if available. `sync_path` rewrites the URL to the `/sync/&lt;sync_path&gt;`
+passthrough. `api_key` overrides the platform-injected chain API key.
+
+**Parameters:**
+
+| Name              | Type        | Default |
+|-------------------|-------------|---------|
+| `prefer_internal` | *bool*      | `False` |
+| `sync_path`       | *str\|None* | `None`  |
+| `api_key`         | *str\|None* | `None`  |
+
+* **Return type:**
+  *CallArgs*, a named tuple of `(url, headers)`.
+
+#### ws_call_args(\*, sync_path=None, api_key=None)
+
+Returns a `wss://` URL and auth-only headers for a WebSocket call to the
+sibling. WebSocket clients reject Host-header overrides, so this has no
+`prefer_internal` kwarg.
+
+**Parameters:**
+
+| Name        | Type        | Default |
+|-------------|-------------|---------|
+| `sync_path` | *str\|None* | `None`  |
+| `api_key`   | *str\|None* | `None`  |
+
+* **Return type:**
+  *CallArgs*, a named tuple of `(url, headers)`.
 
 ### *class* `truss_chains.RemoteErrorDetail`
 
