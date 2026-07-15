@@ -5,7 +5,10 @@ from jinja2 import Environment, FileSystemLoader, Template
 
 def dockerfile_env_value(value: str) -> str:
     """Quote a string as a Dockerfile ENV value. Unlike `tojson`, whose
-    \\uXXXX escapes for ' < > & the ENV parser keeps verbatim."""
+    \\uXXXX escapes for ' < > & the ENV parser keeps verbatim.
+
+    Escapes exactly the special set of buildkit's double-quoted ENV grammar,
+    {" $ \\} (shell/lex.go processDoubleQuote); all else passes verbatim."""
     if "\n" in value:
         raise ValueError(f"Dockerfile ENV values cannot contain newlines: {value!r}")
     # Escaping $ defers env expansion from image build time to runtime.
