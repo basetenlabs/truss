@@ -1,5 +1,5 @@
---- generated-reference.mdx	2026-07-15 13:56:26
-+++ API-reference.mdx	2026-07-15 13:56:26
+--- generated-reference.mdx	2026-07-15 14:02:20
++++ API-reference.mdx	2026-07-15 14:02:20
 @@ -15,7 +15,7 @@
  Inheriting from this class adds validations to make sure subclasses adhere to the
  chainlet pattern and facilitates remote chainlet deployment.
@@ -865,11 +865,11 @@
 -Default `predict_url` + `Authorization`; `prefer_internal` uses workload-plane URL + `Host`.
 +Returns the URL and headers for an HTTP call to the sibling.
  
--`sync_path` rewrites the URL to `/sync/&lt;sync_path&gt;`.
+-`sync_path` rewrites the URL to `/sync/<sync_path>`.
 -`api_key` overrides `get_baseten_chain_api_key()`.
 -`prefer_internal` uses the internal url if it exists.
 +`prefer_internal` uses the internal cluster URL with the matching `Host` header
-+if available. `sync_path` rewrites the URL to the `/sync/&lt;sync_path&gt;`
++if available. `sync_path` rewrites the URL to the `/sync/<sync_path>`
 +passthrough. `api_key` overrides the platform-injected chain API key.
  
 -
