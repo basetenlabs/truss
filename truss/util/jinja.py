@@ -9,8 +9,9 @@ def dockerfile_env_value(value: str) -> str:
 
     Escapes exactly the special set of buildkit's double-quoted ENV grammar,
     {" $ \\} (shell/lex.go processDoubleQuote); all else passes verbatim."""
-    if "\n" in value:
-        raise ValueError(f"Dockerfile ENV values cannot contain newlines: {value!r}")
+    if "\n" in value or "\r" in value:
+        # Deliberately not echoing the value: start commands can embed secrets.
+        raise ValueError("Dockerfile ENV values cannot contain line breaks.")
     # Escaping $ defers env expansion from image build time to runtime.
     escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
     return f'"{escaped}"'

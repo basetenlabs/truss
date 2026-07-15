@@ -30,6 +30,8 @@ def test_backslash_and_double_quote_escaped():
     assert dockerfile_env_value('a\\b "c"') == '"a\\\\b \\"c\\""'
 
 
-def test_newline_rejected():
-    with pytest.raises(ValueError, match="newline"):
-        dockerfile_env_value("line1\nline2")
+@pytest.mark.parametrize("value", ["line1\nline2", "line1\rline2", "line1\r\nline2"])
+def test_line_breaks_rejected_without_echoing_value(value):
+    with pytest.raises(ValueError, match="line break") as exc_info:
+        dockerfile_env_value(value)
+    assert "line1" not in str(exc_info.value)
