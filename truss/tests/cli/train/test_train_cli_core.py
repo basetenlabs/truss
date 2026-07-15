@@ -532,9 +532,11 @@ def test_display_training_capacity_with_teams(capsys):
     rows = _capacity_rows(out)
 
     assert "Team Training GPU Capacity" in out
+    # Org table keeps Baseline: GPU Type, Baseline, Limit, On-Demand, Spot
     assert rows["H100"] == ["H100", "16", "64", "32", "0"]
-    # Team, GPU Type, Baseline, Limit, On-Demand, Spot
-    assert rows["ml-research"] == ["ml-research", "H100", "0", "32", "2", "6"]
+    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, On-Demand, Spot
+    assert rows["ml-research"] == ["ml-research", "H100", "32", "2", "6"]
+    assert "Baseline" not in rows["Team"]
 
 
 def test_display_training_capacity_pre_split_backend(capsys):

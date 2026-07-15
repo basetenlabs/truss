@@ -453,6 +453,9 @@ def display_training_job(
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Priority", str(job.get("priority") or 0))
+    table.add_row(
+        "Availability Model", str(job.get("availability_model") or "dedicated")
+    )
     if user_email := job.get("user", {}).get("email"):
         table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
@@ -857,7 +860,6 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         )
         team_table.add_column("Team", style="cyan")
         team_table.add_column("GPU Type", style="cyan")
-        team_table.add_column("Baseline", justify="right")
         team_table.add_column("Limit", justify="right")
         team_table.add_column("On-Demand", justify="right")
         team_table.add_column("Spot", justify="right")
@@ -866,7 +868,6 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
             team_table.add_row(
                 item.get("team_name", ""),
                 item.get("gpu_type", ""),
-                str(item.get("baseline", 0)),
                 str(item.get("limit", 0)),
                 on_demand,
                 spot,

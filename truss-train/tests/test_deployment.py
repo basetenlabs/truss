@@ -7,11 +7,13 @@ from truss.base import truss_config
 from truss.remote.baseten import custom_types as b10_types
 from truss_train import deployment
 from truss_train.definitions import (
+    AvailabilityModel,
     CacheConfig,
     Compute,
     Image,
     Runtime,
     TrainingJob,
+    TrainingProject,
     Workspace,
 )
 
@@ -411,3 +413,34 @@ class TestArchiveSizeValidation:
                 config_path.parent,
                 TrainingJob(image=Image(base_image="hello-world")),
             )
+
+
+def _project(compute: Compute) -> TrainingProject:
+    return TrainingProject(
+        name="test-project",
+        job=TrainingJob(image=Image(base_image="hello-world"), compute=compute),
+    )
+
+
+class TestSpotOverride:
+    """`--spot` forces availability_model to spot, taking priority over the config."""
+
+    def test_spot_flag_overrides_default(self):
+        project = _project(Compute())
+        deployment._apply_cli_overrides(project, spot=True)
+        assert project.job.compute.availability_model == AvailabilityModel.SPOT
+
+    def test_spot_flag_overrides_config_dedicated(self):
+        project = _project(Compute(availability_model=AvailabilityModel.DEDICATED))
+        deployment._apply_cli_overrides(project, spot=True)
+        assert project.job.compute.availability_model == AvailabilityModel.SPOT
+
+    def test_no_spot_flag_preserves_config_spot(self):
+        project = _project(Compute(availability_model=AvailabilityModel.SPOT))
+        deployment._apply_cli_overrides(project, spot=False)
+        assert project.job.compute.availability_model == AvailabilityModel.SPOT
+
+    def test_no_spot_flag_preserves_default(self):
+        project = _project(Compute())
+        deployment._apply_cli_overrides(project, spot=False)
+        assert project.job.compute.availability_model == AvailabilityModel.DEDICATED

@@ -422,7 +422,8 @@ class Assets:
             weights: One or more ``truss_config.WeightsSource`` objects for MDN
               weight mirroring. Weights are pre-downloaded during deployment and
               mounted at the specified ``mount_location``. Supports sources like
-              ``hf://``, ``s3://``, ``gs://``, ``azure://``, ``r2://``, ``https://``.
+              ``hf://``, ``s3://``, ``gs://``, ``azure://``, ``r2://``, ``cw://``,
+              ``https://``.
               If authentication is needed, specify ``auth_secret_name`` which
               references a secret in your Baseten organization (not ``secret_keys``).
         """
