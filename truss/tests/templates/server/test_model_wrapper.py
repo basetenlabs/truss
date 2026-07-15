@@ -106,6 +106,23 @@ async def test_model_wrapper_streaming_timeout(app_path):
 
 
 @pytest.mark.anyio
+async def test_gather_generator_decodes_byte_chunks(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    gather_generator = getattr(model_wrapper_module, "_gather_generator")
+
+    async def byte_stream():
+        # A 4-byte emoji split across the chunk boundary must survive.
+        yield b"hello \xf0\x9f"
+        yield b"\x98\x80"
+
+    assert await gather_generator(byte_stream()) == "hello \U0001f600"
+
+
+@pytest.mark.anyio
 async def test_trt_llm_truss_predict(
     trt_llm_truss_container_fs, helpers, connected_request
 ):
