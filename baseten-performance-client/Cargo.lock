@@ -191,7 +191,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baseten-performance-client"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client_core"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "axum",
  "ctor 0.6.3",
@@ -255,6 +255,7 @@ dependencies = [
  "openssl",
  "rand",
  "reqwest",
+ "rmp-serde",
  "serde",
  "serde_json",
  "tokio",
@@ -2015,6 +2016,25 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rmp"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f81bee8c8ef9b577d1681a70ebbc962c232461e397b22c208c43c04b67a155"
+dependencies = [
+ "rmp",
+ "serde",
 ]
 
 [[package]]
