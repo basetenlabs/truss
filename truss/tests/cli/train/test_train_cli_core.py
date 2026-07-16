@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 import click
 import pytest
+from rich.console import Console
 
 from truss.cli.train.cache import (
     calculate_directory_sizes,
@@ -451,37 +452,62 @@ def test_calculate_directory_sizes_max_depth():
     assert result_depth_2["/root/level1/level2/level3"] == 300  # file3.txt only
 
 
+def _capacity_rows(out: str) -> dict:
+    return {
+        cells[0]: cells
+        for line in out.splitlines()
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
+
+
 def test_display_training_capacity(capsys):
-    """Table is printed with GPU type, baseline, limit, and usage for each entry."""
+    """Usage is split into On-Demand and Spot columns per GPU type."""
     mock_api = Mock()
     mock_api.get_training_capacity.return_value = {
         "gpu_capacities": [
-            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32},
-            {"gpu_type": "A10G", "baseline": 0, "limit": 8, "usage_count": 0},
+            {
+                "gpu_type": "H100",
+                "baseline": 16,
+                "limit": 64,
+                "usage_count": 40,
+                "dedicated_usage_count": 24,
+                "spot_usage_count": 16,
+            },
+            {
+                "gpu_type": "A10G",
+                "baseline": 0,
+                "limit": 8,
+                "usage_count": 0,
+                "dedicated_usage_count": 0,
+                "spot_usage_count": 0,
+            },
         ]
     }
     mock_remote = Mock()
     mock_remote.api = mock_api
 
-    display_training_capacity(mock_remote)
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
 
-    lines = capsys.readouterr().out.splitlines()
-    rows = {
-        cells[0]: cells
-        for line in lines
-        if (cells := [c.strip() for c in line.split("│") if c.strip()])
-    }
-
-    assert rows["H100"] == ["H100", "16", "64", "32"]
-    assert rows["A10G"] == ["A10G", "0", "8", "0"]
+    rows = _capacity_rows(capsys.readouterr().out)
+    # GPU Type, Baseline, Limit, On-Demand, Spot
+    assert rows["H100"] == ["H100", "16", "64", "24", "16"]
+    assert rows["A10G"] == ["A10G", "0", "8", "0", "0"]
 
 
 def test_display_training_capacity_with_teams(capsys):
-    """Team capacities are rendered in a second table with a Team column."""
+    """Team capacities are rendered in a second table with split usage columns."""
     mock_api = Mock()
     mock_api.get_training_capacity.return_value = {
         "gpu_capacities": [
-            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
+            {
+                "gpu_type": "H100",
+                "baseline": 16,
+                "limit": 64,
+                "usage_count": 32,
+                "dedicated_usage_count": 32,
+                "spot_usage_count": 0,
+            }
         ],
         "team_gpu_capacities": [
             {
@@ -491,26 +517,44 @@ def test_display_training_capacity_with_teams(capsys):
                 "baseline": 0,
                 "limit": 32,
                 "usage_count": 8,
+                "dedicated_usage_count": 2,
+                "spot_usage_count": 6,
             }
         ],
     }
     mock_remote = Mock()
     mock_remote.api = mock_api
 
-    display_training_capacity(mock_remote)
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
 
     out = capsys.readouterr().out
-    lines = out.splitlines()
-    rows = {
-        cells[0]: cells
-        for line in lines
-        if (cells := [c.strip() for c in line.split("│") if c.strip()])
-    }
+    rows = _capacity_rows(out)
 
     assert "Team Training GPU Capacity" in out
-    assert rows["H100"] == ["H100", "16", "64", "32"]
-    assert rows["ml-research"] == ["ml-research", "H100", "32", "8"]
+    # Org table keeps Baseline: GPU Type, Baseline, Limit, On-Demand, Spot
+    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
+    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, On-Demand, Spot
+    assert rows["ml-research"] == ["ml-research", "H100", "32", "2", "6"]
     assert "Baseline" not in rows["Team"]
+
+
+def test_display_training_capacity_pre_split_backend(capsys):
+    """A pre-split backend (only usage_count) shows the total under On-Demand."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
+        ]
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
+
+    rows = _capacity_rows(capsys.readouterr().out)
+    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
 
 
 def test_display_training_capacity_teams_only(capsys):
