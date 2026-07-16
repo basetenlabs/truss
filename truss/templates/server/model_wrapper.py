@@ -1012,9 +1012,14 @@ class ModelWrapper:
 async def _gather_generator(
     predict_result: Union[AsyncGenerator[bytes, None], Generator[bytes, None, None]],
 ) -> str:
-    return "".join(
-        [str(chunk) async for chunk in _force_async_generator(predict_result)]
-    )
+    # Join the raw bytes and decode once, so the body is the model's text (not the
+    # b'...' repr str() would produce) and a multibyte codepoint split across chunks
+    # stays intact. Some models yield str instead of bytes; coerce those first.
+    chunks = [
+        chunk if isinstance(chunk, (bytes, bytearray)) else str(chunk).encode()
+        async for chunk in _force_async_generator(predict_result)
+    ]
+    return b"".join(chunks).decode()
 
 
 def _force_async_generator(gen: Union[Generator, AsyncGenerator]) -> AsyncGenerator:
