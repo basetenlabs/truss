@@ -673,8 +673,17 @@ def _make_job(job_id, availability_model=None, **overrides):
     return job
 
 
+def _rows_by_first_cell(out: str) -> dict:
+    """Parse a rendered rich table into {first_cell: [cells...]} for exact assertions."""
+    return {
+        cells[0]: cells
+        for line in out.splitlines()
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
+
+
 def test_display_queued_jobs_shows_capacity_type(capsys):
-    """Queued jobs table includes a Capacity Type column mapped from availability_model."""
+    """Queued jobs table maps each job's availability_model to its Capacity Type cell."""
     jobs = [
         _make_job("spotjob", availability_model="spot"),
         _make_job("dedjob", availability_model="dedicated"),
@@ -686,13 +695,16 @@ def test_display_queued_jobs_shows_capacity_type(capsys):
         display_queued_jobs(jobs, "https://app.baseten.co")
 
     out = capsys.readouterr().out
-    assert "Capacity Type" in out
-    assert "Spot" in out
-    assert "On-demand" in out
+    rows = _rows_by_first_cell(out)
+    # Columns: Job ID, Job Name, Project, Instance Type, Capacity Type, ...
+    assert rows["Job ID"][4] == "Capacity Type"
+    assert rows["spotjob"][4] == "Spot"
+    assert rows["dedjob"][4] == "On-demand"
+    assert rows["oldjob"][4] == "On-demand"
 
 
 def test_display_training_jobs_shows_capacity_type(capsys):
-    """Active jobs table includes a Capacity Type column mapped from availability_model."""
+    """Active jobs table maps each job's availability_model to its Capacity Type cell."""
     jobs = [
         _make_job("spotjob", availability_model="spot"),
         _make_job("dedjob", availability_model="dedicated"),
@@ -702,6 +714,8 @@ def test_display_training_jobs_shows_capacity_type(capsys):
         display_training_jobs(jobs, "https://app.baseten.co")
 
     out = capsys.readouterr().out
-    assert "Capacity Type" in out
-    assert "Spot" in out
-    assert "On-demand" in out
+    rows = _rows_by_first_cell(out)
+    # Columns: Job ID, Job Name, Project, Status, Instance Type, Capacity Type, ...
+    assert rows["Job ID"][5] == "Capacity Type"
+    assert rows["spotjob"][5] == "Spot"
+    assert rows["dedjob"][5] == "On-demand"

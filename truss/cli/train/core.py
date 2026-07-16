@@ -26,7 +26,11 @@ from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
-from truss_train.definitions import CheckpointList, DeployCheckpointsConfig
+from truss_train.definitions import (
+    AvailabilityModel,
+    CheckpointList,
+    DeployCheckpointsConfig,
+)
 
 QUEUED_JOB_STATUSES = ["TRAINING_JOB_PENDING"]
 
@@ -36,19 +40,23 @@ ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_DEPLOYING",
 ]
 
-# Display labels for a job's `availability_model`. The backend serializes
-# "dedicated" (non-preemptible on-demand capacity) or "spot" (interruptible);
-# an absent value predates the field and reads as on-demand.
-_AVAILABILITY_MODEL_LABELS = {"dedicated": "On-demand", "spot": "Spot"}
+# Human-readable labels for a job's `availability_model`. DEDICATED is
+# non-preemptible on-demand capacity (and the default when the field is absent,
+# which predates it); SPOT is interruptible.
+_AVAILABILITY_MODEL_LABELS = {
+    AvailabilityModel.DEDICATED: "On-demand",
+    AvailabilityModel.SPOT: "Spot",
+}
 
 
 def _format_capacity_type(job: dict) -> str:
-    availability_model = job.get("availability_model")
-    if not availability_model:
-        return "On-demand"
-    return _AVAILABILITY_MODEL_LABELS.get(
-        availability_model, availability_model.title()
-    )
+    raw = job.get("availability_model") or AvailabilityModel.DEDICATED
+    try:
+        model = AvailabilityModel(raw)
+    except ValueError:
+        # Unknown future value: surface it rather than dropping it.
+        return str(raw).title()
+    return _AVAILABILITY_MODEL_LABELS.get(model, model.value.title())
 
 
 def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
