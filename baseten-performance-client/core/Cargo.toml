@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "High performance HTTP client for Baseten.co and other APIs"
 license = "MIT"
@@ -16,6 +16,7 @@ reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+rmp-serde = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }

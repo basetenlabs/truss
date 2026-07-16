@@ -284,6 +284,7 @@ async fn start_test_server_with_failure_status(
 
     let app = Router::new()
         .route("/v1/embeddings", post(test_embeddings_handler))
+        .route("/batch-msgpack", post(test_msgpack_handler))
         .route("/health", get(test_health_handler))
         .route("/health/deep", get(test_health_handler))
         .with_state(state);
@@ -369,6 +370,40 @@ async fn test_embeddings_handler(
     (StatusCode::OK, headers, Json(response)).into_response()
 }
 
+async fn test_msgpack_handler(
+    State(state): State<TestServerState>,
+    request_headers: AxumHeaderMap,
+    Json(request): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    state.request_count.fetch_add(1, Ordering::SeqCst);
+    let accept = request_headers
+        .get("accept")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let accept_encoding = request_headers
+        .get("accept-encoding")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+
+    let response = json!({
+        "format": "msgpack",
+        "accept": accept,
+        "accept_encoding": accept_encoding,
+        "received": request,
+    });
+    let body = rmp_serde::to_vec_named(&response).expect("test msgpack body should serialize");
+
+    let mut headers = AxumHeaderMap::new();
+    headers.insert(
+        "content-type",
+        HeaderValue::from_static("application/msgpack"),
+    );
+
+    (StatusCode::OK, headers, body).into_response()
+}
+
 fn single_request_preference() -> RequestProcessingPreference {
     RequestProcessingPreference::new()
         .with_max_concurrent_requests(1)
@@ -399,6 +434,44 @@ fn test_endpoint_with_interval(base_url: &str, interval: Duration) -> Endpoint {
         .with_health_check_interval(interval),
     )
     .expect("endpoint should build")
+}
+
+#[tokio::test]
+async fn test_batch_post_decodes_msgpack_response() {
+    let server = start_test_server("msgpack-endpoint", Duration::ZERO, 0, true).await;
+    let client = PerformanceClientCore::new(
+        server.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let (responses, _) = client
+        .process_batch_post_requests(
+            "/batch-msgpack".to_string(),
+            vec![json!({"value": 42})],
+            &single_request_preference(),
+            HttpMethod::POST,
+        )
+        .await
+        .expect("batch_post msgpack response should parse");
+
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0].0["format"], "msgpack");
+    assert_eq!(responses[0].0["received"], json!({"value": 42}));
+    assert!(responses[0].0["accept"]
+        .as_str()
+        .is_some_and(|accept| accept.contains("application/msgpack")));
+    assert!(responses[0].0["accept_encoding"]
+        .as_str()
+        .is_some_and(|accept_encoding| accept_encoding.contains("zstd")));
+    assert_eq!(
+        responses[0].1.get("content-type").map(String::as_str),
+        Some("application/msgpack")
+    );
 }
 
 #[tokio::test]
