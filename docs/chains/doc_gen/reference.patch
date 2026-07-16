@@ -1,5 +1,5 @@
---- generated-reference.mdx	2026-07-15 14:02:20
-+++ API-reference.mdx	2026-07-15 14:02:20
+--- generated-reference.mdx	2026-07-16 09:11:03
++++ API-reference.mdx	2026-07-16 09:11:03
 @@ -15,7 +15,7 @@
  Inheriting from this class adds validations to make sure subclasses adhere to the
  chainlet pattern and facilitates remote chainlet deployment.
@@ -11,7 +11,7 @@
  
 @@ -24,18 +24,20 @@
  
- Declares an existing Truss directory as a non-entry leaf chain member.
+ Declares an existing Truss directory as a chain member that only receives calls.
  
 -Unlike `ChainletBase`, the framework does not generate a `model.py` or
 -a typed `StubBase` for this declaration — the user’s Truss directory
