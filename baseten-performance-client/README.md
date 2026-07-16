@@ -21,7 +21,7 @@ npm install baseten-performance-client
 cargo add baseten_performance_client_core
 # Or add to your Cargo.toml:
 # [dependencies]
-# baseten_performance_client_core = "0.0.16"
+# baseten_performance_client_core = "0.1.10"
 # tokio = { version = "1.0", features = ["full"] }
 ```
 
