@@ -14,4 +14,4 @@ nonempty = "0.11"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 ctor = "0.6.3"
-reqwest = { version = "0.12.26", default-features = false, features = ["blocking", "json", "stream", "http2"] }
+reqwest = { version = "0.12.26", default-features = false, features = ["blocking", "json", "stream", "http2", "zstd"] }
