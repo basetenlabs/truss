@@ -1,15 +1,20 @@
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
+from click.testing import CliRunner
 
 from truss.base.constants import WORKSTATION_TEMPLATE_DIR
+from truss.cli.cli import truss_cli
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
 )
+from truss.remote.baseten.custom_types import TeamType
+from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     InteractiveSessionProvider,
     InteractiveSessionTrigger,
@@ -82,3 +87,80 @@ def test_workstation_template_dir_exists():
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
+
+
+class TestWorkstationTeamResolution:
+    @staticmethod
+    def _setup_mock_remote(teams, existing_projects=None):
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.list_training_projects.return_value = existing_projects or []
+        return mock_remote
+
+    @staticmethod
+    def _invoke_workstation(runner, team_name=None):
+        args = ["train", "workstation", "--remote", "test_remote"]
+        if team_name:
+            args.extend(["--team", team_name])
+        return runner.invoke(truss_cli, args)
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_team_provided_passes_team_id_to_push(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {
+            "team-a": {"id": "team1", "name": "team-a", "default": True},
+            "team-b": {"id": "team2", "name": "team-b", "default": False},
+        }
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = {
+            "id": "job123",
+            "training_project": {"id": "proj123", "name": "workstation-H100"},
+        }
+
+        result = self._invoke_workstation(CliRunner(), team_name="team-b")
+
+        assert result.exit_code == 0, result.output
+        assert mock_push.call_args[1]["team_id"] == "team2"
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_single_team_auto_resolves_without_flag(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {"only-team": {"id": "team9", "name": "only-team", "default": False}}
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = {
+            "id": "job123",
+            "training_project": {"id": "proj123", "name": "workstation-H100"},
+        }
+
+        result = self._invoke_workstation(CliRunner())
+
+        assert result.exit_code == 0, result.output
+        assert mock_push.call_args[1]["team_id"] == "team9"
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_invalid_team_errors_before_push(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {"team-a": {"id": "team1", "name": "team-a", "default": True}}
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+
+        result = self._invoke_workstation(CliRunner(), team_name="nonexistent")
+
+        assert result.exit_code == 1
+        assert "does not exist" in result.output
+        mock_push.assert_not_called()
