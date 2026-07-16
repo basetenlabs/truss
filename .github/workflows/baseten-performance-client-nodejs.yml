@@ -163,16 +163,28 @@ jobs:
             -w /build/baseten-performance-client/node_bindings \
             ${{ matrix.settings.docker }} \
             bash -c '
+              set -euo pipefail
               if command -v apk &> /dev/null; then
-                apk add --no-cache perl openssl-dev build-base
+                apk add --no-cache curl perl openssl-dev build-base
               elif command -v apt-get &> /dev/null; then
-                apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
+                apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
               elif command -v yum &> /dev/null; then
-                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+                yum install curl openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
               else
                 echo "Unsupported package manager. Please install perl and openssl-dev manually."
                 exit 1
               fi
+              if command -v rustup &> /dev/null; then
+                rustup update stable
+                rustup default stable
+              else
+                curl https://sh.rustup.rs -sSf --output rustup.sh
+                sh rustup.sh -y --profile minimal --default-toolchain stable
+                . "$HOME/.cargo/env"
+              fi
+              rustup target add ${{ matrix.settings.target }}
+              rustc --version
+              cargo --version
               ${{ matrix.settings.build }}
             '
       - name: Build
