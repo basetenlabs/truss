@@ -3,12 +3,20 @@
 import json
 import os
 import re
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.cli.logs.utils import (
+    LOG_RESUME_FORMAT,
+    MAX_LOG_RANGE,
+    resolve_log_time_range,
+)
+from truss.cli.loops_commands import _logs_truncation_hint
+from truss.remote.baseten.api import LoopsLogsWindow
 
 _LOCALIZED_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
@@ -966,3 +974,327 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
         )
     assert result.exit_code != 0
     mock_create.assert_not_called()
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(result):
+    # Rich styles flag tokens with ANSI codes when color is on (e.g. on CI)
+    # and wraps output to the terminal width; strip codes and collapse
+    # whitespace so assertions on message text are environment-independent.
+    return " ".join(_ANSI_RE.sub("", result.output).split())
+
+
+def test_logs_requires_exactly_one_deployment_id(mock_remote):
+    result = _invoke(["loops", "logs", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code != 0
+    assert "exactly one" in _plain(result)
+
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--sampler-deployment-id",
+            "samp-1",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "exactly one" in _plain(result)
+
+
+def test_logs_tail_rejects_time_range_flags(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--tail",
+            "--since",
+            "1h",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "--tail cannot be combined" in _plain(result)
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()
+
+
+def test_logs_bare_invocation_uses_single_newest_page(mock_remote):
+    # No window flags: one request for the newest server page, no
+    # pagination, no hint.
+    mock_remote.api.get_loops_deployment_logs_page.return_value = [
+        {"timestamp": "1700000000000000000", "message": "hello world", "replica": None}
+    ]
+    result = _invoke(
+        ["loops", "logs", "--remote", "test_remote", "--loops-deployment-id", "dep-1"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_deployment_logs_page.assert_called_once_with("dep-1")
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()
+    assert "hello world" in _plain(result)
+    assert "Showing the first" not in _plain(result)
+
+
+def test_logs_since_passes_resolved_time_range(mock_remote):
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[], truncated=False, resume_start_epoch_millis=None
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--since",
+            "1h",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    _, start_ms, end_ms = mock_remote.api.get_loops_deployment_logs.call_args[0]
+    assert end_ms - start_ms == 3600 * 1000
+
+
+def test_logs_sampler_path_passes_time_range(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {"sampler": {"deployment_id": "samp-1", "model_id": "model-9"}}
+    ]
+    mock_remote.api.get_model_deployment_logs.return_value = []
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--sampler-deployment-id",
+            "samp-1",
+            "--since",
+            "2h",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    model_id, deployment_id, start_ms, end_ms = (
+        mock_remote.api.get_model_deployment_logs.call_args[0]
+    )
+    assert model_id == "model-9"
+    assert deployment_id == "samp-1"
+    assert end_ms - start_ms == 2 * 3600 * 1000
+
+
+def test_logs_limit_truncation_prints_resume_hint(mock_remote):
+    # The pager reports truncation and the exact resume cursor; the hint
+    # renders it as a ready-to-paste --start value.
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[
+            {"timestamp": "1700000000000000000", "message": "one", "replica": None},
+            {"timestamp": "1700000060000000000", "message": "two", "replica": None},
+        ],
+        truncated=True,
+        resume_start_epoch_millis=1700000120000,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--limit",
+            "2",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_deployment_logs.assert_called_once_with(
+        "dep-1", None, None, max_lines=2
+    )
+    assert "two" in _plain(result)
+    assert "Showing the first 2 lines" in _plain(result)
+    assert "--start" in _plain(result)
+    # No explicit window end was given, so the hint must not suggest --end.
+    assert "--end" not in _plain(result)
+
+
+def test_logs_exact_fit_prints_no_hint(mock_remote):
+    # A window holding exactly --limit lines comes back not truncated: no
+    # hint.
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[
+            {"timestamp": "1700000000000000000", "message": "one", "replica": None},
+            {"timestamp": "1700000060000000000", "message": "two", "replica": None},
+        ],
+        truncated=False,
+        resume_start_epoch_millis=None,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--limit",
+            "2",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Showing the first" not in _plain(result)
+
+
+def test_logs_truncation_hint_preserves_window_end(mock_remote):
+    # With an explicit window (--since resolves an end), the resume hint must
+    # carry --end so the resumed fetch stays inside the original window.
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[
+            {"timestamp": "1700000000000000000", "message": "one", "replica": None},
+            {"timestamp": "1700000060000000000", "message": "two", "replica": None},
+        ],
+        truncated=True,
+        resume_start_epoch_millis=1700000120000,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--since",
+            "1h",
+            "--limit",
+            "2",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Showing the first 2 lines" in _plain(result)
+    assert '--end "' in _plain(result)
+
+
+def test_logs_stuck_millisecond_hint_omits_unusable_resume(mock_remote):
+    # The pager reports truncation with no usable cursor (one millisecond
+    # holds more lines than --limit); the hint must not offer a resume.
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[
+            {"timestamp": "1700000000000000100", "message": "a", "replica": None},
+            {"timestamp": "1700000000000000200", "message": "b", "replica": None},
+        ],
+        truncated=True,
+        resume_start_epoch_millis=None,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--limit",
+            "2",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert "share one millisecond" in _plain(result)
+    assert "--start" not in _plain(result).replace("--start cannot", "")
+    assert "raise --limit" in _plain(result)
+
+
+@patch("truss.cli.loops_commands.LOOPS_LOGS_MAX_LINES", 2)
+def test_logs_hint_drops_raise_limit_clause_at_ceiling(mock_remote):
+    mock_remote.api.get_loops_deployment_logs.return_value = LoopsLogsWindow(
+        logs=[
+            {"timestamp": "1700000000000000000", "message": "one", "replica": None},
+            {"timestamp": "1700000060000000000", "message": "two", "replica": None},
+        ],
+        truncated=True,
+        resume_start_epoch_millis=1700000120000,
+    )
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--limit",
+            "2",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Showing the first 2 lines" in _plain(result)
+    assert "raise --limit" not in _plain(result)
+
+
+def test_logs_limit_rejected_with_tail(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--loops-deployment-id",
+            "dep-1",
+            "--tail",
+            "--limit",
+            "100",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "--tail cannot be combined" in _plain(result)
+
+
+def test_logs_limit_rejected_with_sampler(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--remote",
+            "test_remote",
+            "--sampler-deployment-id",
+            "samp-1",
+            "--limit",
+            "100",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "--limit only applies" in _plain(result)
+
+
+def test_logs_truncation_hint_command_survives_seven_day_check():
+    # Pasting the hint's --start/--end back must never fail window
+    # validation, even when the original window was exactly 7 days and the
+    # resume cursor sits at its very start (the --end bias would otherwise
+    # widen the span past the limit).
+    end_ms = 1782968142946
+    resume_ms = end_ms - int(MAX_LOG_RANGE.total_seconds() * 1000)
+    hint = _logs_truncation_hint(resume_ms, max_lines=3, end_ms=end_ms)
+
+    start_str = hint.split('--start "')[1].split('"')[0]
+    end_str = hint.split('--end "')[1].split('"')[0]
+    start_dt = datetime.strptime(start_str, LOG_RESUME_FORMAT)
+    end_dt = datetime.strptime(end_str, LOG_RESUME_FORMAT)
+    _, resolved_end = resolve_log_time_range(start_dt, end_dt, None)  # no raise
+    assert resolved_end >= end_ms
