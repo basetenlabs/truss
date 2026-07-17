@@ -617,6 +617,16 @@ Transport = Annotated[
 ]
 
 
+class OIDC(custom_types.ConfigModel):
+    """Configuration for runtime-mounting of an OIDC bearer token"""
+
+    # NOTE: This field assumes trinary logic: 'true' -> enabled, 'false' -> disabled, 'None' -> default (operator setting)
+    enabled: Optional[bool] = pydantic.Field(
+        default=None,
+        description="If true, mounts an OIDC bearer token for your model to access at runtime.",
+    )
+
+
 class RemoteSSH(custom_types.ConfigModel):
     """Configuration for SSH access to running model instances."""
 
@@ -724,6 +734,12 @@ class Runtime(custom_types.ConfigModel):
         default_factory=HealthChecks,
         description="Custom health check configuration for your deployments.",
     )
+
+    oidc: OIDC = pydantic.Field(
+        default_factory=OIDC,
+        description="Configuration for runtime-mounting of an OIDC bearer token.",
+    )
+
     remote_ssh: RemoteSSH = pydantic.Field(
         default_factory=RemoteSSH,
         description="Configuration for SSH access to running model instances.",

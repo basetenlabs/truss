@@ -5,7 +5,10 @@ use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::split_policy::RequestProcessingConfig;
 
 use rand::Rng;
-use reqwest::Client;
+use reqwest::{
+    header::{ACCEPT, ACCEPT_ENCODING, CONTENT_TYPE},
+    Client,
+};
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -50,6 +53,7 @@ where
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
+        request_builder = add_response_negotiation_headers(request_builder, config);
 
         if let Some(ref headers) = config.extra_headers {
             for (key, value) in headers {
@@ -73,10 +77,7 @@ where
         );
     }
 
-    let response_data: R = successful_response
-        .json::<R>()
-        .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?;
+    let response_data: R = parse_response_body(successful_response).await?;
 
     Ok((response_data, headers_map))
 }
@@ -106,6 +107,8 @@ where
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
 
+        request_builder = add_response_negotiation_headers(request_builder, config);
+
         if method.has_body() {
             request_builder = request_builder.json(&payload);
         }
@@ -134,17 +137,78 @@ where
 
     let response_json_value: serde_json::Value =
         if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
-            successful_response
-                .json::<serde_json::Value>()
-                .await
-                .map_err(|e| {
-                    ClientError::Serialization(format!("Failed to parse response JSON: {}", e))
-                })?
+            parse_response_body(successful_response).await?
         } else {
             serde_json::Value::Object(serde_json::Map::new())
         };
 
     Ok((response_json_value, headers_map))
+}
+
+fn add_response_negotiation_headers(
+    mut request_builder: reqwest::RequestBuilder,
+    config: &RequestProcessingConfig,
+) -> reqwest::RequestBuilder {
+    if !extra_headers_contains(config, ACCEPT.as_str()) {
+        request_builder = request_builder.header(ACCEPT, "application/json, application/msgpack");
+    }
+
+    if !extra_headers_contains(config, ACCEPT_ENCODING.as_str()) {
+        request_builder = request_builder.header(ACCEPT_ENCODING, "zstd");
+    }
+
+    request_builder
+}
+
+fn extra_headers_contains(config: &RequestProcessingConfig, header_name: &str) -> bool {
+    config.extra_headers.as_ref().is_some_and(|headers| {
+        headers
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case(header_name))
+    })
+}
+
+async fn parse_response_body<R>(response: reqwest::Response) -> Result<R, ClientError>
+where
+    R: serde::de::DeserializeOwned,
+{
+    if is_msgpack_response(&response) {
+        let bytes = response.bytes().await.map_err(|e| {
+            ClientError::Serialization(format!("Failed to read MessagePack response body: {}", e))
+        })?;
+        return rmp_serde::from_slice::<R>(&bytes).map_err(|e| {
+            ClientError::Serialization(format!("Failed to parse response MessagePack: {}", e))
+        });
+    }
+
+    response
+        .json::<R>()
+        .await
+        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
+}
+
+fn is_msgpack_response(response: &reqwest::Response) -> bool {
+    response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(is_msgpack_content_type)
+}
+
+fn is_msgpack_content_type(content_type: &str) -> bool {
+    matches!(
+        content_type
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "application/msgpack"
+            | "application/x-msgpack"
+            | "application/messagepack"
+            | "application/vnd.msgpack"
+    )
 }
 
 async fn ensure_successful_response(

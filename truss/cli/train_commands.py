@@ -1246,6 +1246,13 @@ def update_capacity(
     help="Job ID to load the latest checkpoint from.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the workstation project",
+)
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @common.common_options()
 def workstation(
@@ -1260,6 +1267,7 @@ def workstation(
     checkpoint_volume_size: Optional[int],
     checkpoint_from_job: Optional[str],
     remote: Optional[str],
+    provided_team_name: Optional[str],
     tail: bool,
 ):
     """Spin up an SSH workstation on Baseten training infrastructure."""
@@ -1284,6 +1292,15 @@ def workstation(
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+    _, team_id = _resolve_team_name(
+        remote_provider, effective_team_name, existing_project_name=project_id
+    )
 
     base_image = image or DEFAULT_BASE_IMAGE
     training_project = build_workstation_project(
@@ -1311,7 +1328,10 @@ def workstation(
         if node_count > 1:
             copy_workstation_templates(Path(tmp_dir))
         job_resp = push(
-            config=training_project, remote=remote, source_dir=Path(tmp_dir)
+            config=training_project,
+            remote=remote,
+            source_dir=Path(tmp_dir),
+            team_id=team_id,
         )
 
     job_id = job_resp["id"]
@@ -1349,9 +1369,6 @@ def workstation(
     )
 
     if tail:
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
-        )
         project_resp_id = job_resp["training_project"]["id"]
         watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
         for log in watcher.watch():

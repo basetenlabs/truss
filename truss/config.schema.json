@@ -794,6 +794,27 @@
       "title": "ModelServer",
       "type": "string"
     },
+    "OIDC": {
+      "additionalProperties": true,
+      "description": "Configuration for runtime-mounting of an OIDC bearer token",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If true, mounts an OIDC bearer token for your model to access at runtime.",
+          "title": "Enabled"
+        }
+      },
+      "title": "OIDC",
+      "type": "object"
+    },
     "RemoteSSH": {
       "additionalProperties": true,
       "description": "Configuration for SSH access to running model instances.",
@@ -942,6 +963,10 @@
         },
         "health_checks": {
           "$ref": "#/$defs/HealthChecks"
+        },
+        "oidc": {
+          "$ref": "#/$defs/OIDC",
+          "description": "Configuration for runtime-mounting of an OIDC bearer token."
         },
         "remote_ssh": {
           "$ref": "#/$defs/RemoteSSH"

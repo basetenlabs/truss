@@ -9,7 +9,9 @@ from truss_train.deployment import _upsert_project_and_create_job, create_traini
 
 
 @overload
-def push(config: Path, *, remote: str = "baseten") -> dict: ...
+def push(
+    config: Path, *, remote: str = "baseten", team_id: Optional[str] = None
+) -> dict: ...
 
 
 @overload
@@ -18,6 +20,7 @@ def push(
     *,
     remote: str = "baseten",
     source_dir: Optional[Path] = None,
+    team_id: Optional[str] = None,
 ) -> dict: ...
 
 
@@ -26,6 +29,7 @@ def push(
     *,
     remote: str = "baseten",
     source_dir: Optional[Path] = None,
+    team_id: Optional[str] = None,
 ) -> dict:
     """Create or update a training project and create a training job.
 
@@ -35,6 +39,9 @@ def push(
         remote: The remote provider to use. Defaults to "baseten".
         source_dir: Base directory for workspace path resolution and archiving.
             Only used when config is a TrainingProject. Defaults to Path.cwd().
+        team_id: Team to create the training project under. Required for API keys
+            that only have access to a non-default team; without it the project is
+            created under the organization's default team.
 
     Returns:
         dict: A dictionary containing the created training project and job.
@@ -45,9 +52,11 @@ def push(
 
     if isinstance(config, Path):
         with loader.import_training_project(config) as training_project:
-            return create_training_job(remote_provider, config, training_project)
+            return create_training_job(
+                remote_provider, config, training_project, team_id=team_id
+            )
     else:
         resolved_source_dir = source_dir if source_dir is not None else Path.cwd()
         return _upsert_project_and_create_job(
-            remote_provider, config, resolved_source_dir
+            remote_provider, config, resolved_source_dir, team_id=team_id
         )
