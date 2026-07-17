@@ -169,6 +169,11 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
 
 
 def upgrade_dialogue():
+    # Skip the update check entirely when opted out. This must precede any
+    # `user_config` access so it also avoids the config-dir/settings/state writes
+    # and trussrc read that happen while reading the update setting.
+    if os.environ.get("TRUSS_NO_UPDATE_CHECK", "").lower() in ("1", "true"):
+        return
     try:
         self_upgrade.notify_if_outdated(truss.__version__)
     except Exception as e:
