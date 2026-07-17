@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -37,8 +37,12 @@ try:
 
     PydanticTrTBaseModel = custom_types.ConfigModel
 except ImportError:
-    # fallback for briton
     PydanticTrTBaseModel = BaseModel  # type: ignore[assignment,misc]
+
+try:
+    from truss.base.llm_config import TrussLLMSharedConfig
+except ImportError:
+    TrussLLMSharedConfig = PydanticTrTBaseModel  # type: ignore
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -222,22 +226,18 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     ] = None
 
 
-class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
+class TRTLLMRuntimeConfigurationV2(TrussLLMSharedConfig):
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
-    # how many requests can be batched together in one forward pass
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
-    # how many tokens can be gbatched together in one forward pass
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=131072)] = 8192
-    tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
-    # whether to enable chunked prefill for generative models (decoder models)
+    tensor_parallel_size: int = Field(default=1, ge=1)
     enable_chunked_prefill: bool = True
-    # only for generative models (e.g. decoder models), name in the json response
     served_model_name: Optional[str] = None
-    # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("patch_kwargs", "gated_features"),
     )
+    extra_args: List[str] = Field(default_factory=list)
 
     @field_validator("patch_kwargs", mode="after")
     @classmethod
@@ -247,14 +247,22 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
                 "trt_llm.runtime.patch_kwargs is a preview feature. "
                 "Fields may change in the future."
             )
-        forbidden_keys = ["build_config"] + list(cls.__fields__)
+        forbidden_keys = ["build_config"] + list(cls.model_fields.keys())
         for key in forbidden_keys:
-            if key in config:
+            if key in config and key not in ("patch_kwargs", "extra_args"):
                 logger.error(
                     f"runtime.config_kwargs contains the key '{key}'. This is already a field in the TRTLLMRuntimeConfigurationV2. "
                     "Please use the appropriate field in the TRTLLMRuntimeConfigurationV2."
                 )
         return config
+
+    @model_validator(mode="after")
+    def _sync_shared_fields(self) -> "TRTLLMRuntimeConfigurationV2":
+        if self.max_model_len is not None and self.max_seq_len is None:
+            object.__setattr__(self, "max_seq_len", self.max_model_len)
+        if self.max_seq_len is not None and self.max_model_len is None:
+            object.__setattr__(self, "max_model_len", self.max_seq_len)
+        return self
 
 
 class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
@@ -266,15 +274,19 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
-    # for BEI/encoder and for generative models without chunked prefill:
-    # This will limit the max context length of input (+output token length for generative models)
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
-    # do not document, only 1 is allowed.
     max_beam_width: Annotated[int, Field(strict=True, ge=1, le=1)] = (
         1  # "max_beam_width greater than 1 is not currently supported"
     )
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: Optional[CheckpointRepository] = None
+    model: Optional[str] = Field(
+        default=None,
+        description="Alias for checkpoint_repository.repo, shared with vLLM model field.",
+    )
+    revision: Optional[str] = Field(
+        default=None, description="Alias for checkpoint_repository.revision."
+    )
     gather_all_token_logits: bool = False
     # if you want to ignore the dtype of the model you loaded.
     # recommend to not use unless you get a error during the build (model failing with compile error)
@@ -315,12 +327,37 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     skip_build_result: bool = False
 
     def __init__(self, **data):
+        if data.get("model") and not data.get("checkpoint_repository"):
+            repo = data.pop("model")
+            rev = data.pop("revision", None)
+            data["checkpoint_repository"] = {
+                "source": "HF",
+                "repo": repo,
+                "revision": rev,
+            }
+        elif data.get("model") and data.get("checkpoint_repository"):
+            data.pop("model", None)
+            data.pop("revision", None)
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
 
     def model_post_init(self, __context):
         self._bei_specfic_migration()
+        if self.model is None and self.checkpoint_repository is not None:
+            object.__setattr__(self, "model", self.checkpoint_repository.repo)
+            if self.revision is None:
+                object.__setattr__(
+                    self, "revision", self.checkpoint_repository.revision
+                )
+        if self.checkpoint_repository is None and self.model is not None:
+            object.__setattr__(
+                self,
+                "checkpoint_repository",
+                CheckpointRepository(
+                    source=CheckpointSource.HF, repo=self.model, revision=self.revision
+                ),
+            )
 
     @property
     def uses_lookahead_decoding(self) -> bool:
@@ -563,16 +600,12 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
 
 
 class VersionsOverrides(PydanticTrTBaseModel):
-    # If an override is specified, it takes precedence over the backend's current
-    # default version. The version is used to create a full image ref and should look
-    # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
-    # here and the backend creates the full image tag like
-    # `baseten/briton-server:v0.17.0-fd30ac1`.
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
     bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
+    vllm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
@@ -581,6 +614,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
             "briton_version",
             "bei_version",
             "bei_bert_version",
+            "vllm_version",
         ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
@@ -589,17 +623,15 @@ class VersionsOverrides(PydanticTrTBaseModel):
 
 
 class ImageVersions(PydanticTrTBaseModel):
-    # Required versions for patching truss config during docker build setup.
-    # The schema of this model must be such that it can parse the values serialized
-    # from the backend. The inserted values are full image references, resolved using
-    # backend defaults and `ImageVersionsOverrides` from the pushed config.
-    # INTERNAL
     bei_image: str
     beibert_image: str = (
         "baseten/bei_bert:1.8.7"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
+    vllm_image: str = (
+        "vllm/vllm-openai:cu129-nightly-2c17d33f4291a55b447317640c81eb61077b1b00"
+    )
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):
