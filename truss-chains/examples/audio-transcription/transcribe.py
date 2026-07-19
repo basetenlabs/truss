@@ -15,7 +15,7 @@ IMAGE = chains.DockerImage(
 )
 
 
-# Deploy the Whisper model with `truss chains deploy whisper_chainlet.py`:
+# Deploy the Whisper model with `truss chains push whisper_chainlet.py`:
 # And insert the predict URL here. You can get it from the CLI output or
 # the status page, e.g. "https://model-6wgeygoq.api.baseten.co/production/predict"
 
