@@ -168,10 +168,7 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     return wrapper
 
 
-def upgrade_dialogue():
-    # Skip the update check entirely when opted out. This must precede any
-    # `user_config` access so it also avoids the config-dir/settings/state writes
-    # and trussrc read that happen while reading the update setting.
+def maybe_upgrade_dialogue():
     if os.environ.get("TRUSS_NO_UPDATE_CHECK", "").lower() in ("1", "true"):
         return
     try:
@@ -191,7 +188,7 @@ def common_options(
         def wrapper(*args: object, **kwargs: object) -> Any:
             if add_middleware:
                 set_logging_level()
-                upgrade_dialogue()
+                maybe_upgrade_dialogue()
 
             return f(*args, **kwargs)
 

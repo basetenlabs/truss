@@ -176,7 +176,7 @@ def truss_cli(ctx) -> None:
     # selective run it here inline.
     if not ctx.invoked_subcommand:
         common.set_logging_level()
-        common.upgrade_dialogue()
+        common.maybe_upgrade_dialogue()
         click.echo(ctx.get_help())
 
 

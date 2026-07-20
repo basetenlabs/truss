@@ -57,14 +57,14 @@ class TestUpgradeDialogue:
     def test_skips_check_when_opted_out(self, mock_notify):
         for value in ("1", "true", "TRUE"):
             with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": value}):
-                common.upgrade_dialogue()
+                common.maybe_upgrade_dialogue()
         mock_notify.assert_not_called()
 
     @patch("truss.cli.utils.common.self_upgrade.notify_if_outdated")
     def test_runs_check_when_not_opted_out(self, mock_notify):
         for value in ("", "0", "false"):
             with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": value}):
-                common.upgrade_dialogue()
+                common.maybe_upgrade_dialogue()
         assert mock_notify.call_count == 3
 
 
