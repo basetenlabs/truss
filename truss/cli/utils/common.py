@@ -168,7 +168,9 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     return wrapper
 
 
-def upgrade_dialogue():
+def maybe_upgrade_dialogue():
+    if os.environ.get("TRUSS_NO_UPDATE_CHECK", "").lower() in ("1", "true"):
+        return
     try:
         self_upgrade.notify_if_outdated(truss.__version__)
     except Exception as e:
@@ -186,7 +188,7 @@ def common_options(
         def wrapper(*args: object, **kwargs: object) -> Any:
             if add_middleware:
                 set_logging_level()
-                upgrade_dialogue()
+                maybe_upgrade_dialogue()
 
             return f(*args, **kwargs)
 
