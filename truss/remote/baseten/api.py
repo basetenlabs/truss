@@ -1374,3 +1374,48 @@ class BasetenApi:
         self._rest_api_client.post(
             f"v1/loops/deployments/{deployment_id}/deactivate", body={}
         )
+
+    def get_loops_deployment_metrics(
+        self,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Fetch request-traffic metrics for a Loops trainer deployment."""
+        body: Dict[str, int] = {}
+        if start_epoch_millis is not None:
+            body["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis is not None:
+            body["end_epoch_millis"] = end_epoch_millis
+        return self._rest_api_client.post(
+            f"v1/loops/deployments/{deployment_id}/metrics", body=body
+        )
+
+    def get_model_deployment_range_metrics(
+        self,
+        model_version_id: str,
+        start_iso: str,
+        end_iso: str,
+        step_seconds: int = 15,
+    ) -> Dict[str, Any]:
+        """Fetch request-traffic metrics for a model deployment (OracleVersion).
+
+        Used to surface a Loops sampler's request volume / concurrency
+        alongside the trainer's.
+        """
+        query_string = f"""
+        {{
+            range_model_metrics(
+                model_version_id: "{model_version_id}",
+                start: "{start_iso}",
+                end: "{end_iso}",
+                step_seconds: {step_seconds},
+                time_divisor_seconds: 1
+            ) {{
+                inference_volume {{ timestamp value }}
+                model_concurrent_requests {{ timestamp value }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"].get("range_model_metrics") or {}
