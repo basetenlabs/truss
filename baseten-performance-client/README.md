@@ -21,7 +21,7 @@ npm install baseten-performance-client
 cargo add baseten_performance_client_core
 # Or add to your Cargo.toml:
 # [dependencies]
-# baseten_performance_client_core = "0.1.11"
+# baseten_performance_client_core = "0.1.12"
 # tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -128,7 +128,7 @@ preference = RequestProcessingPreference(
     max_concurrent_requests=32,
     timeout_s=360,
     max_chars_per_request=10000,  # Character-based batching (50-256,000)
-    hedge_delay=0.5,  # Request hedging delay in seconds (min 0.2s)
+    hedge_delay=0.5,  # Request hedging delay in seconds (min 0.045s)
     total_timeout_s=600,  # Total timeout for all batched requests
     extra_headers={"x-custom-header": "value"}  # Custom headers
 )
@@ -169,7 +169,7 @@ Note: The embed method is versatile and can be used with any embeddings service,
 #### Advanced Parameters
 
 - **`max_chars_per_request`**: Character-based batching limit (50-256,000 characters). When set, requests are batched by character count rather than just input count, helping optimize for services with character-based pricing or processing limits.
-- **`hedge_delay`**: Request hedging delay in seconds (minimum 0.2s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
+- **`hedge_delay`**: Request hedging delay in seconds (minimum 0.045s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
 - **`total_timeout_s`**: Total timeout for the entire operation in seconds. Unlike `timeout_s` (which is per-request), this sets an upper bound on the total time for all batched requests combined. Must be >= `timeout_s` if both are set. If not set, there is no upper bound on the total time for all batched requests.
 
 #### Asynchronous Embedding
