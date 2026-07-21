@@ -20,6 +20,22 @@ Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
 for more guidance on how to create subclasses.
 
 
+### *class* `truss_chains.TrussChainlet`
+
+Declares an existing Truss directory as a chain member that only receives calls.
+
+Unlike `ChainletBase`, the framework does not generate a `model.py` or
+a typed `StubBase` for this declaration — the user’s Truss directory
+(`model.py`-flavored or `docker_server`) is archived as-is.
+
+TrussChainlets cannot be entrypoints and cannot declare deps — they’re
+only depended on by `ChainletBase` chainlets via `chains.depends(...)`,
+which yields a
+[`truss_chains.remote_chainlet.truss_chainlet.TrussHandle`](#truss_chains.remote_chainlet.truss_chainlet.TrussHandle) to the caller.
+
+#### truss_dir *: ClassVar[str]*
+
+
 ### *class* `truss_chains.ModelBase`
 
 Base class for all standalone models.
@@ -783,6 +799,54 @@ Factory method, convenient to be used in chainlet’s `__init__`-method.
 #### predict_sync(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
 
 #### predict_sync(inputs: InputT, output_model: None = None) → Any
+
+
+### *class* `truss_chains.remote_chainlet.truss_chainlet.TrussHandle`
+
+Sibling chainlet handle; build once (e.g. in `__init__`), then call args.
+
+* **Parameters:**
+  **target** (*str* *|* *Type* *[**ABCChainlet* *]*)
+
+#### http_call_args(\*, prefer_internal=False, sync_path=None, api_key=None)
+
+Default `predict_url` + `Authorization`; `prefer_internal` uses workload-plane URL + `Host`.
+
+`sync_path` rewrites the URL to `/sync/<sync_path>`.
+`api_key` overrides `get_baseten_chain_api_key()`.
+`prefer_internal` uses the internal url if it exists.
+
+
+**Parameters:**
+
+| Name              | Type        |
+|-------------------|-------------|
+| `prefer_internal` | *bool*      |
+| `sync_path`       | *str\|None* |
+| `api_key`         | *str\|None* |
+
+* **Return type:**
+  *CallArgs*
+
+#### urls *: ServiceDescriptorUrls*
+
+#### ws_call_args(\*, sync_path=None, api_key=None)
+
+Returns a `wss://` URL + auth-only headers for a WebSocket sibling call.
+
+`websockets.connect` rejects Host-header overrides (api-gateway
+returns 400), so this has no `prefer_internal` kwarg
+
+
+**Parameters:**
+
+| Name        | Type        |
+|-------------|-------------|
+| `sync_path` | *str\|None* |
+| `api_key`   | *str\|None* |
+
+* **Return type:**
+  *CallArgs*
 
 
 ### *class* `truss_chains.RemoteErrorDetail`
