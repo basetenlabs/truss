@@ -879,6 +879,19 @@
           "description": "Number of nodes for multi-node deployments.",
           "title": "Node Count"
         },
+        "rdma": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether this deployment requires an available RDMA fabric.",
+          "title": "Rdma"
+        },
         "fabrics": {
           "anyOf": [
             {

@@ -890,6 +890,10 @@ class Resources(custom_types.ConfigModel):
             default=None, description="Number of nodes for multi-node deployments."
         )
     )
+    rdma: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether this deployment requires an available RDMA fabric.",
+    )
     fabrics: Optional[list[Fabric]] = pydantic.Field(
         default=None,
         description="Ordered high-bandwidth fabric preferences. M2 supports infiniband.",
@@ -982,6 +986,8 @@ class Resources(custom_types.ConfigModel):
             result.pop("node_count", None)
         if not self.instance_type:
             result.pop("instance_type", None)
+        if self.rdma is None:
+            result.pop("rdma", None)
         if not self.fabrics:
             result.pop("fabrics", None)
         return result
@@ -1497,6 +1503,32 @@ class TrussConfig(custom_types.ConfigModel):
                 "docker_server.run_as_user_id. SSH requires the default "
                 "'app' user (uid 60000)."
             )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_fabric_requirements(self) -> "TrussConfig":
+        has_fabric_requirement = self.resources.rdma is not None or bool(
+            self.resources.fabrics
+        )
+        if not has_fabric_requirement:
+            return self
+
+        if self.resources.rdma is not None and self.resources.fabrics:
+            raise ValueError(
+                "Please specify only one of `resources.rdma` and `resources.fabrics`"
+            )
+
+        is_disaggregated = (
+            self.bis_llm is not None
+            and self.bis_llm.config is not None
+            and self.bis_llm.config.get("is_disaggregated") is True
+        )
+        if not is_disaggregated:
+            raise ValueError(
+                "`resources.rdma` and `resources.fabrics` are currently supported "
+                "only for disaggregated BIS LLM deployments"
+            )
+
         return self
 
     @pydantic.model_validator(mode="after")

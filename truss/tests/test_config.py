@@ -182,6 +182,63 @@ def test_parse_resource_fabrics_rejects_unsupported_or_duplicate_values(fabrics)
         Resources.model_validate({"fabrics": fabrics})
 
 
+@pytest.mark.parametrize("rdma", [True, False])
+def test_parse_resource_rdma_preserves_explicit_value(rdma):
+    resources = Resources.model_validate({"rdma": rdma})
+
+    assert resources.rdma is rdma
+    assert resources.to_dict()["rdma"] is rdma
+
+
+def test_resource_rdma_not_serialized_when_unset():
+    assert "rdma" not in Resources().to_dict(verbose=True)
+
+
+@pytest.mark.parametrize(
+    "resources", [{"rdma": True}, {"rdma": False}, {"fabrics": ["infiniband"]}]
+)
+def test_fabric_requirements_require_disaggregated_bis(resources):
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="currently supported only for disaggregated BIS LLM deployments",
+    ):
+        TrussConfig.model_validate({"resources": resources})
+
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="currently supported only for disaggregated BIS LLM deployments",
+    ):
+        TrussConfig.model_validate(
+            {"resources": resources, "bis_llm": {"config": {"is_disaggregated": False}}}
+        )
+
+
+@pytest.mark.parametrize(
+    "resources", [{"rdma": True}, {"rdma": False}, {"fabrics": ["infiniband"]}]
+)
+def test_fabric_requirements_allow_disaggregated_bis(resources):
+    config = TrussConfig.model_validate(
+        {"resources": resources, "bis_llm": {"config": {"is_disaggregated": True}}}
+    )
+
+    serialized_resources = config.resources.to_dict()
+    for field, expected_value in resources.items():
+        assert serialized_resources[field] == expected_value
+
+
+def test_rdma_and_fabrics_are_mutually_exclusive():
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="Please specify only one of `resources.rdma` and `resources.fabrics`",
+    ):
+        TrussConfig.model_validate(
+            {
+                "resources": {"rdma": True, "fabrics": ["infiniband"]},
+                "bis_llm": {"config": {"is_disaggregated": True}},
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
