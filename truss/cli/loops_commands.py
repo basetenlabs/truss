@@ -577,7 +577,9 @@ def deploy_loops_checkpoints(
 
 
 @loops.command(name="logs")
-@click.argument("run_id", type=str)
+@click.option(
+    "--run-id", type=str, required=True, help="Loops run ID to fetch logs for."
+)
 @click.option(
     "--sampler",
     is_flag=True,
@@ -598,12 +600,13 @@ def deploy_loops_checkpoints(
 def view_loops_logs(
     run_id: str, sampler: bool, tail: bool, remote: Optional[str]
 ) -> None:
-    """Fetch logs for the Loops run RUN_ID.
+    """Fetch logs for a Loops run.
 
-    A run has two halves with separate log streams: the run's own deployment
-    and its paired sampler's inference deployment. By default this fetches the
-    run's own deployment logs; pass ``--sampler`` to fetch the sampler half
-    instead. Use ``truss loops view`` to find run IDs.
+    Identify the run with --run-id. A run has two halves with separate log
+    streams: the run's own deployment and its paired sampler's inference
+    deployment. By default this fetches the run's own deployment logs; pass
+    ``--sampler`` to fetch the sampler half instead. Use ``truss loops view``
+    to find run IDs.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
