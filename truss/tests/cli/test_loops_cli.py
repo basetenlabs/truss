@@ -966,3 +966,128 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
         )
     assert result.exit_code != 0
     mock_create.assert_not_called()
+
+
+def _loops_run(with_sampler: bool = True) -> dict:
+    """A run object shaped like ``GET /v1/loops/runs/<run_id>`` returns.
+
+    Both log halves are resolvable from this single object: ``deployment_id``
+    is the run's own deployment, and the nested ``sampler`` carries the
+    sampler's inference deployment id plus its companion model id.
+    """
+    run = {"id": "run_abc", "deployment_id": "trainer_dep_1"}
+    run["sampler"] = (
+        {"id": "sampler_1", "deployment_id": "sampler_dep_1", "model_id": "model_1"}
+        if with_sampler
+        else None
+    )
+    return run
+
+
+def test_logs_requires_run_id(mock_remote):
+    result = _invoke(["loops", "logs", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code != 0
+    mock_remote.api.get_loops_run.assert_not_called()
+
+
+def test_logs_default_fetches_run_deployment_logs(mock_remote):
+    mock_remote.api.get_loops_run.return_value = _loops_run()
+    mock_remote.api.get_loops_deployment_logs.return_value = []
+    result = _invoke(
+        ["loops", "logs", "run_abc", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_run.assert_called_once_with("run_abc")
+    mock_remote.api.get_loops_deployment_logs.assert_called_once_with("trainer_dep_1")
+    mock_remote.api.get_model_deployment_logs.assert_not_called()
+
+
+def test_logs_sampler_flag_fetches_sampler_logs(mock_remote):
+    mock_remote.api.get_loops_run.return_value = _loops_run()
+    mock_remote.api.get_model_deployment_logs.return_value = []
+    result = _invoke(
+        ["loops", "logs", "run_abc", "--sampler", "--remote", "test_remote"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_run.assert_called_once_with("run_abc")
+    mock_remote.api.get_model_deployment_logs.assert_called_once_with(
+        "model_1", "sampler_dep_1"
+    )
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()
+
+
+def test_logs_sampler_flag_errors_without_paired_sampler(mock_remote):
+    mock_remote.api.get_loops_run.return_value = _loops_run(with_sampler=False)
+    result = _invoke(
+        ["loops", "logs", "run_abc", "--sampler", "--remote", "test_remote"],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    assert "no paired sampler" in result.output
+    mock_remote.api.get_model_deployment_logs.assert_not_called()
+
+
+def test_logs_errors_when_run_has_no_deployment(mock_remote):
+    run = _loops_run()
+    del run["deployment_id"]
+    mock_remote.api.get_loops_run.return_value = run
+    result = _invoke(
+        ["loops", "logs", "run_abc", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code != 0
+    assert "no deployment" in result.output
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()
+
+
+def test_logs_default_tail_uses_loops_watcher(mock_remote):
+    mock_remote.api.get_loops_run.return_value = _loops_run()
+    with patch(
+        "truss.cli.loops_commands.LoopsDeploymentLogWatcher"
+    ) as mock_watcher_cls:
+        mock_watcher_cls.return_value.watch.return_value = iter([])
+        result = _invoke(
+            ["loops", "logs", "run_abc", "--tail", "--remote", "test_remote"],
+            mock_remote,
+        )
+    assert result.exit_code == 0, result.output
+    mock_watcher_cls.assert_called_once_with(mock_remote.api, "trainer_dep_1")
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()
+
+
+def test_logs_sampler_tail_uses_model_watcher(mock_remote):
+    mock_remote.api.get_loops_run.return_value = _loops_run()
+    with patch(
+        "truss.cli.loops_commands.ModelDeploymentLogWatcher"
+    ) as mock_watcher_cls:
+        mock_watcher_cls.return_value.watch.return_value = iter([])
+        result = _invoke(
+            [
+                "loops",
+                "logs",
+                "run_abc",
+                "--sampler",
+                "--tail",
+                "--remote",
+                "test_remote",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code == 0, result.output
+    mock_watcher_cls.assert_called_once_with(
+        mock_remote.api, "model_1", "sampler_dep_1"
+    )
+    mock_remote.api.get_model_deployment_logs.assert_not_called()
+
+
+def test_logs_help_is_run_focused():
+    env = os.environ.copy()
+    env["COLUMNS"] = "200"
+    runner = CliRunner(env=env)
+    result = runner.invoke(truss_cli, ["loops", "logs", "--help"])
+    assert result.exit_code == 0
+    assert "RUN_ID" in result.output
+    assert "--sampler" in result.output
+    # The retired deployment-id flags must be gone.
+    assert "--loops-deployment-id" not in result.output
+    assert "--sampler-deployment-id" not in result.output
