@@ -148,7 +148,7 @@ def _invoke_loops_deactivate(args, mock_remote, input=None):
 
 def test_deactivate_basic(mock_remote):
     result = _invoke_loops_deactivate(
-        ["run_abc", "--remote", "test_remote", "--yes"], mock_remote
+        ["--run-id", "run_abc", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
@@ -158,7 +158,7 @@ def test_deactivate_basic(mock_remote):
 
 def test_deactivate_confirms_before_proceeding(mock_remote):
     result = _invoke_loops_deactivate(
-        ["run_abc", "--remote", "test_remote"], mock_remote, input="y\n"
+        ["--run-id", "run_abc", "--remote", "test_remote"], mock_remote, input="y\n"
     )
 
     assert result.exit_code == 0, result.output
@@ -167,7 +167,7 @@ def test_deactivate_confirms_before_proceeding(mock_remote):
 
 def test_deactivate_aborts_on_no_confirmation(mock_remote):
     result = _invoke_loops_deactivate(
-        ["run_abc", "--remote", "test_remote"], mock_remote, input="n\n"
+        ["--run-id", "run_abc", "--remote", "test_remote"], mock_remote, input="n\n"
     )
 
     assert result.exit_code != 0
@@ -182,7 +182,9 @@ def test_deactivate_uses_inquire_when_remote_not_provided(mock_remote):
         with patch(
             "truss.cli.remote_cli.inquire_remote_name", return_value="inquired_remote"
         ) as mock_inquire:
-            runner.invoke(truss_cli, ["loops", "deactivate", "run_abc", "--yes"])
+            runner.invoke(
+                truss_cli, ["loops", "deactivate", "--run-id", "run_abc", "--yes"]
+            )
 
     mock_inquire.assert_called_once()
 
@@ -193,7 +195,7 @@ def test_deactivate_propagates_error(mock_remote):
     )
 
     result = _invoke_loops_deactivate(
-        ["run_abc", "--remote", "test_remote", "--yes"], mock_remote
+        ["--run-id", "run_abc", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code != 0
@@ -204,6 +206,36 @@ def test_deactivate_requires_run_id(mock_remote):
 
     assert result.exit_code != 0
     mock_remote.api.deactivate_loops_run.assert_not_called()
+
+
+def test_deactivate_deprecated_deployment_id_flag(mock_remote):
+    result = _invoke_loops_deactivate(
+        ["--deployment-id", "dep_abc", "--remote", "test_remote", "--yes"], mock_remote
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_remote.api.deactivate_loops_deployment.assert_called_once_with("dep_abc")
+    mock_remote.api.deactivate_loops_run.assert_not_called()
+    assert "DEPRECATED" in result.output
+
+
+def test_deactivate_rejects_both_run_id_and_deployment_id(mock_remote):
+    result = _invoke_loops_deactivate(
+        [
+            "--run-id",
+            "run_abc",
+            "--deployment-id",
+            "dep_abc",
+            "--remote",
+            "test_remote",
+            "--yes",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code != 0
+    mock_remote.api.deactivate_loops_run.assert_not_called()
+    mock_remote.api.deactivate_loops_deployment.assert_not_called()
 
 
 def _invoke(args, mock_remote):

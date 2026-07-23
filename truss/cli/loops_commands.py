@@ -98,24 +98,60 @@ def push_loops_deployment(
 
 
 @loops.command(name="deactivate")
-@click.argument("run_id", type=str)
+@click.option("--run-id", type=str, required=False, help="Loops run ID to deactivate.")
+@click.option(
+    "--deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "[DEPRECATED] Use --run-id instead; this will be removed in a future "
+        "release. Deactivate by Loops deployment ID."
+    ),
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
-def deactivate_loops_run(run_id: str, remote: Optional[str], yes: bool) -> None:
-    """Deactivate the Loops run with RUN_ID.
+def deactivate_loops_run(
+    run_id: Optional[str],
+    deployment_id: Optional[str],
+    remote: Optional[str],
+    yes: bool,
+) -> None:
+    """Deactivate a Loops run.
 
-    Shuts down the run, tearing down both its trainer and its sampler. Saved
-    checkpoints remain accessible. Use `truss loops view` to find run IDs.
+    Identify the run with --run-id. Shuts down the run, tearing down both of
+    its halves (the run and its paired sampler). Saved checkpoints remain
+    accessible. Use `truss loops view` to find run IDs.
+
+    The deprecated --deployment-id flag deactivates by Loops deployment ID
+    instead; prefer --run-id.
     """
+    if bool(run_id) == bool(deployment_id):
+        raise click.UsageError("Pass exactly one of --run-id or --deployment-id.")
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+
+    if deployment_id is not None:
+        console.print(
+            "[DEPRECATED] --deployment-id is deprecated, use --run-id instead.",
+            style="yellow",
+        )
+        if not yes:
+            click.confirm(
+                f"This will shut down Loops deployment {deployment_id}. Continue?",
+                abort=True,
+            )
+        with console.status("Deactivating Loops deployment...", spinner="dots"):
+            remote_provider.api.deactivate_loops_deployment(deployment_id)
+        console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
+        return
 
     if not yes:
         click.confirm(f"This will shut down Loops run {run_id}. Continue?", abort=True)
