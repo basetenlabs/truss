@@ -1378,7 +1378,17 @@ class BasetenApi:
     def deactivate_loops_run(self, run_id: str) -> None:
         """Deactivate the Loops run with the given run id.
 
-        The server resolves the run to its underlying deployment and tears
-        down both halves of the run (the run itself and its paired sampler).
+        Prefer the run-scoped endpoint, where the server resolves the run to
+        its underlying deployment and tears down both halves. Fall back to
+        resolving the run and deactivating its deployment client-side when the
+        run-scoped route is absent (404), for compatibility with older Baseten
+        backends that predate it.
         """
-        self._rest_api_client.post(f"v1/loops/runs/{run_id}/deactivate", body={})
+        try:
+            self._rest_api_client.post(f"v1/loops/runs/{run_id}/deactivate", body={})
+        except requests.exceptions.HTTPError as http_error:
+            response = http_error.response
+            if response is None or response.status_code != 404:
+                raise
+            run = self.get_loops_run(run_id)
+            self.deactivate_loops_deployment(run["deployment_id"])
