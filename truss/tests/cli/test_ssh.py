@@ -1,4 +1,7 @@
 import configparser
+import ssl
+import sys
+import urllib.error
 from unittest import mock
 
 import pytest
@@ -287,6 +290,13 @@ class TestInstallProxyCommandScript:
 
 
 class TestSetupSSHConfig:
+    @pytest.fixture(autouse=True)
+    def _stub_resolve_python(self):
+        with mock.patch.object(
+            ssh_mod, "_resolve_python", return_value="/usr/bin/python3"
+        ):
+            yield
+
     def test_creates_new_config(self, tmp_path):
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
@@ -427,3 +437,22 @@ class TestIsSetupComplete:
     def test_returns_false_without_key(self, tmp_path):
         (tmp_path / "proxy-command.py").touch()
         assert is_setup_complete(tmp_path) is False
+
+
+class TestTlsCertError:
+    def test_message_names_interpreter_and_docs(self, capsys):
+        with pytest.raises(SystemExit):
+            proxy_command.tls_cert_error(Exception("boom"))
+        err = capsys.readouterr().err
+        assert "TLS certificate verification failed" in err
+        assert sys.executable in err
+        assert "docs.baseten.co" in err
+
+    def test_api_request_routes_cert_failures(self, capsys):
+        exc = urllib.error.URLError(
+            ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED")
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=exc):
+            with pytest.raises(SystemExit):
+                proxy_command.api_request("https://api.baseten.co/v1/x", "key")
+        assert "TLS certificate verification failed" in capsys.readouterr().err
