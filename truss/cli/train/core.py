@@ -26,7 +26,11 @@ from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
-from truss_train.definitions import CheckpointList, DeployCheckpointsConfig
+from truss_train.definitions import (
+    AvailabilityModel,
+    CheckpointList,
+    DeployCheckpointsConfig,
+)
 
 QUEUED_JOB_STATUSES = ["TRAINING_JOB_PENDING"]
 
@@ -35,6 +39,24 @@ ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_CREATED",
     "TRAINING_JOB_DEPLOYING",
 ]
+
+# Human-readable labels for a job's `availability_model`. DEDICATED is
+# non-preemptible on-demand capacity (and the default when the field is absent,
+# which predates it); SPOT is interruptible.
+_AVAILABILITY_MODEL_LABELS = {
+    AvailabilityModel.DEDICATED: "On-demand",
+    AvailabilityModel.SPOT: "Spot",
+}
+
+
+def _format_capacity_type(job: dict) -> str:
+    raw = job.get("availability_model") or AvailabilityModel.DEDICATED
+    try:
+        model = AvailabilityModel(raw)
+    except ValueError:
+        # Unknown future value: surface it rather than dropping it.
+        return str(raw).title()
+    return _AVAILABILITY_MODEL_LABELS.get(model, model.value.title())
 
 
 def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
@@ -114,6 +136,7 @@ def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
     table.add_column("Project")
     table.add_column("Status")
     table.add_column("Instance Type")
+    table.add_column("Capacity Type")
     table.add_column("Created By")
     table.add_column("Created")
     table.add_column("Job Page", style="bold yellow")
@@ -125,6 +148,7 @@ def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
             job["training_project"]["name"],
             job["current_status"],
             job["instance_type"]["name"],
+            _format_capacity_type(job),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
             cli_common.format_link(
@@ -224,6 +248,7 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
     table.add_column("Job Name")
     table.add_column("Project")
     table.add_column("Instance Type")
+    table.add_column("Capacity Type")
     table.add_column("Priority")
     table.add_column("Created By")
     table.add_column("Queued At")
@@ -239,6 +264,7 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
             job["name"],
             job["training_project"]["name"],
             job["instance_type"]["name"],
+            _format_capacity_type(job),
             str(job.get("priority") or 0),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
