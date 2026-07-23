@@ -905,7 +905,7 @@
             }
           ],
           "default": null,
-          "description": "Ordered high-bandwidth fabric preferences. M2 supports infiniband.",
+          "description": "Ordered NIC fabric preferences.",
           "examples": [
             [
               "infiniband"
