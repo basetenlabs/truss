@@ -1113,6 +1113,62 @@ def test_logs_help_is_run_focused():
     assert result.exit_code == 0
     assert "--run-id" in result.output
     assert "--sampler" in result.output
-    # The retired deployment-id flags must be gone.
-    assert "--loops-deployment-id" not in result.output
-    assert "--sampler-deployment-id" not in result.output
+    # The deployment-id flags remain as deprecated aliases for compatibility.
+    assert "--loops-deployment-id" in result.output
+    assert "--sampler-deployment-id" in result.output
+    assert "[DEPRECATED]" in result.output
+
+
+def test_logs_deprecated_loops_deployment_id_flag(mock_remote):
+    mock_remote.api.get_loops_deployment_logs.return_value = []
+    result = _invoke(
+        ["loops", "logs", "--loops-deployment-id", "dep_1", "--remote", "test_remote"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_loops_deployment_logs.assert_called_once_with("dep_1")
+    mock_remote.api.get_loops_run.assert_not_called()
+    assert "DEPRECATED" in result.output
+
+
+def test_logs_deprecated_sampler_deployment_id_flag(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        {"sampler": {"deployment_id": "sdep_1", "model_id": "model_9"}}
+    ]
+    mock_remote.api.get_model_deployment_logs.return_value = []
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--sampler-deployment-id",
+            "sdep_1",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.get_model_deployment_logs.assert_called_once_with(
+        "model_9", "sdep_1"
+    )
+    mock_remote.api.get_loops_run.assert_not_called()
+    assert "DEPRECATED" in result.output
+
+
+def test_logs_rejects_multiple_selectors(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "logs",
+            "--run-id",
+            "run_abc",
+            "--loops-deployment-id",
+            "dep_1",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    mock_remote.api.get_loops_run.assert_not_called()
+    mock_remote.api.get_loops_deployment_logs.assert_not_called()

@@ -576,17 +576,85 @@ def deploy_loops_checkpoints(
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
 
 
+def _resolve_sampler_model_id(
+    remote_provider: BasetenRemote, sampler_deployment_id: str
+) -> str:
+    """Find the model_id for a sampler's inference deployment.
+
+    The Loops deployments list returns each sampler with both ``deployment_id``
+    (the OracleVersion id) and ``model_id`` (the Oracle id). Resolve the
+    model_id client-side by matching on the deployment_id the caller gave us.
+    """
+    deployments = remote_provider.api.list_loops_deployments()
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
+        if sampler.get("deployment_id") == sampler_deployment_id:
+            return sampler["model_id"]
+    raise click.ClickException(
+        f"No Loops deployment found whose sampler matches deployment {sampler_deployment_id!r}. "
+        "Run `truss loops view` to list active deployments."
+    )
+
+
+def _stream_loops_deployment_logs(
+    remote_provider: BasetenRemote, loops_deployment_id: str, tail: bool
+) -> None:
+    if tail:
+        loops_watcher = LoopsDeploymentLogWatcher(
+            remote_provider.api, loops_deployment_id
+        )
+        for log in loops_watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
+
+
+def _stream_model_deployment_logs(
+    remote_provider: BasetenRemote, model_id: str, deployment_id: str, tail: bool
+) -> None:
+    if tail:
+        model_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id
+        )
+        for log in model_watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
+
+
 @loops.command(name="logs")
 @click.option(
-    "--run-id", type=str, required=True, help="Loops run ID to fetch logs for."
+    "--run-id", type=str, required=False, help="Loops run ID to fetch logs for."
 )
 @click.option(
     "--sampler",
     is_flag=True,
     default=False,
     help=(
-        "Tail the paired sampler's inference-deployment logs instead of the "
-        "run's own logs. The two halves have separate log streams."
+        "With --run-id, tail the paired sampler's inference-deployment logs "
+        "instead of the run's own. The two halves have separate log streams."
+    ),
+)
+@click.option(
+    "--loops-deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "[DEPRECATED] Use --run-id instead; this will be removed in a future "
+        "release. Fetch logs from a Loops deployment by ID."
+    ),
+)
+@click.option(
+    "--sampler-deployment-id",
+    type=str,
+    required=False,
+    help=(
+        "[DEPRECATED] Use --run-id --sampler instead; this will be removed in a "
+        "future release. Fetch logs from the sampler's inference deployment by ID."
     ),
 )
 @click.option(
@@ -598,65 +666,79 @@ def deploy_loops_checkpoints(
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_loops_logs(
-    run_id: str, sampler: bool, tail: bool, remote: Optional[str]
+    run_id: Optional[str],
+    sampler: bool,
+    loops_deployment_id: Optional[str],
+    sampler_deployment_id: Optional[str],
+    tail: bool,
+    remote: Optional[str],
 ) -> None:
     """Fetch logs for a Loops run.
 
-    Identify the run with --run-id. A run has two halves with separate log
-    streams: the run's own deployment and its paired sampler's inference
-    deployment. By default this fetches the run's own deployment logs; pass
-    ``--sampler`` to fetch the sampler half instead. Use ``truss loops view``
-    to find run IDs.
+    Identify the run with --run-id; by default this fetches the run's own
+    deployment logs, and --sampler fetches the paired sampler's inference
+    deployment logs instead. Use ``truss loops view`` to find run IDs.
+
+    The deprecated --loops-deployment-id / --sampler-deployment-id flags fetch
+    logs by deployment ID instead; prefer --run-id.
     """
+    selectors = [run_id, loops_deployment_id, sampler_deployment_id]
+    if sum(1 for selector in selectors if selector) != 1:
+        raise click.UsageError(
+            "Pass exactly one of --run-id, --loops-deployment-id, or "
+            "--sampler-deployment-id."
+        )
+    if sampler and not run_id:
+        raise click.UsageError("--sampler can only be used with --run-id.")
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    # A single run object resolves both halves: ``deployment_id`` is the run's
-    # own deployment, and the nested ``sampler`` carries the sampler's
+    if loops_deployment_id is not None:
+        console.print(
+            "[DEPRECATED] --loops-deployment-id is deprecated, use --run-id instead.",
+            style="yellow",
+        )
+        _stream_loops_deployment_logs(remote_provider, loops_deployment_id, tail)
+        return
+
+    if sampler_deployment_id is not None:
+        console.print(
+            "[DEPRECATED] --sampler-deployment-id is deprecated, use --run-id "
+            "--sampler instead.",
+            style="yellow",
+        )
+        model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
+        _stream_model_deployment_logs(
+            remote_provider, model_id, sampler_deployment_id, tail
+        )
+        return
+
+    # --run-id path: a single run object resolves both halves. ``deployment_id``
+    # is the run's own deployment; the nested ``sampler`` carries the sampler's
     # inference deployment id plus its companion model id.
     run = remote_provider.api.get_loops_run(run_id)
 
     if not sampler:
-        loops_deployment_id = run.get("deployment_id")
-        if not loops_deployment_id:
+        run_deployment_id = run.get("deployment_id")
+        if not run_deployment_id:
             raise click.ClickException(
                 f"Loops run {run_id!r} has no deployment to fetch logs from."
             )
-        if tail:
-            loops_watcher = LoopsDeploymentLogWatcher(
-                remote_provider.api, loops_deployment_id
-            )
-            for log in loops_watcher.watch():
-                cli_log_utils.output_log(log)
-        else:
-            logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
-            for log in cli_log_utils.parse_logs(logs):
-                cli_log_utils.output_log(log)
+        _stream_loops_deployment_logs(remote_provider, run_deployment_id, tail)
         return
 
-    # --sampler path: reuse the existing model-deployment log machinery, keyed
-    # by the sampler's inference deployment. Both the deployment id and its
-    # companion model id come straight off the run's nested sampler.
     sampler_info = run.get("sampler") or {}
-    sampler_deployment_id = sampler_info.get("deployment_id")
+    resolved_sampler_deployment_id = sampler_info.get("deployment_id")
     model_id = sampler_info.get("model_id")
-    if not sampler_deployment_id or not model_id:
+    if not resolved_sampler_deployment_id or not model_id:
         raise click.ClickException(
             f"Loops run {run_id!r} has no paired sampler to fetch logs from. "
             "Omit --sampler to view the run's own logs."
         )
-    if tail:
-        model_watcher = ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, sampler_deployment_id
-        )
-        for log in model_watcher.watch():
-            cli_log_utils.output_log(log)
-    else:
-        logs = remote_provider.api.get_model_deployment_logs(
-            model_id, sampler_deployment_id
-        )
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
+    _stream_model_deployment_logs(
+        remote_provider, model_id, resolved_sampler_deployment_id, tail
+    )
