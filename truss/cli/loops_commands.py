@@ -636,7 +636,7 @@ def _stream_model_deployment_logs(
     default=False,
     help=(
         "With --run-id, tail the paired sampler's logs instead of the run's "
-        "training logs. The two halves have separate log streams."
+        "trainer logs. The two halves have separate log streams."
     ),
 )
 @click.option(
@@ -644,7 +644,7 @@ def _stream_model_deployment_logs(
     type=str,
     required=False,
     help=(
-        "[DEPRECATED] Use --run-id to fetch the run's training logs; this will "
+        "[DEPRECATED] Use --run-id to fetch the run's trainer logs; this will "
         "be removed in a future release."
     ),
 )
@@ -728,7 +728,7 @@ def view_loops_logs(
         run_deployment_id = run.get("deployment_id")
         if not run_deployment_id:
             raise click.ClickException(
-                f"Loops run {run_id!r} has no training logs to fetch."
+                f"Loops run {run_id!r} has no trainer logs to fetch."
             )
         _stream_loops_deployment_logs(remote_provider, run_deployment_id, tail)
         return
@@ -739,7 +739,7 @@ def view_loops_logs(
     if not resolved_sampler_deployment_id or not resolved_model_id:
         raise click.ClickException(
             f"Loops run {run_id!r} has no paired sampler to fetch logs from. "
-            "Omit --sampler to view the run's training logs."
+            "Omit --sampler to view the run's trainer logs."
         )
     _stream_model_deployment_logs(
         remote_provider, resolved_model_id, resolved_sampler_deployment_id, tail
