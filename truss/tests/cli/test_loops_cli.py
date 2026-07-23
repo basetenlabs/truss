@@ -966,3 +966,38 @@ def test_checkpoints_deploy_rejects_checkpoint_ids_with_config(mock_remote, tmp_
         )
     assert result.exit_code != 0
     mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_non_interactive_fails_without_prompting(mock_remote):
+    """A non-TTY (or --non-interactive) deploy that is missing prompted values
+    should fail fast with a clear message instead of crashing in a prompt."""
+    mock_remote.api.list_loops_runs.return_value = [
+        {"id": "trnr_xyz", "base_model": "Qwen/Qwen3-0.6B"}
+    ]
+    # A single deployable checkpoint skips the checkpoint picker, so the first
+    # value we still need to prompt for is the model name.
+    mock_remote.api.list_loops_checkpoints.return_value = {
+        "checkpoints": [
+            {"id": "ckpt_pk_1", "checkpoint_id": "checkpoint-100", "target": "sampler"}
+        ]
+    }
+
+    result = _invoke(
+        [
+            "loops",
+            "checkpoints",
+            "deploy",
+            "--remote",
+            "test_remote",
+            "--run-id",
+            "trnr_xyz",
+            "--non-interactive",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code != 0
+    assert "non-interactive" in result.output.lower()
+    assert "Model name" in result.output
+    # We must not have reached the deploy mutation.
+    mock_remote.api.create_model_version_from_inference_template.assert_not_called()

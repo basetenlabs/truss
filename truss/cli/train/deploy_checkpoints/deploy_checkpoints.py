@@ -38,6 +38,21 @@ CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
 
 
+def _guard_interactive(missing_value: str) -> None:
+    """Fail fast with a clear message instead of prompting when non-interactive.
+
+    The helpers below fall back to InquirerPy when a value is missing. In a
+    non-TTY or under ``--non-interactive`` that prompt would raise an opaque
+    ``OSError``/``EOFError``, so we surface which value still needs providing.
+    """
+    if not cli_common.check_is_interactive():
+        raise click.UsageError(
+            f"{missing_value} is required but was not provided, and interactive "
+            "prompts are disabled (non-interactive context or --non-interactive). "
+            "Provide the missing value via --config (DeployCheckpointsConfig) and retry."
+        )
+
+
 def create_model_version_from_inference_template(
     remote_provider: BasetenRemote,
     checkpoint_deploy_config: DeployCheckpointsConfig,
@@ -266,6 +281,7 @@ def _get_model_name(
         else ""
     )
 
+    _guard_interactive("Model name (model_name)")
     return inquirer.text(
         message=f"Enter the model name for your {model_weight_format.value} model.",
         validate=lambda s: s and s.strip(),
@@ -342,6 +358,7 @@ def _hydrate_deploy_config(
                 if checkpoint_model_ref
                 else ""
             )
+            _guard_interactive("Model name (model_name)")
             model_name = inquirer.text(
                 message="Enter the model name.",
                 validate=lambda s: s and s.strip(),
@@ -551,6 +568,9 @@ def _get_checkpoint_ids_to_deploy(
 
 def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
     """Select multiple checkpoints using interactive checkbox."""
+    _guard_interactive(
+        "Checkpoint selection (--checkpoint-ids, or checkpoint_details in --config)"
+    )
     checkpoint_ids = inquirer.checkbox(
         message="Use spacebar to select/deselect checkpoints to deploy. Press enter when done.",
         choices=checkpoint_id_options,
@@ -594,6 +614,7 @@ def _get_accelerator_if_specified(
         return Compute(cpu_count=0, memory="0Mi", accelerator=None)
 
     # prompt user for accelerator
+    _guard_interactive("Compute / accelerator (compute in --config)")
     gpu_type = inquirer.select(
         message="Select the GPU type to use for deployment. Select None for CPU.",
         choices=choices,
@@ -649,6 +670,7 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[
     elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.WHISPER.value.lower():
         return None
     else:
+        _guard_interactive("Base model id (base_model_id)")
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
     if not base_model_id:
         raise click.UsageError(
@@ -740,6 +762,9 @@ def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
     """Get HuggingFace secret name from user input or prompt for it."""
     if not user_input:
         # prompt user for hf secret name
+        _guard_interactive(
+            "HuggingFace secret name (runtime.environment_variables.HF_TOKEN in --config)"
+        )
         hf_secret_name = inquirer.select(
             message="Enter the huggingface secret name.",
             choices=["hf_access_token", None, "custom"],
