@@ -98,19 +98,17 @@ def push_loops_deployment(
 
 
 @loops.command(name="deactivate")
-@click.argument("deployment_id", type=str)
+@click.argument("run_id", type=str)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
-def deactivate_loops_deployment(
-    deployment_id: str, remote: Optional[str], yes: bool
-) -> None:
-    """Deactivate the Loops deployment with DEPLOYMENT_ID.
+def deactivate_loops_run(run_id: str, remote: Optional[str], yes: bool) -> None:
+    """Deactivate the Loops run with RUN_ID.
 
-    Shuts down the Loops deployment. Saved checkpoints remain accessible.
-    Use `truss loops view` to find deployment IDs.
+    Shuts down the run, tearing down both its trainer and its sampler. Saved
+    checkpoints remain accessible. Use `truss loops view` to find run IDs.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -120,15 +118,12 @@ def deactivate_loops_deployment(
     )
 
     if not yes:
-        click.confirm(
-            f"This will shut down Loops deployment {deployment_id}. Continue?",
-            abort=True,
-        )
+        click.confirm(f"This will shut down Loops run {run_id}. Continue?", abort=True)
 
-    with console.status("Deactivating Loops deployment...", spinner="dots"):
-        remote_provider.api.deactivate_loops_deployment(deployment_id)
+    with console.status("Deactivating Loops run...", spinner="dots"):
+        remote_provider.api.deactivate_loops_run(run_id)
 
-    console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
+    console.print(f"Loops run {run_id} deactivated.", style="green")
 
 
 _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})

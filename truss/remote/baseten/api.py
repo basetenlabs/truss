@@ -1374,3 +1374,13 @@ class BasetenApi:
         self._rest_api_client.post(
             f"v1/loops/deployments/{deployment_id}/deactivate", body={}
         )
+
+    def deactivate_loops_run(self, run_id: str) -> None:
+        """Deactivate the Loops run with the given run id.
+
+        Each run maps to exactly one Loops deployment, so resolve the run to
+        its deployment and deactivate that deployment. Both halves of the run
+        (its trainer and its sampler) are torn down.
+        """
+        run = self.get_loops_run(run_id)
+        self.deactivate_loops_deployment(run["deployment_id"])
