@@ -231,6 +231,7 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
             AcceleratorSpec(accelerator=Accelerator.RTX_PRO_6000, count=1),
         ),
         ("B300", AcceleratorSpec(accelerator=Accelerator.B300, count=1)),
+        ("GB300:4", AcceleratorSpec(accelerator=Accelerator.GB300, count=4)),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
