@@ -692,22 +692,25 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
 
 
 @pytest.mark.parametrize(
-    ("resource_config", "expected_resource_config"),
+    ("is_disaggregated", "resource_config", "expected_resource_config"),
     [
-        ({"rdma": True}, {"rdma": True}),
-        ({"rdma": False}, {"rdma": False}),
-        ({"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
+        (False, {}, {}),
+        (True, {}, {"rdma": True}),
+        (True, {"rdma": True}, {"rdma": True}),
+        (True, {"rdma": False}, {"rdma": False}),
+        (True, {"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
     ],
 )
 def test_push_uses_bis_llm_service_for_bis_llm(
     remote,
     mock_upload_truss,
     mock_truss_handle,
+    is_disaggregated,
     resource_config,
     expected_resource_config,
 ):
     mock_truss_handle.spec.config.bis_llm = BISLLM(
-        config={"model": "test-llm", "is_disaggregated": True}, version="v1"
+        config={"model": "test-llm", "is_disaggregated": is_disaggregated}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
     for field, value in resource_config.items():
@@ -756,7 +759,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert kwargs["team_id"] is None
     assert kwargs["body"]["llm_config"] == {
         "model": "test-llm",
-        "is_disaggregated": True,
+        "is_disaggregated": is_disaggregated,
     }
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["weights"] == [
