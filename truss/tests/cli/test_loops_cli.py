@@ -1052,7 +1052,7 @@ def test_logs_errors_when_run_has_no_deployment(mock_remote):
         ["loops", "logs", "--run-id", "run_abc", "--remote", "test_remote"], mock_remote
     )
     assert result.exit_code != 0
-    assert "no deployment" in result.output
+    assert "no training logs" in result.output
     mock_remote.api.get_loops_deployment_logs.assert_not_called()
 
 

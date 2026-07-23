@@ -635,8 +635,8 @@ def _stream_model_deployment_logs(
     is_flag=True,
     default=False,
     help=(
-        "With --run-id, tail the paired sampler's inference-deployment logs "
-        "instead of the run's own. The two halves have separate log streams."
+        "With --run-id, tail the paired sampler's logs instead of the run's "
+        "training logs. The two halves have separate log streams."
     ),
 )
 @click.option(
@@ -644,8 +644,8 @@ def _stream_model_deployment_logs(
     type=str,
     required=False,
     help=(
-        "[DEPRECATED] Use --run-id instead; this will be removed in a future "
-        "release. Fetch logs from a Loops deployment by ID."
+        "[DEPRECATED] Use --run-id to fetch the run's training logs; this will "
+        "be removed in a future release."
     ),
 )
 @click.option(
@@ -675,9 +675,9 @@ def view_loops_logs(
 ) -> None:
     """Fetch logs for a Loops run.
 
-    Identify the run with --run-id; by default this fetches the run's own
-    deployment logs, and --sampler fetches the paired sampler's inference
-    deployment logs instead. Use ``truss loops view`` to find run IDs.
+    Identify the run with --run-id; by default this fetches the run's training
+    logs, and --sampler fetches the paired sampler's logs instead. Use
+    ``truss loops view`` to find run IDs.
 
     The deprecated --loops-deployment-id / --sampler-deployment-id flags fetch
     logs by deployment ID instead; prefer --run-id.
@@ -728,7 +728,7 @@ def view_loops_logs(
         run_deployment_id = run.get("deployment_id")
         if not run_deployment_id:
             raise click.ClickException(
-                f"Loops run {run_id!r} has no deployment to fetch logs from."
+                f"Loops run {run_id!r} has no training logs to fetch."
             )
         _stream_loops_deployment_logs(remote_provider, run_deployment_id, tail)
         return
@@ -739,7 +739,7 @@ def view_loops_logs(
     if not resolved_sampler_deployment_id or not resolved_model_id:
         raise click.ClickException(
             f"Loops run {run_id!r} has no paired sampler to fetch logs from. "
-            "Omit --sampler to view the run's own logs."
+            "Omit --sampler to view the run's training logs."
         )
     _stream_model_deployment_logs(
         remote_provider, resolved_model_id, resolved_sampler_deployment_id, tail
