@@ -324,7 +324,7 @@ class TestNotifyIfOutdated:
         monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
         monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
 
-        # Exception handling moved to upgrade_dialogue() in common.py
+        # Exception handling moved to maybe_upgrade_dialogue() in common.py
         with pytest.raises(Exception, match="Network error"):
             self_upgrade.notify_if_outdated("0.11.0")
 

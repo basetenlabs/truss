@@ -1,6 +1,6 @@
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
+pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
 pub(crate) const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 
 // Concurrency constants
@@ -12,7 +12,7 @@ pub(crate) const MIN_CHARACTERS_PER_REQUEST: usize = 50;
 pub(crate) const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
 
 // hedging settings:
-pub(crate) const MIN_HEDGE_DELAY_S: f64 = 0.2;
+pub(crate) const MIN_HEDGE_DELAY_S: f64 = 0.045;
 
 // Batch size constants
 pub(crate) const MAX_BATCH_SIZE: usize = 1024;
