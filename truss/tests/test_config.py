@@ -230,6 +230,10 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
             "RTX_PRO_6000",
             AcceleratorSpec(accelerator=Accelerator.RTX_PRO_6000, count=1),
         ),
+        (
+            "RTX_PRO_6000_48GB",
+            AcceleratorSpec(accelerator=Accelerator.RTX_PRO_6000_48GB, count=1),
+        ),
         ("B300", AcceleratorSpec(accelerator=Accelerator.B300, count=1)),
         ("GB300:4", AcceleratorSpec(accelerator=Accelerator.GB300, count=4)),
     ],
