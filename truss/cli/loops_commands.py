@@ -145,6 +145,9 @@ def deactivate_loops_run(
         console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
         return
 
+    # Narrowed by the XOR check above: with no deployment_id, run_id is set.
+    assert run_id is not None
+
     if not yes:
         click.confirm(f"This will shut down Loops run {run_id}. Continue?", abort=True)
 
