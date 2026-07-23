@@ -98,24 +98,16 @@ def push_loops_deployment(
 
 
 @loops.command(name="deactivate")
+@click.argument("deployment_id", type=str, required=False)
 @click.option("--run-id", type=str, required=False, help="Loops run ID to deactivate.")
-@click.option(
-    "--deployment-id",
-    type=str,
-    required=False,
-    help=(
-        "[DEPRECATED] Use --run-id instead; this will be removed in a future "
-        "release. Deactivate by Loops deployment ID."
-    ),
-)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
 def deactivate_loops_run(
-    run_id: Optional[str],
     deployment_id: Optional[str],
+    run_id: Optional[str],
     remote: Optional[str],
     yes: bool,
 ) -> None:
@@ -125,11 +117,11 @@ def deactivate_loops_run(
     its halves (the run and its paired sampler). Saved checkpoints remain
     accessible. Use `truss loops view` to find run IDs.
 
-    The deprecated --deployment-id flag deactivates by Loops deployment ID
-    instead; prefer --run-id.
+    Passing a Loops deployment ID as a positional argument is deprecated;
+    prefer --run-id.
     """
     if bool(run_id) == bool(deployment_id):
-        raise click.UsageError("Pass exactly one of --run-id or --deployment-id.")
+        raise click.UsageError("Pass exactly one of --run-id or a deployment ID.")
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -140,7 +132,7 @@ def deactivate_loops_run(
 
     if deployment_id is not None:
         console.print(
-            "[DEPRECATED] --deployment-id is deprecated, use --run-id instead.",
+            "[DEPRECATED] Passing a deployment ID is deprecated, use --run-id instead.",
             style="yellow",
         )
         if not yes:

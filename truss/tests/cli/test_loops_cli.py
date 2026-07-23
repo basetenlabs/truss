@@ -208,9 +208,9 @@ def test_deactivate_requires_run_id(mock_remote):
     mock_remote.api.deactivate_loops_run.assert_not_called()
 
 
-def test_deactivate_deprecated_deployment_id_flag(mock_remote):
+def test_deactivate_deprecated_deployment_id_positional(mock_remote):
     result = _invoke_loops_deactivate(
-        ["--deployment-id", "dep_abc", "--remote", "test_remote", "--yes"], mock_remote
+        ["dep_abc", "--remote", "test_remote", "--yes"], mock_remote
     )
 
     assert result.exit_code == 0, result.output
@@ -221,15 +221,7 @@ def test_deactivate_deprecated_deployment_id_flag(mock_remote):
 
 def test_deactivate_rejects_both_run_id_and_deployment_id(mock_remote):
     result = _invoke_loops_deactivate(
-        [
-            "--run-id",
-            "run_abc",
-            "--deployment-id",
-            "dep_abc",
-            "--remote",
-            "test_remote",
-            "--yes",
-        ],
+        ["dep_abc", "--run-id", "run_abc", "--remote", "test_remote", "--yes"],
         mock_remote,
     )
 
