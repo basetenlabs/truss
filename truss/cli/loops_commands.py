@@ -720,6 +720,8 @@ def view_loops_logs(
     # --run-id path: a single run object resolves both halves. ``deployment_id``
     # is the run's own deployment; the nested ``sampler`` carries the sampler's
     # inference deployment id plus its companion model id.
+    # Narrowed by the one-selector check above.
+    assert run_id is not None
     run = remote_provider.api.get_loops_run(run_id)
 
     if not sampler:
@@ -733,12 +735,12 @@ def view_loops_logs(
 
     sampler_info = run.get("sampler") or {}
     resolved_sampler_deployment_id = sampler_info.get("deployment_id")
-    model_id = sampler_info.get("model_id")
-    if not resolved_sampler_deployment_id or not model_id:
+    resolved_model_id = sampler_info.get("model_id")
+    if not resolved_sampler_deployment_id or not resolved_model_id:
         raise click.ClickException(
             f"Loops run {run_id!r} has no paired sampler to fetch logs from. "
             "Omit --sampler to view the run's own logs."
         )
     _stream_model_deployment_logs(
-        remote_provider, model_id, resolved_sampler_deployment_id, tail
+        remote_provider, resolved_model_id, resolved_sampler_deployment_id, tail
     )
