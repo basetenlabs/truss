@@ -94,6 +94,7 @@ class Accelerator(str, enum.Enum):
     L40S = "L40S"
     RTX_PRO_6000 = "RTX_PRO_6000"
     B300 = "B300"
+    GB300 = "GB300"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
