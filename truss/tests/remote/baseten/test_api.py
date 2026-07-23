@@ -824,3 +824,16 @@ def test_get_model_deployment_logs_omits_unset_filters(baseten_api):
     )
 
     assert mock_rest_client.post.call_args[1]["body"] == {}
+
+
+def test_deactivate_loops_run_posts_run_deactivate_endpoint(baseten_api):
+    # Deactivating by run id hits the run-scoped endpoint; the server resolves
+    # the run to its deployment and tears down both halves.
+    mock_rest_client = mock.Mock()
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.deactivate_loops_run("run-1")
+
+    assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs/run-1/deactivate"
+    assert mock_rest_client.post.call_args[1]["body"] == {}
+    mock_rest_client.get.assert_not_called()
