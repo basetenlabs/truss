@@ -240,10 +240,13 @@ def _invoke(args, mock_remote):
         return runner.invoke(truss_cli, args)
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _flatten(output: str) -> str:
-    """Collapse rich-click box borders and wrapping so a message substring
-    matches regardless of the render width."""
-    return " ".join(output.replace("│", " ").split())
+    """Collapse rich-click ANSI color, box borders, and wrapping so a message
+    substring matches regardless of render width or forced color (CI)."""
+    return " ".join(_ANSI_RE.sub("", output).replace("│", " ").split())
 
 
 def _run(
