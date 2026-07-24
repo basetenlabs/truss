@@ -238,6 +238,108 @@ def view_loops_runs_summary(
     _render_loops_runs_summary(runs, show_owner=org_wide)
 
 
+# Deployments in these terminal states are hidden from `usage` unless --all,
+# and never counted toward GPU capacity.
+_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+# A deployment scaled to zero holds no live GPUs; it is tracked separately in
+# the usage summary.
+_SCALED_TO_ZERO_STATUS = "SCALED_TO_ZERO"
+
+
+@loops.command(name="usage")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--mine",
+    is_flag=True,
+    default=False,
+    help="Show only your own Loops deployments (drops the Owner column).",
+)
+@click.option(
+    "--user",
+    "user_email",
+    type=str,
+    required=False,
+    help="Filter to Loops deployments owned by this email (looked up org-wide).",
+)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include deployments in terminal states (STOPPED, FAILED).",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default) or json.",
+)
+@common.common_options()
+def view_loops_usage(
+    remote: Optional[str],
+    mine: bool,
+    user_email: Optional[str],
+    show_all: bool,
+    output_format: str,
+) -> None:
+    """Report Loops GPU capacity, one row per deployment (keyed by its run).
+
+    Org-wide by default; pass --mine for just your own (which drops the Owner
+    column) or --user to filter to a single owner. Each row shows the trainer
+    and sampler GPU allocations and statuses, and a summary line above the table
+    aggregates GPUs in use vs scaled to zero. Terminal deployments (STOPPED,
+    FAILED) are hidden unless you pass --all.
+    """
+    if mine and user_email:
+        raise click.UsageError("Pass at most one of --mine or --user.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    # --mine scopes the request to the caller; default and --user pull org-wide
+    # and (for --user) filter to one owner client-side.
+    deployments = remote_provider.api.list_loops_deployments(
+        scope="org" if not mine else None
+    )
+    if user_email:
+        deployments = [
+            deployment
+            for deployment in deployments
+            if (deployment.get("user") or {}).get("email") == user_email
+        ]
+    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
+
+    if not deployments and is_human_output:
+        console.print("No Loops deployments.", style="yellow")
+        return
+
+    if not show_all:
+        deployments = [
+            deployment
+            for deployment in deployments
+            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
+        ]
+        if not deployments and is_human_output:
+            console.print(
+                "No active Loops deployments. Pass --all to include "
+                "STOPPED and FAILED deployments.",
+                style="yellow",
+            )
+            return
+
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_usage_json(deployments)
+        return
+
+    _render_loops_usage(deployments, show_owner=not mine)
+
+
 @loops.group(name="runs")
 def loops_runs() -> None:
     """Subcommands for working with Loops runs."""
@@ -366,6 +468,127 @@ def _render_loops_runs_summary_json(runs: List[Dict[str, Any]]) -> None:
             "base_model": run.get("base_model", ""),
             "status": _run_status_name(run),
             "created_at": run.get("created_at") or "",
+        }
+        print(json.dumps(output))
+
+
+def _format_gpu_cell(gpu: Optional[Dict[str, Any]]) -> str:
+    """Render a gpu object as "<type>:<count>", appending "×<nodes>" when the
+    allocation spans more than one node; "—" when there is no gpu."""
+    if not gpu:
+        return "—"
+    cell = f"{gpu['gpu_type']}:{gpu['gpu_count']}"
+    node_count = gpu.get("node_count") or 1
+    if node_count > 1:
+        cell += f" ×{node_count}"
+    return cell
+
+
+def _gpu_capacity(gpu: Optional[Dict[str, Any]]) -> int:
+    """Total GPUs an allocation holds: gpu_count across every node."""
+    if not gpu:
+        return 0
+    return (gpu.get("gpu_count") or 0) * (gpu.get("node_count") or 1)
+
+
+def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Aggregate GPU capacity into trainer/sampler and in-use/scaled-to-zero.
+
+    Terminal deployments hold no live capacity and are skipped entirely.
+    """
+    summary = {
+        "trainer_in_use": 0,
+        "trainer_scaled_to_zero": 0,
+        "sampler_in_use": 0,
+        "sampler_scaled_to_zero": 0,
+    }
+    for deployment in deployments:
+        trainer_status = deployment["status"]["name"]
+        if trainer_status in _TERMINAL_DEPLOYMENT_STATUSES:
+            continue
+        trainer_capacity = _gpu_capacity(deployment.get("gpu"))
+        if trainer_status == _SCALED_TO_ZERO_STATUS:
+            summary["trainer_scaled_to_zero"] += trainer_capacity
+        else:
+            summary["trainer_in_use"] += trainer_capacity
+
+        sampler = deployment.get("sampler")
+        if not sampler:
+            continue
+        sampler_gpu = sampler.get("gpu")
+        if not sampler_gpu:
+            continue
+        sampler_capacity = _gpu_capacity(sampler_gpu)
+        sampler_status = (sampler.get("status") or {}).get("name")
+        if sampler_status == _SCALED_TO_ZERO_STATUS:
+            summary["sampler_scaled_to_zero"] += sampler_capacity
+        else:
+            summary["sampler_in_use"] += sampler_capacity
+    return summary
+
+
+def _render_loops_usage(
+    deployments: List[Dict[str, Any]], show_owner: bool = False
+) -> None:
+    summary = _compute_usage_summary(deployments)
+    console.print(
+        f"Trainer GPUs: {summary['trainer_in_use']} in use, "
+        f"{summary['trainer_scaled_to_zero']} scaled to zero · "
+        f"Sampler GPUs: {summary['sampler_in_use']} in use, "
+        f"{summary['sampler_scaled_to_zero']} scaled to zero"
+    )
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Loops GPU Usage",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Run ID", style="cyan")
+    if show_owner:
+        table.add_column("Owner", style="magenta")
+    table.add_column("Base Model", style="green")
+    table.add_column("Trainer GPU")
+    table.add_column("Trainer Status")
+    table.add_column("Sampler GPU")
+    table.add_column("Sampler Status")
+    table.add_column("Since")
+    for deployment in deployments:
+        sampler = deployment.get("sampler")
+        created_at = deployment.get("created_at") or ""
+        since = common.format_localized_time(created_at) if created_at else "—"
+        sampler_status = ((sampler or {}).get("status") or {}).get("name") or "—"
+        row = [deployment.get("active_run_id") or "—"]
+        if show_owner:
+            row.append((deployment.get("user") or {}).get("email") or "—")
+        row.extend(
+            [
+                deployment.get("base_model", ""),
+                _format_gpu_cell(deployment.get("gpu")),
+                deployment["status"]["name"],
+                _format_gpu_cell(sampler.get("gpu") if sampler else None),
+                sampler_status,
+                since,
+            ]
+        )
+        table.add_row(*row)
+    console.print(table)
+
+
+def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
+    """Print the deployments as jsonl. Mirrors the columns of the default table."""
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
+        output = {
+            "id": deployment.get("id", ""),
+            "active_run_id": deployment.get("active_run_id"),
+            "base_model": deployment.get("base_model", ""),
+            "status": deployment["status"]["name"],
+            "owner": (deployment.get("user") or {}).get("email"),
+            "trainer_gpu": deployment.get("gpu"),
+            "sampler_status": (sampler.get("status") or {}).get("name"),
+            "sampler_gpu": sampler.get("gpu"),
+            "created_at": deployment.get("created_at") or "",
         }
         print(json.dumps(output))
 
