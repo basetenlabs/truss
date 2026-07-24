@@ -16,6 +16,9 @@ from truss.cli.loops_checkpoint_viewer import (
     view_loops_checkpoint_list,
 )
 from truss.cli.train import checkpoint_viewer as checkpoint_mod
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    TRAINER_CHECKPOINT_TARGET,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
@@ -520,8 +523,59 @@ def view_loops_checkpoints(
     )
 
 
+def _parse_comma_separated(value: Optional[str]) -> List[str]:
+    """Split a comma-separated option into a list, dropping empty entries."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _resolve_loops_checkpoint_names(
+    remote_provider: BasetenRemote, run_id: str, names: List[str]
+) -> List[str]:
+    """Map Loops checkpoint names to their database IDs for the given run.
+
+    Only deployable checkpoints (non-trainer targets) are considered, mirroring
+    the interactive picker; trainer checkpoints hold training state and can't be
+    served.
+    """
+    response = remote_provider.api.list_loops_checkpoints(run_id=run_id)
+    deployable_checkpoints = [
+        checkpoint
+        for checkpoint in response.get("checkpoints", [])
+        if checkpoint.get("target") != TRAINER_CHECKPOINT_TARGET
+    ]
+    name_to_id = {
+        checkpoint["checkpoint_id"]: checkpoint["id"]
+        for checkpoint in deployable_checkpoints
+    }
+    resolved_ids = []
+    unknown_names = []
+    for name in names:
+        checkpoint_pk = name_to_id.get(name)
+        if checkpoint_pk is None:
+            unknown_names.append(name)
+        else:
+            resolved_ids.append(checkpoint_pk)
+    if unknown_names:
+        available = ", ".join(name_to_id) or "(none)"
+        raise click.UsageError(
+            f"Checkpoint name(s) {unknown_names} not found among deployable "
+            f"checkpoints for Loops run {run_id}. Available: {available}."
+        )
+    return resolved_ids
+
+
 @loops_checkpoints.command(name="deploy")
 @click.option("--run-id", type=str, required=False, help="Loops run ID.")
+@click.option(
+    "--checkpoints",
+    type=str,
+    required=False,
+    help="Comma-separated Loops checkpoint names (e.g. step-50,step-100). "
+    "Requires --run-id, since names are scoped per run. Bypasses the "
+    "interactive picker. Use `truss loops checkpoints view` to find names.",
+)
 @click.option(
     "--checkpoint-ids",
     type=str,
@@ -544,21 +598,37 @@ def view_loops_checkpoints(
 @common.common_options()
 def deploy_loops_checkpoints(
     run_id: Optional[str],
+    checkpoints: Optional[str],
     checkpoint_ids: Optional[str],
     config: Optional[str],
     dry_run: bool,
     remote: Optional[str],
 ) -> None:
-    """Deploy checkpoints from a Loops run via vLLM."""
-    if not run_id and not checkpoint_ids and not config:
+    """Deploy checkpoints from a Loops run via vLLM.
+
+    Identify checkpoints by name with --checkpoints (requires --run-id) or by
+    database ID with --checkpoint-ids, or run without them to pick
+    interactively.
+    """
+    if checkpoints and checkpoint_ids:
         raise click.UsageError(
-            "Pass --run-id, --checkpoint-ids, or --config (with "
+            "--checkpoints and --checkpoint-ids are mutually exclusive. "
+            "Deploy from one source: checkpoint names or checkpoint IDs."
+        )
+    if not run_id and not checkpoints and not checkpoint_ids and not config:
+        raise click.UsageError(
+            "Pass --run-id, --checkpoints, or --config (with "
             "loops_checkpoint_ids) to deploy Loops checkpoints."
         )
-    if checkpoint_ids and config:
+    if (checkpoints or checkpoint_ids) and config:
         raise click.UsageError(
-            "--checkpoint-ids cannot be combined with --config. "
+            "--checkpoints / --checkpoint-ids cannot be combined with --config. "
             "Pick one source of checkpoint identifiers."
+        )
+    if checkpoints and not run_id:
+        raise click.UsageError(
+            "--checkpoints requires --run-id, since checkpoint names are scoped "
+            "per run."
         )
     if checkpoint_ids and run_id:
         # Server resolves checkpoint PKs directly and ignores run_id when both
@@ -566,11 +636,13 @@ def deploy_loops_checkpoints(
         # thinking we validated their pairing.
         raise click.UsageError("--checkpoint-ids cannot be combined with --run-id.")
 
-    parsed_checkpoint_ids = (
-        [s.strip() for s in checkpoint_ids.split(",") if s.strip()]
-        if checkpoint_ids
-        else []
-    )
+    parsed_checkpoint_names = _parse_comma_separated(checkpoints)
+    if checkpoints and not parsed_checkpoint_names:
+        raise click.UsageError(
+            "--checkpoints parsed to an empty list. Provide one or more "
+            "comma-separated Loops checkpoint names."
+        )
+    parsed_checkpoint_ids = _parse_comma_separated(checkpoint_ids)
     if checkpoint_ids and not parsed_checkpoint_ids:
         raise click.UsageError(
             "--checkpoint-ids parsed to an empty list. Provide one or more "
@@ -583,6 +655,18 @@ def deploy_loops_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+
+    # Names are resolved to database IDs client-side, then feed the same
+    # loops_checkpoint_ids path as --checkpoint-ids. The run_id is only used
+    # for that resolution, so it is not forwarded downstream.
+    if parsed_checkpoint_names:
+        assert (
+            run_id is not None
+        )  # narrowed by the --checkpoints requires --run-id check
+        parsed_checkpoint_ids = _resolve_loops_checkpoint_names(
+            remote_provider, run_id, parsed_checkpoint_names
+        )
+        run_id = None
 
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
