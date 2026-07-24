@@ -240,119 +240,124 @@ def _invoke(args, mock_remote):
         return runner.invoke(truss_cli, args)
 
 
-def test_view_lists_active_deployments(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
+def _run(
+    run_id: str, status_name: str, created_at: str = "2026-07-01T00:00:00Z"
+) -> dict:
+    return {
+        "id": run_id,
+        "base_model": "Qwen/Qwen3-0.6B",
+        "status": {"name": status_name},
+        "created_at": created_at,
+    }
+
+
+def test_view_lists_active_runs(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
         {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": {
-                "id": "sampler_def",
-                "deployment_id": "ov_def123",
-                "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
-                "status": {"name": "ACTIVE"},
-            },
+            "id": "nwxpzqy",
+            "base_model": "Qwen/Qwen3-0.6B",
+            "status": {"name": "ACTIVE"},
+            "created_at": "2026-07-01T22:47:00Z",
         }
     ]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "dep_abc" in result.output
-    assert "Qwen/Qwen3-8B" in result.output
-    assert "RUNNING" in result.output
+    assert "nwxpzqy" in result.output
+    assert "Qwen/Qwen3-0.6B" in result.output
     assert "ACTIVE" in result.output
-    assert "ov_def123" in result.output
-    assert "model-def.api.baseten.co" in result.output
+    # Run-focused view no longer surfaces sampler/deployment columns.
+    assert "Sampler" not in result.output
 
 
-def test_view_with_no_deployments_prints_friendly_message(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = []
+def test_view_renders_localized_created_at(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [_run("nwxpzqy", "ACTIVE")]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No Loops deployments" in result.output
+    # The raw ISO suffix should be replaced by the localized format.
+    assert "2026-07-01T00:00:00Z" not in result.output
+    assert _LOCALIZED_TIMESTAMP_RE.search(result.output) is not None
+
+
+def test_view_with_no_runs_prints_friendly_message(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = []
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "No Loops runs" in result.output
     # Truly empty: don't suggest --all since there's nothing to reveal.
     assert "--all" not in result.output
 
 
-def _deployment(deployment_id: str, status_name: str) -> dict:
-    return {
-        "id": deployment_id,
-        "base_model": "Qwen/Qwen3-8B",
-        "base_url": f"https://trainer-{deployment_id}.api.baseten.co/trainer",
-        "status": {"name": status_name},
-        "sampler": {
-            "id": f"sampler_{deployment_id}",
-            "deployment_id": f"ov_{deployment_id}",
-            "base_url": f"https://model-{deployment_id}.api.baseten.co/deployment/v1/sync",
-            "status": {"name": "ACTIVE"},
-        },
-    }
-
-
-def test_view_filters_stopped_and_failed_by_default(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_running", "RUNNING"),
-        _deployment("dep_stopped", "STOPPED"),
-        _deployment("dep_failed", "FAILED"),
-        _deployment("dep_deploying", "DEPLOYING"),
+def test_view_filters_inactive_by_default(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_active", "ACTIVE"),
+        _run("run_inactive", "INACTIVE"),
     ]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "dep_running" in result.output
-    assert "dep_deploying" in result.output
-    assert "dep_stopped" not in result.output
-    assert "dep_failed" not in result.output
+    assert "run_active" in result.output
+    assert "run_inactive" not in result.output
 
 
-def test_view_all_flag_includes_terminal_states(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_running", "RUNNING"),
-        _deployment("dep_stopped", "STOPPED"),
-        _deployment("dep_failed", "FAILED"),
+def test_view_all_flag_includes_inactive_states(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_active", "ACTIVE"),
+        _run("run_inactive", "INACTIVE"),
     ]
     result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "dep_running" in result.output
-    assert "dep_stopped" in result.output
-    assert "dep_failed" in result.output
+    assert "run_active" in result.output
+    assert "run_inactive" in result.output
 
 
 def test_view_empty_after_filter_hints_at_all_flag(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_stopped", "STOPPED"),
-        _deployment("dep_failed", "FAILED"),
-    ]
+    mock_remote.api.list_loops_runs.return_value = [_run("run_inactive", "INACTIVE")]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No active Loops deployments" in result.output
+    assert "No active Loops runs" in result.output
     assert "--all" in result.output
 
 
-def test_view_all_flag_with_no_deployments(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = []
+def test_view_all_flag_with_no_runs(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = []
     result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No Loops deployments" in result.output
+    assert "No Loops runs" in result.output
     assert "--all" not in result.output
+
+
+def test_view_default_puts_newest_at_bottom(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_new", "ACTIVE", created_at="2026-07-07T00:00:00Z"),
+        _run("run_old", "ACTIVE", created_at="2026-07-01T00:00:00Z"),
+    ]
+    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert result.output.index("run_old") < result.output.index("run_new")
+
+
+def test_view_reverse_puts_newest_first(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_old", "ACTIVE", created_at="2026-07-01T00:00:00Z"),
+        _run("run_new", "ACTIVE", created_at="2026-07-07T00:00:00Z"),
+    ]
+    result = _invoke(
+        ["loops", "view", "--reverse", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.index("run_new") < result.output.index("run_old")
 
 
 def _parse_jsonl(output: str) -> list[dict]:
     return [json.loads(line) for line in output.splitlines() if line.strip()]
 
 
-def test_view_json_output_emits_one_object_per_deployment(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
+def test_view_json_output_emits_one_object_per_run(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
         {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": {
-                "id": "sampler_def",
-                "deployment_id": "ov_def123",
-                "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
-                "status": {"name": "ACTIVE"},
-            },
+            "id": "nwxpzqy",
+            "base_model": "Qwen/Qwen3-0.6B",
+            "status": {"name": "ACTIVE"},
+            "created_at": "2026-07-01T22:47:00Z",
         }
     ]
     result = _invoke(
@@ -362,23 +367,18 @@ def test_view_json_output_emits_one_object_per_deployment(mock_remote):
     records = _parse_jsonl(result.output)
     assert records == [
         {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": "RUNNING",
-            "sampler": {
-                "deployment_id": "ov_def123",
-                "base_url": "https://model-def.api.baseten.co/deployment/v1/sync",
-                "status": "ACTIVE",
-            },
+            "id": "nwxpzqy",
+            "base_model": "Qwen/Qwen3-0.6B",
+            "status": "ACTIVE",
+            "created_at": "2026-07-01T22:47:00Z",
         }
     ]
 
 
-def test_view_json_output_with_no_deployments_emits_nothing(mock_remote):
+def test_view_json_output_with_no_runs_emits_nothing(mock_remote):
     # JSONL stream of zero records: no stdout content, and crucially no
-    # friendly "No Loops deployments." message that would corrupt the stream.
-    mock_remote.api.list_loops_deployments.return_value = []
+    # friendly "No Loops runs." message that would corrupt the stream.
+    mock_remote.api.list_loops_runs.return_value = []
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
@@ -386,28 +386,23 @@ def test_view_json_output_with_no_deployments_emits_nothing(mock_remote):
     assert result.output.strip() == ""
 
 
-def test_view_json_output_filters_terminal_states_by_default(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_running", "RUNNING"),
-        _deployment("dep_stopped", "STOPPED"),
-        _deployment("dep_failed", "FAILED"),
+def test_view_json_output_filters_inactive_states_by_default(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_active", "ACTIVE"),
+        _run("run_inactive", "INACTIVE"),
     ]
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
     records = _parse_jsonl(result.output)
-    assert [r["id"] for r in records] == ["dep_running"]
+    assert [r["id"] for r in records] == ["run_active"]
 
 
 def test_view_json_output_filter_to_empty_emits_nothing(mock_remote):
-    # Raw list non-empty but the default terminal-state filter empties it;
-    # JSON consumers should get an empty stream — no "pass --all" hint that
-    # the CLI table prints.
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_stopped", "STOPPED"),
-        _deployment("dep_failed", "FAILED"),
-    ]
+    # Raw list non-empty but the default filter empties it; JSON consumers
+    # should get an empty stream — no "pass --all" hint that the table prints.
+    mock_remote.api.list_loops_runs.return_value = [_run("run_inactive", "INACTIVE")]
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )
@@ -416,60 +411,41 @@ def test_view_json_output_filter_to_empty_emits_nothing(mock_remote):
     assert "--all" not in result.output
 
 
-def test_view_json_output_all_flag_includes_terminal_states(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        _deployment("dep_running", "RUNNING"),
-        _deployment("dep_stopped", "STOPPED"),
+def test_view_json_output_all_flag_includes_inactive_states(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = [
+        _run("run_active", "ACTIVE"),
+        _run("run_inactive", "INACTIVE"),
     ]
     result = _invoke(
         ["loops", "view", "--all", "--remote", "test_remote", "-o", "json"], mock_remote
     )
     assert result.exit_code == 0, result.output
     records = _parse_jsonl(result.output)
-    assert sorted(r["id"] for r in records) == ["dep_running", "dep_stopped"]
-
-
-def test_view_renders_deployment_with_null_sampler(mock_remote):
-    # Backend surfaces orphaned deployments with ``sampler: null`` rather
-    # than dropping them. The table must render the row with placeholders
-    # instead of KeyError'ing on sampler["..."].
-    mock_remote.api.list_loops_deployments.return_value = [
-        {
-            "id": "dep_orphan",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": None,
-        }
-    ]
-    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
-    assert result.exit_code == 0, result.output
-    assert "dep_orphan" in result.output
+    assert sorted(r["id"] for r in records) == ["run_active", "run_inactive"]
 
 
 def test_view_default_requests_caller_scope(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_runs.return_value = []
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    mock_remote.api.list_loops_deployments.assert_called_once_with(scope=None)
+    mock_remote.api.list_loops_runs.assert_called_once_with(scope=None)
 
 
 def test_view_org_flag_requests_org_scope(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_runs.return_value = []
     result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    mock_remote.api.list_loops_deployments.assert_called_once_with(scope="org")
+    mock_remote.api.list_loops_runs.assert_called_once_with(scope="org")
 
 
 def test_view_org_flag_renders_owner_column(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
+    mock_remote.api.list_loops_runs.return_value = [
         {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
+            "id": "nwxpzqy",
+            "base_model": "Qwen/Qwen3-0.6B",
+            "status": {"name": "ACTIVE"},
+            "created_at": "2026-07-01T22:47:00Z",
             "user": {"email": "owner@baseten.co"},
-            "sampler": None,
         }
     ]
     result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
@@ -479,14 +455,13 @@ def test_view_org_flag_renders_owner_column(mock_remote):
 
 
 def test_view_without_org_flag_hides_owner_column(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
+    mock_remote.api.list_loops_runs.return_value = [
         {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
+            "id": "nwxpzqy",
+            "base_model": "Qwen/Qwen3-0.6B",
+            "status": {"name": "ACTIVE"},
+            "created_at": "2026-07-01T22:47:00Z",
             "user": {"email": "owner@baseten.co"},
-            "sampler": None,
         }
     ]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
@@ -497,45 +472,11 @@ def test_view_without_org_flag_hides_owner_column(mock_remote):
 
 def test_view_org_flag_owner_placeholder_when_user_missing(mock_remote):
     # Older backend with no ``user`` field: Owner degrades to a placeholder.
-    mock_remote.api.list_loops_deployments.return_value = [
-        {
-            "id": "dep_abc",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-abc.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": None,
-        }
-    ]
+    mock_remote.api.list_loops_runs.return_value = [_run("nwxpzqy", "ACTIVE")]
     result = _invoke(["loops", "view", "--org", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
     assert "Owner" in result.output
-    assert "dep_abc" in result.output
-
-
-def test_view_json_output_renders_null_sampler(mock_remote):
-    mock_remote.api.list_loops_deployments.return_value = [
-        {
-            "id": "dep_orphan",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
-            "status": {"name": "RUNNING"},
-            "sampler": None,
-        }
-    ]
-    result = _invoke(
-        ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
-    )
-    assert result.exit_code == 0, result.output
-    records = _parse_jsonl(result.output)
-    assert records == [
-        {
-            "id": "dep_orphan",
-            "base_model": "Qwen/Qwen3-8B",
-            "base_url": "https://trainer-orphan.api.baseten.co/trainer",
-            "status": "RUNNING",
-            "sampler": None,
-        }
-    ]
+    assert "nwxpzqy" in result.output
 
 
 def test_runs_view_no_filters_calls_search_with_none(mock_remote):

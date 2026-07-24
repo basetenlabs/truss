@@ -157,24 +157,29 @@ def deactivate_loops_run(
     console.print(f"Loops run {run_id} deactivated.", style="green")
 
 
-_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+# INACTIVE runs are hidden by default (--all reveals them); ACTIVE is the only
+# other run status.
+_INACTIVE_RUN_STATUS = "INACTIVE"
 
 
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
-    "--all",
-    "show_all",
-    is_flag=True,
-    default=False,
-    help="Include deployments in terminal states (STOPPED, FAILED).",
+    "--all", "show_all", is_flag=True, default=False, help="Include inactive runs."
 )
 @click.option(
     "--org",
     "org_wide",
     is_flag=True,
     default=False,
-    help="List every Loops deployment in your organization (with its owner), not just your own.",
+    help="List every Loops run in your organization (with its owner), not just your own.",
+)
+@click.option(
+    "--reverse",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Reverse the default order (oldest first) so the most recent run is shown first.",
 )
 @click.option(
     "-o",
@@ -186,14 +191,19 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     help="Output format: cli-table (default) or json.",
 )
 @common.common_options()
-def view_loops_deployments(
-    remote: Optional[str], show_all: bool, org_wide: bool, output_format: str
+def view_loops_runs_summary(
+    remote: Optional[str],
+    show_all: bool,
+    org_wide: bool,
+    reverse: bool,
+    output_format: str,
 ) -> None:
-    """List Loops deployments.
+    """List Loops runs.
 
-    Lists your own deployments by default; pass --org to list every deployment
-    in your organization, with an Owner column. Deployments in terminal states
-    (STOPPED, FAILED) are hidden unless you pass --all.
+    Each row is a single run, keyed by its run ID, with a run-level status.
+    Lists your own runs by default; pass --org to list every run in your
+    organization, with an Owner column. Inactive runs are hidden unless you
+    pass --all.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -201,34 +211,28 @@ def view_loops_deployments(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    deployments = remote_provider.api.list_loops_deployments(
-        scope="org" if org_wide else None
-    )
+    runs = remote_provider.api.list_loops_runs(scope="org" if org_wide else None)
+    runs = sorted(runs, key=lambda run: run.get("created_at") or "", reverse=reverse)
     is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
 
-    if not deployments and is_human_output:
-        console.print("No Loops deployments.", style="yellow")
+    if not runs and is_human_output:
+        console.print("No Loops runs.", style="yellow")
         return
 
     if not show_all:
-        deployments = [
-            deployment
-            for deployment in deployments
-            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
-        ]
-        if not deployments and is_human_output:
+        runs = [run for run in runs if _run_status_name(run) != _INACTIVE_RUN_STATUS]
+        if not runs and is_human_output:
             console.print(
-                "No active Loops deployments. Pass --all to include "
-                "STOPPED and FAILED deployments.",
+                "No active Loops runs. Pass --all to include inactive runs.",
                 style="yellow",
             )
             return
 
     if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-        _render_loops_deployments_json(deployments)
+        _render_loops_runs_summary_json(runs)
         return
 
-    _render_loops_deployments(deployments, show_owner=org_wide)
+    _render_loops_runs_summary(runs, show_owner=org_wide)
 
 
 @loops.group(name="runs")
@@ -302,62 +306,59 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(
-    deployments: List[Dict[str, Any]], show_owner: bool = False
+def _run_status_name(run: Dict[str, Any]) -> str:
+    """The run's status name (ACTIVE/INACTIVE), from the server-defined status."""
+    return (run.get("status") or {}).get("name") or ""
+
+
+_RUN_STATUS_STYLES = {"ACTIVE": "green", "INACTIVE": "dim"}
+
+
+def _render_loops_runs_summary(
+    runs: List[Dict[str, Any]], show_owner: bool = False
 ) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
-        title="Loops Deployments",
+        title="Loops Runs",
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
-    table.add_column("Deployment ID", style="cyan")
+    table.add_column("Run ID", style="cyan")
     if show_owner:
         table.add_column("Owner", style="magenta")
     table.add_column("Base Model", style="green")
-    table.add_column("Deployment Status")
-    table.add_column("Deployment Base URL", style="blue")
-    table.add_column("Sampler Deployment ID", style="cyan")
-    table.add_column("Sampler Status")
-    table.add_column("Sampler Base URL", style="blue")
-    for deployment in deployments:
-        sampler = deployment.get("sampler")
-        row = [deployment["id"]]
+    table.add_column("Status")
+    table.add_column("Created At")
+    for run in runs:
+        created_at = run.get("created_at") or ""
+        created_str = common.format_localized_time(created_at) if created_at else ""
+        status = _run_status_name(run)
+        status_style = _RUN_STATUS_STYLES.get(status, "")
+        row = [run.get("id", "")]
         if show_owner:
-            row.append((deployment.get("user") or {}).get("email") or "—")
+            row.append((run.get("user") or {}).get("email") or "—")
         row.extend(
             [
-                deployment["base_model"],
-                deployment["status"]["name"],
-                deployment["base_url"],
-                sampler["deployment_id"] if sampler else "—",
-                sampler["status"]["name"] if sampler else "—",
-                sampler["base_url"] if sampler else "—",
+                run.get("base_model", ""),
+                f"[{status_style}]{status}[/{status_style}]"
+                if status_style
+                else status,
+                created_str,
             ]
         )
         table.add_row(*row)
     console.print(table)
 
 
-def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
-    """
-    Print the deployments as jsonl. Closely follows the columns in the default format.
-    """
-    for deployment in deployments:
-        sampler = deployment.get("sampler")
+def _render_loops_runs_summary_json(runs: List[Dict[str, Any]]) -> None:
+    """Print the runs as jsonl. Closely follows the columns in the default format."""
+    for run in runs:
         output = {
-            "id": deployment["id"],
-            "base_model": deployment["base_model"],
-            "base_url": deployment["base_url"],
-            "status": deployment["status"]["name"],
-            "sampler": {
-                "deployment_id": sampler["deployment_id"],
-                "base_url": sampler["base_url"],
-                "status": sampler["status"]["name"],
-            }
-            if sampler
-            else None,
+            "id": run.get("id", ""),
+            "base_model": run.get("base_model", ""),
+            "status": _run_status_name(run),
+            "created_at": run.get("created_at") or "",
         }
         print(json.dumps(output))
 

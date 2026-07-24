@@ -945,13 +945,20 @@ class BasetenApi:
         return resp_json
 
     def list_loops_runs(
-        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+        self,
+        run_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+        scope: Optional[str] = None,
     ):
+        # scope="org" lists every run in the caller's org (each with its owning
+        # user); omit/"mine" lists just the caller's.
         params: Dict[str, str] = {}
         if run_id is not None:
             params["run_id"] = run_id
         if base_model is not None:
             params["base_model"] = base_model
+        if scope is not None:
+            params["scope"] = scope
         resp_json = self._rest_api_client.get("v1/loops/runs", url_params=params)
         return resp_json["runs"]
 
