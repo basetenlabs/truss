@@ -245,21 +245,6 @@ def test_view_lists_active_runs(mock_remote):
     assert "Sampler" not in result.output
 
 
-def test_view_accepts_bare_string_status(mock_remote):
-    # The endpoint may return status as a bare string instead of {"name": ...}.
-    mock_remote.api.list_loops_runs.return_value = [
-        {
-            "id": "nwxpzqy",
-            "base_model": "Qwen/Qwen3-0.6B",
-            "status": "ACTIVE",
-            "created_at": "2026-07-01T22:47:00Z",
-        }
-    ]
-    result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
-    assert result.exit_code == 0, result.output
-    assert "ACTIVE" in result.output
-
-
 def test_view_renders_localized_created_at(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [_run("nwxpzqy", "ACTIVE")]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)

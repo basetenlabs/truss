@@ -281,16 +281,8 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
 
 
 def _run_status_name(run: Dict[str, Any]) -> str:
-    """Return the run's status string.
-
-    The status is a single run-level state defined server-side (so the CLI and
-    web UI agree). Tolerate both a bare string and a ``{"name": ...}`` object
-    so the CLI keeps working regardless of which shape the endpoint returns.
-    """
-    status = run.get("status")
-    if isinstance(status, dict):
-        return status.get("name") or ""
-    return status or ""
+    """The run's status name (ACTIVE/INACTIVE), from the server-defined status."""
+    return (run.get("status") or {}).get("name") or ""
 
 
 _RUN_STATUS_STYLES = {"ACTIVE": "green", "INACTIVE": "dim"}
