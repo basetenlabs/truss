@@ -244,6 +244,11 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
 # A deployment scaled to zero holds no live GPUs; it is tracked separately in
 # the usage summary.
 _SCALED_TO_ZERO_STATUS = "SCALED_TO_ZERO"
+# Dead sampler states (DeploymentStatusV1) — hold no live GPUs; standalone
+# samplers in these states are hidden from the usage view unless --all.
+_TERMINAL_SAMPLER_STATUSES = frozenset(
+    {"INACTIVE", "FAILED", "DEPLOY_FAILED", "BUILD_FAILED", "BUILD_STOPPED"}
+)
 
 
 @loops.command(name="usage")
@@ -333,7 +338,8 @@ def view_loops_usage(
             standalone = [
                 sampler
                 for sampler in standalone
-                if (sampler.get("status") or {}).get("name") != _INACTIVE_RUN_STATUS
+                if (sampler.get("status") or {}).get("name")
+                not in _TERMINAL_SAMPLER_STATUSES
             ]
         standalone_rows = [
             _standalone_sampler_as_row(sampler) for sampler in standalone

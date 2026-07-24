@@ -1708,10 +1708,11 @@ def test_usage_user_filter_excludes_standalone_samplers(mock_remote):
     mock_remote.api.list_loops_samplers.assert_not_called()
 
 
-def test_usage_hides_inactive_standalone_samplers_by_default(mock_remote):
+@pytest.mark.parametrize("dead_status", ["INACTIVE", "DEPLOY_FAILED", "BUILD_FAILED"])
+def test_usage_hides_dead_standalone_samplers_by_default(mock_remote, dead_status):
     mock_remote.api.list_loops_deployments.return_value = []
     mock_remote.api.list_loops_samplers.return_value = [
-        _standalone_sampler("samp_dead", status_name="INACTIVE")
+        _standalone_sampler("samp_dead", status_name=dead_status)
     ]
     result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
