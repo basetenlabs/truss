@@ -491,6 +491,14 @@ def test_runs_view_no_filters_calls_search_with_none(mock_remote):
     assert "trnr_xyz" in result.output
 
 
+def test_runs_view_prints_deprecation_notice(mock_remote):
+    mock_remote.api.list_loops_runs.return_value = []
+    result = _invoke(["loops", "runs", "view", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "DEPRECATED" in result.output
+    assert "truss loops view" in result.output
+
+
 def test_runs_view_with_run_id_filter(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         {"id": "trnr_xyz", "session_id": "sess_abc", "base_model": "Qwen/Qwen3-8B"}

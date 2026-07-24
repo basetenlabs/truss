@@ -260,11 +260,15 @@ def view_loops_runs(
     reverse: bool,
     remote: Optional[str],
 ) -> None:
-    """List Loops runs visible to the caller.
+    """[DEPRECATED] Use `truss loops view` instead.
 
-    Both filters are optional and can be combined; omit both to list all
-    runs visible to the caller.
+    Lists Loops runs visible to the caller. Both filters are optional and can be
+    combined; omit both to list all runs visible to the caller.
     """
+    console.print(
+        "[DEPRECATED] `truss loops runs view` is deprecated; use `truss loops view` instead.",
+        style="yellow",
+    )
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
