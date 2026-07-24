@@ -867,6 +867,148 @@ def test_checkpoints_deploy_with_checkpoint_ids_parses_and_forwards(mock_remote)
     assert deploy_args.deploy_config_path is None
 
 
+_DEPLOYABLE_CHECKPOINTS = {
+    "checkpoints": [
+        {"id": "pk_50", "checkpoint_id": "step-50", "target": "sampler"},
+        {"id": "pk_100", "checkpoint_id": "step-100", "target": "sampler"},
+        {"id": "pk_trainer", "checkpoint_id": "step-100", "target": "trainer"},
+    ]
+}
+
+
+def test_checkpoints_deploy_with_checkpoints_resolves_names_to_ids(mock_remote):
+    mock_remote.api.list_loops_checkpoints.return_value = _DEPLOYABLE_CHECKPOINTS
+    with (
+        patch(
+            "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+        ) as mock_create,
+        patch(
+            "truss.cli.loops_commands.train_cli.print_deploy_checkpoints_success_message"
+        ),
+    ):
+        mock_create.return_value = Mock(deploy_config=Mock(), truss_config=None)
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoints",
+                "step-50, step-100",
+                "--dry-run",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_checkpoints.assert_called_once_with(run_id="trnr_xyz")
+    deploy_args = mock_create.call_args[0][1]
+    # Names map to their database IDs; run_id is consumed during resolution.
+    assert deploy_args.checkpoint_ids == ["pk_50", "pk_100"]
+    assert deploy_args.run_id is None
+
+
+def test_checkpoints_deploy_checkpoints_requires_run_id(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--checkpoints",
+                "step-50",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    assert "requires --run-id" in result.output
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_rejects_checkpoints_with_checkpoint_ids(mock_remote):
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoints",
+                "step-50",
+                "--checkpoint-ids",
+                "pk_50",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_unknown_checkpoint_name_lists_available(mock_remote):
+    mock_remote.api.list_loops_checkpoints.return_value = _DEPLOYABLE_CHECKPOINTS
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoints",
+                "step-999",
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    assert "step-999" in result.output
+    # The error lists the deployable names, excluding trainer targets.
+    assert "step-50" in result.output
+    assert "step-100" in result.output
+    mock_create.assert_not_called()
+
+
+def test_checkpoints_deploy_rejects_checkpoints_with_config(mock_remote, tmp_path):
+    config_path = tmp_path / "deploy.py"
+    config_path.write_text("")
+    with patch(
+        "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
+    ) as mock_create:
+        result = _invoke(
+            [
+                "loops",
+                "checkpoints",
+                "deploy",
+                "--remote",
+                "test_remote",
+                "--run-id",
+                "trnr_xyz",
+                "--checkpoints",
+                "step-50",
+                "--config",
+                str(config_path),
+            ],
+            mock_remote,
+        )
+    assert result.exit_code != 0
+    mock_create.assert_not_called()
+
+
 def test_checkpoints_deploy_rejects_checkpoint_ids_with_run_id(mock_remote):
     with patch(
         "truss.cli.loops_commands.train_cli.create_model_version_from_inference_template"
