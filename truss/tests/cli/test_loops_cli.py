@@ -26,6 +26,9 @@ def mock_remote():
         },
     }
     remote.fetch_auth_header.return_value = {"Authorization": "Api-Key test_key"}
+    # Default: no standalone samplers. `usage` fetches these on every run;
+    # tests that exercise standalone samplers override this.
+    remote.api.list_loops_samplers.return_value = []
     return remote
 
 
@@ -1382,6 +1385,27 @@ def _usage_deployment(
     }
 
 
+def _standalone_sampler(
+    sampler_id: str,
+    *,
+    base_model: str = "Qwen/Qwen3-8B",
+    status_name: str = "ACTIVE",
+    gpu: dict | None = None,
+    created_at: str = "2026-07-01T00:00:00Z",
+) -> dict:
+    if gpu is None:
+        gpu = {"gpu_type": "H100", "gpu_count": 2, "node_count": 1}
+    instance_type, node_count = _split_gpu(gpu)
+    return {
+        "id": sampler_id,
+        "base_model": base_model,
+        "status": {"name": status_name},
+        "instance_type": instance_type,
+        "node_count": node_count,
+        "created_at": created_at,
+    }
+
+
 def test_usage_renders_gpu_statuses_and_owner(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         _usage_deployment(
@@ -1626,4 +1650,92 @@ def test_usage_empty_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No Loops deployments" in result.output
+    assert "No active Loops deployments or samplers" in _flatten(result.output)
+
+
+def test_usage_includes_standalone_samplers(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler(
+            "samp_solo",
+            base_model="meta-llama/Llama-3-8B",
+            status_name="ACTIVE",
+            gpu={"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    # Sampler-only row: base model + sampler GPU show, and it counts toward the
+    # sampler capacity summary.
+    assert "meta-llama/Llama-3-8B" in flat
+    assert "H100:2" in flat
+    assert "Sampler GPUs: 2 in use" in flat
+    mock_remote.api.list_loops_samplers.assert_called_once_with(scope="org")
+
+
+def test_usage_dedupes_samplers_already_paired_to_a_deployment(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment("dep1", sampler_status="ACTIVE")
+    ]
+    # The deployment's paired sampler ("samp_paired") also appears in the
+    # samplers list; only the genuinely standalone one becomes its own row.
+    mock_remote.api.list_loops_deployments.return_value[0]["sampler"]["id"] = (
+        "samp_paired"
+    )
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_paired"),
+        _standalone_sampler("samp_solo"),
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    ids = {record["id"] for record in _parse_jsonl(result.output)}
+    assert ids == {"dep1", "samp_solo"}
+
+
+def test_usage_user_filter_excludes_standalone_samplers(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment("dep1", owner_email="target@baseten.co")
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "--user", "target@baseten.co"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    # Samplers carry no owner, so --user can't attribute them: don't fetch.
+    mock_remote.api.list_loops_samplers.assert_not_called()
+
+
+def test_usage_hides_inactive_standalone_samplers_by_default(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_dead", status_name="INACTIVE")
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "No active Loops deployments or samplers" in _flatten(result.output)
+
+
+def test_usage_all_flag_includes_inactive_standalone_samplers(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler(
+            "samp_dead", base_model="mistral/Mistral-7B", status_name="INACTIVE"
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "--all"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "mistral/Mistral-7B" in _flatten(result.output)
+
+
+def test_usage_mine_scopes_samplers_to_caller(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [_usage_deployment("dep1")]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "--mine"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_samplers.assert_called_once_with(scope=None)

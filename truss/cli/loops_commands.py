@@ -290,8 +290,9 @@ def view_loops_usage(
     Org-wide by default; pass --mine for just your own (which drops the Owner
     column) or --user to filter to a single owner. Each row shows the trainer
     and sampler GPU allocations and statuses, and a summary line above the table
-    aggregates GPUs in use vs scaled to zero. Terminal deployments (STOPPED,
-    FAILED) are hidden unless you pass --all.
+    aggregates GPUs in use vs scaled to zero. Standalone samplers (no trainer)
+    appear as sampler-only rows. Terminal deployments (STOPPED, FAILED) and
+    inactive standalone samplers are hidden unless you pass --all.
     """
     if mine and user_email:
         raise click.UsageError("Pass at most one of --mine or --user.")
@@ -304,20 +305,39 @@ def view_loops_usage(
     )
     # --mine scopes the request to the caller; default and --user pull org-wide
     # and (for --user) filter to one owner client-side.
-    deployments = remote_provider.api.list_loops_deployments(
-        scope="org" if not mine else None
-    )
+    scope = "org" if not mine else None
+    deployments = remote_provider.api.list_loops_deployments(scope=scope)
     if user_email:
         deployments = [
             deployment
             for deployment in deployments
             if (deployment.get("user") or {}).get("email") == user_email
         ]
-    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
 
-    if not deployments and is_human_output:
-        console.print("No Loops deployments.", style="yellow")
-        return
+    # Standalone samplers (no trainer) aren't in the deployments list, so fold
+    # them in as sampler-only rows. --user can't attribute them (samplers carry
+    # no owner), so they're only included for --mine and the default org view.
+    standalone_rows: List[Dict[str, Any]] = []
+    if not user_email:
+        paired_sampler_ids = {
+            deployment["sampler"]["id"]
+            for deployment in deployments
+            if deployment.get("sampler") and deployment["sampler"].get("id")
+        }
+        standalone = [
+            sampler
+            for sampler in remote_provider.api.list_loops_samplers(scope=scope)
+            if sampler.get("id") not in paired_sampler_ids
+        ]
+        if not show_all:
+            standalone = [
+                sampler
+                for sampler in standalone
+                if (sampler.get("status") or {}).get("name") != _INACTIVE_RUN_STATUS
+            ]
+        standalone_rows = [
+            _standalone_sampler_as_row(sampler) for sampler in standalone
+        ]
 
     if not show_all:
         deployments = [
@@ -325,19 +345,25 @@ def view_loops_usage(
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
-        if not deployments and is_human_output:
-            console.print(
-                "No active Loops deployments. Pass --all to include "
-                "STOPPED and FAILED deployments.",
-                style="yellow",
-            )
-            return
 
-    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-        _render_loops_usage_json(deployments)
+    rows = deployments + standalone_rows
+    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
+
+    if not rows and is_human_output:
+        message = (
+            "No Loops deployments or samplers."
+            if show_all
+            else "No active Loops deployments or samplers. Pass --all to include "
+            "inactive ones."
+        )
+        console.print(message, style="yellow")
         return
 
-    _render_loops_usage(deployments, show_owner=not mine)
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_usage_json(rows)
+        return
+
+    _render_loops_usage(rows, show_owner=not mine)
 
 
 @loops.group(name="runs")
@@ -490,6 +516,30 @@ def _gpu_capacity(instance_type: Optional[Dict[str, Any]], node_count: int = 1) 
     if not instance_type:
         return 0
     return (instance_type.get("gpu_count") or 0) * (node_count or 1)
+
+
+# Trainer-status placeholder for a standalone sampler (one with no trainer half).
+_NO_TRAINER_STATUS = "—"
+
+
+def _standalone_sampler_as_row(sampler: Dict[str, Any]) -> Dict[str, Any]:
+    """Wrap a standalone sampler (no trainer) in the deployment row shape so the
+    table and summary render it uniformly: empty trainer half, sampler populated."""
+    return {
+        "id": sampler.get("id", ""),
+        "active_run_id": None,
+        "base_model": sampler.get("base_model", ""),
+        "created_at": sampler.get("created_at") or "",
+        "status": {"name": _NO_TRAINER_STATUS},
+        "user": None,
+        "instance_type": None,
+        "node_count": 1,
+        "sampler": {
+            "status": sampler.get("status"),
+            "instance_type": sampler.get("instance_type"),
+            "node_count": sampler.get("node_count") or 1,
+        },
+    }
 
 
 def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
