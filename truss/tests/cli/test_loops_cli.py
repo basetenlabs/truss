@@ -240,6 +240,12 @@ def _invoke(args, mock_remote):
         return runner.invoke(truss_cli, args)
 
 
+def _flatten(output: str) -> str:
+    """Collapse rich-click box borders and wrapping so a message substring
+    matches regardless of the render width."""
+    return " ".join(output.replace("│", " ").split())
+
+
 def _run(
     run_id: str, status_name: str, created_at: str = "2026-07-01T00:00:00Z"
 ) -> dict:
@@ -927,7 +933,7 @@ def test_checkpoints_deploy_checkpoints_requires_run_id(mock_remote):
             mock_remote,
         )
     assert result.exit_code != 0
-    assert "requires --run-id" in result.output
+    assert "requires --run-id" in _flatten(result.output)
     mock_create.assert_not_called()
 
 
@@ -952,7 +958,7 @@ def test_checkpoints_deploy_rejects_checkpoints_with_checkpoint_ids(mock_remote)
             mock_remote,
         )
     assert result.exit_code != 0
-    assert "mutually exclusive" in result.output
+    assert "mutually exclusive" in _flatten(result.output)
     mock_create.assert_not_called()
 
 
