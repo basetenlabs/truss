@@ -472,23 +472,24 @@ def _render_loops_runs_summary_json(runs: List[Dict[str, Any]]) -> None:
         print(json.dumps(output))
 
 
-def _format_gpu_cell(gpu: Optional[Dict[str, Any]]) -> str:
-    """Render a gpu object as "<type>:<count>", appending "×<nodes>" when the
-    allocation spans more than one node; "—" when there is no gpu."""
-    if not gpu:
+def _format_gpu_cell(
+    instance_type: Optional[Dict[str, Any]], node_count: int = 1
+) -> str:
+    """Render an instance type as "<gpu_type>:<gpu_count>", appending "×<nodes>"
+    when the allocation spans more than one node; "—" when there is no GPU."""
+    if not instance_type or not instance_type.get("gpu_count"):
         return "—"
-    cell = f"{gpu['gpu_type']}:{gpu['gpu_count']}"
-    node_count = gpu.get("node_count") or 1
-    if node_count > 1:
+    cell = f"{instance_type.get('gpu_type')}:{instance_type['gpu_count']}"
+    if node_count and node_count > 1:
         cell += f" ×{node_count}"
     return cell
 
 
-def _gpu_capacity(gpu: Optional[Dict[str, Any]]) -> int:
+def _gpu_capacity(instance_type: Optional[Dict[str, Any]], node_count: int = 1) -> int:
     """Total GPUs an allocation holds: gpu_count across every node."""
-    if not gpu:
+    if not instance_type:
         return 0
-    return (gpu.get("gpu_count") or 0) * (gpu.get("node_count") or 1)
+    return (instance_type.get("gpu_count") or 0) * (node_count or 1)
 
 
 def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -506,7 +507,9 @@ def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
         trainer_status = deployment["status"]["name"]
         if trainer_status in _TERMINAL_DEPLOYMENT_STATUSES:
             continue
-        trainer_capacity = _gpu_capacity(deployment.get("gpu"))
+        trainer_capacity = _gpu_capacity(
+            deployment.get("instance_type"), deployment.get("node_count") or 1
+        )
         if trainer_status == _SCALED_TO_ZERO_STATUS:
             summary["trainer_scaled_to_zero"] += trainer_capacity
         else:
@@ -515,10 +518,12 @@ def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
         sampler = deployment.get("sampler")
         if not sampler:
             continue
-        sampler_gpu = sampler.get("gpu")
-        if not sampler_gpu:
+        sampler_instance_type = sampler.get("instance_type")
+        if not sampler_instance_type:
             continue
-        sampler_capacity = _gpu_capacity(sampler_gpu)
+        sampler_capacity = _gpu_capacity(
+            sampler_instance_type, sampler.get("node_count") or 1
+        )
         sampler_status = (sampler.get("status") or {}).get("name")
         if sampler_status == _SCALED_TO_ZERO_STATUS:
             summary["sampler_scaled_to_zero"] += sampler_capacity
@@ -564,9 +569,14 @@ def _render_loops_usage(
         row.extend(
             [
                 deployment.get("base_model", ""),
-                _format_gpu_cell(deployment.get("gpu")),
+                _format_gpu_cell(
+                    deployment.get("instance_type"), deployment.get("node_count") or 1
+                ),
                 deployment["status"]["name"],
-                _format_gpu_cell(sampler.get("gpu") if sampler else None),
+                _format_gpu_cell(
+                    sampler.get("instance_type") if sampler else None,
+                    (sampler.get("node_count") or 1) if sampler else 1,
+                ),
                 sampler_status,
                 since,
             ]
@@ -585,9 +595,11 @@ def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
             "base_model": deployment.get("base_model", ""),
             "status": deployment["status"]["name"],
             "owner": (deployment.get("user") or {}).get("email"),
-            "trainer_gpu": deployment.get("gpu"),
+            "trainer_instance_type": deployment.get("instance_type"),
+            "trainer_node_count": deployment.get("node_count"),
             "sampler_status": (sampler.get("status") or {}).get("name"),
-            "sampler_gpu": sampler.get("gpu"),
+            "sampler_instance_type": sampler.get("instance_type"),
+            "sampler_node_count": sampler.get("node_count"),
             "created_at": deployment.get("created_at") or "",
         }
         print(json.dumps(output))

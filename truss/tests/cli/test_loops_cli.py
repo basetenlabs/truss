@@ -1338,6 +1338,14 @@ def test_logs_rejects_multiple_selectors(mock_remote):
 _DEFAULT_GPU = object()
 
 
+def _split_gpu(gpu: dict | None) -> tuple[dict | None, int]:
+    """Split a test gpu dict into the backend's instance_type + node_count shape."""
+    if not gpu:
+        return None, 1
+    instance_type = {"gpu_type": gpu["gpu_type"], "gpu_count": gpu["gpu_count"]}
+    return instance_type, gpu.get("node_count", 1)
+
+
 def _usage_deployment(
     deployment_id: str,
     status_name: str = "RUNNING",
@@ -1352,9 +1360,15 @@ def _usage_deployment(
 ) -> dict:
     if trainer_gpu is _DEFAULT_GPU:
         trainer_gpu = {"gpu_type": "H100", "gpu_count": 8, "node_count": 1}
+    trainer_instance_type, trainer_node_count = _split_gpu(trainer_gpu)
     sampler = None
     if sampler_status is not None:
-        sampler = {"status": {"name": sampler_status}, "gpu": sampler_gpu}
+        sampler_instance_type, sampler_node_count = _split_gpu(sampler_gpu)
+        sampler = {
+            "status": {"name": sampler_status},
+            "instance_type": sampler_instance_type,
+            "node_count": sampler_node_count,
+        }
     return {
         "id": deployment_id,
         "active_run_id": active_run_id,
@@ -1362,7 +1376,8 @@ def _usage_deployment(
         "created_at": created_at,
         "status": {"name": status_name},
         "user": {"email": owner_email},
-        "gpu": trainer_gpu,
+        "instance_type": trainer_instance_type,
+        "node_count": trainer_node_count,
         "sampler": sampler,
     }
 
@@ -1571,9 +1586,11 @@ def test_usage_json_output_shape(mock_remote):
             "base_model": "Qwen/Qwen3-8B",
             "status": "RUNNING",
             "owner": "owner@baseten.co",
-            "trainer_gpu": {"gpu_type": "H100", "gpu_count": 8, "node_count": 2},
+            "trainer_instance_type": {"gpu_type": "H100", "gpu_count": 8},
+            "trainer_node_count": 2,
             "sampler_status": "ACTIVE",
-            "sampler_gpu": {"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+            "sampler_instance_type": {"gpu_type": "H100", "gpu_count": 2},
+            "sampler_node_count": 1,
             "created_at": "2026-07-01T00:00:00Z",
         }
     ]
@@ -1591,9 +1608,9 @@ def test_usage_json_output_renders_null_gpu_and_sampler(mock_remote):
     assert result.exit_code == 0, result.output
     records = _parse_jsonl(result.output)
     assert records[0]["active_run_id"] is None
-    assert records[0]["trainer_gpu"] is None
+    assert records[0]["trainer_instance_type"] is None
     assert records[0]["sampler_status"] is None
-    assert records[0]["sampler_gpu"] is None
+    assert records[0]["sampler_instance_type"] is None
 
 
 def test_usage_json_output_no_summary_line(mock_remote):
