@@ -97,6 +97,10 @@ class Accelerator(str, enum.Enum):
     GB300 = "GB300"
 
 
+class Fabric(str, enum.Enum):
+    INFINIBAND = "infiniband"
+
+
 class AcceleratorSpec(custom_types.ConfigModel):
     model_config = pydantic.ConfigDict(validate_assignment=True)
 
@@ -903,6 +907,15 @@ class Resources(custom_types.ConfigModel):
             default=None, description="Number of nodes for multi-node deployments."
         )
     )
+    rdma: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether this deployment requires an available RDMA fabric.",
+    )
+    fabrics: Optional[list[Fabric]] = pydantic.Field(
+        default=None,
+        description="Ordered NIC fabric preferences.",
+        examples=[["infiniband"]],
+    )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
     _MEMORY_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*([a-zA-Z]+)?$")
@@ -945,6 +958,15 @@ class Resources(custom_types.ConfigModel):
             data.pop("use_gpu", None)
         return data
 
+    @pydantic.field_validator("fabrics")
+    @classmethod
+    def validate_unique_fabrics(
+        cls, fabrics: Optional[list[Fabric]]
+    ) -> Optional[list[Fabric]]:
+        if fabrics is not None and len(fabrics) != len(set(fabrics)):
+            raise ValueError("resources.fabrics must not contain duplicate entries")
+        return fabrics
+
     @pydantic.field_validator("cpu")
     def _validate_cpu(cls, cpu_spec: str) -> str:
         if _is_numeric(cpu_spec):
@@ -975,12 +997,16 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` and `instance_type` if at default."""
+        """Custom omission of optional resource fields when unset."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
         if not self.instance_type:
             result.pop("instance_type", None)
+        if self.rdma is None:
+            result.pop("rdma", None)
+        if not self.fabrics:
+            result.pop("fabrics", None)
         return result
 
 
@@ -1494,6 +1520,15 @@ class TrussConfig(custom_types.ConfigModel):
                 "docker_server.run_as_user_id. SSH requires the default "
                 "'app' user (uid 60000)."
             )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_fabric_requirements(self) -> "TrussConfig":
+        if self.resources.rdma is not None and self.resources.fabrics:
+            raise ValueError(
+                "Please specify only one of `resources.rdma` and `resources.fabrics`"
+            )
+
         return self
 
     @pydantic.model_validator(mode="after")

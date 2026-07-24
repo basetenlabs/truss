@@ -22,6 +22,7 @@ from truss.base.truss_config import (
     DockerAuthType,
     DockerServer,
     EgressRestrictions,
+    Fabric,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -166,6 +167,66 @@ def test_instance_type_not_serialized_when_none():
     resources = Resources()
     result = resources.to_dict(verbose=True)
     assert "instance_type" not in result
+
+
+def test_parse_resource_fabrics():
+    resources = Resources.model_validate({"fabrics": ["infiniband"]})
+
+    assert resources.fabrics == [Fabric.INFINIBAND]
+    assert resources.to_dict()["fabrics"] == ["infiniband"]
+
+
+@pytest.mark.parametrize("fabrics", [["roce"], ["infiniband", "infiniband"]])
+def test_parse_resource_fabrics_rejects_unsupported_or_duplicate_values(fabrics):
+    with pytest.raises(pydantic.ValidationError):
+        Resources.model_validate({"fabrics": fabrics})
+
+
+@pytest.mark.parametrize("rdma", [True, False])
+def test_parse_resource_rdma_preserves_explicit_value(rdma):
+    resources = Resources.model_validate({"rdma": rdma})
+
+    assert resources.rdma is rdma
+    assert resources.to_dict()["rdma"] is rdma
+
+
+def test_resource_rdma_not_serialized_when_unset():
+    assert "rdma" not in Resources().to_dict(verbose=True)
+
+
+@pytest.mark.parametrize(
+    "resources", [{"rdma": True}, {"rdma": False}, {"fabrics": ["infiniband"]}]
+)
+@pytest.mark.parametrize(
+    "bis_llm",
+    [
+        None,
+        {"config": {"is_disaggregated": False}},
+        {"config": {"is_disaggregated": True}},
+    ],
+)
+def test_fabric_requirements_are_not_restricted_by_deployment_type(resources, bis_llm):
+    config_dict = {"resources": resources}
+    if bis_llm is not None:
+        config_dict["bis_llm"] = bis_llm
+    config = TrussConfig.model_validate(config_dict)
+
+    serialized_resources = config.resources.to_dict()
+    for field, expected_value in resources.items():
+        assert serialized_resources[field] == expected_value
+
+
+def test_rdma_and_fabrics_are_mutually_exclusive():
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="Please specify only one of `resources.rdma` and `resources.fabrics`",
+    ):
+        TrussConfig.model_validate(
+            {
+                "resources": {"rdma": True, "fabrics": ["infiniband"]},
+                "bis_llm": {"config": {"is_disaggregated": True}},
+            }
+        )
 
 
 @pytest.mark.parametrize(

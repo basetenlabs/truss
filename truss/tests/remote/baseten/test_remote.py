@@ -6,7 +6,7 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM, Weights, WeightsSource
+from truss.base.truss_config import BISLLM, Fabric, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -691,13 +691,33 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             remote.push(th, "model_name", th.truss_dir)
 
 
+@pytest.mark.parametrize(
+    ("is_disaggregated", "resource_config", "expected_resource_config"),
+    [
+        (False, {}, {}),
+        (False, {"rdma": True}, {"rdma": True}),
+        (False, {"rdma": False}, {"rdma": False}),
+        (False, {"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
+        (True, {}, {"rdma": True}),
+        (True, {"rdma": True}, {"rdma": True}),
+        (True, {"rdma": False}, {"rdma": False}),
+        (True, {"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
+    ],
+)
 def test_push_uses_bis_llm_service_for_bis_llm(
-    remote, mock_upload_truss, mock_truss_handle
+    remote,
+    mock_upload_truss,
+    mock_truss_handle,
+    is_disaggregated,
+    resource_config,
+    expected_resource_config,
 ):
     mock_truss_handle.spec.config.bis_llm = BISLLM(
-        config={"model": "test-llm"}, version="v1"
+        config={"model": "test-llm", "is_disaggregated": is_disaggregated}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    for field, value in resource_config.items():
+        setattr(mock_truss_handle.spec.config.resources, field, value)
     mock_truss_handle.spec.config.weights = Weights(
         [
             WeightsSource(source="hf://model-1", mount_location="/models/base"),
@@ -740,7 +760,10 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     _, kwargs = mock_create_bis_llm_service.call_args
     assert kwargs["model_id"] == "bis-llm-model-id"
     assert kwargs["team_id"] is None
-    assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
+    assert kwargs["body"]["llm_config"] == {
+        "model": "test-llm",
+        "is_disaggregated": is_disaggregated,
+    }
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["weights"] == [
         {"source": "hf://model-1", "mount_location": "/models/base"},
@@ -752,6 +775,11 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         "environment": "production",
     }
     assert isinstance(kwargs["body"]["resources"], dict)
+    for field in ("rdma", "fabrics"):
+        if field in expected_resource_config:
+            assert kwargs["body"]["resources"][field] == expected_resource_config[field]
+        else:
+            assert field not in kwargs["body"]["resources"]
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"

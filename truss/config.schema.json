@@ -529,6 +529,13 @@
       "title": "ExternalDataItem",
       "type": "object"
     },
+    "Fabric": {
+      "enum": [
+        "infiniband"
+      ],
+      "title": "Fabric",
+      "type": "string"
+    },
     "GRPCOptions": {
       "properties": {
         "kind": {
@@ -892,6 +899,40 @@
           "default": null,
           "description": "Number of nodes for multi-node deployments.",
           "title": "Node Count"
+        },
+        "rdma": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether this deployment requires an available RDMA fabric.",
+          "title": "Rdma"
+        },
+        "fabrics": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Fabric"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ordered NIC fabric preferences.",
+          "examples": [
+            [
+              "infiniband"
+            ]
+          ],
+          "title": "Fabrics"
         }
       },
       "title": "Resources",
