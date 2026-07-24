@@ -65,6 +65,38 @@ def error(msg):
     sys.exit(1)
 
 
+def _trust_store_empty():
+    """True if this interpreter has no SSL root certificates to verify against.
+
+    Hashed cert dirs (the Debian/Ubuntu default) load lazily and report 0 CAs
+    in cert_store_stats(), so also check the default verify paths on disk.
+    """
+    try:
+        if ssl.create_default_context().cert_store_stats()["x509_ca"] > 0:
+            return False
+        paths = ssl.get_default_verify_paths()
+        if paths.cafile and os.path.getsize(paths.cafile) > 0:
+            return False
+        if paths.capath and os.listdir(paths.capath):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def tls_cert_error(exc):
+    """Exit with an actionable message for TLS certificate verification failures."""
+    if _trust_store_empty():
+        error(
+            f"TLS certificate verification failed because the Python running this "
+            f"script ({sys.executable}) has no SSL root certificates installed. "
+            "This usually means the Python installation shipped without a root "
+            "certificate bundle. Install certificates for that Python, or re-run "
+            "'truss ssh setup' to select a working interpreter."
+        )
+    error(f"TLS certificate verification failed: {exc}")
+
+
 def find_key_path():
     """Find the SSH private key (ed25519 or RSA fallback)."""
     for name in ("id_ed25519", "id_rsa"):
@@ -281,6 +313,8 @@ def api_request(url, api_key, method="GET", body=None, extra_headers=None):
             msg = e.reason
         error(f"API error ({e.code}): {msg}")
     except urllib.error.URLError as e:
+        if isinstance(e.reason, ssl.SSLCertVerificationError):
+            tls_cert_error(e.reason)
         error(f"Cannot reach API: {e.reason}")
 
 
@@ -429,7 +463,10 @@ def connect_proxy(proxy_address, jwt_token):
         tls_sock = raw_sock
     else:
         ctx = ssl.create_default_context()
-        tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+        try:
+            tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+        except ssl.SSLCertVerificationError as e:
+            tls_cert_error(e)
 
     # Send length-prefixed JWT
     jwt_bytes = jwt_token.encode()

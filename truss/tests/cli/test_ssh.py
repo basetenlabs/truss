@@ -1,4 +1,7 @@
 import configparser
+import ssl
+import sys
+import urllib.error
 from unittest import mock
 
 import pytest
@@ -287,6 +290,13 @@ class TestInstallProxyCommandScript:
 
 
 class TestSetupSSHConfig:
+    @pytest.fixture(autouse=True)
+    def _stub_resolve_python(self):
+        with mock.patch.object(
+            ssh_mod, "_resolve_python", return_value="/usr/bin/python3"
+        ):
+            yield
+
     def test_creates_new_config(self, tmp_path):
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
@@ -427,3 +437,163 @@ class TestIsSetupComplete:
     def test_returns_false_without_key(self, tmp_path):
         (tmp_path / "proxy-command.py").touch()
         assert is_setup_complete(tmp_path) is False
+
+
+class TestProbePython:
+    def test_probes_current_interpreter(self):
+        probed = ssh_mod._probe_python(sys.executable)
+        assert probed is not None
+        version, has_certs = probed
+        assert version == (sys.version_info.major, sys.version_info.minor)
+        assert isinstance(has_certs, bool)
+
+    def test_unusable_interpreter_returns_none(self):
+        assert ssh_mod._probe_python("/nonexistent/python") is None
+
+
+class TestResolvePython:
+    def _mock_which(self, mapping):
+        return mock.patch("shutil.which", side_effect=lambda name: mapping.get(name))
+
+    def _mock_probe(self, probes):
+        return mock.patch.object(
+            ssh_mod, "_probe_python", side_effect=lambda path: probes.get(path)
+        )
+
+    def test_prefers_interpreter_with_certs(self):
+        which = {
+            "python3.13": "/usr/local/bin/python3.13",
+            "python3.12": "/opt/homebrew/bin/python3.12",
+        }
+        probes = {
+            "/usr/local/bin/python3.13": ((3, 13), False),
+            "/opt/homebrew/bin/python3.12": ((3, 12), True),
+        }
+        with self._mock_which(which), self._mock_probe(probes):
+            assert ssh_mod._resolve_python() == "/opt/homebrew/bin/python3.12"
+
+    def test_all_missing_certs_raises_cert_error(self):
+        which = {"python3": "/usr/local/bin/python3"}
+        probes = {"/usr/local/bin/python3": ((3, 12), False)}
+        with self._mock_which(which), self._mock_probe(probes):
+            with pytest.raises(RuntimeError, match="SSL root certificates"):
+                ssh_mod._resolve_python()
+
+    def test_cert_error_names_checked_interpreters(self):
+        which = {"python3": "/usr/local/bin/python3"}
+        probes = {"/usr/local/bin/python3": ((3, 12), False)}
+        with self._mock_which(which), self._mock_probe(probes):
+            with pytest.raises(RuntimeError, match="/usr/local/bin/python3"):
+                ssh_mod._resolve_python()
+
+    def test_no_suitable_version_raises_version_error(self):
+        which = {"python3": "/usr/bin/python3"}
+        probes = {"/usr/bin/python3": ((3, 9), True)}
+        with self._mock_which(which), self._mock_probe(probes):
+            with pytest.raises(RuntimeError, match="Could not find Python 3.10"):
+                ssh_mod._resolve_python()
+
+    def test_old_version_without_certs_raises_version_error(self):
+        which = {"python3": "/usr/bin/python3"}
+        probes = {"/usr/bin/python3": ((3, 9), False)}
+        with self._mock_which(which), self._mock_probe(probes):
+            with pytest.raises(RuntimeError, match="Could not find Python 3.10"):
+                ssh_mod._resolve_python()
+
+    def test_nothing_found_raises_version_error(self):
+        with self._mock_which({}), self._mock_probe({}):
+            with pytest.raises(RuntimeError, match="Could not find Python 3.10"):
+                ssh_mod._resolve_python()
+
+    def test_skips_venv_python(self):
+        which = {
+            "python3.12": "/repo/.venv/bin/python3.12",
+            "python3": "/usr/bin/python3",
+        }
+        probes = {"/usr/bin/python3": ((3, 12), True)}
+        with self._mock_which(which), self._mock_probe(probes) as probe:
+            assert ssh_mod._resolve_python() == "/usr/bin/python3"
+            probe.assert_called_once_with("/usr/bin/python3")
+
+
+class TestPythonMissingRootCerts:
+    def test_true_for_empty_store(self):
+        with mock.patch.object(ssh_mod, "_probe_python", return_value=((3, 12), False)):
+            assert ssh_mod.python_missing_root_certs("/some/python") is True
+
+    def test_false_with_certs(self):
+        with mock.patch.object(ssh_mod, "_probe_python", return_value=((3, 12), True)):
+            assert ssh_mod.python_missing_root_certs("/some/python") is False
+
+    def test_false_for_unusable_interpreter(self):
+        with mock.patch.object(ssh_mod, "_probe_python", return_value=None):
+            assert ssh_mod.python_missing_root_certs("/some/python") is False
+
+
+class TestTrustStoreEmpty:
+    def _mock_ssl(self, ca_count, cafile=None, capath=None):
+        fake_ctx = mock.Mock()
+        fake_ctx.cert_store_stats.return_value = {"x509_ca": ca_count}
+        fake_paths = mock.Mock(cafile=cafile, capath=capath)
+        return (
+            mock.patch.object(
+                proxy_command.ssl, "create_default_context", return_value=fake_ctx
+            ),
+            mock.patch.object(
+                proxy_command.ssl, "get_default_verify_paths", return_value=fake_paths
+            ),
+        )
+
+    def test_populated_store(self):
+        ctx_patch, paths_patch = self._mock_ssl(140)
+        with ctx_patch, paths_patch:
+            assert proxy_command._trust_store_empty() is False
+
+    def test_empty_store_no_paths(self):
+        ctx_patch, paths_patch = self._mock_ssl(0)
+        with ctx_patch, paths_patch:
+            assert proxy_command._trust_store_empty() is True
+
+    def test_empty_store_with_cafile(self, tmp_path):
+        cafile = tmp_path / "cert.pem"
+        cafile.write_text("PEM")
+        ctx_patch, paths_patch = self._mock_ssl(0, cafile=str(cafile))
+        with ctx_patch, paths_patch:
+            assert proxy_command._trust_store_empty() is False
+
+    def test_empty_store_with_lazy_capath(self, tmp_path):
+        (tmp_path / "abcd1234.0").write_text("PEM")
+        ctx_patch, paths_patch = self._mock_ssl(0, capath=str(tmp_path))
+        with ctx_patch, paths_patch:
+            assert proxy_command._trust_store_empty() is False
+
+    def test_empty_store_with_empty_capath(self, tmp_path):
+        ctx_patch, paths_patch = self._mock_ssl(0, capath=str(tmp_path))
+        with ctx_patch, paths_patch:
+            assert proxy_command._trust_store_empty() is True
+
+
+class TestTlsCertError:
+    def test_empty_store_message_names_interpreter(self, capsys):
+        with mock.patch.object(proxy_command, "_trust_store_empty", return_value=True):
+            with pytest.raises(SystemExit):
+                proxy_command.tls_cert_error(Exception("boom"))
+        err = capsys.readouterr().err
+        assert "no SSL root certificates" in err
+        assert sys.executable in err
+
+    def test_populated_store_gets_generic_message(self, capsys):
+        with mock.patch.object(proxy_command, "_trust_store_empty", return_value=False):
+            with pytest.raises(SystemExit):
+                proxy_command.tls_cert_error(Exception("boom"))
+        err = capsys.readouterr().err
+        assert "TLS certificate verification failed: boom" in err
+
+    def test_api_request_routes_cert_failures(self, capsys):
+        exc = urllib.error.URLError(
+            ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED")
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=exc):
+            with pytest.raises(SystemExit):
+                proxy_command.api_request("https://api.baseten.co/v1/x", "key")
+        assert "TLS certificate verification failed" in capsys.readouterr().err

@@ -62,36 +62,67 @@ Match host model-*.ssh.baseten.co exec "\\"{python}\\" \\"{proxy_script}\\" --si
 PROXY_COMMAND_SOURCE = Path(__file__).parent / "proxy_command.py"
 
 
-def _resolve_python() -> str:
-    """Find a stable Python 3.10+ interpreter for the ProxyCommand.
+# cert_store_stats() alone is not enough: OpenSSL hashed cert dirs (the
+# default on Debian/Ubuntu) are loaded lazily and report 0 CAs even though
+# verification works, so fall back to checking the default verify paths.
+_PROBE_SCRIPT = """\
+import os, ssl, sys
 
-    System python3 on macOS can be as old as 3.9 with broken TLS 1.3
-    support. We prefer a system-wide install over a venv Python since
-    venvs can be deleted/recreated, breaking the hardcoded path.
+ctx = ssl.create_default_context()
+has_certs = ctx.cert_store_stats()["x509_ca"] > 0
+if not has_certs:
+    paths = ssl.get_default_verify_paths()
+    if paths.cafile and os.path.getsize(paths.cafile) > 0:
+        has_certs = True
+    elif paths.capath and os.listdir(paths.capath):
+        has_certs = True
+print(sys.version_info.major, sys.version_info.minor, int(has_certs))
+"""
+
+
+def _probe_python(path: str) -> Optional[tuple[tuple[int, int], bool]]:
+    """Probe an interpreter, returning ((major, minor), has_root_certs).
+
+    Returns None if the interpreter can't run the probe at all (missing,
+    broken ssl module, etc.).
+    """
+    try:
+        result = subprocess.run(
+            [path, "-c", _PROBE_SCRIPT], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return None
+        major, minor, has_certs = result.stdout.split()
+        return (int(major), int(minor)), bool(int(has_certs))
+    except Exception:
+        return None
+
+
+def python_missing_root_certs(path: str) -> bool:
+    """True if the interpreter runs but its SSL trust store is empty."""
+    probe = _probe_python(path)
+    return probe is not None and not probe[1]
+
+
+MISSING_CERTS_HELP = (
+    "This usually means the Python installation shipped without a root "
+    "certificate bundle."
+)
+
+
+def _resolve_python() -> str:
+    """Find a stable Python 3.10+ interpreter with SSL root certs for the ProxyCommand.
+
+    System python3 on macOS can be as old as 3.9 with broken TLS 1.3 support,
+    and python.org installs ship with an empty SSL trust store until
+    'Install Certificates.command' is run. We prefer a system-wide install
+    over a venv Python since venvs can be deleted/recreated, breaking the
+    hardcoded path.
     """
     min_version = (3, 10)
 
     def _is_venv(path: str) -> bool:
         return "/.venv/" in path or "/venv/" in path
-
-    def _check_version(path: str) -> bool:
-        try:
-            result = subprocess.run(
-                [
-                    path,
-                    "-c",
-                    "import sys; print(sys.version_info.major, sys.version_info.minor)",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                major, minor = result.stdout.strip().split()
-                return (int(major), int(minor)) >= min_version
-        except Exception:
-            pass
-        return False
 
     # First: look for a system-wide Python 3.10+ (survives venv changes)
     # Include "python" for Windows where "python3" doesn't exist,
@@ -107,11 +138,33 @@ def _resolve_python() -> str:
     if sys.platform == "win32":
         candidates.append("py")
 
+    seen = set()
+    missing_certs = []
     for name in candidates:
         path = shutil.which(name)
-        if path and not _is_venv(path) and _check_version(path):
-            return path
+        if not path or path in seen or _is_venv(path):
+            continue
+        seen.add(path)
+        probed = _probe_python(path)
+        if probed is None:
+            continue
+        version, has_certs = probed
+        if version < min_version:
+            continue
+        if not has_certs:
+            missing_certs.append(path)
+            continue
+        return path
 
+    if missing_certs:
+        raise RuntimeError(
+            "Found Python 3.10+ but no interpreter with SSL root certificates "
+            f"(checked: {', '.join(missing_certs)}). SSH connections to Baseten would "
+            f"fail with CERTIFICATE_VERIFY_FAILED. {MISSING_CERTS_HELP} "
+            "Install certificates for that Python and re-run setup, or point at "
+            "an interpreter with working certificates: "
+            "truss ssh setup --python /path/to/python3"
+        )
     raise RuntimeError(
         "Could not find Python 3.10+ on your system. "
         "Re-run with an explicit path: truss train ssh setup --python /path/to/python3"

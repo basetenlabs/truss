@@ -5,8 +5,10 @@ from InquirerPy import inquirer
 
 from truss.cli.cli import truss_cli
 from truss.cli.ssh import (
+    MISSING_CERTS_HELP,
     ensure_ssh_keypair,
     install_proxy_command_script,
+    python_missing_root_certs,
     setup_ssh_config,
 )
 from truss.cli.utils import common
@@ -68,6 +70,12 @@ def ssh_setup(python_path: Optional[str], default_remote: Optional[str]):
                     "[yellow]Multiple remotes found in ~/.trussrc. "
                     "Pass --default-remote to set one.[/yellow]"
                 )
+
+    if python_path and python_missing_root_certs(python_path):
+        console.print(
+            f"[yellow]WARNING: {python_path} has no SSL root certificates; ssh will "
+            f"fail with CERTIFICATE_VERIFY_FAILED. {MISSING_CERTS_HELP}[/yellow]"
+        )
 
     key_path, reused = ensure_ssh_keypair()
     if reused:
