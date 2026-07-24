@@ -278,37 +278,30 @@ def test_view_with_no_runs_prints_friendly_message(mock_remote):
     assert "--all" not in result.output
 
 
-def test_view_filters_inactive_and_failed_by_default(mock_remote):
+def test_view_filters_inactive_by_default(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         _run("run_active", "ACTIVE"),
         _run("run_inactive", "INACTIVE"),
-        _run("run_failed", "FAILED"),
     ]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
     assert "run_active" in result.output
     assert "run_inactive" not in result.output
-    assert "run_failed" not in result.output
 
 
 def test_view_all_flag_includes_inactive_states(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         _run("run_active", "ACTIVE"),
         _run("run_inactive", "INACTIVE"),
-        _run("run_failed", "FAILED"),
     ]
     result = _invoke(["loops", "view", "--all", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
     assert "run_active" in result.output
     assert "run_inactive" in result.output
-    assert "run_failed" in result.output
 
 
 def test_view_empty_after_filter_hints_at_all_flag(mock_remote):
-    mock_remote.api.list_loops_runs.return_value = [
-        _run("run_inactive", "INACTIVE"),
-        _run("run_failed", "FAILED"),
-    ]
+    mock_remote.api.list_loops_runs.return_value = [_run("run_inactive", "INACTIVE")]
     result = _invoke(["loops", "view", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
     assert "No active Loops runs" in result.output
@@ -388,7 +381,6 @@ def test_view_json_output_filters_inactive_states_by_default(mock_remote):
     mock_remote.api.list_loops_runs.return_value = [
         _run("run_active", "ACTIVE"),
         _run("run_inactive", "INACTIVE"),
-        _run("run_failed", "FAILED"),
     ]
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
@@ -401,10 +393,7 @@ def test_view_json_output_filters_inactive_states_by_default(mock_remote):
 def test_view_json_output_filter_to_empty_emits_nothing(mock_remote):
     # Raw list non-empty but the default filter empties it; JSON consumers
     # should get an empty stream — no "pass --all" hint that the table prints.
-    mock_remote.api.list_loops_runs.return_value = [
-        _run("run_inactive", "INACTIVE"),
-        _run("run_failed", "FAILED"),
-    ]
+    mock_remote.api.list_loops_runs.return_value = [_run("run_inactive", "INACTIVE")]
     result = _invoke(
         ["loops", "view", "--remote", "test_remote", "-o", "json"], mock_remote
     )

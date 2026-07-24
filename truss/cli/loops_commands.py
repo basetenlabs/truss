@@ -131,19 +131,15 @@ def deactivate_loops_deployment(
     console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
 
 
-# Run-level states that mean the run is no longer live. Hidden by default so
-# `truss loops view` shows only runs you can still use; --all reveals them.
-_INACTIVE_RUN_STATUSES = frozenset({"INACTIVE", "FAILED"})
+# INACTIVE runs are hidden by default (--all reveals them); ACTIVE is the only
+# other run status.
+_INACTIVE_RUN_STATUS = "INACTIVE"
 
 
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
-    "--all",
-    "show_all",
-    is_flag=True,
-    default=False,
-    help="Include inactive runs (INACTIVE, FAILED).",
+    "--all", "show_all", is_flag=True, default=False, help="Include inactive runs."
 )
 @click.option(
     "--org",
@@ -180,8 +176,8 @@ def view_loops_runs_summary(
 
     Each row is a single run, keyed by its run ID, with a run-level status.
     Lists your own runs by default; pass --org to list every run in your
-    organization, with an Owner column. Inactive runs (INACTIVE, FAILED) are
-    hidden unless you pass --all.
+    organization, with an Owner column. Inactive runs are hidden unless you
+    pass --all.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -198,12 +194,10 @@ def view_loops_runs_summary(
         return
 
     if not show_all:
-        runs = [
-            run for run in runs if _run_status_name(run) not in _INACTIVE_RUN_STATUSES
-        ]
+        runs = [run for run in runs if _run_status_name(run) != _INACTIVE_RUN_STATUS]
         if not runs and is_human_output:
             console.print(
-                "No active Loops runs. Pass --all to include INACTIVE and FAILED runs.",
+                "No active Loops runs. Pass --all to include inactive runs.",
                 style="yellow",
             )
             return
@@ -299,7 +293,7 @@ def _run_status_name(run: Dict[str, Any]) -> str:
     return status or ""
 
 
-_RUN_STATUS_STYLES = {"ACTIVE": "green", "INACTIVE": "dim", "FAILED": "red"}
+_RUN_STATUS_STYLES = {"ACTIVE": "green", "INACTIVE": "dim"}
 
 
 def _render_loops_runs_summary(
