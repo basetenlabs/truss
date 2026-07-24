@@ -34,8 +34,8 @@ from truss.cli.resolvers.model_team_resolver import (
 from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import (
-    ACTIVE_STATUS,
-    DEPLOYING_STATUSES,
+    READY_STATUSES,
+    TERMINAL_FAILURE_STATUSES,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -1005,7 +1005,7 @@ def push(
                     f"[bold green]Deploying...Current Status: {deployment_status}"
                 )
 
-                if deployment_status == ACTIVE_STATUS:
+                if deployment_status in READY_STATUSES:
                     console.print("Deployment succeeded.", style="bold green")
                     break
 
@@ -1019,7 +1019,7 @@ def push(
                     )
                     break
 
-                if deployment_status not in DEPLOYING_STATUSES:
+                if deployment_status in TERMINAL_FAILURE_STATUSES:
                     exc = RuntimeError(
                         f"Deployment failed with status {deployment_status}."
                     )

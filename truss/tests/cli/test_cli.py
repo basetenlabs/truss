@@ -1444,6 +1444,52 @@ def test_push_json_output_wait_success(
     sys.version_info < (3, 10),
     reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
 )
+def test_push_json_output_wait_scaled_to_zero(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    deployment_response = {"status": "SCALED_TO_ZERO", "id": "deploy_id", "replicas": 0}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "BUILDING"}, deployment_response]
+    )
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["deployment"] == deployment_response
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
+def test_push_json_output_wait_unknown_status_keeps_polling(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    deployment_response = {"status": "ACTIVE", "id": "deploy_id", "replicas": 1}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "SOME_NEW_BACKEND_STATUS"}, deployment_response]
+    )
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["deployment"] == deployment_response
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
 def test_push_json_output_wait_deploy_failed(
     custom_model_truss_dir_with_pre_and_post, remote
 ):
