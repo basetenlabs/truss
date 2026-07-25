@@ -39,7 +39,7 @@ def test_wait_for_active_keeps_polling_on_unknown_status():
     assert deployment.wait_for_active() is True
 
 
-@pytest.mark.parametrize("status", TERMINAL_FAILURE_STATUSES)
+@pytest.mark.parametrize("status", sorted(TERMINAL_FAILURE_STATUSES))
 def test_wait_for_active_raises_on_terminal_failure(status):
     deployment = _make_deployment(["BUILDING", status])
 

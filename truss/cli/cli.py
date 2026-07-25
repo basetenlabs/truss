@@ -1011,7 +1011,7 @@ def push(
 
                 # For --watch (dev deployments), enter watch mode early
                 # once past BUILDING, so user can iterate on code
-                if watch_after_push and deployment_status in ("LOADING_MODEL"):
+                if watch_after_push and deployment_status in ("LOADING_MODEL",):
                     console.print(
                         f"Deployment status: {deployment_status}. "
                         "Entering watch mode early for faster iteration...",
