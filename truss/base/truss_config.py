@@ -1309,6 +1309,13 @@ class TrussConfig(custom_types.ConfigModel):
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
+    visual_gen: Optional[trt_llm_config.VisualGenConfiguration] = pydantic.Field(
+        default=None,
+        description=(
+            "TRT-LLM Visual Gen configuration for diffusion (image/video "
+            "generation) models served with trtllm-serve."
+        ),
+    )
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
@@ -1515,6 +1522,10 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_visual_gen(self) -> "TrussConfig":
+        return trt_llm_config.visual_gen_validation(self)
 
     @pydantic.field_serializer("trt_llm")
     def _serialize_trt_llm(

@@ -99,6 +99,8 @@ BUILD_CHAINS_DIR_NAME = "truss_chains"
 BUILD_TRUSS_DIR_NAME = "truss"
 
 CONFIG_FILE = "config.yaml"
+VISUAL_GEN_CONFIG_FILENAME = "visual_gen_config.yaml"
+VISUAL_GEN_SERVER_PORT = 8000
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
@@ -559,6 +561,42 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
         )
 
+    def prepare_visual_gen_build_dir(self, build_dir: Path):
+        """prepares the build directory for a TRT-LLM Visual Gen (diffusion) model"""
+        config = self._spec.config
+        assert config.visual_gen is not None, (
+            "prepare_visual_gen_build_dir should only be called for visual_gen models"
+        )
+        # Validated in visual_gen_validation; assert for mypy and safety.
+        assert config.weights.sources, "visual_gen requires a `weights:` entry"
+        model_path = config.weights.sources[0].mount_location
+
+        # Engine args are passed verbatim to `trtllm-serve --visual_gen_args`.
+        with (build_dir / VISUAL_GEN_CONFIG_FILENAME).open("w") as f:
+            yaml.safe_dump(config.visual_gen.to_visual_gen_args_dict(), f)
+
+        launch = (
+            # HF token for gated tokenizer/config fetches; weights are pre-mounted.
+            "if [ -f /secrets/hf_access_token ]; then "
+            "export HF_TOKEN=$(cat /secrets/hf_access_token); fi; "
+            f"exec trtllm-serve {model_path} "
+            f"--visual_gen_args /app/{VISUAL_GEN_CONFIG_FILENAME} "
+            f"--host 0.0.0.0 --port {VISUAL_GEN_SERVER_PORT}"
+        )
+        if config.docker_server is not None:
+            logging.warning(
+                "visual_gen is set: overriding user-supplied `docker_server` "
+                "with the generated trtllm-serve start command."
+            )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{launch}'",
+            server_port=VISUAL_GEN_SERVER_PORT,
+            predict_endpoint="/v1/images/generations",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
@@ -732,6 +770,9 @@ class ServingImageBuilder(ImageBuilder):
                     self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
+
+        if config.visual_gen is not None:
+            self.prepare_visual_gen_build_dir(build_dir=build_dir)
 
         if _is_docker_server_build(config) and not _should_use_docker_server_slim(
             config

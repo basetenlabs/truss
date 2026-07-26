@@ -84,6 +84,19 @@ def _fill_trt_llm_versions(
             )
 
 
+def _fill_visual_gen_version(
+    tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
+):
+    assert tr.spec.config.visual_gen is not None
+    if not image_versions.visual_gen_image:
+        raise ValueError(
+            "The backend did not provide a visual_gen image. The baseten "
+            "backend version may not support `visual_gen:` deployments yet."
+        )
+    print(f"Using Visual Gen image: {image_versions.visual_gen_image}")
+    tr.set_base_image(image_versions.visual_gen_image, "/usr/bin/python3")
+
+
 @click.command()
 @click.option("--truss_type", required=True)
 @click.option("--trt_llm_image_versions_json")
@@ -104,6 +117,11 @@ def docker_build_setup(
             trt_llm_image_versions_json
         )
         _fill_trt_llm_versions(tr, image_versions)
+    elif tr.spec.config.visual_gen is not None and trt_llm_image_versions_json:
+        image_versions = trt_llm_config.ImageVersions.model_validate_json(
+            trt_llm_image_versions_json
+        )
+        _fill_visual_gen_version(tr, image_versions)
 
     logging.info("Truss is loaded")
 

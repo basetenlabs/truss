@@ -5,7 +5,17 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -573,6 +583,8 @@ class VersionsOverrides(PydanticTrTBaseModel):
     bei_version: Optional[str] = None
     bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
+    # Pins the TRT-LLM release used for visual_gen deployments, e.g. `1.3.0rc20`.
+    visual_gen_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
@@ -581,6 +593,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
             "briton_version",
             "bei_version",
             "bei_bert_version",
+            "visual_gen_version",
         ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
@@ -600,6 +613,142 @@ class ImageVersions(PydanticTrTBaseModel):
     )
     briton_image: str
     v2_llm_image: str
+    # Default empty: older backends do not send this field.
+    visual_gen_image: str = ""
+
+
+class _VisualGenBaseModel(PydanticTrTBaseModel):
+    """Lenient base for visual_gen sub-configs.
+
+    Unlike other truss config models, unknown keys are accepted even during
+    push-time `validate_forbid_extra` checks: the visual_gen engine schema
+    evolves with TRT-LLM releases (a config may pin a newer release via
+    `version_overrides.visual_gen_version`), and `trtllm-serve` itself
+    validates the full config strictly at startup.
+    """
+
+    @model_validator(mode="before")
+    def _maybe_forbid_extra(cls, data, info):
+        # Intentionally overrides ConfigModel._maybe_forbid_extra with a no-op.
+        return data
+
+
+class VisualGenQuantConfig(_VisualGenBaseModel):
+    # quant_algo values follow modelopt naming (FP8, NVFP4, FP8_BLOCK_SCALES, ...).
+    quant_algo: Optional[str] = None
+    # dynamic=True quantizes weights on the fly at load time and auto-selects
+    # the fastest activation-quantization kernels.
+    dynamic: Optional[bool] = None
+
+
+class VisualGenAttentionConfig(_VisualGenBaseModel):
+    backend: Literal["VANILLA", "TRTLLM", "FA4", "CUTEDSL"] = "VANILLA"
+    quant_attention_config: Optional[Dict[str, Any]] = None
+    sparse_attention_config: Optional[Dict[str, Any]] = None
+
+
+class VisualGenParallelConfig(_VisualGenBaseModel):
+    cfg_size: Annotated[int, Field(ge=1, le=2)] = 1
+    ulysses_size: Annotated[int, Field(ge=1)] = 1
+    ring_size: Annotated[int, Field(ge=1)] = 1
+    tp_size: Annotated[int, Field(ge=1)] = 1
+    attn2d_size: Optional[Tuple[int, int]] = None
+    async_ulysses: bool = False
+    parallel_vae_size: Annotated[int, Field(ge=1)] = 1
+    parallel_vae_split_dim: Literal["width", "height"] = "width"
+
+    @property
+    def n_workers(self) -> int:
+        # Mirrors ParallelConfig.n_workers in TensorRT-LLM: cfg x seq-parallel x tp,
+        # where seq-parallel is (attn2d or ring) x ulysses. parallel_vae reuses ranks.
+        attn2d_total = (
+            self.attn2d_size[0] * self.attn2d_size[1] if self.attn2d_size else 1
+        )
+        cp_size = attn2d_total if attn2d_total > 1 else self.ring_size
+        return self.cfg_size * cp_size * self.ulysses_size * self.tp_size
+
+
+class VisualGenCacheConfig(_VisualGenBaseModel):
+    cache_backend: Literal["teacache", "cache_dit"]
+
+
+class VisualGenTorchCompileConfig(_VisualGenBaseModel):
+    enable: bool = True
+    enable_fullgraph: bool = False
+    enable_autotune: bool = True
+
+
+class VisualGenCudaGraphConfig(_VisualGenBaseModel):
+    enable: bool = False
+
+
+class VisualGenCompilationConfig(_VisualGenBaseModel):
+    # Warmup shapes = Cartesian product of resolutions x num_frames.
+    resolutions: Optional[List[Tuple[int, int]]] = None
+    num_frames: Optional[List[int]] = None
+    skip_warmup: bool = False
+
+
+class VisualGenConfiguration(_VisualGenBaseModel):
+    """Top-level `visual_gen:` block for TRT-LLM Visual Gen (diffusion) deployments.
+
+    Fields mirror `VisualGenArgs` from TensorRT-LLM and are passed verbatim to
+    `trtllm-serve --visual_gen_args`. The model path comes from
+    `weights[0].mount_location` of the truss config; the serving image is
+    resolved by the backend (default or `version_overrides.visual_gen_version`).
+    """
+
+    quant_config: Optional[VisualGenQuantConfig] = None
+    attention_config: Optional[VisualGenAttentionConfig] = None
+    parallel_config: Optional[VisualGenParallelConfig] = None
+    cache_config: Optional[VisualGenCacheConfig] = None
+    torch_compile_config: Optional[VisualGenTorchCompileConfig] = None
+    cuda_graph_config: Optional[VisualGenCudaGraphConfig] = None
+    compilation_config: Optional[VisualGenCompilationConfig] = None
+    pipeline_config: Optional[Dict[str, Any]] = None
+
+    # If versions are not set, the baseten backend inserts the current default.
+    version_overrides: VersionsOverrides = Field(default_factory=VersionsOverrides)
+
+    def to_visual_gen_args_dict(self) -> Dict[str, Any]:
+        """Engine-args payload for `trtllm-serve --visual_gen_args`.
+
+        Dumps exactly the keys the user set (including unknown passthrough keys),
+        excluding truss-only fields.
+        """
+        return self.model_dump(
+            mode="json",
+            exclude={"version_overrides"},
+            exclude_unset=True,
+            exclude_none=True,
+        )
+
+
+def visual_gen_validation(config: "TrussConfig") -> "TrussConfig":
+    """Called from TrussConfig model validation (analogous to trt_llm_validation)."""
+    if config.visual_gen is None:
+        return config
+    if config.trt_llm is not None:
+        raise ValueError(
+            "`visual_gen` and `trt_llm` are mutually exclusive top-level config "
+            "blocks. Use `visual_gen` for diffusion (image/video generation) "
+            "models and `trt_llm` for LLM/embedding models."
+        )
+    if not config.weights.sources:
+        raise ValueError(
+            "`visual_gen` requires a `weights:` entry; the first source's "
+            "`mount_location` is used as the model path for trtllm-serve."
+        )
+    parallel = config.visual_gen.parallel_config
+    if parallel is not None:
+        gpu_count = config.resources.accelerator.count
+        if parallel.n_workers > gpu_count:
+            raise ValueError(
+                f"visual_gen.parallel_config requires {parallel.n_workers} GPUs "
+                f"(cfg_size x seq-parallel x tp_size), but resources.accelerator "
+                f"provides only {gpu_count}."
+            )
+    return config
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):

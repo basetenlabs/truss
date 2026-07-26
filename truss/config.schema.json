@@ -1043,7 +1043,8 @@
             "briton_version": null,
             "bei_version": null,
             "bei_bert_version": null,
-            "v2_llm_version": null
+            "v2_llm_version": null,
+            "visual_gen_version": null
           }
         }
       },
@@ -1075,7 +1076,8 @@
             "briton_version": null,
             "bei_version": null,
             "bei_bert_version": null,
-            "v2_llm_version": null
+            "v2_llm_version": null,
+            "visual_gen_version": null
           }
         }
       },
@@ -1732,9 +1734,375 @@
           ],
           "default": null,
           "title": "V2 Llm Version"
+        },
+        "visual_gen_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Gen Version"
         }
       },
       "title": "VersionsOverrides",
+      "type": "object"
+    },
+    "VisualGenAttentionConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "backend": {
+          "default": "VANILLA",
+          "enum": [
+            "VANILLA",
+            "TRTLLM",
+            "FA4",
+            "CUTEDSL"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "quant_attention_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quant Attention Config"
+        },
+        "sparse_attention_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sparse Attention Config"
+        }
+      },
+      "title": "VisualGenAttentionConfig",
+      "type": "object"
+    },
+    "VisualGenCacheConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "cache_backend": {
+          "enum": [
+            "teacache",
+            "cache_dit"
+          ],
+          "title": "Cache Backend",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cache_backend"
+      ],
+      "title": "VisualGenCacheConfig",
+      "type": "object"
+    },
+    "VisualGenCompilationConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "resolutions": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolutions"
+        },
+        "num_frames": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Frames"
+        },
+        "skip_warmup": {
+          "default": false,
+          "title": "Skip Warmup",
+          "type": "boolean"
+        }
+      },
+      "title": "VisualGenCompilationConfig",
+      "type": "object"
+    },
+    "VisualGenConfiguration": {
+      "additionalProperties": true,
+      "description": "Top-level `visual_gen:` block for TRT-LLM Visual Gen (diffusion) deployments.\n\nFields mirror `VisualGenArgs` from TensorRT-LLM and are passed verbatim to\n`trtllm-serve --visual_gen_args`. The model path comes from\n`weights[0].mount_location` of the truss config; the serving image is\nresolved by the backend (default or `version_overrides.visual_gen_version`).",
+      "properties": {
+        "quant_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenQuantConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attention_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenAttentionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parallel_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenParallelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cache_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenCacheConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "torch_compile_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenTorchCompileConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cuda_graph_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenCudaGraphConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "compilation_config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualGenCompilationConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pipeline_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pipeline Config"
+        },
+        "version_overrides": {
+          "$ref": "#/$defs/VersionsOverrides"
+        }
+      },
+      "title": "VisualGenConfiguration",
+      "type": "object"
+    },
+    "VisualGenCudaGraphConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "enable": {
+          "default": false,
+          "title": "Enable",
+          "type": "boolean"
+        }
+      },
+      "title": "VisualGenCudaGraphConfig",
+      "type": "object"
+    },
+    "VisualGenParallelConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "cfg_size": {
+          "default": 1,
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Cfg Size",
+          "type": "integer"
+        },
+        "ulysses_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Ulysses Size",
+          "type": "integer"
+        },
+        "ring_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Ring Size",
+          "type": "integer"
+        },
+        "tp_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Tp Size",
+          "type": "integer"
+        },
+        "attn2d_size": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attn2D Size"
+        },
+        "async_ulysses": {
+          "default": false,
+          "title": "Async Ulysses",
+          "type": "boolean"
+        },
+        "parallel_vae_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Parallel Vae Size",
+          "type": "integer"
+        },
+        "parallel_vae_split_dim": {
+          "default": "width",
+          "enum": [
+            "width",
+            "height"
+          ],
+          "title": "Parallel Vae Split Dim",
+          "type": "string"
+        }
+      },
+      "title": "VisualGenParallelConfig",
+      "type": "object"
+    },
+    "VisualGenQuantConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "quant_algo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quant Algo"
+        },
+        "dynamic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dynamic"
+        }
+      },
+      "title": "VisualGenQuantConfig",
+      "type": "object"
+    },
+    "VisualGenTorchCompileConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "enable": {
+          "default": true,
+          "title": "Enable",
+          "type": "boolean"
+        },
+        "enable_fullgraph": {
+          "default": false,
+          "title": "Enable Fullgraph",
+          "type": "boolean"
+        },
+        "enable_autotune": {
+          "default": true,
+          "title": "Enable Autotune",
+          "type": "boolean"
+        }
+      },
+      "title": "VisualGenTorchCompileConfig",
       "type": "object"
     },
     "WebsocketOptions": {
@@ -2162,6 +2530,18 @@
       ],
       "default": null,
       "description": "TensorRT-LLM configuration for optimized LLM inference."
+    },
+    "visual_gen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VisualGenConfiguration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "TRT-LLM Visual Gen configuration for diffusion (image/video generation) models served with trtllm-serve."
     },
     "training_checkpoints": {
       "anyOf": [
