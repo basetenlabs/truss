@@ -296,8 +296,9 @@ def view_loops_usage(
     column) or --user to filter to a single owner. Each row shows the trainer
     and sampler GPU allocations and statuses, and a summary line above the table
     aggregates GPUs in use vs scaled to zero. Standalone samplers (no trainer)
-    appear as sampler-only rows. Terminal deployments (STOPPED, FAILED) and
-    inactive standalone samplers are hidden unless you pass --all.
+    appear as sampler-only rows. By default the table lists only allocations
+    holding live GPUs; idle (scaled-to-zero) and terminal ones are counted in the
+    summary but hidden unless you pass --all.
     """
     if mine and user_email:
         raise click.UsageError("Pass at most one of --mine or --user.")
@@ -339,37 +340,33 @@ def view_loops_usage(
             if (sampler.get("user") or {}).get("email") == user_email
         ]
 
-    if not show_all:
-        deployments = [
-            deployment
-            for deployment in deployments
-            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
-        ]
-        standalone = [
-            sampler
-            for sampler in standalone
-            if (sampler.get("status") or {}).get("name")
-            not in _TERMINAL_SAMPLER_STATUSES
-        ]
+    all_rows = deployments + [
+        _standalone_sampler_as_row(sampler) for sampler in standalone
+    ]
+    # The summary reports true org totals regardless of what the table shows.
+    summary = _compute_usage_summary(all_rows)
 
-    rows = deployments + [_standalone_sampler_as_row(sampler) for sampler in standalone]
-    is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
-
-    if not rows and is_human_output:
-        message = (
-            "No Loops deployments or samplers."
-            if show_all
-            else "No active Loops deployments or samplers. Pass --all to include "
-            "inactive ones."
-        )
-        console.print(message, style="yellow")
-        return
+    # Default view lists only allocations holding live GPUs; idle (scaled-to-zero)
+    # and terminal/dead ones are summarized above but hidden unless --all. Keeps
+    # the table short on orgs with lots of idle allocations.
+    if show_all:
+        display_rows = all_rows
+        hidden_count = 0
+    else:
+        display_rows = [row for row in all_rows if _row_holds_live_gpus(row)]
+        hidden_count = len(all_rows) - len(display_rows)
 
     if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-        _render_loops_usage_json(rows)
+        _render_loops_usage_json(display_rows)
         return
 
-    _render_loops_usage(rows, show_owner=not mine)
+    if not all_rows:
+        console.print("No Loops deployments or samplers.", style="yellow")
+        return
+
+    _render_loops_usage(
+        display_rows, summary, show_owner=not mine, hidden_count=hidden_count
+    )
 
 
 @loops.group(name="runs")
@@ -594,16 +591,45 @@ def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
     return summary
 
 
+def _row_holds_live_gpus(row: Dict[str, Any]) -> bool:
+    """Whether a row is actively holding GPUs (either half serving). Idle
+    (scaled-to-zero) and terminal/dead allocations return False so the default
+    view can hide them while the summary still counts them."""
+    trainer_status = row["status"]["name"]
+    trainer_live = (
+        trainer_status not in _TERMINAL_DEPLOYMENT_STATUSES
+        and trainer_status not in (_SCALED_TO_ZERO_STATUS, _NO_TRAINER_STATUS)
+    )
+    sampler = row.get("sampler")
+    sampler_status = ((sampler or {}).get("status") or {}).get("name")
+    sampler_live = (
+        sampler is not None
+        and sampler_status not in _TERMINAL_SAMPLER_STATUSES
+        and (sampler_status != _SCALED_TO_ZERO_STATUS)
+    )
+    return trainer_live or sampler_live
+
+
 def _render_loops_usage(
-    deployments: List[Dict[str, Any]], show_owner: bool = False
+    deployments: List[Dict[str, Any]],
+    summary: Dict[str, int],
+    show_owner: bool = False,
+    hidden_count: int = 0,
 ) -> None:
-    summary = _compute_usage_summary(deployments)
     console.print(
         f"Trainer GPUs: {summary['trainer_in_use']} in use, "
         f"{summary['trainer_scaled_to_zero']} scaled to zero · "
         f"Sampler GPUs: {summary['sampler_in_use']} in use, "
         f"{summary['sampler_scaled_to_zero']} scaled to zero"
     )
+    if hidden_count:
+        plural = "s" if hidden_count != 1 else ""
+        console.print(
+            f"({hidden_count} idle or inactive allocation{plural} hidden — pass --all to show)",
+            style="yellow",
+        )
+    if not deployments:
+        return
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",

@@ -1495,9 +1495,17 @@ def test_usage_hides_terminal_deployments_by_default(mock_remote):
             "dep_run", active_run_id="run_running", status_name="RUNNING"
         ),
         _usage_deployment(
-            "dep_stop", active_run_id="run_stopped", status_name="STOPPED"
+            "dep_stop",
+            active_run_id="run_stopped",
+            status_name="STOPPED",
+            sampler_status=None,
         ),
-        _usage_deployment("dep_fail", active_run_id="run_failed", status_name="FAILED"),
+        _usage_deployment(
+            "dep_fail",
+            active_run_id="run_failed",
+            status_name="FAILED",
+            sampler_status=None,
+        ),
     ]
     result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
@@ -1655,16 +1663,19 @@ def test_usage_json_output_shape(mock_remote):
 
 def test_usage_run_id_falls_back_to_latest_when_no_active_run(mock_remote):
     # An idle (scaled-to-zero) deployment has no active run but should still
-    # show its latest run as a usable handle.
+    # show its latest run as a usable handle (--all to reveal the idle row).
     mock_remote.api.list_loops_deployments.return_value = [
         _usage_deployment(
             "dep_idle",
             status_name="SCALED_TO_ZERO",
             active_run_id=None,
             latest_run_id="run_latest",
+            sampler_status=None,
         )
     ]
-    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    result = _invoke(
+        ["loops", "usage", "--all", "--remote", "test_remote"], mock_remote
+    )
     assert result.exit_code == 0, result.output
     assert "run_latest" in _flatten(result.output)
 
@@ -1699,7 +1710,28 @@ def test_usage_empty_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = []
     result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No active Loops deployments or samplers" in _flatten(result.output)
+    assert "No Loops deployments or samplers" in _flatten(result.output)
+
+
+def test_usage_all_idle_shows_summary_and_hidden_note(mock_remote):
+    # Every allocation is idle: the table is empty but the summary still reports
+    # the scaled-to-zero total and a note says how many rows were hidden.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_idle",
+            active_run_id=None,
+            latest_run_id="run_idle",
+            status_name="SCALED_TO_ZERO",
+            sampler_status="SCALED_TO_ZERO",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "Sampler GPUs: 0 in use, 1 scaled to zero" in flat
+    assert "1 idle or inactive allocation hidden" in flat
+    assert "run_idle" not in flat  # hidden from the table by default
 
 
 def test_usage_includes_standalone_samplers(mock_remote):
@@ -1780,7 +1812,10 @@ def test_usage_hides_dead_standalone_samplers_by_default(mock_remote, dead_statu
     ]
     result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
     assert result.exit_code == 0, result.output
-    assert "No active Loops deployments or samplers" in _flatten(result.output)
+    flat = _flatten(result.output)
+    # Hidden from the table (dead), but reported as a hidden allocation.
+    assert "H100:2" not in flat  # its GPU cell would show if it were rendered
+    assert "1 idle or inactive allocation hidden" in flat
 
 
 def test_usage_all_flag_includes_inactive_standalone_samplers(mock_remote):
