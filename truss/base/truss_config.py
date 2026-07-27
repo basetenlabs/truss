@@ -627,6 +627,15 @@ class OIDC(custom_types.ConfigModel):
     )
 
 
+class RequestBackpressure(custom_types.ConfigModel):
+    """Configuration for how the deployment handles requests when at capacity."""
+
+    policy: Optional[Literal["queue_on_full", "reject_on_full"]] = pydantic.Field(
+        default=None,
+        description="queue_on_full (default) queues requests while reject_on_full returns HTTP 429 if deployment is at capacity.",
+    )
+
+
 class RemoteSSH(custom_types.ConfigModel):
     """Configuration for SSH access to running model instances."""
 
@@ -756,14 +765,9 @@ class Runtime(custom_types.ConfigModel):
         description="By default, truss servers are built from the same release as the "
         "CLI used to push. This field allows specifying a pinned/specific version instead.",
     )
-    request_backpressure_policy: Optional[
-        Literal["queue_on_full", "reject_on_full"]
-    ] = pydantic.Field(
-        default=None,
-        description=(
-            "Controls how the deployment handles requests when at capacity. "
-            "queue_on_full (default) queues requests while reject_on_full returns HTTP 429 immediately."
-        ),
+    request_backpressure: RequestBackpressure = pydantic.Field(
+        default_factory=RequestBackpressure,
+        description="Configuration for how the deployment handles requests when at capacity.",
     )
 
     config: ClassVar = pydantic.ConfigDict(validate_assignment=True)
