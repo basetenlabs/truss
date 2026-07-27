@@ -756,6 +756,15 @@ class Runtime(custom_types.ConfigModel):
         description="By default, truss servers are built from the same release as the "
         "CLI used to push. This field allows specifying a pinned/specific version instead.",
     )
+    request_backpressure_policy: Optional[
+        Literal["queue_on_full", "reject_on_full"]
+    ] = pydantic.Field(
+        default=None,
+        description=(
+            "Controls how the deployment handles requests when at capacity. "
+            "queue_on_full (default) queues requests while reject_on_full returns HTTP 429 immediately."
+        ),
+    )
 
     config: ClassVar = pydantic.ConfigDict(validate_assignment=True)
 
