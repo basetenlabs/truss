@@ -551,7 +551,8 @@ def _standalone_sampler_as_row(sampler: Dict[str, Any]) -> Dict[str, Any]:
 def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
     """Aggregate GPU capacity into trainer/sampler and in-use/scaled-to-zero.
 
-    Terminal deployments hold no live capacity and are skipped entirely.
+    Terminal deployments and dead (deactivated/failed) samplers hold no live
+    capacity and are skipped entirely.
     """
     summary = {
         "trainer_in_use": 0,
@@ -577,10 +578,14 @@ def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
         sampler_instance_type = sampler.get("instance_type")
         if not sampler_instance_type:
             continue
+        sampler_status = (sampler.get("status") or {}).get("name")
+        # A dead sampler (deactivated/failed) holds no live GPUs, even though it
+        # still carries the instance type it last ran on — don't count it.
+        if sampler_status in _TERMINAL_SAMPLER_STATUSES:
+            continue
         sampler_capacity = _gpu_capacity(
             sampler_instance_type, sampler.get("node_count") or 1
         )
-        sampler_status = (sampler.get("status") or {}).get("name")
         if sampler_status == _SCALED_TO_ZERO_STATUS:
             summary["sampler_scaled_to_zero"] += sampler_capacity
         else:

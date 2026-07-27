@@ -1588,6 +1588,32 @@ def test_usage_summary_excludes_terminal_deployments(mock_remote):
     assert "Trainer GPUs: 8 in use, 0 scaled to zero" in flat
 
 
+def test_usage_summary_excludes_dead_samplers(mock_remote):
+    # A deactivated/failed sampler still carries its last instance type but holds
+    # no live GPUs, so it must not count toward sampler capacity.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_1",
+            active_run_id=None,
+            status_name="SCALED_TO_ZERO",
+            trainer_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+            sampler_status="INACTIVE",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        ),
+        _usage_deployment(
+            "dep_2",
+            active_run_id=None,
+            status_name="SCALED_TO_ZERO",
+            trainer_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+            sampler_status="DEPLOY_FAILED",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        ),
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "Sampler GPUs: 0 in use, 0 scaled to zero" in _flatten(result.output)
+
+
 def test_usage_json_output_shape(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         _usage_deployment(
