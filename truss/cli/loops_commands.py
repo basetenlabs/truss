@@ -637,7 +637,7 @@ def _render_loops_usage(
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
-    table.add_column("Run ID", style="cyan")
+    table.add_column("Latest Run", style="cyan")
     if show_owner:
         table.add_column("Owner", style="magenta")
     table.add_column("Base Model", style="green")
