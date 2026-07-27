@@ -113,6 +113,10 @@ USER {{ run_as_user_id }}
 {# before ENTRYPOINT) so that runtime-only config changes don't invalidate earlier, costly layers. #}
 {%- macro copy_config_yaml() -%}
 COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./config.yaml ${APP_HOME}/config.yaml
+{%- if config.visual_gen %}
+{# Engine args consumed by `trtllm-serve --visual_gen_args`; see prepare_visual_gen_build_dir. #}
+COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./visual_gen_config.yaml ${APP_HOME}/visual_gen_config.yaml
+{%- endif %} {#- endif config.visual_gen #}
 {%- endmacro -%}
 
 {%- if build_commands %}
