@@ -1356,6 +1356,7 @@ def _usage_deployment(
     status_name: str = "RUNNING",
     *,
     active_run_id: str | None = "run_abc",
+    latest_run_id: str | None = None,
     base_model: str = "Qwen/Qwen3-8B",
     owner_email: str = "owner@baseten.co",
     trainer_gpu=_DEFAULT_GPU,
@@ -1377,6 +1378,7 @@ def _usage_deployment(
     return {
         "id": deployment_id,
         "active_run_id": active_run_id,
+        "latest_run_id": latest_run_id,
         "base_model": base_model,
         "created_at": created_at,
         "status": {"name": status_name},
@@ -1392,6 +1394,7 @@ def _standalone_sampler(
     *,
     base_model: str = "Qwen/Qwen3-8B",
     status_name: str = "ACTIVE",
+    owner_email: str = "owner@baseten.co",
     gpu: dict | None = None,
     created_at: str = "2026-07-01T00:00:00Z",
 ) -> dict:
@@ -1402,6 +1405,7 @@ def _standalone_sampler(
         "id": sampler_id,
         "base_model": base_model,
         "status": {"name": status_name},
+        "user": {"email": owner_email},
         "instance_type": instance_type,
         "node_count": node_count,
         "created_at": created_at,
@@ -1635,6 +1639,7 @@ def test_usage_json_output_shape(mock_remote):
         {
             "id": "dep_abc",
             "active_run_id": "run_xyz",
+            "latest_run_id": None,
             "base_model": "Qwen/Qwen3-8B",
             "status": "RUNNING",
             "owner": "owner@baseten.co",
@@ -1646,6 +1651,22 @@ def test_usage_json_output_shape(mock_remote):
             "created_at": "2026-07-01T00:00:00Z",
         }
     ]
+
+
+def test_usage_run_id_falls_back_to_latest_when_no_active_run(mock_remote):
+    # An idle (scaled-to-zero) deployment has no active run but should still
+    # show its latest run as a usable handle.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_idle",
+            status_name="SCALED_TO_ZERO",
+            active_run_id=None,
+            latest_run_id="run_latest",
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "run_latest" in _flatten(result.output)
 
 
 def test_usage_json_output_renders_null_gpu_and_sampler(mock_remote):
@@ -1723,17 +1744,32 @@ def test_usage_dedupes_samplers_already_paired_to_a_deployment(mock_remote):
     assert ids == {"dep1", "samp_solo"}
 
 
-def test_usage_user_filter_excludes_standalone_samplers(mock_remote):
+def test_usage_user_filters_standalone_samplers_by_owner(mock_remote):
     mock_remote.api.list_loops_deployments.return_value = [
         _usage_deployment("dep1", owner_email="target@baseten.co")
     ]
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_mine", owner_email="target@baseten.co"),
+        _standalone_sampler("samp_other", owner_email="someone@baseten.co"),
+    ]
     result = _invoke(
-        ["loops", "usage", "--remote", "test_remote", "--user", "target@baseten.co"],
+        [
+            "loops",
+            "usage",
+            "--remote",
+            "test_remote",
+            "--user",
+            "target@baseten.co",
+            "-o",
+            "json",
+        ],
         mock_remote,
     )
     assert result.exit_code == 0, result.output
-    # Samplers carry no owner, so --user can't attribute them: don't fetch.
-    mock_remote.api.list_loops_samplers.assert_not_called()
+    # Samplers now carry an owner, so --user keeps the matching standalone
+    # sampler and drops the others.
+    ids = {record["id"] for record in _parse_jsonl(result.output)}
+    assert ids == {"dep1", "samp_mine"}
 
 
 @pytest.mark.parametrize("dead_status", ["INACTIVE", "DEPLOY_FAILED", "BUILD_FAILED"])

@@ -312,37 +312,31 @@ def view_loops_usage(
     # and (for --user) filter to one owner client-side.
     scope = "org" if not mine else None
     deployments = remote_provider.api.list_loops_deployments(scope=scope)
+
+    # Standalone samplers (no trainer) aren't in the deployments list. Fetch them
+    # and drop any already shown under a deployment (matched by id, across all
+    # deployments before the owner filter) so nothing is double-counted.
+    paired_sampler_ids = {
+        deployment["sampler"]["id"]
+        for deployment in deployments
+        if deployment.get("sampler") and deployment["sampler"].get("id")
+    }
+    standalone = [
+        sampler
+        for sampler in remote_provider.api.list_loops_samplers(scope=scope)
+        if sampler.get("id") not in paired_sampler_ids
+    ]
+
     if user_email:
         deployments = [
             deployment
             for deployment in deployments
             if (deployment.get("user") or {}).get("email") == user_email
         ]
-
-    # Standalone samplers (no trainer) aren't in the deployments list, so fold
-    # them in as sampler-only rows. --user can't attribute them (samplers carry
-    # no owner), so they're only included for --mine and the default org view.
-    standalone_rows: List[Dict[str, Any]] = []
-    if not user_email:
-        paired_sampler_ids = {
-            deployment["sampler"]["id"]
-            for deployment in deployments
-            if deployment.get("sampler") and deployment["sampler"].get("id")
-        }
         standalone = [
             sampler
-            for sampler in remote_provider.api.list_loops_samplers(scope=scope)
-            if sampler.get("id") not in paired_sampler_ids
-        ]
-        if not show_all:
-            standalone = [
-                sampler
-                for sampler in standalone
-                if (sampler.get("status") or {}).get("name")
-                not in _TERMINAL_SAMPLER_STATUSES
-            ]
-        standalone_rows = [
-            _standalone_sampler_as_row(sampler) for sampler in standalone
+            for sampler in standalone
+            if (sampler.get("user") or {}).get("email") == user_email
         ]
 
     if not show_all:
@@ -351,8 +345,14 @@ def view_loops_usage(
             for deployment in deployments
             if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
         ]
+        standalone = [
+            sampler
+            for sampler in standalone
+            if (sampler.get("status") or {}).get("name")
+            not in _TERMINAL_SAMPLER_STATUSES
+        ]
 
-    rows = deployments + standalone_rows
+    rows = deployments + [_standalone_sampler_as_row(sampler) for sampler in standalone]
     is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
 
     if not rows and is_human_output:
@@ -534,10 +534,11 @@ def _standalone_sampler_as_row(sampler: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": sampler.get("id", ""),
         "active_run_id": None,
+        "latest_run_id": None,
         "base_model": sampler.get("base_model", ""),
         "created_at": sampler.get("created_at") or "",
         "status": {"name": _NO_TRAINER_STATUS},
-        "user": None,
+        "user": sampler.get("user"),
         "instance_type": None,
         "node_count": 1,
         "sampler": {
@@ -624,7 +625,10 @@ def _render_loops_usage(
         created_at = deployment.get("created_at") or ""
         since = common.format_localized_time(created_at) if created_at else "—"
         sampler_status = ((sampler or {}).get("status") or {}).get("name") or "—"
-        row = [deployment.get("active_run_id") or "—"]
+        # Active-or-latest: idle (scaled-to-zero/stopped) deployments have no
+        # active run but still expose their most recent run as a usable handle.
+        run_id = deployment.get("active_run_id") or deployment.get("latest_run_id")
+        row = [run_id or "—"]
         if show_owner:
             row.append((deployment.get("user") or {}).get("email") or "—")
         row.extend(
@@ -653,6 +657,7 @@ def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
         output = {
             "id": deployment.get("id", ""),
             "active_run_id": deployment.get("active_run_id"),
+            "latest_run_id": deployment.get("latest_run_id"),
             "base_model": deployment.get("base_model", ""),
             "status": deployment["status"]["name"],
             "owner": (deployment.get("user") or {}).get("email"),
