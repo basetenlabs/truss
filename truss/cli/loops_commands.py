@@ -16,6 +16,9 @@ from truss.cli.loops_checkpoint_viewer import (
     view_loops_checkpoint_list,
 )
 from truss.cli.train import checkpoint_viewer as checkpoint_mod
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    TRAINER_CHECKPOINT_TARGET,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
@@ -98,20 +101,31 @@ def push_loops_deployment(
 
 
 @loops.command(name="deactivate")
-@click.argument("deployment_id", type=str)
+@click.argument("deployment_id", type=str, required=False)
+@click.option("--run-id", type=str, required=False, help="Loops run ID to deactivate.")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
 )
 @common.common_options()
-def deactivate_loops_deployment(
-    deployment_id: str, remote: Optional[str], yes: bool
+def deactivate_loops_run(
+    deployment_id: Optional[str],
+    run_id: Optional[str],
+    remote: Optional[str],
+    yes: bool,
 ) -> None:
-    """Deactivate the Loops deployment with DEPLOYMENT_ID.
+    """Deactivate a Loops run.
 
-    Shuts down the Loops deployment. Saved checkpoints remain accessible.
-    Use `truss loops view` to find deployment IDs.
+    Identify the run with --run-id. Shuts down the run, tearing down both of
+    its halves (the run and its paired sampler). Saved checkpoints remain
+    accessible. Use `truss loops view` to find run IDs.
+
+    Passing a Loops deployment ID as a positional argument is deprecated;
+    prefer --run-id.
     """
+    if bool(run_id) == bool(deployment_id):
+        raise click.UsageError("Pass exactly one of --run-id or a deployment ID.")
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -119,36 +133,56 @@ def deactivate_loops_deployment(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    if not yes:
-        click.confirm(
-            f"This will shut down Loops deployment {deployment_id}. Continue?",
-            abort=True,
+    if deployment_id is not None:
+        console.print(
+            "[DEPRECATED] Passing a deployment ID is deprecated, use --run-id instead.",
+            style="yellow",
         )
+        if not yes:
+            click.confirm(
+                f"This will shut down Loops deployment {deployment_id}. Continue?",
+                abort=True,
+            )
+        with console.status("Deactivating Loops deployment...", spinner="dots"):
+            remote_provider.api.deactivate_loops_deployment(deployment_id)
+        console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
+        return
 
-    with console.status("Deactivating Loops deployment...", spinner="dots"):
-        remote_provider.api.deactivate_loops_deployment(deployment_id)
+    # Narrowed by the XOR check above: with no deployment_id, run_id is set.
+    assert run_id is not None
 
-    console.print(f"Loops deployment {deployment_id} deactivated.", style="green")
+    if not yes:
+        click.confirm(f"This will shut down Loops run {run_id}. Continue?", abort=True)
+
+    with console.status("Deactivating Loops run...", spinner="dots"):
+        remote_provider.api.deactivate_loops_run(run_id)
+
+    console.print(f"Loops run {run_id} deactivated.", style="green")
 
 
-_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+# INACTIVE runs are hidden by default (--all reveals them); ACTIVE is the only
+# other run status.
+_INACTIVE_RUN_STATUS = "INACTIVE"
 
 
 @loops.command(name="view")
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
-    "--all",
-    "show_all",
-    is_flag=True,
-    default=False,
-    help="Include deployments in terminal states (STOPPED, FAILED).",
+    "--all", "show_all", is_flag=True, default=False, help="Include inactive runs."
 )
 @click.option(
     "--org",
     "org_wide",
     is_flag=True,
     default=False,
-    help="List every Loops deployment in your organization (with its owner), not just your own.",
+    help="List every Loops run in your organization (with its owner), not just your own.",
+)
+@click.option(
+    "--reverse",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Reverse the default order (oldest first) so the most recent run is shown first.",
 )
 @click.option(
     "-o",
@@ -160,14 +194,19 @@ _TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
     help="Output format: cli-table (default) or json.",
 )
 @common.common_options()
-def view_loops_deployments(
-    remote: Optional[str], show_all: bool, org_wide: bool, output_format: str
+def view_loops_runs_summary(
+    remote: Optional[str],
+    show_all: bool,
+    org_wide: bool,
+    reverse: bool,
+    output_format: str,
 ) -> None:
-    """List Loops deployments.
+    """List Loops runs.
 
-    Lists your own deployments by default; pass --org to list every deployment
-    in your organization, with an Owner column. Deployments in terminal states
-    (STOPPED, FAILED) are hidden unless you pass --all.
+    Each row is a single run, keyed by its run ID, with a run-level status.
+    Lists your own runs by default; pass --org to list every run in your
+    organization, with an Owner column. Inactive runs are hidden unless you
+    pass --all.
     """
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -175,34 +214,175 @@ def view_loops_deployments(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    deployments = remote_provider.api.list_loops_deployments(
-        scope="org" if org_wide else None
-    )
+    runs = remote_provider.api.list_loops_runs(scope="org" if org_wide else None)
+    runs = sorted(runs, key=lambda run: run.get("created_at") or "", reverse=reverse)
     is_human_output = output_format == checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE
 
-    if not deployments and is_human_output:
-        console.print("No Loops deployments.", style="yellow")
+    if not runs and is_human_output:
+        console.print("No Loops runs.", style="yellow")
         return
 
     if not show_all:
-        deployments = [
-            deployment
-            for deployment in deployments
-            if deployment["status"]["name"] not in _TERMINAL_DEPLOYMENT_STATUSES
-        ]
-        if not deployments and is_human_output:
+        runs = [run for run in runs if _run_status_name(run) != _INACTIVE_RUN_STATUS]
+        if not runs and is_human_output:
             console.print(
-                "No active Loops deployments. Pass --all to include "
-                "STOPPED and FAILED deployments.",
+                "No active Loops runs. Pass --all to include inactive runs.",
                 style="yellow",
             )
             return
 
     if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
-        _render_loops_deployments_json(deployments)
+        _render_loops_runs_summary_json(runs)
         return
 
-    _render_loops_deployments(deployments, show_owner=org_wide)
+    _render_loops_runs_summary(runs, show_owner=org_wide)
+
+
+# Deployments in these terminal states are hidden from `usage` unless --all,
+# and never counted toward GPU capacity.
+_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+# A deployment scaled to zero holds no live GPUs; it is tracked separately in
+# the usage summary.
+_SCALED_TO_ZERO_STATUS = "SCALED_TO_ZERO"
+# Dead sampler states (DeploymentStatusV1) — hold no live GPUs; standalone
+# samplers in these states are hidden from the usage view unless --all.
+_TERMINAL_SAMPLER_STATUSES = frozenset(
+    {
+        "INACTIVE",
+        "FAILED",
+        "DEPLOY_FAILED",
+        "BUILD_FAILED",
+        "BUILD_STOPPED",
+        "UNHEALTHY",
+        "DEACTIVATING",
+    }
+)
+# The usage table collapses raw backend statuses into the same buckets the UI
+# (truss loops view) shows: trainer is ACTIVE/INACTIVE (scaled-to-zero, stopped,
+# and failed all read INACTIVE); sampler adds SCALED_TO_ZERO. These are the
+# statuses that read as ACTIVE — serving or coming up; anything else is INACTIVE.
+_TRAINER_ACTIVE_STATUSES = frozenset({"CREATED", "DEPLOYING", "RUNNING"})
+_SAMPLER_ACTIVE_STATUSES = frozenset(
+    {"ACTIVE", "WAKING_UP", "UPDATING", "BUILDING", "DEPLOYING", "LOADING_MODEL"}
+)
+
+
+@loops.command(name="usage")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--mine",
+    is_flag=True,
+    default=False,
+    help="Show only your own Loops deployments (drops the Owner column).",
+)
+@click.option(
+    "--user",
+    "user_email",
+    type=str,
+    required=False,
+    help="Filter to Loops deployments owned by this email (looked up org-wide).",
+)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include deployments in terminal states (STOPPED, FAILED).",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default) or json.",
+)
+@common.common_options()
+def view_loops_usage(
+    remote: Optional[str],
+    mine: bool,
+    user_email: Optional[str],
+    show_all: bool,
+    output_format: str,
+) -> None:
+    """Report Loops GPU capacity, one row per deployment (keyed by its run).
+
+    Org-wide by default; pass --mine for just your own (which drops the Owner
+    column) or --user to filter to a single owner. Each row shows the trainer
+    and sampler GPU allocations and statuses, and a summary line above the table
+    aggregates GPUs in use vs scaled to zero. Standalone samplers (no trainer)
+    appear as sampler-only rows. By default the table lists only allocations
+    holding live GPUs; idle (scaled-to-zero) and terminal ones are counted in the
+    summary but hidden unless you pass --all.
+    """
+    if mine and user_email:
+        raise click.UsageError("Pass at most one of --mine or --user.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    # --mine scopes the request to the caller; default and --user pull org-wide
+    # and (for --user) filter to one owner client-side.
+    scope = "org" if not mine else None
+    deployments = remote_provider.api.list_loops_deployments(scope=scope)
+
+    # Standalone samplers (no trainer) aren't in the deployments list. Fetch them
+    # and drop any already shown under a deployment (matched by id, across all
+    # deployments before the owner filter) so nothing is double-counted.
+    paired_sampler_ids = {
+        deployment["sampler"]["id"]
+        for deployment in deployments
+        if deployment.get("sampler") and deployment["sampler"].get("id")
+    }
+    standalone = [
+        sampler
+        for sampler in remote_provider.api.list_loops_samplers(scope=scope)
+        if sampler.get("id") not in paired_sampler_ids
+    ]
+
+    if user_email:
+        deployments = [
+            deployment
+            for deployment in deployments
+            if (deployment.get("user") or {}).get("email") == user_email
+        ]
+        standalone = [
+            sampler
+            for sampler in standalone
+            if (sampler.get("user") or {}).get("email") == user_email
+        ]
+
+    all_rows = deployments + [
+        _standalone_sampler_as_row(sampler) for sampler in standalone
+    ]
+    # The summary reports true org totals regardless of what the table shows.
+    summary = _compute_usage_summary(all_rows)
+
+    # Default view lists only allocations holding live GPUs; idle (scaled-to-zero)
+    # and terminal/dead ones are summarized above but hidden unless --all. Keeps
+    # the table short on orgs with lots of idle allocations.
+    if show_all:
+        display_rows = all_rows
+        hidden_count = 0
+    else:
+        display_rows = [row for row in all_rows if _row_holds_live_gpus(row)]
+        hidden_count = len(all_rows) - len(display_rows)
+
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_usage_json(display_rows)
+        return
+
+    if not all_rows:
+        console.print("No Loops deployments or samplers.", style="yellow")
+        return
+
+    _render_loops_usage(
+        display_rows, summary, show_owner=not mine, hidden_count=hidden_count
+    )
 
 
 @loops.group(name="runs")
@@ -230,11 +410,15 @@ def view_loops_runs(
     reverse: bool,
     remote: Optional[str],
 ) -> None:
-    """List Loops runs visible to the caller.
+    """[DEPRECATED] Use `truss loops view` instead.
 
-    Both filters are optional and can be combined; omit both to list all
-    runs visible to the caller.
+    Lists Loops runs visible to the caller. Both filters are optional and can be
+    combined; omit both to list all runs visible to the caller.
     """
+    console.print(
+        "[DEPRECATED] `truss loops runs view` is deprecated; use `truss loops view` instead.",
+        style="yellow",
+    )
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -276,62 +460,277 @@ def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
     _render_loops_samplers(samplers)
 
 
-def _render_loops_deployments(
-    deployments: List[Dict[str, Any]], show_owner: bool = False
+def _run_status_name(run: Dict[str, Any]) -> str:
+    """The run's status name (ACTIVE/INACTIVE), from the server-defined status."""
+    return (run.get("status") or {}).get("name") or ""
+
+
+_RUN_STATUS_STYLES = {"ACTIVE": "green", "INACTIVE": "dim"}
+
+
+def _render_loops_runs_summary(
+    runs: List[Dict[str, Any]], show_owner: bool = False
 ) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
-        title="Loops Deployments",
+        title="Loops Runs",
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
-    table.add_column("Deployment ID", style="cyan")
+    table.add_column("Run ID", style="cyan")
     if show_owner:
         table.add_column("Owner", style="magenta")
     table.add_column("Base Model", style="green")
-    table.add_column("Deployment Status")
-    table.add_column("Deployment Base URL", style="blue")
-    table.add_column("Sampler Deployment ID", style="cyan")
-    table.add_column("Sampler Status")
-    table.add_column("Sampler Base URL", style="blue")
-    for deployment in deployments:
-        sampler = deployment.get("sampler")
-        row = [deployment["id"]]
+    table.add_column("Status")
+    table.add_column("Created At")
+    for run in runs:
+        created_at = run.get("created_at") or ""
+        created_str = common.format_localized_time(created_at) if created_at else ""
+        status = _run_status_name(run)
+        status_style = _RUN_STATUS_STYLES.get(status, "")
+        row = [run.get("id", "")]
         if show_owner:
-            row.append((deployment.get("user") or {}).get("email") or "—")
+            row.append((run.get("user") or {}).get("email") or "—")
         row.extend(
             [
-                deployment["base_model"],
-                deployment["status"]["name"],
-                deployment["base_url"],
-                sampler["deployment_id"] if sampler else "—",
-                sampler["status"]["name"] if sampler else "—",
-                sampler["base_url"] if sampler else "—",
+                run.get("base_model", ""),
+                f"[{status_style}]{status}[/{status_style}]"
+                if status_style
+                else status,
+                created_str,
             ]
         )
         table.add_row(*row)
     console.print(table)
 
 
-def _render_loops_deployments_json(deployments: List[Dict[str, Any]]) -> None:
+def _render_loops_runs_summary_json(runs: List[Dict[str, Any]]) -> None:
+    """Print the runs as jsonl. Closely follows the columns in the default format."""
+    for run in runs:
+        output = {
+            "id": run.get("id", ""),
+            "base_model": run.get("base_model", ""),
+            "status": _run_status_name(run),
+            "created_at": run.get("created_at") or "",
+        }
+        print(json.dumps(output))
+
+
+def _format_gpu_cell(
+    instance_type: Optional[Dict[str, Any]], node_count: int = 1
+) -> str:
+    """Render an instance type as "<gpu_type>:<gpu_count>", appending "×<nodes>"
+    when the allocation spans more than one node; "—" when there is no GPU."""
+    if not instance_type or not instance_type.get("gpu_count"):
+        return "—"
+    cell = f"{instance_type.get('gpu_type')}:{instance_type['gpu_count']}"
+    if node_count and node_count > 1:
+        cell += f" ×{node_count}"
+    return cell
+
+
+def _gpu_capacity(instance_type: Optional[Dict[str, Any]], node_count: int = 1) -> int:
+    """Total GPUs an allocation holds: gpu_count across every node."""
+    if not instance_type:
+        return 0
+    return (instance_type.get("gpu_count") or 0) * (node_count or 1)
+
+
+# Trainer-status placeholder for a standalone sampler (one with no trainer half).
+_NO_TRAINER_STATUS = "—"
+
+
+def _standalone_sampler_as_row(sampler: Dict[str, Any]) -> Dict[str, Any]:
+    """Wrap a standalone sampler (no trainer) in the deployment row shape so the
+    table and summary render it uniformly: empty trainer half, sampler populated."""
+    return {
+        "id": sampler.get("id", ""),
+        "active_run_id": None,
+        "latest_run_id": None,
+        "base_model": sampler.get("base_model", ""),
+        "created_at": sampler.get("created_at") or "",
+        "status": {"name": _NO_TRAINER_STATUS},
+        "user": sampler.get("user"),
+        "instance_type": None,
+        "node_count": 1,
+        "sampler": {
+            "status": sampler.get("status"),
+            "instance_type": sampler.get("instance_type"),
+            "node_count": sampler.get("node_count") or 1,
+        },
+    }
+
+
+def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Aggregate GPU capacity into trainer/sampler and in-use/scaled-to-zero.
+
+    Terminal deployments and dead (deactivated/failed) samplers hold no live
+    capacity and are skipped entirely.
     """
-    Print the deployments as jsonl. Closely follows the columns in the default format.
-    """
+    summary = {
+        "trainer_in_use": 0,
+        "trainer_scaled_to_zero": 0,
+        "sampler_in_use": 0,
+        "sampler_scaled_to_zero": 0,
+    }
+    for deployment in deployments:
+        trainer_status = deployment["status"]["name"]
+        if trainer_status in _TERMINAL_DEPLOYMENT_STATUSES:
+            continue
+        trainer_capacity = _gpu_capacity(
+            deployment.get("instance_type"), deployment.get("node_count") or 1
+        )
+        if trainer_status == _SCALED_TO_ZERO_STATUS:
+            summary["trainer_scaled_to_zero"] += trainer_capacity
+        else:
+            summary["trainer_in_use"] += trainer_capacity
+
+        sampler = deployment.get("sampler")
+        if not sampler:
+            continue
+        sampler_instance_type = sampler.get("instance_type")
+        if not sampler_instance_type:
+            continue
+        sampler_status = (sampler.get("status") or {}).get("name")
+        # A dead sampler (deactivated/failed) holds no live GPUs, even though it
+        # still carries the instance type it last ran on — don't count it.
+        if sampler_status in _TERMINAL_SAMPLER_STATUSES:
+            continue
+        sampler_capacity = _gpu_capacity(
+            sampler_instance_type, sampler.get("node_count") or 1
+        )
+        if sampler_status == _SCALED_TO_ZERO_STATUS:
+            summary["sampler_scaled_to_zero"] += sampler_capacity
+        else:
+            summary["sampler_in_use"] += sampler_capacity
+    return summary
+
+
+def _row_holds_live_gpus(row: Dict[str, Any]) -> bool:
+    """Whether a row is actively holding GPUs (either half serving). Idle
+    (scaled-to-zero) and terminal/dead allocations return False so the default
+    view can hide them while the summary still counts them."""
+    trainer_status = row["status"]["name"]
+    trainer_live = (
+        trainer_status not in _TERMINAL_DEPLOYMENT_STATUSES
+        and trainer_status not in (_SCALED_TO_ZERO_STATUS, _NO_TRAINER_STATUS)
+    )
+    sampler = row.get("sampler")
+    sampler_status = ((sampler or {}).get("status") or {}).get("name")
+    sampler_live = (
+        sampler is not None
+        and sampler_status not in _TERMINAL_SAMPLER_STATUSES
+        and (sampler_status != _SCALED_TO_ZERO_STATUS)
+    )
+    return trainer_live or sampler_live
+
+
+def _trainer_status_label(status: str) -> str:
+    """Collapse a raw trainer status to ACTIVE/INACTIVE (scaled-to-zero, stopped,
+    and failed all read INACTIVE), or "—" for a standalone-sampler row."""
+    if status == _NO_TRAINER_STATUS:
+        return _NO_TRAINER_STATUS
+    return "ACTIVE" if status in _TRAINER_ACTIVE_STATUSES else "INACTIVE"
+
+
+def _sampler_status_label(status: Optional[str]) -> str:
+    """Collapse a raw sampler status to ACTIVE/SCALED_TO_ZERO/INACTIVE, or "—"
+    when there is no sampler."""
+    if not status:
+        return "—"
+    if status == _SCALED_TO_ZERO_STATUS:
+        return _SCALED_TO_ZERO_STATUS
+    return "ACTIVE" if status in _SAMPLER_ACTIVE_STATUSES else "INACTIVE"
+
+
+def _render_loops_usage(
+    deployments: List[Dict[str, Any]],
+    summary: Dict[str, int],
+    show_owner: bool = False,
+    hidden_count: int = 0,
+) -> None:
+    console.print(
+        f"Trainer GPUs: {summary['trainer_in_use']} in use, "
+        f"{summary['trainer_scaled_to_zero']} scaled to zero · "
+        f"Sampler GPUs: {summary['sampler_in_use']} in use, "
+        f"{summary['sampler_scaled_to_zero']} scaled to zero"
+    )
+    if hidden_count:
+        plural = "s" if hidden_count != 1 else ""
+        console.print(
+            f"({hidden_count} idle or inactive allocation{plural} hidden — pass --all to show)",
+            style="yellow",
+        )
+    if not deployments:
+        return
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Loops GPU Usage",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Latest Run", style="cyan")
+    if show_owner:
+        table.add_column("Owner", style="magenta")
+    table.add_column("Base Model", style="green")
+    table.add_column("Trainer GPU")
+    table.add_column("Trainer Status")
+    table.add_column("Sampler GPU")
+    table.add_column("Sampler Status")
+    table.add_column("Created")
     for deployment in deployments:
         sampler = deployment.get("sampler")
+        created_at = deployment.get("created_at") or ""
+        created = common.format_localized_time(created_at) if created_at else "—"
+        sampler_status = _sampler_status_label(
+            ((sampler or {}).get("status") or {}).get("name")
+        )
+        # Active-or-latest: idle (scaled-to-zero/stopped) deployments have no
+        # active run but still expose their most recent run as a usable handle.
+        run_id = deployment.get("active_run_id") or deployment.get("latest_run_id")
+        row = [run_id or "—"]
+        if show_owner:
+            row.append((deployment.get("user") or {}).get("email") or "—")
+        row.extend(
+            [
+                deployment.get("base_model", ""),
+                _format_gpu_cell(
+                    deployment.get("instance_type"), deployment.get("node_count") or 1
+                ),
+                _trainer_status_label(deployment["status"]["name"]),
+                _format_gpu_cell(
+                    sampler.get("instance_type") if sampler else None,
+                    (sampler.get("node_count") or 1) if sampler else 1,
+                ),
+                sampler_status,
+                created,
+            ]
+        )
+        table.add_row(*row)
+    console.print(table)
+
+
+def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
+    """Print the deployments as jsonl. Mirrors the columns of the default table."""
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
         output = {
-            "id": deployment["id"],
-            "base_model": deployment["base_model"],
-            "base_url": deployment["base_url"],
-            "status": deployment["status"]["name"],
-            "sampler": {
-                "deployment_id": sampler["deployment_id"],
-                "base_url": sampler["base_url"],
-                "status": sampler["status"]["name"],
-            }
-            if sampler
-            else None,
+            "id": deployment.get("id", ""),
+            "active_run_id": deployment.get("active_run_id"),
+            "latest_run_id": deployment.get("latest_run_id"),
+            "base_model": deployment.get("base_model", ""),
+            "status": _trainer_status_label(deployment["status"]["name"]),
+            "owner": (deployment.get("user") or {}).get("email"),
+            "trainer_instance_type": deployment.get("instance_type"),
+            "trainer_node_count": deployment.get("node_count"),
+            "sampler_status": _sampler_status_label(
+                (sampler.get("status") or {}).get("name")
+            ),
+            "sampler_instance_type": sampler.get("instance_type"),
+            "sampler_node_count": sampler.get("node_count"),
+            "created_at": deployment.get("created_at") or "",
         }
         print(json.dumps(output))
 
@@ -378,8 +777,7 @@ def _render_loops_samplers(samplers: List[Dict[str, Any]]) -> None:
     )
     # Two distinct IDs to surface: the user-facing Sampler ID (used by
     # ``truss loops samplers view --sampler-id``) and the Sampler Deployment
-    # ID (the underlying model-deployment hashid, used by
-    # ``truss loops logs --sampler-deployment-id``).
+    # ID (the underlying model-deployment hashid).
     table.add_column("Sampler ID", style="cyan")
     table.add_column("Sampler Deployment ID", style="cyan")
     table.add_column("Base Model", style="green")
@@ -490,8 +888,59 @@ def view_loops_checkpoints(
     )
 
 
+def _parse_comma_separated(value: Optional[str]) -> List[str]:
+    """Split a comma-separated option into a list, dropping empty entries."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _resolve_loops_checkpoint_names(
+    remote_provider: BasetenRemote, run_id: str, names: List[str]
+) -> List[str]:
+    """Map Loops checkpoint names to their database IDs for the given run.
+
+    Only deployable checkpoints (non-trainer targets) are considered, mirroring
+    the interactive picker; trainer checkpoints hold training state and can't be
+    served.
+    """
+    response = remote_provider.api.list_loops_checkpoints(run_id=run_id)
+    deployable_checkpoints = [
+        checkpoint
+        for checkpoint in response.get("checkpoints", [])
+        if checkpoint.get("target") != TRAINER_CHECKPOINT_TARGET
+    ]
+    name_to_id = {
+        checkpoint["checkpoint_id"]: checkpoint["id"]
+        for checkpoint in deployable_checkpoints
+    }
+    resolved_ids = []
+    unknown_names = []
+    for name in names:
+        checkpoint_pk = name_to_id.get(name)
+        if checkpoint_pk is None:
+            unknown_names.append(name)
+        else:
+            resolved_ids.append(checkpoint_pk)
+    if unknown_names:
+        available = ", ".join(name_to_id) or "(none)"
+        raise click.UsageError(
+            f"Checkpoint name(s) {unknown_names} not found among deployable "
+            f"checkpoints for Loops run {run_id}. Available: {available}."
+        )
+    return resolved_ids
+
+
 @loops_checkpoints.command(name="deploy")
 @click.option("--run-id", type=str, required=False, help="Loops run ID.")
+@click.option(
+    "--checkpoints",
+    type=str,
+    required=False,
+    help="Comma-separated Loops checkpoint names (e.g. step-50,step-100). "
+    "Requires --run-id, since names are scoped per run. Bypasses the "
+    "interactive picker. Use `truss loops checkpoints view` to find names.",
+)
 @click.option(
     "--checkpoint-ids",
     type=str,
@@ -514,21 +963,37 @@ def view_loops_checkpoints(
 @common.common_options()
 def deploy_loops_checkpoints(
     run_id: Optional[str],
+    checkpoints: Optional[str],
     checkpoint_ids: Optional[str],
     config: Optional[str],
     dry_run: bool,
     remote: Optional[str],
 ) -> None:
-    """Deploy checkpoints from a Loops run via vLLM."""
-    if not run_id and not checkpoint_ids and not config:
+    """Deploy checkpoints from a Loops run via vLLM.
+
+    Identify checkpoints by name with --checkpoints (requires --run-id) or by
+    database ID with --checkpoint-ids, or run without them to pick
+    interactively.
+    """
+    if checkpoints and checkpoint_ids:
         raise click.UsageError(
-            "Pass --run-id, --checkpoint-ids, or --config (with "
+            "--checkpoints and --checkpoint-ids are mutually exclusive. "
+            "Deploy from one source: checkpoint names or checkpoint IDs."
+        )
+    if not run_id and not checkpoints and not checkpoint_ids and not config:
+        raise click.UsageError(
+            "Pass --run-id, --checkpoints, or --config (with "
             "loops_checkpoint_ids) to deploy Loops checkpoints."
         )
-    if checkpoint_ids and config:
+    if (checkpoints or checkpoint_ids) and config:
         raise click.UsageError(
-            "--checkpoint-ids cannot be combined with --config. "
+            "--checkpoints / --checkpoint-ids cannot be combined with --config. "
             "Pick one source of checkpoint identifiers."
+        )
+    if checkpoints and not run_id:
+        raise click.UsageError(
+            "--checkpoints requires --run-id, since checkpoint names are scoped "
+            "per run."
         )
     if checkpoint_ids and run_id:
         # Server resolves checkpoint PKs directly and ignores run_id when both
@@ -536,11 +1001,13 @@ def deploy_loops_checkpoints(
         # thinking we validated their pairing.
         raise click.UsageError("--checkpoint-ids cannot be combined with --run-id.")
 
-    parsed_checkpoint_ids = (
-        [s.strip() for s in checkpoint_ids.split(",") if s.strip()]
-        if checkpoint_ids
-        else []
-    )
+    parsed_checkpoint_names = _parse_comma_separated(checkpoints)
+    if checkpoints and not parsed_checkpoint_names:
+        raise click.UsageError(
+            "--checkpoints parsed to an empty list. Provide one or more "
+            "comma-separated Loops checkpoint names."
+        )
+    parsed_checkpoint_ids = _parse_comma_separated(checkpoint_ids)
     if checkpoint_ids and not parsed_checkpoint_ids:
         raise click.UsageError(
             "--checkpoint-ids parsed to an empty list. Provide one or more "
@@ -553,6 +1020,18 @@ def deploy_loops_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+
+    # Names are resolved to database IDs client-side, then feed the same
+    # loops_checkpoint_ids path as --checkpoint-ids. The run_id is only used
+    # for that resolution, so it is not forwarded downstream.
+    if parsed_checkpoint_names:
+        assert (
+            run_id is not None
+        )  # narrowed by the --checkpoints requires --run-id check
+        parsed_checkpoint_ids = _resolve_loops_checkpoint_names(
+            remote_provider, run_id, parsed_checkpoint_names
+        )
+        run_id = None
 
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
@@ -582,10 +1061,9 @@ def _resolve_sampler_model_id(
 ) -> str:
     """Find the model_id for a sampler's inference deployment.
 
-    The Loops deployments list endpoint returns each deployment's sampler
-    with both ``deployment_id`` (the OracleVersion id) and ``model_id`` (the
-    Oracle id). We don't want users to have to pass both flags, so resolve
-    the model_id client-side by matching on the deployment_id they gave us.
+    The Loops deployments list returns each sampler with both ``deployment_id``
+    (the OracleVersion id) and ``model_id`` (the Oracle id). Resolve the
+    model_id client-side by matching on the deployment_id the caller gave us.
     """
     deployments = remote_provider.api.list_loops_deployments()
     for deployment in deployments:
@@ -598,14 +1076,56 @@ def _resolve_sampler_model_id(
     )
 
 
+def _stream_loops_deployment_logs(
+    remote_provider: BasetenRemote, loops_deployment_id: str, tail: bool
+) -> None:
+    if tail:
+        loops_watcher = LoopsDeploymentLogWatcher(
+            remote_provider.api, loops_deployment_id
+        )
+        for log in loops_watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
+
+
+def _stream_model_deployment_logs(
+    remote_provider: BasetenRemote, model_id: str, deployment_id: str, tail: bool
+) -> None:
+    if tail:
+        model_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id
+        )
+        for log in model_watcher.watch():
+            cli_log_utils.output_log(log)
+    else:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
+
+
 @loops.command(name="logs")
+@click.option(
+    "--run-id", type=str, required=False, help="Loops run ID to fetch logs for."
+)
+@click.option(
+    "--sampler",
+    is_flag=True,
+    default=False,
+    help=(
+        "With --run-id, tail the paired sampler's logs instead of the run's "
+        "trainer logs. The two halves have separate log streams."
+    ),
+)
 @click.option(
     "--loops-deployment-id",
     type=str,
     required=False,
     help=(
-        "Fetch logs from a Loops deployment. The id is the "
-        "``Deployment ID`` column in ``truss loops view``."
+        "[DEPRECATED] Use --run-id to fetch the run's trainer logs; this will "
+        "be removed in a future release."
     ),
 )
 @click.option(
@@ -613,10 +1133,8 @@ def _resolve_sampler_model_id(
     type=str,
     required=False,
     help=(
-        "Fetch logs from the sampler's inference deployment. The id is the "
-        "``Sampler Deployment ID`` column in ``truss loops samplers view``. "
-        "The companion model id is resolved automatically by matching "
-        "against the caller's active Loops deployments."
+        "[DEPRECATED] Use --run-id --sampler instead; this will be removed in a "
+        "future release. Fetch logs from the sampler's inference deployment by ID."
     ),
 )
 @click.option(
@@ -628,21 +1146,30 @@ def _resolve_sampler_model_id(
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_loops_logs(
+    run_id: Optional[str],
+    sampler: bool,
     loops_deployment_id: Optional[str],
     sampler_deployment_id: Optional[str],
     tail: bool,
     remote: Optional[str],
 ) -> None:
-    """Fetch logs from one half of a Loops deployment.
+    """Fetch logs for a Loops run.
 
-    Pass exactly one of ``--loops-deployment-id`` (the Loops deployment) or
-    ``--sampler-deployment-id`` (the sampler's inference deployment). The
-    two sides have separate log streams; pick the one you're debugging.
+    Identify the run with --run-id; by default this fetches the run's training
+    logs, and --sampler fetches the paired sampler's logs instead. Use
+    ``truss loops view`` to find run IDs.
+
+    The deprecated --loops-deployment-id / --sampler-deployment-id flags fetch
+    logs by deployment ID instead; prefer --run-id.
     """
-    if bool(loops_deployment_id) == bool(sampler_deployment_id):
+    selectors = [run_id, loops_deployment_id, sampler_deployment_id]
+    if sum(1 for selector in selectors if selector) != 1:
         raise click.UsageError(
-            "Pass exactly one of --loops-deployment-id or --sampler-deployment-id."
+            "Pass exactly one of --run-id, --loops-deployment-id, or "
+            "--sampler-deployment-id."
         )
+    if sampler and not run_id:
+        raise click.UsageError("--sampler can only be used with --run-id.")
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -651,30 +1178,49 @@ def view_loops_logs(
     )
 
     if loops_deployment_id is not None:
-        if tail:
-            loops_watcher = LoopsDeploymentLogWatcher(
-                remote_provider.api, loops_deployment_id
-            )
-            for log in loops_watcher.watch():
-                cli_log_utils.output_log(log)
-        else:
-            logs = remote_provider.api.get_loops_deployment_logs(loops_deployment_id)
-            for log in cli_log_utils.parse_logs(logs):
-                cli_log_utils.output_log(log)
+        console.print(
+            "[DEPRECATED] --loops-deployment-id is deprecated, use --run-id instead.",
+            style="yellow",
+        )
+        _stream_loops_deployment_logs(remote_provider, loops_deployment_id, tail)
         return
 
-    # --sampler-deployment-id path: reuse the existing model-deployment log machinery.
-    assert sampler_deployment_id is not None  # narrowed by the XOR check above
-    model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
-    if tail:
-        model_watcher = ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, sampler_deployment_id
+    if sampler_deployment_id is not None:
+        console.print(
+            "[DEPRECATED] --sampler-deployment-id is deprecated, use --run-id "
+            "--sampler instead.",
+            style="yellow",
         )
-        for log in model_watcher.watch():
-            cli_log_utils.output_log(log)
-    else:
-        logs = remote_provider.api.get_model_deployment_logs(
-            model_id, sampler_deployment_id
+        model_id = _resolve_sampler_model_id(remote_provider, sampler_deployment_id)
+        _stream_model_deployment_logs(
+            remote_provider, model_id, sampler_deployment_id, tail
         )
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
+        return
+
+    # --run-id path: a single run object resolves both halves. ``deployment_id``
+    # is the run's own deployment; the nested ``sampler`` carries the sampler's
+    # inference deployment id plus its companion model id.
+    # Narrowed by the one-selector check above.
+    assert run_id is not None
+    run = remote_provider.api.get_loops_run(run_id)
+
+    if not sampler:
+        run_deployment_id = run.get("deployment_id")
+        if not run_deployment_id:
+            raise click.ClickException(
+                f"Loops run {run_id!r} has no trainer logs to fetch."
+            )
+        _stream_loops_deployment_logs(remote_provider, run_deployment_id, tail)
+        return
+
+    sampler_info = run.get("sampler") or {}
+    resolved_sampler_deployment_id = sampler_info.get("deployment_id")
+    resolved_model_id = sampler_info.get("model_id")
+    if not resolved_sampler_deployment_id or not resolved_model_id:
+        raise click.ClickException(
+            f"Loops run {run_id!r} has no paired sampler to fetch logs from. "
+            "Omit --sampler to view the run's trainer logs."
+        )
+    _stream_model_deployment_logs(
+        remote_provider, resolved_model_id, resolved_sampler_deployment_id, tail
+    )

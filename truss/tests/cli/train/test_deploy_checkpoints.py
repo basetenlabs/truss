@@ -20,6 +20,16 @@ from truss.cli.train.deploy_checkpoints.deploy_whisper_checkpoints import (
 from truss_train.definitions import ModelWeightsFormat
 
 
+@pytest.fixture(autouse=True)
+def assume_interactive():
+    """These tests exercise the interactive prompt helpers, so simulate a human
+    at a TTY. Non-interactive fail-fast behavior is covered in test_loops_cli.py."""
+    with patch(
+        "truss.cli.utils.common.check_is_interactive", return_value=True
+    ) as mock:
+        yield mock
+
+
 @pytest.fixture
 def mock_remote():
     mock = MagicMock()

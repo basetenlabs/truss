@@ -945,13 +945,20 @@ class BasetenApi:
         return resp_json
 
     def list_loops_runs(
-        self, run_id: Optional[str] = None, base_model: Optional[str] = None
+        self,
+        run_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+        scope: Optional[str] = None,
     ):
+        # scope="org" lists every run in the caller's org (each with its owning
+        # user); omit/"mine" lists just the caller's.
         params: Dict[str, str] = {}
         if run_id is not None:
             params["run_id"] = run_id
         if base_model is not None:
             params["base_model"] = base_model
+        if scope is not None:
+            params["scope"] = scope
         resp_json = self._rest_api_client.get("v1/loops/runs", url_params=params)
         return resp_json["runs"]
 
@@ -1339,8 +1346,13 @@ class BasetenApi:
         resp_json = self._rest_api_client.get(f"v1/loops/deployments/{deployment_id}")
         return resp_json["deployment"]
 
-    def list_loops_samplers(self) -> List[Dict[str, Any]]:
-        resp_json = self._rest_api_client.get("v1/loops/samplers")
+    def list_loops_samplers(self, scope: Optional[str] = None) -> List[Dict[str, Any]]:
+        # scope="org" lists every sampler in the caller's org (paired and
+        # standalone); omit/"mine" lists just the caller's.
+        url_params = {"scope": scope} if scope else {}
+        resp_json = self._rest_api_client.get(
+            "v1/loops/samplers", url_params=url_params
+        )
         return resp_json["samplers"]
 
     def list_loops_checkpoint_files(
@@ -1374,3 +1386,11 @@ class BasetenApi:
         self._rest_api_client.post(
             f"v1/loops/deployments/{deployment_id}/deactivate", body={}
         )
+
+    def deactivate_loops_run(self, run_id: str) -> None:
+        """Deactivate the Loops run with the given run id.
+
+        The server resolves the run to its underlying deployment and tears
+        down both halves of the run (the run itself and its paired sampler).
+        """
+        self._rest_api_client.post(f"v1/loops/runs/{run_id}/deactivate", body={})

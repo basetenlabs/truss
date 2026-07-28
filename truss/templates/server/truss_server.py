@@ -367,10 +367,9 @@ class BasetenEndpoints:
 
     @staticmethod
     def is_binary(request: Request):
-        return (
-            "Content-Type" in request.headers
-            and request.headers["Content-Type"] == "application/octet-stream"
-        )
+        content_type = request.headers.get("Content-Type", "")
+        media_type = content_type.partition(";")[0].strip().lower()
+        return media_type == "application/octet-stream"
 
 
 class TrussServer:
