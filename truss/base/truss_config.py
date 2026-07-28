@@ -93,6 +93,7 @@ class Accelerator(str, enum.Enum):
     B200 = "B200"
     L40S = "L40S"
     RTX_PRO_6000 = "RTX_PRO_6000"
+    RTX_PRO_6000_48GB_GFX = "RTX_PRO_6000_48GB_GFX"
     B300 = "B300"
     GB300 = "GB300"
 

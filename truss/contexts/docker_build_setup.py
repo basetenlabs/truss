@@ -63,6 +63,7 @@ def _fill_trt_llm_versions(
                 Accelerator.V100: "turing-",
                 Accelerator.B200: "blackwell-",
                 Accelerator.RTX_PRO_6000: "blackwell-",
+                Accelerator.RTX_PRO_6000_48GB_GFX: "blackwell-",
                 Accelerator.B300: "blackwell-",
                 Accelerator.GB300: "blackwell-",
                 None: "unsupported none please upgrade truss",
