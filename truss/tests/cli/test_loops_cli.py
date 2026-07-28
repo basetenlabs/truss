@@ -1431,10 +1431,47 @@ def test_usage_renders_gpu_statuses_and_owner(mock_remote):
     # Multi-node trainer allocation shows the node-count suffix.
     assert "H100:8 ×2" in flat
     assert "H100:2" in flat
-    assert "RUNNING" in flat
+    # Raw statuses (RUNNING) collapse to the UI buckets (ACTIVE/INACTIVE).
+    assert "RUNNING" not in flat
     assert "ACTIVE" in flat
     # Org-wide is the default.
     mock_remote.api.list_loops_deployments.assert_called_once_with(scope="org")
+
+
+def test_usage_collapses_statuses_to_ui_buckets(mock_remote):
+    # Trainer scaled-to-zero reads INACTIVE (mimics the run status); a coming-up
+    # sampler (WAKING_UP) reads ACTIVE.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_a",
+            status_name="SCALED_TO_ZERO",
+            active_run_id=None,
+            latest_run_id="run_a",
+            sampler_status="WAKING_UP",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    record = _parse_jsonl(result.output)[0]
+    assert record["status"] == "INACTIVE"  # trainer SCALED_TO_ZERO -> INACTIVE
+    assert record["sampler_status"] == "ACTIVE"  # sampler WAKING_UP -> ACTIVE
+
+
+def test_usage_all_shows_failed_sampler_as_inactive(mock_remote):
+    # A failed/unhealthy sampler collapses to INACTIVE (shown with --all).
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_bad", status_name="DEPLOY_FAILED")
+    ]
+    result = _invoke(
+        ["loops", "usage", "--all", "--remote", "test_remote", "-o", "json"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    assert _parse_jsonl(result.output)[0]["sampler_status"] == "INACTIVE"
 
 
 def test_usage_mine_drops_owner_and_uses_caller_scope(mock_remote):
@@ -1649,7 +1686,7 @@ def test_usage_json_output_shape(mock_remote):
             "active_run_id": "run_xyz",
             "latest_run_id": None,
             "base_model": "Qwen/Qwen3-8B",
-            "status": "RUNNING",
+            "status": "ACTIVE",
             "owner": "owner@baseten.co",
             "trainer_instance_type": {"gpu_type": "H100", "gpu_count": 8},
             "trainer_node_count": 2,
@@ -1693,7 +1730,7 @@ def test_usage_json_output_renders_null_gpu_and_sampler(mock_remote):
     records = _parse_jsonl(result.output)
     assert records[0]["active_run_id"] is None
     assert records[0]["trainer_instance_type"] is None
-    assert records[0]["sampler_status"] is None
+    assert records[0]["sampler_status"] == "—"  # no sampler
     assert records[0]["sampler_instance_type"] is None
 
 
