@@ -14,6 +14,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
+from starlette.datastructures import Headers
+
+from truss.templates.shared import serialization
 
 
 @pytest.fixture
@@ -116,6 +119,27 @@ async def test_execute_request_sets_none_when_no_request_id_header(app_path):
         )
 
         mock_request_id_context.set.assert_called_once_with(None)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "content_type",
+    ["application/octet-stream; charset=binary", "Application/Octet-Stream"],
+)
+async def test_binary_request_accepts_content_type_variants(app_path, content_type):
+    mock_request = _make_connected_request()
+    mock_request.headers = Headers({"Content-Type": content_type})
+    body = serialization.truss_msgpack_serialize({})
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        endpoints = _get_endpoints(app_path)
+        response = await endpoints.predict(
+            model_name="model", request=mock_request, body_raw=body
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert serialization.truss_msgpack_deserialize(response.body) == {"predictions": []}
 
 
 @pytest.mark.anyio
