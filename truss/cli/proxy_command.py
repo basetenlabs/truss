@@ -65,6 +65,15 @@ def error(msg):
     sys.exit(1)
 
 
+def tls_cert_error(exc):
+    """Exit with an actionable message for TLS certificate verification failures."""
+    error(
+        f"TLS certificate verification failed ({exc}). The Python running this "
+        f"script ({sys.executable}) may have no SSL root certificates installed. "
+        "See https://docs.baseten.co/training/ssh#missing-python-certificates"
+    )
+
+
 def find_key_path():
     """Find the SSH private key (ed25519 or RSA fallback)."""
     for name in ("id_ed25519", "id_rsa"):
@@ -281,6 +290,8 @@ def api_request(url, api_key, method="GET", body=None, extra_headers=None):
             msg = e.reason
         error(f"API error ({e.code}): {msg}")
     except urllib.error.URLError as e:
+        if isinstance(e.reason, ssl.SSLCertVerificationError):
+            tls_cert_error(e.reason)
         error(f"Cannot reach API: {e.reason}")
 
 
@@ -429,7 +440,10 @@ def connect_proxy(proxy_address, jwt_token):
         tls_sock = raw_sock
     else:
         ctx = ssl.create_default_context()
-        tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+        try:
+            tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+        except ssl.SSLCertVerificationError as e:
+            tls_cert_error(e)
 
     # Send length-prefixed JWT
     jwt_bytes = jwt_token.encode()
