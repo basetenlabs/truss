@@ -1,5 +1,7 @@
 """Tests for truss loops CLI commands."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -26,6 +28,9 @@ def mock_remote():
         },
     }
     remote.fetch_auth_header.return_value = {"Authorization": "Api-Key test_key"}
+    # Default: no standalone samplers. `usage` fetches these on every run;
+    # tests that exercise standalone samplers override this.
+    remote.api.list_loops_samplers.return_value = []
     return remote
 
 
@@ -1331,3 +1336,506 @@ def test_logs_rejects_multiple_selectors(mock_remote):
     assert result.exit_code != 0
     mock_remote.api.get_loops_run.assert_not_called()
     mock_remote.api.get_loops_deployment_logs.assert_not_called()
+
+
+# Sentinel so callers can request a null gpu (pass None) distinctly from the
+# default single-node H100 allocation.
+_DEFAULT_GPU = object()
+
+
+def _split_gpu(gpu: dict | None) -> tuple[dict | None, int]:
+    """Split a test gpu dict into the backend's instance_type + node_count shape."""
+    if not gpu:
+        return None, 1
+    instance_type = {"gpu_type": gpu["gpu_type"], "gpu_count": gpu["gpu_count"]}
+    return instance_type, gpu.get("node_count", 1)
+
+
+def _usage_deployment(
+    deployment_id: str,
+    status_name: str = "RUNNING",
+    *,
+    active_run_id: str | None = "run_abc",
+    latest_run_id: str | None = None,
+    base_model: str = "Qwen/Qwen3-8B",
+    owner_email: str = "owner@baseten.co",
+    trainer_gpu=_DEFAULT_GPU,
+    sampler_status: str | None = "ACTIVE",
+    sampler_gpu: dict | None = None,
+    created_at: str = "2026-07-01T00:00:00Z",
+) -> dict:
+    if trainer_gpu is _DEFAULT_GPU:
+        trainer_gpu = {"gpu_type": "H100", "gpu_count": 8, "node_count": 1}
+    trainer_instance_type, trainer_node_count = _split_gpu(trainer_gpu)
+    sampler = None
+    if sampler_status is not None:
+        sampler_instance_type, sampler_node_count = _split_gpu(sampler_gpu)
+        sampler = {
+            "status": {"name": sampler_status},
+            "instance_type": sampler_instance_type,
+            "node_count": sampler_node_count,
+        }
+    return {
+        "id": deployment_id,
+        "active_run_id": active_run_id,
+        "latest_run_id": latest_run_id,
+        "base_model": base_model,
+        "created_at": created_at,
+        "status": {"name": status_name},
+        "user": {"email": owner_email},
+        "instance_type": trainer_instance_type,
+        "node_count": trainer_node_count,
+        "sampler": sampler,
+    }
+
+
+def _standalone_sampler(
+    sampler_id: str,
+    *,
+    base_model: str = "Qwen/Qwen3-8B",
+    status_name: str = "ACTIVE",
+    owner_email: str = "owner@baseten.co",
+    gpu: dict | None = None,
+    created_at: str = "2026-07-01T00:00:00Z",
+) -> dict:
+    if gpu is None:
+        gpu = {"gpu_type": "H100", "gpu_count": 2, "node_count": 1}
+    instance_type, node_count = _split_gpu(gpu)
+    return {
+        "id": sampler_id,
+        "base_model": base_model,
+        "status": {"name": status_name},
+        "user": {"email": owner_email},
+        "instance_type": instance_type,
+        "node_count": node_count,
+        "created_at": created_at,
+    }
+
+
+def test_usage_renders_gpu_statuses_and_owner(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_abc",
+            active_run_id="run_xyz",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 2},
+            sampler_status="ACTIVE",
+            sampler_gpu={"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "run_xyz" in flat
+    assert "owner@baseten.co" in flat
+    assert "Qwen/Qwen3-8B" in flat
+    # Multi-node trainer allocation shows the node-count suffix.
+    assert "H100:8 ×2" in flat
+    assert "H100:2" in flat
+    assert "RUNNING" in flat
+    assert "ACTIVE" in flat
+    # Org-wide is the default.
+    mock_remote.api.list_loops_deployments.assert_called_once_with(scope="org")
+
+
+def test_usage_mine_drops_owner_and_uses_caller_scope(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment("dep_abc", owner_email="me@baseten.co")
+    ]
+    result = _invoke(
+        ["loops", "usage", "--mine", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "Owner" not in flat
+    assert "me@baseten.co" not in flat
+    mock_remote.api.list_loops_deployments.assert_called_once_with(scope=None)
+
+
+def test_usage_user_filters_to_matching_owner(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_mine", active_run_id="run_mine", owner_email="a@baseten.co"
+        ),
+        _usage_deployment(
+            "dep_other", active_run_id="run_other", owner_email="b@baseten.co"
+        ),
+    ]
+    result = _invoke(
+        ["loops", "usage", "--user", "a@baseten.co", "--remote", "test_remote"],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "run_mine" in flat
+    assert "run_other" not in flat
+    # --user still queries org-wide, filtering client-side.
+    mock_remote.api.list_loops_deployments.assert_called_once_with(scope="org")
+
+
+def test_usage_mine_and_user_are_mutually_exclusive(mock_remote):
+    result = _invoke(
+        [
+            "loops",
+            "usage",
+            "--mine",
+            "--user",
+            "a@baseten.co",
+            "--remote",
+            "test_remote",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code != 0
+    mock_remote.api.list_loops_deployments.assert_not_called()
+
+
+def test_usage_hides_terminal_deployments_by_default(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_run", active_run_id="run_running", status_name="RUNNING"
+        ),
+        _usage_deployment(
+            "dep_stop",
+            active_run_id="run_stopped",
+            status_name="STOPPED",
+            sampler_status=None,
+        ),
+        _usage_deployment(
+            "dep_fail",
+            active_run_id="run_failed",
+            status_name="FAILED",
+            sampler_status=None,
+        ),
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "run_running" in flat
+    assert "run_stopped" not in flat
+    assert "run_failed" not in flat
+
+
+def test_usage_all_flag_includes_terminal_deployments(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_run", active_run_id="run_running", status_name="RUNNING"
+        ),
+        _usage_deployment(
+            "dep_stop", active_run_id="run_stopped", status_name="STOPPED"
+        ),
+    ]
+    result = _invoke(
+        ["loops", "usage", "--all", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "run_running" in flat
+    assert "run_stopped" in flat
+
+
+def test_usage_renders_placeholders_when_gpu_and_sampler_null(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_orphan", active_run_id=None, trainer_gpu=None, sampler_status=None
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    # active_run_id, trainer gpu, sampler gpu, and sampler status all show "—".
+    assert "—" in flat
+
+
+def test_usage_summary_aggregates_trainer_and_sampler_gpus(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        # Trainer in use: 8 * 2 = 16; sampler in use: 2.
+        _usage_deployment(
+            "dep_1",
+            active_run_id="run_1",
+            status_name="RUNNING",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 2},
+            sampler_status="ACTIVE",
+            sampler_gpu={"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+        ),
+        # Trainer scaled to zero: 8; sampler scaled to zero: 4.
+        _usage_deployment(
+            "dep_2",
+            active_run_id="run_2",
+            status_name="SCALED_TO_ZERO",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 1},
+            sampler_status="SCALED_TO_ZERO",
+            sampler_gpu={"gpu_type": "H100", "gpu_count": 4, "node_count": 1},
+        ),
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "Trainer GPUs: 16 in use, 8 scaled to zero" in flat
+    assert "Sampler GPUs: 2 in use, 4 scaled to zero" in flat
+
+
+def test_usage_summary_excludes_terminal_deployments(mock_remote):
+    # With --all a terminal deployment is listed but must not inflate capacity.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_run",
+            active_run_id="run_running",
+            status_name="RUNNING",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 1},
+            sampler_status=None,
+        ),
+        _usage_deployment(
+            "dep_stop",
+            active_run_id="run_stopped",
+            status_name="STOPPED",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 1},
+            sampler_status=None,
+        ),
+    ]
+    result = _invoke(
+        ["loops", "usage", "--all", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "Trainer GPUs: 8 in use, 0 scaled to zero" in flat
+
+
+def test_usage_summary_excludes_dead_samplers(mock_remote):
+    # A deactivated/failed sampler still carries its last instance type but holds
+    # no live GPUs, so it must not count toward sampler capacity.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_1",
+            active_run_id=None,
+            status_name="SCALED_TO_ZERO",
+            trainer_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+            sampler_status="INACTIVE",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        ),
+        _usage_deployment(
+            "dep_2",
+            active_run_id=None,
+            status_name="SCALED_TO_ZERO",
+            trainer_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+            sampler_status="DEPLOY_FAILED",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        ),
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "Sampler GPUs: 0 in use, 0 scaled to zero" in _flatten(result.output)
+
+
+def test_usage_json_output_shape(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_abc",
+            active_run_id="run_xyz",
+            owner_email="owner@baseten.co",
+            trainer_gpu={"gpu_type": "H100", "gpu_count": 8, "node_count": 2},
+            sampler_status="ACTIVE",
+            sampler_gpu={"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+            created_at="2026-07-01T00:00:00Z",
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    records = _parse_jsonl(result.output)
+    assert records == [
+        {
+            "id": "dep_abc",
+            "active_run_id": "run_xyz",
+            "latest_run_id": None,
+            "base_model": "Qwen/Qwen3-8B",
+            "status": "RUNNING",
+            "owner": "owner@baseten.co",
+            "trainer_instance_type": {"gpu_type": "H100", "gpu_count": 8},
+            "trainer_node_count": 2,
+            "sampler_status": "ACTIVE",
+            "sampler_instance_type": {"gpu_type": "H100", "gpu_count": 2},
+            "sampler_node_count": 1,
+            "created_at": "2026-07-01T00:00:00Z",
+        }
+    ]
+
+
+def test_usage_run_id_falls_back_to_latest_when_no_active_run(mock_remote):
+    # An idle (scaled-to-zero) deployment has no active run but should still
+    # show its latest run as a usable handle (--all to reveal the idle row).
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_idle",
+            status_name="SCALED_TO_ZERO",
+            active_run_id=None,
+            latest_run_id="run_latest",
+            sampler_status=None,
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--all", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "run_latest" in _flatten(result.output)
+
+
+def test_usage_json_output_renders_null_gpu_and_sampler(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_orphan", active_run_id=None, trainer_gpu=None, sampler_status=None
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    records = _parse_jsonl(result.output)
+    assert records[0]["active_run_id"] is None
+    assert records[0]["trainer_instance_type"] is None
+    assert records[0]["sampler_status"] is None
+    assert records[0]["sampler_instance_type"] is None
+
+
+def test_usage_json_output_no_summary_line(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [_usage_deployment("dep_abc")]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "Trainer GPUs:" not in result.output
+
+
+def test_usage_empty_prints_friendly_message(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    assert "No Loops deployments or samplers" in _flatten(result.output)
+
+
+def test_usage_all_idle_shows_summary_and_hidden_note(mock_remote):
+    # Every allocation is idle: the table is empty but the summary still reports
+    # the scaled-to-zero total and a note says how many rows were hidden.
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment(
+            "dep_idle",
+            active_run_id=None,
+            latest_run_id="run_idle",
+            status_name="SCALED_TO_ZERO",
+            sampler_status="SCALED_TO_ZERO",
+            sampler_gpu={"gpu_type": "L4", "gpu_count": 1, "node_count": 1},
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    assert "Sampler GPUs: 0 in use, 1 scaled to zero" in flat
+    assert "1 idle or inactive allocation hidden" in flat
+    assert "run_idle" not in flat  # hidden from the table by default
+
+
+def test_usage_includes_standalone_samplers(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler(
+            "samp_solo",
+            base_model="meta-llama/Llama-3-8B",
+            status_name="ACTIVE",
+            gpu={"gpu_type": "H100", "gpu_count": 2, "node_count": 1},
+        )
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    # Sampler-only row: base model + sampler GPU show, and it counts toward the
+    # sampler capacity summary.
+    assert "meta-llama/Llama-3-8B" in flat
+    assert "H100:2" in flat
+    assert "Sampler GPUs: 2 in use" in flat
+    mock_remote.api.list_loops_samplers.assert_called_once_with(scope="org")
+
+
+def test_usage_dedupes_samplers_already_paired_to_a_deployment(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment("dep1", sampler_status="ACTIVE")
+    ]
+    # The deployment's paired sampler ("samp_paired") also appears in the
+    # samplers list; only the genuinely standalone one becomes its own row.
+    mock_remote.api.list_loops_deployments.return_value[0]["sampler"]["id"] = (
+        "samp_paired"
+    )
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_paired"),
+        _standalone_sampler("samp_solo"),
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "-o", "json"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    ids = {record["id"] for record in _parse_jsonl(result.output)}
+    assert ids == {"dep1", "samp_solo"}
+
+
+def test_usage_user_filters_standalone_samplers_by_owner(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [
+        _usage_deployment("dep1", owner_email="target@baseten.co")
+    ]
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_mine", owner_email="target@baseten.co"),
+        _standalone_sampler("samp_other", owner_email="someone@baseten.co"),
+    ]
+    result = _invoke(
+        [
+            "loops",
+            "usage",
+            "--remote",
+            "test_remote",
+            "--user",
+            "target@baseten.co",
+            "-o",
+            "json",
+        ],
+        mock_remote,
+    )
+    assert result.exit_code == 0, result.output
+    # Samplers now carry an owner, so --user keeps the matching standalone
+    # sampler and drops the others.
+    ids = {record["id"] for record in _parse_jsonl(result.output)}
+    assert ids == {"dep1", "samp_mine"}
+
+
+@pytest.mark.parametrize("dead_status", ["INACTIVE", "DEPLOY_FAILED", "BUILD_FAILED"])
+def test_usage_hides_dead_standalone_samplers_by_default(mock_remote, dead_status):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler("samp_dead", status_name=dead_status)
+    ]
+    result = _invoke(["loops", "usage", "--remote", "test_remote"], mock_remote)
+    assert result.exit_code == 0, result.output
+    flat = _flatten(result.output)
+    # Hidden from the table (dead), but reported as a hidden allocation.
+    assert "H100:2" not in flat  # its GPU cell would show if it were rendered
+    assert "1 idle or inactive allocation hidden" in flat
+
+
+def test_usage_all_flag_includes_inactive_standalone_samplers(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = []
+    mock_remote.api.list_loops_samplers.return_value = [
+        _standalone_sampler(
+            "samp_dead", base_model="mistral/Mistral-7B", status_name="INACTIVE"
+        )
+    ]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "--all"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "mistral/Mistral-7B" in _flatten(result.output)
+
+
+def test_usage_mine_scopes_samplers_to_caller(mock_remote):
+    mock_remote.api.list_loops_deployments.return_value = [_usage_deployment("dep1")]
+    result = _invoke(
+        ["loops", "usage", "--remote", "test_remote", "--mine"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    mock_remote.api.list_loops_samplers.assert_called_once_with(scope=None)

@@ -238,6 +238,137 @@ def view_loops_runs_summary(
     _render_loops_runs_summary(runs, show_owner=org_wide)
 
 
+# Deployments in these terminal states are hidden from `usage` unless --all,
+# and never counted toward GPU capacity.
+_TERMINAL_DEPLOYMENT_STATUSES = frozenset({"STOPPED", "FAILED"})
+# A deployment scaled to zero holds no live GPUs; it is tracked separately in
+# the usage summary.
+_SCALED_TO_ZERO_STATUS = "SCALED_TO_ZERO"
+# Dead sampler states (DeploymentStatusV1) — hold no live GPUs; standalone
+# samplers in these states are hidden from the usage view unless --all.
+_TERMINAL_SAMPLER_STATUSES = frozenset(
+    {"INACTIVE", "FAILED", "DEPLOY_FAILED", "BUILD_FAILED", "BUILD_STOPPED"}
+)
+
+
+@loops.command(name="usage")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--mine",
+    is_flag=True,
+    default=False,
+    help="Show only your own Loops deployments (drops the Owner column).",
+)
+@click.option(
+    "--user",
+    "user_email",
+    type=str,
+    required=False,
+    help="Filter to Loops deployments owned by this email (looked up org-wide).",
+)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Include deployments in terminal states (STOPPED, FAILED).",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE, checkpoint_mod.OUTPUT_FORMAT_JSON]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default) or json.",
+)
+@common.common_options()
+def view_loops_usage(
+    remote: Optional[str],
+    mine: bool,
+    user_email: Optional[str],
+    show_all: bool,
+    output_format: str,
+) -> None:
+    """Report Loops GPU capacity, one row per deployment (keyed by its run).
+
+    Org-wide by default; pass --mine for just your own (which drops the Owner
+    column) or --user to filter to a single owner. Each row shows the trainer
+    and sampler GPU allocations and statuses, and a summary line above the table
+    aggregates GPUs in use vs scaled to zero. Standalone samplers (no trainer)
+    appear as sampler-only rows. By default the table lists only allocations
+    holding live GPUs; idle (scaled-to-zero) and terminal ones are counted in the
+    summary but hidden unless you pass --all.
+    """
+    if mine and user_email:
+        raise click.UsageError("Pass at most one of --mine or --user.")
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    # --mine scopes the request to the caller; default and --user pull org-wide
+    # and (for --user) filter to one owner client-side.
+    scope = "org" if not mine else None
+    deployments = remote_provider.api.list_loops_deployments(scope=scope)
+
+    # Standalone samplers (no trainer) aren't in the deployments list. Fetch them
+    # and drop any already shown under a deployment (matched by id, across all
+    # deployments before the owner filter) so nothing is double-counted.
+    paired_sampler_ids = {
+        deployment["sampler"]["id"]
+        for deployment in deployments
+        if deployment.get("sampler") and deployment["sampler"].get("id")
+    }
+    standalone = [
+        sampler
+        for sampler in remote_provider.api.list_loops_samplers(scope=scope)
+        if sampler.get("id") not in paired_sampler_ids
+    ]
+
+    if user_email:
+        deployments = [
+            deployment
+            for deployment in deployments
+            if (deployment.get("user") or {}).get("email") == user_email
+        ]
+        standalone = [
+            sampler
+            for sampler in standalone
+            if (sampler.get("user") or {}).get("email") == user_email
+        ]
+
+    all_rows = deployments + [
+        _standalone_sampler_as_row(sampler) for sampler in standalone
+    ]
+    # The summary reports true org totals regardless of what the table shows.
+    summary = _compute_usage_summary(all_rows)
+
+    # Default view lists only allocations holding live GPUs; idle (scaled-to-zero)
+    # and terminal/dead ones are summarized above but hidden unless --all. Keeps
+    # the table short on orgs with lots of idle allocations.
+    if show_all:
+        display_rows = all_rows
+        hidden_count = 0
+    else:
+        display_rows = [row for row in all_rows if _row_holds_live_gpus(row)]
+        hidden_count = len(all_rows) - len(display_rows)
+
+    if output_format == checkpoint_mod.OUTPUT_FORMAT_JSON:
+        _render_loops_usage_json(display_rows)
+        return
+
+    if not all_rows:
+        console.print("No Loops deployments or samplers.", style="yellow")
+        return
+
+    _render_loops_usage(
+        display_rows, summary, show_owner=not mine, hidden_count=hidden_count
+    )
+
+
 @loops.group(name="runs")
 def loops_runs() -> None:
     """Subcommands for working with Loops runs."""
@@ -366,6 +497,202 @@ def _render_loops_runs_summary_json(runs: List[Dict[str, Any]]) -> None:
             "base_model": run.get("base_model", ""),
             "status": _run_status_name(run),
             "created_at": run.get("created_at") or "",
+        }
+        print(json.dumps(output))
+
+
+def _format_gpu_cell(
+    instance_type: Optional[Dict[str, Any]], node_count: int = 1
+) -> str:
+    """Render an instance type as "<gpu_type>:<gpu_count>", appending "×<nodes>"
+    when the allocation spans more than one node; "—" when there is no GPU."""
+    if not instance_type or not instance_type.get("gpu_count"):
+        return "—"
+    cell = f"{instance_type.get('gpu_type')}:{instance_type['gpu_count']}"
+    if node_count and node_count > 1:
+        cell += f" ×{node_count}"
+    return cell
+
+
+def _gpu_capacity(instance_type: Optional[Dict[str, Any]], node_count: int = 1) -> int:
+    """Total GPUs an allocation holds: gpu_count across every node."""
+    if not instance_type:
+        return 0
+    return (instance_type.get("gpu_count") or 0) * (node_count or 1)
+
+
+# Trainer-status placeholder for a standalone sampler (one with no trainer half).
+_NO_TRAINER_STATUS = "—"
+
+
+def _standalone_sampler_as_row(sampler: Dict[str, Any]) -> Dict[str, Any]:
+    """Wrap a standalone sampler (no trainer) in the deployment row shape so the
+    table and summary render it uniformly: empty trainer half, sampler populated."""
+    return {
+        "id": sampler.get("id", ""),
+        "active_run_id": None,
+        "latest_run_id": None,
+        "base_model": sampler.get("base_model", ""),
+        "created_at": sampler.get("created_at") or "",
+        "status": {"name": _NO_TRAINER_STATUS},
+        "user": sampler.get("user"),
+        "instance_type": None,
+        "node_count": 1,
+        "sampler": {
+            "status": sampler.get("status"),
+            "instance_type": sampler.get("instance_type"),
+            "node_count": sampler.get("node_count") or 1,
+        },
+    }
+
+
+def _compute_usage_summary(deployments: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Aggregate GPU capacity into trainer/sampler and in-use/scaled-to-zero.
+
+    Terminal deployments and dead (deactivated/failed) samplers hold no live
+    capacity and are skipped entirely.
+    """
+    summary = {
+        "trainer_in_use": 0,
+        "trainer_scaled_to_zero": 0,
+        "sampler_in_use": 0,
+        "sampler_scaled_to_zero": 0,
+    }
+    for deployment in deployments:
+        trainer_status = deployment["status"]["name"]
+        if trainer_status in _TERMINAL_DEPLOYMENT_STATUSES:
+            continue
+        trainer_capacity = _gpu_capacity(
+            deployment.get("instance_type"), deployment.get("node_count") or 1
+        )
+        if trainer_status == _SCALED_TO_ZERO_STATUS:
+            summary["trainer_scaled_to_zero"] += trainer_capacity
+        else:
+            summary["trainer_in_use"] += trainer_capacity
+
+        sampler = deployment.get("sampler")
+        if not sampler:
+            continue
+        sampler_instance_type = sampler.get("instance_type")
+        if not sampler_instance_type:
+            continue
+        sampler_status = (sampler.get("status") or {}).get("name")
+        # A dead sampler (deactivated/failed) holds no live GPUs, even though it
+        # still carries the instance type it last ran on — don't count it.
+        if sampler_status in _TERMINAL_SAMPLER_STATUSES:
+            continue
+        sampler_capacity = _gpu_capacity(
+            sampler_instance_type, sampler.get("node_count") or 1
+        )
+        if sampler_status == _SCALED_TO_ZERO_STATUS:
+            summary["sampler_scaled_to_zero"] += sampler_capacity
+        else:
+            summary["sampler_in_use"] += sampler_capacity
+    return summary
+
+
+def _row_holds_live_gpus(row: Dict[str, Any]) -> bool:
+    """Whether a row is actively holding GPUs (either half serving). Idle
+    (scaled-to-zero) and terminal/dead allocations return False so the default
+    view can hide them while the summary still counts them."""
+    trainer_status = row["status"]["name"]
+    trainer_live = (
+        trainer_status not in _TERMINAL_DEPLOYMENT_STATUSES
+        and trainer_status not in (_SCALED_TO_ZERO_STATUS, _NO_TRAINER_STATUS)
+    )
+    sampler = row.get("sampler")
+    sampler_status = ((sampler or {}).get("status") or {}).get("name")
+    sampler_live = (
+        sampler is not None
+        and sampler_status not in _TERMINAL_SAMPLER_STATUSES
+        and (sampler_status != _SCALED_TO_ZERO_STATUS)
+    )
+    return trainer_live or sampler_live
+
+
+def _render_loops_usage(
+    deployments: List[Dict[str, Any]],
+    summary: Dict[str, int],
+    show_owner: bool = False,
+    hidden_count: int = 0,
+) -> None:
+    console.print(
+        f"Trainer GPUs: {summary['trainer_in_use']} in use, "
+        f"{summary['trainer_scaled_to_zero']} scaled to zero · "
+        f"Sampler GPUs: {summary['sampler_in_use']} in use, "
+        f"{summary['sampler_scaled_to_zero']} scaled to zero"
+    )
+    if hidden_count:
+        plural = "s" if hidden_count != 1 else ""
+        console.print(
+            f"({hidden_count} idle or inactive allocation{plural} hidden — pass --all to show)",
+            style="yellow",
+        )
+    if not deployments:
+        return
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Loops GPU Usage",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Latest Run", style="cyan")
+    if show_owner:
+        table.add_column("Owner", style="magenta")
+    table.add_column("Base Model", style="green")
+    table.add_column("Trainer GPU")
+    table.add_column("Trainer Status")
+    table.add_column("Sampler GPU")
+    table.add_column("Sampler Status")
+    table.add_column("Since")
+    for deployment in deployments:
+        sampler = deployment.get("sampler")
+        created_at = deployment.get("created_at") or ""
+        since = common.format_localized_time(created_at) if created_at else "—"
+        sampler_status = ((sampler or {}).get("status") or {}).get("name") or "—"
+        # Active-or-latest: idle (scaled-to-zero/stopped) deployments have no
+        # active run but still expose their most recent run as a usable handle.
+        run_id = deployment.get("active_run_id") or deployment.get("latest_run_id")
+        row = [run_id or "—"]
+        if show_owner:
+            row.append((deployment.get("user") or {}).get("email") or "—")
+        row.extend(
+            [
+                deployment.get("base_model", ""),
+                _format_gpu_cell(
+                    deployment.get("instance_type"), deployment.get("node_count") or 1
+                ),
+                deployment["status"]["name"],
+                _format_gpu_cell(
+                    sampler.get("instance_type") if sampler else None,
+                    (sampler.get("node_count") or 1) if sampler else 1,
+                ),
+                sampler_status,
+                since,
+            ]
+        )
+        table.add_row(*row)
+    console.print(table)
+
+
+def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
+    """Print the deployments as jsonl. Mirrors the columns of the default table."""
+    for deployment in deployments:
+        sampler = deployment.get("sampler") or {}
+        output = {
+            "id": deployment.get("id", ""),
+            "active_run_id": deployment.get("active_run_id"),
+            "latest_run_id": deployment.get("latest_run_id"),
+            "base_model": deployment.get("base_model", ""),
+            "status": deployment["status"]["name"],
+            "owner": (deployment.get("user") or {}).get("email"),
+            "trainer_instance_type": deployment.get("instance_type"),
+            "trainer_node_count": deployment.get("node_count"),
+            "sampler_status": (sampler.get("status") or {}).get("name"),
+            "sampler_instance_type": sampler.get("instance_type"),
+            "sampler_node_count": sampler.get("node_count"),
+            "created_at": deployment.get("created_at") or "",
         }
         print(json.dumps(output))
 
