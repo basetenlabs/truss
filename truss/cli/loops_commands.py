@@ -247,7 +247,23 @@ _SCALED_TO_ZERO_STATUS = "SCALED_TO_ZERO"
 # Dead sampler states (DeploymentStatusV1) — hold no live GPUs; standalone
 # samplers in these states are hidden from the usage view unless --all.
 _TERMINAL_SAMPLER_STATUSES = frozenset(
-    {"INACTIVE", "FAILED", "DEPLOY_FAILED", "BUILD_FAILED", "BUILD_STOPPED"}
+    {
+        "INACTIVE",
+        "FAILED",
+        "DEPLOY_FAILED",
+        "BUILD_FAILED",
+        "BUILD_STOPPED",
+        "UNHEALTHY",
+        "DEACTIVATING",
+    }
+)
+# The usage table collapses raw backend statuses into the same buckets the UI
+# (truss loops view) shows: trainer is ACTIVE/INACTIVE (scaled-to-zero, stopped,
+# and failed all read INACTIVE); sampler adds SCALED_TO_ZERO. These are the
+# statuses that read as ACTIVE — serving or coming up; anything else is INACTIVE.
+_TRAINER_ACTIVE_STATUSES = frozenset({"CREATED", "DEPLOYING", "RUNNING"})
+_SAMPLER_ACTIVE_STATUSES = frozenset(
+    {"ACTIVE", "WAKING_UP", "UPDATING", "BUILDING", "DEPLOYING", "LOADING_MODEL"}
 )
 
 
@@ -610,6 +626,24 @@ def _row_holds_live_gpus(row: Dict[str, Any]) -> bool:
     return trainer_live or sampler_live
 
 
+def _trainer_status_label(status: str) -> str:
+    """Collapse a raw trainer status to ACTIVE/INACTIVE (scaled-to-zero, stopped,
+    and failed all read INACTIVE), or "—" for a standalone-sampler row."""
+    if status == _NO_TRAINER_STATUS:
+        return _NO_TRAINER_STATUS
+    return "ACTIVE" if status in _TRAINER_ACTIVE_STATUSES else "INACTIVE"
+
+
+def _sampler_status_label(status: Optional[str]) -> str:
+    """Collapse a raw sampler status to ACTIVE/SCALED_TO_ZERO/INACTIVE, or "—"
+    when there is no sampler."""
+    if not status:
+        return "—"
+    if status == _SCALED_TO_ZERO_STATUS:
+        return _SCALED_TO_ZERO_STATUS
+    return "ACTIVE" if status in _SAMPLER_ACTIVE_STATUSES else "INACTIVE"
+
+
 def _render_loops_usage(
     deployments: List[Dict[str, Any]],
     summary: Dict[str, int],
@@ -645,12 +679,14 @@ def _render_loops_usage(
     table.add_column("Trainer Status")
     table.add_column("Sampler GPU")
     table.add_column("Sampler Status")
-    table.add_column("Since")
+    table.add_column("Created")
     for deployment in deployments:
         sampler = deployment.get("sampler")
         created_at = deployment.get("created_at") or ""
-        since = common.format_localized_time(created_at) if created_at else "—"
-        sampler_status = ((sampler or {}).get("status") or {}).get("name") or "—"
+        created = common.format_localized_time(created_at) if created_at else "—"
+        sampler_status = _sampler_status_label(
+            ((sampler or {}).get("status") or {}).get("name")
+        )
         # Active-or-latest: idle (scaled-to-zero/stopped) deployments have no
         # active run but still expose their most recent run as a usable handle.
         run_id = deployment.get("active_run_id") or deployment.get("latest_run_id")
@@ -663,13 +699,13 @@ def _render_loops_usage(
                 _format_gpu_cell(
                     deployment.get("instance_type"), deployment.get("node_count") or 1
                 ),
-                deployment["status"]["name"],
+                _trainer_status_label(deployment["status"]["name"]),
                 _format_gpu_cell(
                     sampler.get("instance_type") if sampler else None,
                     (sampler.get("node_count") or 1) if sampler else 1,
                 ),
                 sampler_status,
-                since,
+                created,
             ]
         )
         table.add_row(*row)
@@ -685,11 +721,13 @@ def _render_loops_usage_json(deployments: List[Dict[str, Any]]) -> None:
             "active_run_id": deployment.get("active_run_id"),
             "latest_run_id": deployment.get("latest_run_id"),
             "base_model": deployment.get("base_model", ""),
-            "status": deployment["status"]["name"],
+            "status": _trainer_status_label(deployment["status"]["name"]),
             "owner": (deployment.get("user") or {}).get("email"),
             "trainer_instance_type": deployment.get("instance_type"),
             "trainer_node_count": deployment.get("node_count"),
-            "sampler_status": (sampler.get("status") or {}).get("name"),
+            "sampler_status": _sampler_status_label(
+                (sampler.get("status") or {}).get("name")
+            ),
             "sampler_instance_type": sampler.get("instance_type"),
             "sampler_node_count": sampler.get("node_count"),
             "created_at": deployment.get("created_at") or "",
