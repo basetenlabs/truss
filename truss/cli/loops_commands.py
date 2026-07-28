@@ -645,7 +645,7 @@ def _render_loops_usage(
     table.add_column("Trainer Status")
     table.add_column("Sampler GPU")
     table.add_column("Sampler Status")
-    table.add_column("Since")
+    table.add_column("Created")
     for deployment in deployments:
         sampler = deployment.get("sampler")
         created_at = deployment.get("created_at") or ""
