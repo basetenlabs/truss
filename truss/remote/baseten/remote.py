@@ -291,8 +291,9 @@ class BasetenRemote(TrussRemote):
         labels: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         resources = config.resources.model_dump(exclude_none=True)
-        has_explicit_fabric_requirement = config.resources.rdma is not None or bool(
-            config.resources.fabrics
+        fabric_requirement = config.resources.fabric
+        has_explicit_fabric_requirement = fabric_requirement is not None and (
+            fabric_requirement.rdma is not None or bool(fabric_requirement.preferences)
         )
         is_disaggregated = (
             config.bis_llm is not None
@@ -300,7 +301,7 @@ class BasetenRemote(TrussRemote):
             and config.bis_llm.config.get("is_disaggregated") is True
         )
         if is_disaggregated and not has_explicit_fabric_requirement:
-            resources["rdma"] = True
+            resources["fabric"] = {"rdma": True}
 
         body: Dict[str, Any] = {"resources": resources}
         if model_id is None:

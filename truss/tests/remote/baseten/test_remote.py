@@ -6,7 +6,13 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM, Fabric, Weights, WeightsSource
+from truss.base.truss_config import (
+    BISLLM,
+    Fabric,
+    FabricRequirement,
+    Weights,
+    WeightsSource,
+)
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -694,14 +700,11 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
 @pytest.mark.parametrize(
     ("is_disaggregated", "resource_config", "expected_resource_config"),
     [
-        (False, {}, {}),
-        (False, {"rdma": True}, {"rdma": True}),
-        (False, {"rdma": False}, {"rdma": False}),
-        (False, {"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
-        (True, {}, {"rdma": True}),
+        (False, None, None),
+        (True, None, {"rdma": True}),
         (True, {"rdma": True}, {"rdma": True}),
         (True, {"rdma": False}, {"rdma": False}),
-        (True, {"fabrics": [Fabric.INFINIBAND]}, {"fabrics": ["infiniband"]}),
+        (True, {"preferences": [Fabric.INFINIBAND]}, {"preferences": ["infiniband"]}),
     ],
 )
 def test_push_uses_bis_llm_service_for_bis_llm(
@@ -716,8 +719,10 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         config={"model": "test-llm", "is_disaggregated": is_disaggregated}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
-    for field, value in resource_config.items():
-        setattr(mock_truss_handle.spec.config.resources, field, value)
+    if resource_config is not None:
+        mock_truss_handle.spec.config.resources.fabric = (
+            FabricRequirement.model_validate(resource_config)
+        )
     mock_truss_handle.spec.config.weights = Weights(
         [
             WeightsSource(source="hf://model-1", mount_location="/models/base"),
@@ -775,11 +780,10 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         "environment": "production",
     }
     assert isinstance(kwargs["body"]["resources"], dict)
-    for field in ("rdma", "fabrics"):
-        if field in expected_resource_config:
-            assert kwargs["body"]["resources"][field] == expected_resource_config[field]
-        else:
-            assert field not in kwargs["body"]["resources"]
+    if expected_resource_config is None:
+        assert "fabric" not in kwargs["body"]["resources"]
+    else:
+        assert kwargs["body"]["resources"]["fabric"] == expected_resource_config
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"

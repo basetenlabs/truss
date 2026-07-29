@@ -862,6 +862,57 @@ class Build(custom_types.ConfigModel):
         return self
 
 
+class FabricRequirement(custom_types.ConfigModel):
+    """Network fabric requirements for a deployment."""
+
+    rdma: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether this deployment requires an available RDMA fabric.",
+    )
+    preferences: Optional[list[Fabric]] = pydantic.Field(
+        default=None,
+        description="Ordered NIC fabric preferences.",
+        examples=[["infiniband"]],
+    )
+
+    @pydantic.field_validator("preferences")
+    @classmethod
+    def validate_unique_preferences(
+        cls, preferences: Optional[list[Fabric]]
+    ) -> Optional[list[Fabric]]:
+        if preferences is None:
+            return preferences
+        if not preferences:
+            raise ValueError("resources.fabric.preferences must be a non-empty list")
+        if len(preferences) != len(set(preferences)):
+            raise ValueError(
+                "resources.fabric.preferences must not contain duplicate entries"
+            )
+        return preferences
+
+    @pydantic.model_validator(mode="after")
+    def validate_requirement(self) -> "FabricRequirement":
+        if self.rdma is not None and self.preferences is not None:
+            raise ValueError(
+                "Please specify only one of `resources.fabric.rdma` and "
+                "`resources.fabric.preferences`"
+            )
+        return self
+
+    @pydantic.model_serializer(mode="wrap")
+    def _serialize(
+        self,
+        handler: core_schema.SerializerFunctionWrapHandler,
+        info: core_schema.SerializationInfo,
+    ) -> dict:
+        result = handler(self)
+        if self.rdma is None:
+            result.pop("rdma", None)
+        if not self.preferences:
+            result.pop("preferences", None)
+        return result
+
+
 class Resources(custom_types.ConfigModel):
     """Compute resources that your model needs, including CPU, memory, and GPU resources."""
 
@@ -890,14 +941,8 @@ class Resources(custom_types.ConfigModel):
             default=None, description="Number of nodes for multi-node deployments."
         )
     )
-    rdma: Optional[bool] = pydantic.Field(
-        default=None,
-        description="Whether this deployment requires an available RDMA fabric.",
-    )
-    fabrics: Optional[list[Fabric]] = pydantic.Field(
-        default=None,
-        description="Ordered NIC fabric preferences.",
-        examples=[["infiniband"]],
+    fabric: Optional[FabricRequirement] = pydantic.Field(
+        default=None, description="Network fabric requirements for this deployment."
     )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -941,15 +986,6 @@ class Resources(custom_types.ConfigModel):
             data.pop("use_gpu", None)
         return data
 
-    @pydantic.field_validator("fabrics")
-    @classmethod
-    def validate_unique_fabrics(
-        cls, fabrics: Optional[list[Fabric]]
-    ) -> Optional[list[Fabric]]:
-        if fabrics is not None and len(fabrics) != len(set(fabrics)):
-            raise ValueError("resources.fabrics must not contain duplicate entries")
-        return fabrics
-
     @pydantic.field_validator("cpu")
     def _validate_cpu(cls, cpu_spec: str) -> str:
         if _is_numeric(cpu_spec):
@@ -986,10 +1022,8 @@ class Resources(custom_types.ConfigModel):
             result.pop("node_count", None)
         if not self.instance_type:
             result.pop("instance_type", None)
-        if self.rdma is None:
-            result.pop("rdma", None)
-        if not self.fabrics:
-            result.pop("fabrics", None)
+        if self.fabric is None:
+            result.pop("fabric", None)
         return result
 
 
@@ -1507,11 +1541,19 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_fabric_requirements(self) -> "TrussConfig":
-        if self.resources.rdma is not None and self.resources.fabrics:
-            raise ValueError(
-                "Please specify only one of `resources.rdma` and `resources.fabrics`"
-            )
+        if self.resources.fabric is None:
+            return self
 
+        is_disaggregated = (
+            self.bis_llm is not None
+            and self.bis_llm.config is not None
+            and self.bis_llm.config.get("is_disaggregated") is True
+        )
+        if not is_disaggregated:
+            raise ValueError(
+                "`resources.fabric` is currently only supported for "
+                "disaggregated BIS LLM deployments"
+            )
         return self
 
     @pydantic.model_validator(mode="after")
