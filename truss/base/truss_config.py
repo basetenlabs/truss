@@ -865,7 +865,7 @@ class Build(custom_types.ConfigModel):
 class FabricRequirement(custom_types.ConfigModel):
     """Network fabric requirements for a deployment."""
 
-    rdma: Optional[bool] = pydantic.Field(
+    use_rdma: Optional[bool] = pydantic.Field(
         default=None,
         description="Whether this deployment requires an available RDMA fabric.",
     )
@@ -892,9 +892,9 @@ class FabricRequirement(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def validate_requirement(self) -> "FabricRequirement":
-        if self.rdma is not None and self.preferences is not None:
+        if self.use_rdma is not None and self.preferences is not None:
             raise ValueError(
-                "Please specify only one of `resources.fabric.rdma` and "
+                "Please specify only one of `resources.fabric.use_rdma` and "
                 "`resources.fabric.preferences`"
             )
         return self
@@ -906,8 +906,8 @@ class FabricRequirement(custom_types.ConfigModel):
         info: core_schema.SerializationInfo,
     ) -> dict:
         result = handler(self)
-        if self.rdma is None:
-            result.pop("rdma", None)
+        if self.use_rdma is None:
+            result.pop("use_rdma", None)
         if not self.preferences:
             result.pop("preferences", None)
         return result

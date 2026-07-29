@@ -701,9 +701,9 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
     ("is_disaggregated", "resource_config", "expected_resource_config"),
     [
         (False, None, None),
-        (True, None, {"rdma": True}),
-        (True, {"rdma": True}, {"rdma": True}),
-        (True, {"rdma": False}, {"rdma": False}),
+        (True, None, {"use_rdma": True}),
+        (True, {"use_rdma": True}, {"use_rdma": True}),
+        (True, {"use_rdma": False}, {"use_rdma": False}),
         (True, {"preferences": [Fabric.INFINIBAND]}, {"preferences": ["infiniband"]}),
     ],
 )

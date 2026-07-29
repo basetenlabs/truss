@@ -186,13 +186,13 @@ def test_parse_resource_fabric_rejects_unsupported_or_duplicate_preferences(
         Resources.model_validate({"fabric": {"preferences": preferences}})
 
 
-@pytest.mark.parametrize("rdma", [True, False])
-def test_parse_resource_rdma_preserves_explicit_value(rdma):
-    resources = Resources.model_validate({"fabric": {"rdma": rdma}})
+@pytest.mark.parametrize("use_rdma", [True, False])
+def test_parse_resource_use_rdma_preserves_explicit_value(use_rdma):
+    resources = Resources.model_validate({"fabric": {"use_rdma": use_rdma}})
 
     assert resources.fabric is not None
-    assert resources.fabric.rdma is rdma
-    assert resources.to_dict()["fabric"]["rdma"] is rdma
+    assert resources.fabric.use_rdma is use_rdma
+    assert resources.to_dict()["fabric"]["use_rdma"] is use_rdma
 
 
 def test_resource_fabric_not_serialized_when_unset():
@@ -201,7 +201,7 @@ def test_resource_fabric_not_serialized_when_unset():
 
 @pytest.mark.parametrize(
     "fabric_requirement",
-    [{"rdma": True}, {"rdma": False}, {"preferences": ["infiniband"]}],
+    [{"use_rdma": True}, {"use_rdma": False}, {"preferences": ["infiniband"]}],
 )
 @pytest.mark.parametrize("bis_llm", [None, {"config": {"is_disaggregated": False}}])
 def test_fabric_requirements_reject_non_disaggregated_configs(
@@ -220,7 +220,7 @@ def test_fabric_requirements_reject_non_disaggregated_configs(
 
 @pytest.mark.parametrize(
     "fabric_requirement",
-    [{"rdma": True}, {"rdma": False}, {"preferences": ["infiniband"]}],
+    [{"use_rdma": True}, {"use_rdma": False}, {"preferences": ["infiniband"]}],
 )
 def test_fabric_requirements_allow_disaggregated_bis(fabric_requirement):
     config = TrussConfig.model_validate(
@@ -235,16 +235,16 @@ def test_fabric_requirements_allow_disaggregated_bis(fabric_requirement):
     )
 
 
-def test_rdma_and_fabric_preferences_are_mutually_exclusive():
+def test_use_rdma_and_fabric_preferences_are_mutually_exclusive():
     with pytest.raises(
         pydantic.ValidationError,
         match=(
-            "Please specify only one of `resources.fabric.rdma` and "
+            "Please specify only one of `resources.fabric.use_rdma` and "
             "`resources.fabric.preferences`"
         ),
     ):
         Resources.model_validate(
-            {"fabric": {"rdma": True, "preferences": ["infiniband"]}}
+            {"fabric": {"use_rdma": True, "preferences": ["infiniband"]}}
         )
 
 

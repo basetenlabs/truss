@@ -540,7 +540,7 @@
       "additionalProperties": true,
       "description": "Network fabric requirements for a deployment.",
       "properties": {
-        "rdma": {
+        "use_rdma": {
           "anyOf": [
             {
               "type": "boolean"
@@ -551,7 +551,7 @@
           ],
           "default": null,
           "description": "Whether this deployment requires an available RDMA fabric.",
-          "title": "Rdma"
+          "title": "Use Rdma"
         },
         "preferences": {
           "anyOf": [
