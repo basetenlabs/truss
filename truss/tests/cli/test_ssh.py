@@ -209,6 +209,36 @@ class TestResolveRemote:
             assert resolve_remote("dev", config) == "dev"
 
 
+class TestJwtCache:
+    def test_entries_are_scoped_by_remote_and_api_prefix(self, tmp_path):
+        dev = ParsedHostname(
+            workload_type=WORKLOAD_MODEL,
+            id="model",
+            replica=None,
+            deployment_id="deployment",
+            remote="dev",
+            api_prefix="mc-dev",
+        )
+        staging = ParsedHostname(
+            workload_type=WORKLOAD_MODEL,
+            id="model",
+            replica=None,
+            deployment_id="deployment",
+            remote="staging",
+            api_prefix="staging",
+        )
+
+        with mock.patch.object(proxy_command, "JWT_CACHE_DIR", tmp_path):
+            proxy_command.save_jwt_cache(dev, "dev-token", "dev-proxy:443")
+            proxy_command.save_jwt_cache(staging, "staging-token", "staging-proxy:443")
+
+            assert proxy_command.load_jwt_cache(dev) == ("dev-token", "dev-proxy:443")
+            assert proxy_command.load_jwt_cache(staging) == (
+                "staging-token",
+                "staging-proxy:443",
+            )
+
+
 class TestEnsureSSHKeypair:
     def test_creates_keypair_ed25519(self, tmp_path):
         key_dir = tmp_path / "ssh" / "baseten"

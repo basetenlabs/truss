@@ -348,7 +348,12 @@ def sign_model_certificate(rest_url, api_key, parsed, public_key, key_path):
 
 
 def _jwt_cache_path(parsed):
-    parts = [parsed.workload_type, parsed.id]
+    parts = [
+        parsed.workload_type,
+        f"remote-{parsed.remote or 'default'}",
+        f"api-{parsed.api_prefix or 'default'}",
+        parsed.id,
+    ]
     if parsed.deployment_id:
         parts.append(parsed.deployment_id)
     if parsed.replica:
