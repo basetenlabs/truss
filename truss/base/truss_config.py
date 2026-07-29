@@ -1540,23 +1540,6 @@ class TrussConfig(custom_types.ConfigModel):
         return self
 
     @pydantic.model_validator(mode="after")
-    def _validate_fabric_requirements(self) -> "TrussConfig":
-        if self.resources.fabric is None:
-            return self
-
-        is_disaggregated = (
-            self.bis_llm is not None
-            and self.bis_llm.config is not None
-            and self.bis_llm.config.get("is_disaggregated") is True
-        )
-        if not is_disaggregated:
-            raise ValueError(
-                "`resources.fabric` is currently only supported for "
-                "disaggregated BIS LLM deployments"
-            )
-        return self
-
-    @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
         if self.requirements and self.requirements_file:
             raise ValueError(

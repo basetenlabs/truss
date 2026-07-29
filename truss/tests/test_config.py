@@ -203,32 +203,20 @@ def test_resource_fabric_not_serialized_when_unset():
     "fabric_requirement",
     [{"use_rdma": True}, {"use_rdma": False}, {"preferences": ["infiniband"]}],
 )
-@pytest.mark.parametrize("bis_llm", [None, {"config": {"is_disaggregated": False}}])
-def test_fabric_requirements_reject_non_disaggregated_configs(
-    fabric_requirement, bis_llm
-):
+@pytest.mark.parametrize(
+    "bis_llm",
+    [
+        None,
+        {"config": {"is_disaggregated": False}},
+        {"config": {"is_disaggregated": True}},
+    ],
+)
+def test_fabric_requirements_allow_all_deployment_types(fabric_requirement, bis_llm):
     config_dict = {"resources": {"fabric": fabric_requirement}}
     if bis_llm is not None:
         config_dict["bis_llm"] = bis_llm
 
-    with pytest.raises(
-        pydantic.ValidationError,
-        match="currently only supported for disaggregated BIS LLM deployments",
-    ):
-        TrussConfig.model_validate(config_dict)
-
-
-@pytest.mark.parametrize(
-    "fabric_requirement",
-    [{"use_rdma": True}, {"use_rdma": False}, {"preferences": ["infiniband"]}],
-)
-def test_fabric_requirements_allow_disaggregated_bis(fabric_requirement):
-    config = TrussConfig.model_validate(
-        {
-            "resources": {"fabric": fabric_requirement},
-            "bis_llm": {"config": {"is_disaggregated": True}},
-        }
-    )
+    config = TrussConfig.model_validate(config_dict)
 
     assert config.resources.fabric == FabricRequirement.model_validate(
         fabric_requirement
