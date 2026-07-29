@@ -223,16 +223,26 @@ def test_fabric_requirements_allow_all_deployment_types(fabric_requirement, bis_
     )
 
 
-def test_use_rdma_and_fabric_preferences_are_mutually_exclusive():
+def test_use_rdma_true_and_fabric_preferences_can_be_combined():
+    resources = Resources.model_validate(
+        {"fabric": {"use_rdma": True, "preferences": ["infiniband"]}}
+    )
+
+    assert resources.fabric is not None
+    assert resources.fabric.use_rdma is True
+    assert resources.fabric.preferences == [Fabric.INFINIBAND]
+
+
+def test_use_rdma_false_and_fabric_preferences_cannot_be_combined():
     with pytest.raises(
         pydantic.ValidationError,
         match=(
-            "Please specify only one of `resources.fabric.use_rdma` and "
+            "`resources.fabric.use_rdma: false` cannot be combined with "
             "`resources.fabric.preferences`"
         ),
     ):
         Resources.model_validate(
-            {"fabric": {"use_rdma": True, "preferences": ["infiniband"]}}
+            {"fabric": {"use_rdma": False, "preferences": ["infiniband"]}}
         )
 
 

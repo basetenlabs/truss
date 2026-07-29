@@ -550,7 +550,7 @@
             }
           ],
           "default": null,
-          "description": "Whether this deployment requires an available RDMA fabric.",
+          "description": "Whether to use RDMA with any supported fabric.",
           "title": "Use Rdma"
         },
         "preferences": {
@@ -566,7 +566,7 @@
             }
           ],
           "default": null,
-          "description": "Ordered NIC fabric preferences.",
+          "description": "Exhaustive list of acceptable network fabrics, in preference order.",
           "examples": [
             [
               "infiniband"

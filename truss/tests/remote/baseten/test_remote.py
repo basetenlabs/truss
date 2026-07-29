@@ -1,3 +1,5 @@
+import base64
+import json
 import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -6,13 +8,7 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import (
-    BISLLM,
-    Fabric,
-    FabricRequirement,
-    Weights,
-    WeightsSource,
-)
+from truss.base.truss_config import BISLLM, FabricRequirement, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -701,10 +697,15 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
     ("is_disaggregated", "resource_config", "expected_resource_config"),
     [
         (False, None, None),
-        (True, None, {"use_rdma": True}),
-        (True, {"use_rdma": True}, {"use_rdma": True}),
-        (True, {"use_rdma": False}, {"use_rdma": False}),
-        (True, {"preferences": [Fabric.INFINIBAND]}, {"preferences": ["infiniband"]}),
+        (True, None, {"preferences": ["infiniband"]}),
+        (True, {"use_rdma": True}, {"preferences": ["infiniband"]}),
+        (True, {"use_rdma": False}, {"preferences": []}),
+        (True, {"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
+        (
+            True,
+            {"use_rdma": True, "preferences": ["infiniband"]},
+            {"preferences": ["infiniband"]},
+        ),
     ],
 )
 def test_push_uses_bis_llm_service_for_bis_llm(
@@ -788,6 +789,41 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"
     assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize(
+    ("resource_config", "expected_resource_config"),
+    [
+        ({"use_rdma": True}, {"preferences": ["infiniband"]}),
+        ({"use_rdma": False}, {"preferences": []}),
+        ({"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
+        (
+            {"use_rdma": True, "preferences": ["infiniband"]},
+            {"preferences": ["infiniband"]},
+        ),
+    ],
+)
+def test_push_compiles_fabric_requirement_for_non_bis_deployments(
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+    resource_config,
+    expected_resource_config,
+):
+    mock_truss_handle.spec.config.resources.fabric = FabricRequirement.model_validate(
+        resource_config
+    )
+
+    remote.push(
+        mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+    )
+
+    _, kwargs = mock_create_truss_service.call_args
+    config = json.loads(base64.b64decode(kwargs["config"]))
+    assert config["resources"]["fabric"] == expected_resource_config
+    assert "use_rdma" not in config["resources"]["fabric"]
 
 
 @pytest.mark.parametrize(

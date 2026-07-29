@@ -866,12 +866,11 @@ class FabricRequirement(custom_types.ConfigModel):
     """Network fabric requirements for a deployment."""
 
     use_rdma: Optional[bool] = pydantic.Field(
-        default=None,
-        description="Whether this deployment requires an available RDMA fabric.",
+        default=None, description="Whether to use RDMA with any supported fabric."
     )
     preferences: Optional[list[Fabric]] = pydantic.Field(
         default=None,
-        description="Ordered NIC fabric preferences.",
+        description="Exhaustive list of acceptable network fabrics, in preference order.",
         examples=[["infiniband"]],
     )
 
@@ -892,9 +891,9 @@ class FabricRequirement(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def validate_requirement(self) -> "FabricRequirement":
-        if self.use_rdma is not None and self.preferences is not None:
+        if self.use_rdma is False and self.preferences is not None:
             raise ValueError(
-                "Please specify only one of `resources.fabric.use_rdma` and "
+                "`resources.fabric.use_rdma: false` cannot be combined with "
                 "`resources.fabric.preferences`"
             )
         return self
@@ -908,7 +907,7 @@ class FabricRequirement(custom_types.ConfigModel):
         result = handler(self)
         if self.use_rdma is None:
             result.pop("use_rdma", None)
-        if not self.preferences:
+        if self.preferences is None:
             result.pop("preferences", None)
         return result
 
