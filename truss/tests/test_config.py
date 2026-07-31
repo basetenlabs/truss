@@ -22,6 +22,7 @@ from truss.base.truss_config import (
     DockerAuthType,
     DockerServer,
     EgressRestrictions,
+    FabricRequirement,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -166,6 +167,69 @@ def test_instance_type_not_serialized_when_none():
     resources = Resources()
     result = resources.to_dict(verbose=True)
     assert "instance_type" not in result
+
+
+def test_parse_resource_fabric_preferences():
+    resources = Resources.model_validate({"fabric": {"preferences": ["infiniband"]}})
+
+    assert resources.fabric is not None
+    assert resources.fabric.preferences == ["infiniband"]
+    assert resources.to_dict()["fabric"]["preferences"] == ["infiniband"]
+
+
+@pytest.mark.parametrize("preferences", [[], ["roce"], ["infiniband", "infiniband"]])
+def test_parse_resource_fabric_defers_preference_validation_to_server(preferences):
+    resources = Resources.model_validate({"fabric": {"preferences": preferences}})
+
+    assert resources.fabric is not None
+    assert resources.fabric.preferences == preferences
+
+
+@pytest.mark.parametrize("use_rdma", [True, False])
+def test_parse_resource_use_rdma_preserves_explicit_value(use_rdma):
+    resources = Resources.model_validate({"fabric": {"use_rdma": use_rdma}})
+
+    assert resources.fabric is not None
+    assert resources.fabric.use_rdma is use_rdma
+    assert resources.to_dict()["fabric"]["use_rdma"] is use_rdma
+
+
+def test_resource_fabric_not_serialized_when_unset():
+    assert "fabric" not in Resources().to_dict(verbose=True)
+
+
+@pytest.mark.parametrize(
+    "fabric_requirement",
+    [{"use_rdma": True}, {"use_rdma": False}, {"preferences": ["infiniband"]}],
+)
+@pytest.mark.parametrize(
+    "bis_llm",
+    [
+        None,
+        {"config": {"is_disaggregated": False}},
+        {"config": {"is_disaggregated": True}},
+    ],
+)
+def test_fabric_requirements_allow_all_deployment_types(fabric_requirement, bis_llm):
+    config_dict = {"resources": {"fabric": fabric_requirement}}
+    if bis_llm is not None:
+        config_dict["bis_llm"] = bis_llm
+
+    config = TrussConfig.model_validate(config_dict)
+
+    assert config.resources.fabric == FabricRequirement.model_validate(
+        fabric_requirement
+    )
+
+
+def test_use_rdma_true_and_fabric_preferences_can_be_combined():
+    resources = Resources.model_validate(
+        {"fabric": {"use_rdma": True, "preferences": ["infiniband"]}}
+    )
+
+    assert resources.fabric is not None
+    assert resources.fabric.use_rdma is True
+    assert resources.fabric.preferences == ["infiniband"]
 
 
 @pytest.mark.parametrize(
