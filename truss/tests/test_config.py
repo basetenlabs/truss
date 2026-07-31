@@ -22,7 +22,6 @@ from truss.base.truss_config import (
     DockerAuthType,
     DockerServer,
     EgressRestrictions,
-    Fabric,
     FabricRequirement,
     HTTPOptions,
     ModelCache,
@@ -174,16 +173,16 @@ def test_parse_resource_fabric_preferences():
     resources = Resources.model_validate({"fabric": {"preferences": ["infiniband"]}})
 
     assert resources.fabric is not None
-    assert resources.fabric.preferences == [Fabric.INFINIBAND]
+    assert resources.fabric.preferences == ["infiniband"]
     assert resources.to_dict()["fabric"]["preferences"] == ["infiniband"]
 
 
 @pytest.mark.parametrize("preferences", [[], ["roce"], ["infiniband", "infiniband"]])
-def test_parse_resource_fabric_rejects_unsupported_or_duplicate_preferences(
-    preferences,
-):
-    with pytest.raises(pydantic.ValidationError):
-        Resources.model_validate({"fabric": {"preferences": preferences}})
+def test_parse_resource_fabric_defers_preference_validation_to_server(preferences):
+    resources = Resources.model_validate({"fabric": {"preferences": preferences}})
+
+    assert resources.fabric is not None
+    assert resources.fabric.preferences == preferences
 
 
 @pytest.mark.parametrize("use_rdma", [True, False])
@@ -230,20 +229,17 @@ def test_use_rdma_true_and_fabric_preferences_can_be_combined():
 
     assert resources.fabric is not None
     assert resources.fabric.use_rdma is True
-    assert resources.fabric.preferences == [Fabric.INFINIBAND]
+    assert resources.fabric.preferences == ["infiniband"]
 
 
-def test_use_rdma_false_and_fabric_preferences_cannot_be_combined():
-    with pytest.raises(
-        pydantic.ValidationError,
-        match=(
-            "`resources.fabric.use_rdma: false` cannot be combined with "
-            "`resources.fabric.preferences`"
-        ),
-    ):
-        Resources.model_validate(
-            {"fabric": {"use_rdma": False, "preferences": ["infiniband"]}}
-        )
+def test_use_rdma_false_and_fabric_preferences_defer_validation_to_server():
+    resources = Resources.model_validate(
+        {"fabric": {"use_rdma": False, "preferences": ["infiniband"]}}
+    )
+
+    assert resources.fabric is not None
+    assert resources.fabric.use_rdma is False
+    assert resources.fabric.preferences == ["infiniband"]
 
 
 @pytest.mark.parametrize(

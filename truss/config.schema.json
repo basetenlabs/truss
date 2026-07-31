@@ -529,13 +529,6 @@
       "title": "ExternalDataItem",
       "type": "object"
     },
-    "Fabric": {
-      "enum": [
-        "infiniband"
-      ],
-      "title": "Fabric",
-      "type": "string"
-    },
     "FabricRequirement": {
       "additionalProperties": true,
       "description": "Network fabric requirements for a deployment.",
@@ -557,7 +550,7 @@
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/Fabric"
+                "type": "string"
               },
               "type": "array"
             },
@@ -566,7 +559,7 @@
             }
           ],
           "default": null,
-          "description": "Exhaustive list of acceptable network fabrics, in preference order.",
+          "description": "Exhaustive list of acceptable network fabrics, in preference order. An empty list requires no fabric.",
           "examples": [
             [
               "infiniband"

@@ -26,7 +26,7 @@ from truss.base.constants import (
     DEFAULT_REMOTE_NAME,
     PRODUCTION_ENVIRONMENT_NAME,
 )
-from truss.base.truss_config import Fabric, ModelServer
+from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
@@ -68,7 +68,6 @@ if TYPE_CHECKING:
 
 # Server-side cap on raw config.yaml; payloads larger than this are dropped.
 RAW_CONFIG_MAX_BYTES = 100 * 1024
-DEFAULT_RDMA_FABRICS = (Fabric.INFINIBAND,)
 
 
 class PatchStatus(enum.Enum):
@@ -80,36 +79,6 @@ class PatchStatus(enum.Enum):
 class PatchResult(NamedTuple):
     status: PatchStatus
     message: str
-
-
-def _is_disaggregated(config: Any) -> bool:
-    return (
-        config.bis_llm is not None
-        and config.bis_llm.config is not None
-        and config.bis_llm.config.get("is_disaggregated") is True
-    )
-
-
-def _effective_fabric_preferences(config: Any) -> Optional[list[str]]:
-    requirement = config.resources.fabric
-    if requirement is not None:
-        if requirement.preferences is not None:
-            return [fabric.value for fabric in requirement.preferences]
-        if requirement.use_rdma is False:
-            return []
-        if requirement.use_rdma is True:
-            return [fabric.value for fabric in DEFAULT_RDMA_FABRICS]
-    if _is_disaggregated(config):
-        return [fabric.value for fabric in DEFAULT_RDMA_FABRICS]
-    return None
-
-
-def _compile_fabric_requirement(resources: Dict[str, Any], config: Any) -> None:
-    preferences = _effective_fabric_preferences(config)
-    if preferences is None:
-        resources.pop("fabric", None)
-        return
-    resources["fabric"] = {"preferences": preferences}
 
 
 def retry_patch(
@@ -321,10 +290,9 @@ class BasetenRemote(TrussRemote):
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        resources = config.resources.model_dump(mode="json", exclude_none=True)
-        _compile_fabric_requirement(resources, config)
-
-        body: Dict[str, Any] = {"resources": resources}
+        body: Dict[str, Any] = {
+            "resources": config.resources.model_dump(mode="json", exclude_none=True)
+        }
         if model_id is None:
             body["name"] = model_name
         if config.environment_variables:
@@ -432,11 +400,9 @@ class BasetenRemote(TrussRemote):
 
         config.validate_forbid_extra()
         config_dict = config.to_dict()
-        config_for_validation = base64_encoded_json_str(config_dict)
-        if config.bis_llm is None:
-            validate_truss_config_against_backend(self._api, config_for_validation)
-        _compile_fabric_requirement(config_dict["resources"], config)
         encoded_config_str = base64_encoded_json_str(config_dict)
+        if config.bis_llm is None:
+            validate_truss_config_against_backend(self._api, encoded_config_str)
         default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
         config_yaml_override: Optional[bytes] = None
         if truss_handle.spec.config_path.resolve() != default_config:

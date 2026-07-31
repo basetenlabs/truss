@@ -96,10 +96,6 @@ class Accelerator(str, enum.Enum):
     B300 = "B300"
 
 
-class Fabric(str, enum.Enum):
-    INFINIBAND = "infiniband"
-
-
 class AcceleratorSpec(custom_types.ConfigModel):
     model_config = pydantic.ConfigDict(validate_assignment=True)
 
@@ -868,35 +864,14 @@ class FabricRequirement(custom_types.ConfigModel):
     use_rdma: Optional[bool] = pydantic.Field(
         default=None, description="Whether to use RDMA with any supported fabric."
     )
-    preferences: Optional[list[Fabric]] = pydantic.Field(
+    preferences: Optional[list[str]] = pydantic.Field(
         default=None,
-        description="Exhaustive list of acceptable network fabrics, in preference order.",
+        description=(
+            "Exhaustive list of acceptable network fabrics, in preference order. "
+            "An empty list requires no fabric."
+        ),
         examples=[["infiniband"]],
     )
-
-    @pydantic.field_validator("preferences")
-    @classmethod
-    def validate_unique_preferences(
-        cls, preferences: Optional[list[Fabric]]
-    ) -> Optional[list[Fabric]]:
-        if preferences is None:
-            return preferences
-        if not preferences:
-            raise ValueError("resources.fabric.preferences must be a non-empty list")
-        if len(preferences) != len(set(preferences)):
-            raise ValueError(
-                "resources.fabric.preferences must not contain duplicate entries"
-            )
-        return preferences
-
-    @pydantic.model_validator(mode="after")
-    def validate_requirement(self) -> "FabricRequirement":
-        if self.use_rdma is False and self.preferences is not None:
-            raise ValueError(
-                "`resources.fabric.use_rdma: false` cannot be combined with "
-                "`resources.fabric.preferences`"
-            )
-        return self
 
     @pydantic.model_serializer(mode="wrap")
     def _serialize(

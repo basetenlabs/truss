@@ -697,14 +697,14 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
     ("is_disaggregated", "resource_config", "expected_resource_config"),
     [
         (False, None, None),
-        (True, None, {"preferences": ["infiniband"]}),
-        (True, {"use_rdma": True}, {"preferences": ["infiniband"]}),
-        (True, {"use_rdma": False}, {"preferences": []}),
+        (True, None, None),
+        (True, {"use_rdma": True}, {"use_rdma": True}),
+        (True, {"use_rdma": False}, {"use_rdma": False}),
         (True, {"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
         (
             True,
             {"use_rdma": True, "preferences": ["infiniband"]},
-            {"preferences": ["infiniband"]},
+            {"use_rdma": True, "preferences": ["infiniband"]},
         ),
     ],
 )
@@ -794,16 +794,16 @@ def test_push_uses_bis_llm_service_for_bis_llm(
 @pytest.mark.parametrize(
     ("resource_config", "expected_resource_config"),
     [
-        ({"use_rdma": True}, {"preferences": ["infiniband"]}),
-        ({"use_rdma": False}, {"preferences": []}),
+        ({"use_rdma": True}, {"use_rdma": True}),
+        ({"use_rdma": False}, {"use_rdma": False}),
         ({"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
         (
             {"use_rdma": True, "preferences": ["infiniband"]},
-            {"preferences": ["infiniband"]},
+            {"use_rdma": True, "preferences": ["infiniband"]},
         ),
     ],
 )
-def test_push_compiles_fabric_requirement_for_non_bis_deployments(
+def test_push_forwards_fabric_requirement_for_non_bis_deployments(
     remote,
     mock_baseten_requests,
     mock_upload_truss,
@@ -823,7 +823,6 @@ def test_push_compiles_fabric_requirement_for_non_bis_deployments(
     _, kwargs = mock_create_truss_service.call_args
     config = json.loads(base64.b64decode(kwargs["config"]))
     assert config["resources"]["fabric"] == expected_resource_config
-    assert "use_rdma" not in config["resources"]["fabric"]
 
 
 @pytest.mark.parametrize(
