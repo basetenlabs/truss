@@ -291,7 +291,7 @@ class BasetenRemote(TrussRemote):
         labels: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
-            "resources": config.resources.model_dump(mode="json", exclude_none=True)
+            "resources": config.resources.model_dump(exclude_none=True)
         }
         if model_id is None:
             body["name"] = model_name
