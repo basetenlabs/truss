@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import os
 import sys
@@ -11,6 +12,7 @@ import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
 from starlette.requests import Request
+from starlette.responses import StreamingResponse
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
@@ -120,6 +122,160 @@ async def test_gather_generator_decodes_byte_chunks(app_path):
         yield b"\x98\x80"
 
     assert await gather_generator(byte_stream()) == "hello \U0001f600"
+
+
+@pytest.mark.anyio
+async def test_streaming_generator_cancelled_when_consumer_closes(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+
+    model_wrapper = object.__new__(model_wrapper_class)
+    model_wrapper._config = {"runtime": {"streaming_read_timeout": 5}}
+    model_wrapper._logger = MagicMock()
+    model_wrapper._tracer = sdk_trace.NoOpTracer()
+    model_wrapper._model_file_name = "model.py"
+
+    first_chunk_sent = asyncio.Event()
+    generator_closed = asyncio.Event()
+    never_finish = asyncio.Event()
+    cleanup = Mock()
+
+    async def model_stream():
+        try:
+            yield b"first"
+            await never_finish.wait()
+        finally:
+            generator_closed.set()
+
+    response_stream = await model_wrapper._stream_with_background_task(
+        model_stream(), sdk_trace.NoOpTracer().start_span("predict"), None, cleanup
+    )
+
+    sent_chunks = []
+
+    async def send(message):
+        if message["type"] == "http.response.body" and message.get("body"):
+            sent_chunks.append(message["body"])
+            first_chunk_sent.set()
+
+    async def receive():
+        await first_chunk_sent.wait()
+        return {"type": "http.disconnect"}
+
+    response = StreamingResponse(response_stream)
+    await asyncio.wait_for(
+        response(
+            {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}},
+            receive,
+            send,
+        ),
+        timeout=1,
+    )
+
+    assert sent_chunks == [b"first"]
+    await asyncio.wait_for(generator_closed.wait(), timeout=1)
+    cleanup.assert_called_once_with()
+
+
+@pytest.mark.anyio
+async def test_streaming_generator_cleanup_after_normal_completion(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+
+    model_wrapper = object.__new__(model_wrapper_class)
+    model_wrapper._config = {"runtime": {"streaming_read_timeout": 5}}
+    model_wrapper._logger = MagicMock()
+    model_wrapper._tracer = sdk_trace.NoOpTracer()
+    model_wrapper._model_file_name = "model.py"
+
+    generator_closed = asyncio.Event()
+    cleanup = Mock()
+
+    async def model_stream():
+        try:
+            yield b"first"
+            yield b"second"
+        finally:
+            generator_closed.set()
+
+    response_stream = await model_wrapper._stream_with_background_task(
+        model_stream(), sdk_trace.NoOpTracer().start_span("predict"), None, cleanup
+    )
+
+    assert [chunk async for chunk in response_stream] == [b"first", b"second"]
+    assert generator_closed.is_set()
+    cleanup.assert_called_once_with()
+
+
+@pytest.mark.anyio
+async def test_streaming_generator_cancelled_after_read_timeout(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+
+    model_wrapper = object.__new__(model_wrapper_class)
+    model_wrapper._config = {"runtime": {"streaming_read_timeout": 0.01}}
+    model_wrapper._logger = MagicMock()
+    model_wrapper._tracer = sdk_trace.NoOpTracer()
+    model_wrapper._model_file_name = "model.py"
+
+    generator_closed = asyncio.Event()
+    never_yield = asyncio.Event()
+    cleanup = Mock()
+
+    async def model_stream():
+        try:
+            await never_yield.wait()
+            yield b"unreachable"
+        finally:
+            generator_closed.set()
+
+    response_stream = await model_wrapper._stream_with_background_task(
+        model_stream(), sdk_trace.NoOpTracer().start_span("predict"), None, cleanup
+    )
+
+    with pytest.raises(TimeoutError):
+        await response_stream.__anext__()
+
+    await asyncio.wait_for(generator_closed.wait(), timeout=1)
+    cleanup.assert_called_once_with()
+
+
+@pytest.mark.anyio
+async def test_force_async_generator_closes_sync_generator(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    force_async_generator = getattr(model_wrapper_module, "_force_async_generator")
+
+    generator_closed = False
+
+    def model_stream():
+        nonlocal generator_closed
+        try:
+            yield b"first"
+            yield b"second"
+        finally:
+            generator_closed = True
+
+    async_generator = force_async_generator(model_stream())
+    assert await async_generator.__anext__() == b"first"
+    await async_generator.aclose()
+
+    assert generator_closed
 
 
 @pytest.mark.anyio
