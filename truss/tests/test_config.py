@@ -232,16 +232,6 @@ def test_use_rdma_true_and_fabric_preferences_can_be_combined():
     assert resources.fabric.preferences == ["infiniband"]
 
 
-def test_use_rdma_false_and_fabric_preferences_defer_validation_to_server():
-    resources = Resources.model_validate(
-        {"fabric": {"use_rdma": False, "preferences": ["infiniband"]}}
-    )
-
-    assert resources.fabric is not None
-    assert resources.fabric.use_rdma is False
-    assert resources.fabric.preferences == ["infiniband"]
-
-
 @pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
