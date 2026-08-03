@@ -888,6 +888,35 @@ class Build(custom_types.ConfigModel):
         return self
 
 
+class FabricRequirement(custom_types.ConfigModel):
+    """Network fabric requirements for a deployment."""
+
+    use_rdma: Optional[bool] = pydantic.Field(
+        default=None, description="Whether to use RDMA with any supported fabric."
+    )
+    preferences: Optional[list[str]] = pydantic.Field(
+        default=None,
+        description=(
+            "Exhaustive list of acceptable network fabrics, in preference order. "
+            "An empty list requires no fabric."
+        ),
+        examples=[["infiniband"]],
+    )
+
+    @pydantic.model_serializer(mode="wrap")
+    def _serialize(
+        self,
+        handler: core_schema.SerializerFunctionWrapHandler,
+        info: core_schema.SerializationInfo,
+    ) -> dict:
+        result = handler(self)
+        if self.use_rdma is None:
+            result.pop("use_rdma", None)
+        if self.preferences is None:
+            result.pop("preferences", None)
+        return result
+
+
 class Resources(custom_types.ConfigModel):
     """Compute resources that your model needs, including CPU, memory, and GPU resources."""
 
@@ -915,6 +944,9 @@ class Resources(custom_types.ConfigModel):
         pydantic.Field(
             default=None, description="Number of nodes for multi-node deployments."
         )
+    )
+    fabric: Optional[FabricRequirement] = pydantic.Field(
+        default=None, description="Network fabric requirements for this deployment."
     )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -988,12 +1020,14 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` and `instance_type` if at default."""
+        """Custom omission of optional resource fields when unset."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
         if not self.instance_type:
             result.pop("instance_type", None)
+        if self.fabric is None:
+            result.pop("fabric", None)
         return result
 
 

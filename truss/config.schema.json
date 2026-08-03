@@ -529,6 +529,48 @@
       "title": "ExternalDataItem",
       "type": "object"
     },
+    "FabricRequirement": {
+      "additionalProperties": true,
+      "description": "Network fabric requirements for a deployment.",
+      "properties": {
+        "use_rdma": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether to use RDMA with any supported fabric.",
+          "title": "Use Rdma"
+        },
+        "preferences": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exhaustive list of acceptable network fabrics, in preference order. An empty list requires no fabric.",
+          "examples": [
+            [
+              "infiniband"
+            ]
+          ],
+          "title": "Preferences"
+        }
+      },
+      "title": "FabricRequirement",
+      "type": "object"
+    },
     "GRPCOptions": {
       "properties": {
         "kind": {
@@ -917,6 +959,18 @@
           "default": null,
           "description": "Number of nodes for multi-node deployments.",
           "title": "Node Count"
+        },
+        "fabric": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FabricRequirement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Network fabric requirements for this deployment."
         }
       },
       "title": "Resources",

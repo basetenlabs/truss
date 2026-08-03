@@ -446,7 +446,14 @@ def loops_samplers() -> None:
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_loops_samplers(reverse: bool, remote: Optional[str]) -> None:
-    """List Loops samplers visible to the caller."""
+    """[DEPRECATED] Use `truss loops usage` instead.
+
+    Lists Loops samplers visible to the caller.
+    """
+    console.print(
+        "[DEPRECATED] `truss loops samplers view` is deprecated; use `truss loops usage` instead.",
+        style="yellow",
+    )
     if not remote:
         remote = remote_cli.inquire_remote_name()
 

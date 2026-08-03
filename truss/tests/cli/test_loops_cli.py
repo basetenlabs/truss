@@ -563,6 +563,16 @@ def test_samplers_view_lists_samplers(mock_remote):
     assert "sampler_def" in result.output
 
 
+def test_samplers_view_prints_deprecation_notice(mock_remote):
+    mock_remote.api.list_loops_samplers.return_value = []
+    result = _invoke(
+        ["loops", "samplers", "view", "--remote", "test_remote"], mock_remote
+    )
+    assert result.exit_code == 0, result.output
+    assert "DEPRECATED" in result.output
+    assert "truss loops usage" in result.output
+
+
 def test_samplers_view_no_samplers_prints_friendly_message(mock_remote):
     mock_remote.api.list_loops_samplers.return_value = []
     result = _invoke(
