@@ -30,6 +30,7 @@ def _mock_baseten_chain_service() -> BasetenChainService:
     service = object.__new__(BasetenChainService)
     service._name = "test_chain"
     service._entrypoint_descriptor = None
+    service._keepalive_ping_paths = {}
     service._chain_deployment_handle = Mock(
         hostname="chain.api.baseten.co",
         chain_deployment_id="deployment_id",

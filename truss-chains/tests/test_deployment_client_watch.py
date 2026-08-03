@@ -255,12 +255,14 @@ def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
         remote_provider.fetch_auth_header,
         is_draft=True,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
     mock_keepalive.assert_any_call(
         "https://model-def.api.baseten.co",
         remote_provider.fetch_auth_header,
         is_draft=True,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
 
 
@@ -289,12 +291,14 @@ def test_prepare_chainlet_models_for_watch_keeps_all_chainlets_warm_with_subset(
         remote_provider.fetch_auth_header,
         is_draft=True,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
     mock_keepalive.assert_any_call(
         "https://model-def.api.baseten.co",
         remote_provider.fetch_auth_header,
         is_draft=True,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
 
 
@@ -352,6 +356,7 @@ def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
         remote_provider.fetch_auth_header,
         is_draft=True,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
 
 
@@ -386,7 +391,72 @@ def test_start_keepalives_warms_ready_chainlets_including_published():
         remote_provider.fetch_auth_header,
         is_draft=False,
         deployment_id="version_id",
+        ping_path="v1/models/model",
     )
+
+
+def test_start_keepalives_uses_ping_path_override():
+    chainlets = [
+        _chainlet("LLM", status="MODEL_READY"),
+        _chainlet("Orchestrator", status="MODEL_READY"),
+    ]
+    remote_provider = MagicMock()
+    started_keepalives: dict = {}
+
+    with patch(
+        "truss_chains.deployment.deployment_client.cli_common.start_keepalive"
+    ) as mock_keepalive:
+        deployment_client._start_keepalives_for_ready_chainlets(
+            chainlets, remote_provider, started_keepalives, ping_paths={"LLM": "ready"}
+        )
+
+    # The docker_server chainlet is pinged on its readiness endpoint; the truss
+    # server chainlet keeps the default path.
+    mock_keepalive.assert_any_call(
+        "https://model-abc.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
+        ping_path="ready",
+    )
+    mock_keepalive.assert_any_call(
+        "https://model-abc.api.baseten.co",
+        remote_provider.fetch_auth_header,
+        is_draft=True,
+        deployment_id="version_id",
+        ping_path="v1/models/model",
+    )
+
+
+def test_keepalive_ping_paths_maps_docker_server_chainlets(tmp_path):
+    docker_truss_dir = tmp_path / "llm"
+    docker_truss_dir.mkdir()
+    (docker_truss_dir / "config.yaml").write_text(
+        """
+model_name: llm
+docker_server:
+  start_command: python server.py
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /ready
+  liveness_endpoint: /health
+"""
+    )
+    truss_server_dir = tmp_path / "stt"
+    truss_server_dir.mkdir()
+    (truss_server_dir / "config.yaml").write_text("model_name: stt\n")
+
+    descriptors = [
+        _descriptor(docker_truss_dir, display_name="LLM", is_truss_chainlet=True),
+        _descriptor(truss_server_dir, display_name="STT", is_truss_chainlet=True),
+        _descriptor(display_name="Orchestrator"),
+    ]
+
+    ping_paths = deployment_client._keepalive_ping_paths(descriptors)
+
+    # Framework-generated chainlets (no truss_dir) fall back to the default path
+    # via the absent key.
+    assert ping_paths == {"LLM": "ready", "STT": "v1/models/model"}
 
 
 def test_start_keepalives_is_idempotent_per_oracle_id():

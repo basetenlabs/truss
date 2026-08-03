@@ -241,6 +241,7 @@ def _make_watch_mocks(
 
     mock_tr = Mock()
     mock_tr.spec.config.model_name = "test_model"
+    mock_tr.spec.config.docker_server = None
 
     remote_provider = MagicMock()
     remote_provider.fetch_auth_header.return_value = {
@@ -1151,7 +1152,9 @@ def test_push_watch_no_sleep_starts_keepalive(
 
     assert result.exit_code == 0
     mock_start_keepalive.assert_called_once_with(
-        "https://model.api.baseten.co", remote.fetch_auth_header
+        "https://model.api.baseten.co",
+        remote.fetch_auth_header,
+        ping_path="v1/models/model",
     )
     mock_start_watch.assert_called_once()
 
