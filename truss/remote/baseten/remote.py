@@ -401,7 +401,8 @@ class BasetenRemote(TrussRemote):
             raise ValueError("disable-truss-download can only be used for new models")
 
         config.validate_forbid_extra()
-        encoded_config_str = base64_encoded_json_str(config.to_dict())
+        config_dict = config.to_dict()
+        encoded_config_str = base64_encoded_json_str(config_dict)
         if config.bis_llm is None:
             validate_truss_config_against_backend(self._api, encoded_config_str)
         default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()

@@ -21,6 +21,7 @@ import rich_click as click
 from rich.markup import escape
 
 import truss
+from truss.base import truss_config
 from truss.cli.utils import self_upgrade
 
 if TYPE_CHECKING:
@@ -52,6 +53,16 @@ _KEEPALIVE_INTERVAL_SEC = 30
 _KEEPALIVE_MAX_CONSECUTIVE_FAILURES = 20  # be very generous
 _KEEPALIVE_MAX_DURATION_SEC = 24 * 60 * 60  # 24 hours
 _KEEPALIVE_WARNING_BEFORE_EXIT_SEC = 30 * 60  # 30 minutes
+# Truss servers answer 200 on this route; docker_server deployments don't serve
+# it and need `keepalive_ping_path` to pick their readiness endpoint instead.
+KEEPALIVE_DEFAULT_PING_PATH = "v1/models/model"
+
+
+def keepalive_ping_path(config: truss_config.TrussConfig) -> str:
+    """Return the path the keepalive loop should ping for this deployment."""
+    if config.docker_server:
+        return config.docker_server.readiness_endpoint.lstrip("/")
+    return KEEPALIVE_DEFAULT_PING_PATH
 
 
 def set_logging_level() -> None:
@@ -325,7 +336,7 @@ def wait_for_development_model_ready(
 
 
 def _keepalive_url(
-    model_hostname: str, is_draft: bool, deployment_id: Optional[str]
+    model_hostname: str, is_draft: bool, deployment_id: Optional[str], ping_path: str
 ) -> str:
     """Build the warm-up endpoint for a deployment.
 
@@ -333,12 +344,12 @@ def _keepalive_url(
     deployments are pinged via their specific `/deployment/{id}/...` endpoint.
     """
     if is_draft:
-        return f"{model_hostname}/development/sync/v1/models/model"
+        return f"{model_hostname}/development/sync/{ping_path}"
     if not deployment_id:
         raise ValueError(
             "deployment_id is required to keep a published deployment warm."
         )
-    return f"{model_hostname}/deployment/{deployment_id}/sync/v1/models/model"
+    return f"{model_hostname}/deployment/{deployment_id}/sync/{ping_path}"
 
 
 def start_keepalive(
@@ -347,9 +358,10 @@ def start_keepalive(
     *,
     is_draft: bool = True,
     deployment_id: Optional[str] = None,
+    ping_path: str = KEEPALIVE_DEFAULT_PING_PATH,
 ) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
-    keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id)
+    keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id, ping_path)
     console.print("💤 --no-sleep enabled: keeping model warm")
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(

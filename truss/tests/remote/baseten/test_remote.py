@@ -1,3 +1,5 @@
+import base64
+import json
 import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -6,7 +8,7 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM, Weights, WeightsSource
+from truss.base.truss_config import BISLLM, FabricRequirement, Weights, WeightsSource
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -691,16 +693,40 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             remote.push(th, "model_name", th.truss_dir)
 
 
+@pytest.mark.parametrize(
+    ("is_disaggregated", "resource_config", "expected_resource_config"),
+    [
+        (False, None, None),
+        (True, None, None),
+        (True, {"use_rdma": True}, {"use_rdma": True}),
+        (True, {"use_rdma": False}, {"use_rdma": False}),
+        (True, {"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
+        (
+            True,
+            {"use_rdma": True, "preferences": ["infiniband"]},
+            {"use_rdma": True, "preferences": ["infiniband"]},
+        ),
+    ],
+)
 def test_push_uses_bis_llm_service_for_bis_llm(
-    remote, mock_upload_truss, mock_truss_handle
+    remote,
+    mock_upload_truss,
+    mock_truss_handle,
+    is_disaggregated,
+    resource_config,
+    expected_resource_config,
 ):
     mock_truss_handle.spec.config.bis_llm = BISLLM(
-        config={"model": "test-llm"}, version="v1"
+        config={"model": "test-llm", "is_disaggregated": is_disaggregated}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
     mock_truss_handle.spec.config.model_metadata = {
         "example_model_input": {"model": "test-llm", "messages": []}
     }
+    if resource_config is not None:
+        mock_truss_handle.spec.config.resources.fabric = (
+            FabricRequirement.model_validate(resource_config)
+        )
     mock_truss_handle.spec.config.weights = Weights(
         [
             WeightsSource(source="hf://model-1", mount_location="/models/base"),
@@ -743,7 +769,10 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     _, kwargs = mock_create_bis_llm_service.call_args
     assert kwargs["model_id"] == "bis-llm-model-id"
     assert kwargs["team_id"] is None
-    assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
+    assert kwargs["body"]["llm_config"] == {
+        "model": "test-llm",
+        "is_disaggregated": is_disaggregated,
+    }
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["weights"] == [
         {"source": "hf://model-1", "mount_location": "/models/base"},
@@ -758,10 +787,48 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         "environment": "production",
     }
     assert isinstance(kwargs["body"]["resources"], dict)
+    if expected_resource_config is None:
+        assert "fabric" not in kwargs["body"]["resources"]
+    else:
+        assert kwargs["body"]["resources"]["fabric"] == expected_resource_config
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"
     assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize(
+    ("resource_config", "expected_resource_config"),
+    [
+        ({"use_rdma": True}, {"use_rdma": True}),
+        ({"use_rdma": False}, {"use_rdma": False}),
+        ({"preferences": ["infiniband"]}, {"preferences": ["infiniband"]}),
+        (
+            {"use_rdma": True, "preferences": ["infiniband"]},
+            {"use_rdma": True, "preferences": ["infiniband"]},
+        ),
+    ],
+)
+def test_push_forwards_fabric_requirement_for_non_bis_deployments(
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+    resource_config,
+    expected_resource_config,
+):
+    mock_truss_handle.spec.config.resources.fabric = FabricRequirement.model_validate(
+        resource_config
+    )
+
+    remote.push(
+        mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+    )
+
+    _, kwargs = mock_create_truss_service.call_args
+    config = json.loads(base64.b64decode(kwargs["config"]))
+    assert config["resources"]["fabric"] == expected_resource_config
 
 
 @pytest.mark.parametrize(
