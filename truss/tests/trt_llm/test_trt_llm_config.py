@@ -116,6 +116,21 @@ def test_trt_llm_encoder(trtllm_config_encoder):
     assert config.build.plugin_configuration.use_paged_context_fmha is False
 
 
+def test_trt_llm_encoder_torch_accepts_no_quant(trtllm_config_encoder_torch):
+    config = TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+    assert config.build.base_model.value == "encoder_torch"
+    assert config.build.quantization_type.value == "no_quant"
+    assert config.build.max_num_tokens == 32768
+
+
+def test_trt_llm_encoder_torch_rejects_build_time_quantization(
+    trtllm_config_encoder_torch,
+):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["quantization_type"] = "fp8"
+    with pytest.raises(pydantic.ValidationError, match="encoder_torch"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
     trt_llm_config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
     try:
