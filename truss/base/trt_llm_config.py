@@ -380,7 +380,14 @@ pip install truss==0.10.8
                     f"you set build.quantization_type={self.quantization_type.value}. "
                     "Point checkpoint_repository at a pre-quantized HF checkpoint instead."
                 )
-        if self.base_model == TrussTRTLLMModel.ENCODER:
+            # Speculative decoding is a decoder concept; embedding/reranker serving via
+            # BEI-torch has no draft/target loop.
+            if self.speculator is not None:
+                raise ValueError(
+                    "base_model=encoder_torch does not support speculative decoding; "
+                    "remove trt_llm.build.speculator."
+                )
+        elif self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
             if self.max_seq_len:
                 logger.info(
@@ -922,7 +929,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
             pass
         else:
             raise ValueError(
-                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
+                "TRT-LLM and BEI-torch are not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
                 "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
             )
     elif trt_llm_config.build.quantization_type in [
@@ -980,6 +987,7 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
     if trt_llm_config_v1.build.base_model not in [
         TrussTRTLLMModel.ENCODER,
         TrussTRTLLMModel.ENCODER_BERT,
+        TrussTRTLLMModel.ENCODER_TORCH,
     ]:
         current_tags = config.model_metadata.get("tags", [])
         if (

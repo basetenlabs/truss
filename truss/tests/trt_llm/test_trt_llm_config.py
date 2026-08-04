@@ -131,6 +131,17 @@ def test_trt_llm_encoder_torch_rejects_build_time_quantization(
         TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
 
 
+def test_trt_llm_encoder_torch_rejects_speculator(trtllm_config_encoder_torch):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["speculator"] = {
+        "speculative_decoding_mode": "LOOKAHEAD_DECODING",
+        "lookahead_windows_size": 4,
+        "lookahead_ngram_size": 3,
+        "lookahead_verification_set_size": 2,
+    }
+    with pytest.raises(pydantic.ValidationError, match="speculator"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
     trt_llm_config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
     try:
