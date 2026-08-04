@@ -27,6 +27,10 @@ TRTLLM_PREDICT_CONCURRENCY = 512
 BEI_TRTLLM_CLIENT_BATCH_SIZE = 128
 BEI_MAX_CONCURRENCY_TARGET_REQUESTS = 2048
 BEI_REQUIRED_MAX_NUM_TOKENS = 16384
+# BEI-torch (vLLM) rejects --max-batch-tokens below this; long-context embedders
+# (Nemotron-3-Embed at 32k) need the headroom. User max_num_tokens is clamped
+# upward to this floor, matching the ENCODER/ENCODER_BERT behavior.
+BEI_TORCH_REQUIRED_MAX_NUM_TOKENS = 32768
 
 TRTLLM_MIN_MEMORY_REQUEST_GI = 10
 HF_MODELS_API_URL = "https://huggingface.co/api/models"

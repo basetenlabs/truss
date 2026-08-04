@@ -27,6 +27,7 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
+    BEI_TORCH_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONSTRAINTS_TXT_FILENAME,
@@ -628,8 +629,11 @@ class ServingImageBuilder(ImageBuilder):
         # Torch backend has no TRT-LLM 32-cap; 256 is a safe upper bound for KV-less
         # embedding servers before per-request scheduling overhead dominates.
         runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 256)
-        # 32768 keeps parity with BEI-torch upstream defaults for long-context embedders.
-        runtime_max_batch_tokens = max(trt_llm_config.build.max_num_tokens, 32768)
+        # vLLM rejects --max-batch-tokens below BEI_TORCH_REQUIRED_MAX_NUM_TOKENS;
+        # long-context embedders (Nemotron 32k) need the headroom.
+        runtime_max_batch_tokens = max(
+            trt_llm_config.build.max_num_tokens, BEI_TORCH_REQUIRED_MAX_NUM_TOKENS
+        )
         port = 7997
         start_command = " ".join(
             [

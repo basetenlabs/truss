@@ -387,6 +387,13 @@ pip install truss==0.10.8
                     "base_model=encoder_torch does not support speculative decoding; "
                     "remove trt_llm.build.speculator."
                 )
+            # LoRA adapters are a TRT-LLM build-time concept; vLLM serves the
+            # checkpoint as-is, so adapters would be silently ignored.
+            if self.lora_adapters is not None:
+                raise ValueError(
+                    "base_model=encoder_torch does not support lora_adapters; "
+                    "remove trt_llm.build.lora_adapters."
+                )
         elif self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
             if self.max_seq_len:

@@ -142,6 +142,14 @@ def test_trt_llm_encoder_torch_rejects_speculator(trtllm_config_encoder_torch):
         TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
 
 
+def test_trt_llm_encoder_torch_rejects_lora_adapters(trtllm_config_encoder_torch):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["lora_adapters"] = {
+        "adapter1": {"source": "HF", "repo": "nvidia/Nemotron-3-Embed-8B-BF16-lora"}
+    }
+    with pytest.raises(pydantic.ValidationError, match="lora_adapters"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
     trt_llm_config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
     try:
