@@ -299,6 +299,8 @@ class BasetenRemote(TrussRemote):
             body["environment_variables"] = config.environment_variables
         if config.weights:
             body["weights"] = config.weights.model_dump(exclude_none=True)
+        if config.model_metadata:
+            body["model_metadata"] = config.model_metadata
         if labels is not None:
             body["metadata"] = labels
 
