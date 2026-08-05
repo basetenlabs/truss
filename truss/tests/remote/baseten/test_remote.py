@@ -720,6 +720,9 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         config={"model": "test-llm", "is_disaggregated": is_disaggregated}, version="v1"
     )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    mock_truss_handle.spec.config.model_metadata = {
+        "example_model_input": {"model": "test-llm", "messages": []}
+    }
     if resource_config is not None:
         mock_truss_handle.spec.config.resources.fabric = (
             FabricRequirement.model_validate(resource_config)
@@ -776,6 +779,9 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         {"source": "hf://model-2", "mount_location": "/models/adapter"},
     ]
     assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
+    assert kwargs["body"]["model_metadata"] == {
+        "example_model_input": {"model": "test-llm", "messages": []}
+    }
     assert kwargs["body"]["metadata"] == {
         "git_sha": "abc123",
         "environment": "production",
