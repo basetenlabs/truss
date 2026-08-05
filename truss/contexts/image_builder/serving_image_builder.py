@@ -27,6 +27,7 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
+    BEI_TORCH_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONSTRAINTS_TXT_FILENAME,
@@ -610,6 +611,56 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
+    def prepare_bei_encoder_torch_build_dir(self, build_dir: Path):
+        """prepares the build directory for an ENCODER_TORCH model to launch the BEI torch backend
+        (text-embeddings-router + vLLM). No engine build; the checkpoint is served directly."""
+        config = self._spec.config
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_TORCH
+        ), (
+            "prepare_bei_encoder_torch_build_dir should only be called for ENCODER_TORCH tensorrt-llm model"
+        )
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+            "prepare_bei_encoder_torch_build_dir should only be called for inference_stack v1 tensorrt-llm model"
+        )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
+        # Torch backend has no TRT-LLM 32-cap; 256 is a safe upper bound for KV-less
+        # embedding servers before per-request scheduling overhead dominates.
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 256)
+        # vLLM rejects --max-batch-tokens below BEI_TORCH_REQUIRED_MAX_NUM_TOKENS;
+        # long-context embedders (Nemotron 32k) need the headroom.
+        runtime_max_batch_tokens = max(
+            trt_llm_config.build.max_num_tokens, BEI_TORCH_REQUIRED_MAX_NUM_TOKENS
+        )
+        port = 7997
+        start_command = " ".join(
+            [
+                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
+                f"--port {port}",
+                f"--max-batch-requests {runtime_max_batch_size}",
+                f"--max-batch-tokens {runtime_max_batch_tokens}",
+                # sentences per JSON payload; capped for request-based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # concurrent requests before returning 429.
+                # https://docs.baseten.co/performance/concurrency#concurrency-target
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+                # stricter validation in newer BEI-torch images requires this to
+                # silently trim overlong inputs instead of 4xx-ing the request.
+                "--auto-truncate",
+            ]
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{start_command}'",
+            server_port=port,
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
+            or "/v1/embeddings",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
     def prepare_trtllm_bert_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
@@ -665,7 +716,11 @@ class ServingImageBuilder(ImageBuilder):
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model
-            not in [TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT]
+            not in [
+                TrussTRTLLMModel.ENCODER,
+                TrussTRTLLMModel.ENCODER_BERT,
+                TrussTRTLLMModel.ENCODER_TORCH,
+            ]
         ), (
             "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
         )
@@ -730,6 +785,8 @@ class ServingImageBuilder(ImageBuilder):
                 elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT:
                     # Run the specific encoder_bert build
                     self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
+                elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_TORCH:
+                    self.prepare_bei_encoder_torch_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 

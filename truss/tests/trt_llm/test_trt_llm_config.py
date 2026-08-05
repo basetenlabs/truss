@@ -116,6 +116,40 @@ def test_trt_llm_encoder(trtllm_config_encoder):
     assert config.build.plugin_configuration.use_paged_context_fmha is False
 
 
+def test_trt_llm_encoder_torch_accepts_no_quant(trtllm_config_encoder_torch):
+    config = TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+    assert config.build.base_model.value == "encoder_torch"
+    assert config.build.quantization_type.value == "no_quant"
+    assert config.build.max_num_tokens == 32768
+
+
+def test_trt_llm_encoder_torch_rejects_build_time_quantization(
+    trtllm_config_encoder_torch,
+):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["quantization_type"] = "fp8"
+    with pytest.raises(pydantic.ValidationError, match="encoder_torch"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
+def test_trt_llm_encoder_torch_rejects_speculator(trtllm_config_encoder_torch):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["speculator"] = {
+        "speculative_decoding_mode": "LOOKAHEAD_DECODING",
+        "lookahead_windows_size": 4,
+        "lookahead_ngram_size": 3,
+        "lookahead_verification_set_size": 2,
+    }
+    with pytest.raises(pydantic.ValidationError, match="speculator"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
+def test_trt_llm_encoder_torch_rejects_lora_adapters(trtllm_config_encoder_torch):
+    trtllm_config_encoder_torch["trt_llm"]["build"]["lora_adapters"] = {
+        "adapter1": {"source": "HF", "repo": "nvidia/Nemotron-3-Embed-8B-BF16-lora"}
+    }
+    with pytest.raises(pydantic.ValidationError, match="lora_adapters"):
+        TRTLLMConfigurationV1(**trtllm_config_encoder_torch["trt_llm"])
+
+
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
     trt_llm_config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
     try:

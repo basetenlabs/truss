@@ -1125,6 +1125,7 @@
             "briton_version": null,
             "bei_version": null,
             "bei_bert_version": null,
+            "bei_torch_version": null,
             "v2_llm_version": null
           }
         }
@@ -1157,6 +1158,7 @@
             "briton_version": null,
             "bei_version": null,
             "bei_bert_version": null,
+            "bei_torch_version": null,
             "v2_llm_version": null
           }
         }
@@ -1597,6 +1599,7 @@
       "enum": [
         "encoder",
         "encoder_bert",
+        "encoder_torch",
         "decoder",
         "palmyra",
         "qwen",
@@ -1802,6 +1805,18 @@
           ],
           "default": null,
           "title": "Bei Bert Version"
+        },
+        "bei_torch_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bei Torch Version"
         },
         "v2_llm_version": {
           "anyOf": [
