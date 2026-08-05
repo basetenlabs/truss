@@ -554,12 +554,26 @@ jobs:
         with:
           path: baseten-performance-client/node_bindings/artifacts
 
-      - name: Move artifacts
+      - name: Prepare npm packages
         run: |
-          # Skip prepublish script which doesn't support OIDC trusted publishing
-          npm config set ignore-scripts true
           yarn artifacts
-          npm config set ignore-scripts false
+          yarn exec napi prepublish -t npm --skip-optional-publish
+
+      - name: Validate optional dependencies
+        run: |
+          node -e '
+            const { optionalDependencies = {}, version } = require("./package.json")
+            const dependencies = Object.entries(optionalDependencies)
+            if (dependencies.length === 0) {
+              throw new Error("napi prepublish did not generate optionalDependencies")
+            }
+            for (const [name, dependencyVersion] of dependencies) {
+              if (dependencyVersion !== version) {
+                throw new Error(`${name} has version ${dependencyVersion}; expected ${version}`)
+              }
+            }
+            console.log(`Validated ${dependencies.length} optionalDependencies for ${version}`)
+          '
 
       - name: List packages
         run: ls -R ./npm
