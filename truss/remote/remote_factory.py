@@ -284,11 +284,14 @@ def _offload_secrets_from_config(remote_config: RemoteConfig) -> None:
     try:
         keyring.set_password(KEYRING_SERVICE, remote_config.name, payload)
     except keyring.errors.KeyringError as exc:
-        logger.warning(
-            "Warning: keyring write failed for %s (%s); leaving secret in plaintext.",
-            remote_config.name,
-            exc,
-        )
+        if not _keyring_fallback_warned:
+            logger.warning(
+                "Warning: keyring write failed for %s (%s); leaving secret in "
+                "plaintext.",
+                remote_config.name,
+                exc,
+            )
+            _keyring_fallback_warned = True
         return
     for key in _INLINE_SECRET_KEYS:
         configs.pop(key, None)
