@@ -387,12 +387,22 @@ async fn test_msgpack_handler(
         .unwrap_or_default()
         .to_string();
 
-    let response = json!({
-        "format": "msgpack",
-        "accept": accept,
-        "accept_encoding": accept_encoding,
-        "received": request,
-    });
+    let response = rmpv::Value::Map(vec![
+        (rmpv::Value::from("format"), rmpv::Value::from("msgpack")),
+        (rmpv::Value::from("accept"), rmpv::Value::from(accept)),
+        (
+            rmpv::Value::from("accept_encoding"),
+            rmpv::Value::from(accept_encoding),
+        ),
+        (
+            rmpv::Value::from("received"),
+            serde_json::from_value(request).expect("request should convert to msgpack value"),
+        ),
+        (
+            rmpv::Value::from("bin"),
+            rmpv::Value::Binary(vec![0xde, 0xad, 0xbe, 0xef]),
+        ),
+    ]);
     let body = rmp_serde::to_vec_named(&response).expect("test msgpack body should serialize");
 
     let mut headers = AxumHeaderMap::new();
@@ -460,6 +470,14 @@ async fn test_batch_post_decodes_msgpack_response() {
         .expect("batch_post msgpack response should parse");
 
     assert_eq!(responses.len(), 1);
+    let msgpack_map = responses[0].0.as_map().expect("msgpack response is a map");
+    assert_eq!(
+        msgpack_map
+            .iter()
+            .find(|(key, _)| key.as_str() == Some("bin"))
+            .map(|(_, value)| value.as_slice()),
+        Some(Some(&[0xde, 0xad, 0xbe, 0xef][..]))
+    );
     let body = serde_json::to_value(&responses[0].0).expect("msgpack response converts to json");
     assert_eq!(body["format"], "msgpack");
     assert_eq!(body["received"], json!({"value": 42}));

@@ -614,8 +614,9 @@ impl PerformanceClient {
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
 
-  // TODO: This JSON-compatible return type cannot preserve MessagePack binary values.
-  // The API return type is subject to change when binary responses are exposed as Buffers.
+  // TODO: This JSON-compatible return type cannot preserve MessagePack binary, invalid UTF-8
+  // strings, or maps with non-string keys. The API return type is subject to change when those
+  // values are exposed through native JavaScript types.
   #[napi]
   pub async fn batch_post(
     &self,
