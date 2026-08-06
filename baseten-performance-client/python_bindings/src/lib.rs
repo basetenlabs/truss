@@ -7,6 +7,7 @@ use baseten_performance_client_core::{
     Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
+    ResponseValue,
     DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
     DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
     RETRY_BUDGET_PERCENTAGE,
@@ -561,6 +562,66 @@ impl RequestProcessingPreference {
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes,
         }
+    }
+}
+
+
+fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
+    use pyo3::types::{PyBytes, PyDict, PyList};
+    #[allow(deprecated)]
+    Ok(match value {
+        rmpv::Value::Nil => py.None(),
+        rmpv::Value::Boolean(b) => b.to_object(py),
+        rmpv::Value::Integer(i) => {
+            if let Some(v) = i.as_i64() {
+                v.to_object(py)
+            } else if let Some(v) = i.as_u64() {
+                v.to_object(py)
+            } else {
+                return Err(PyValueError::new_err("unrepresentable msgpack integer"));
+            }
+        }
+        rmpv::Value::F32(f) => (*f as f64).to_object(py),
+        rmpv::Value::F64(f) => f.to_object(py),
+        rmpv::Value::String(s) => match s.as_str() {
+            Some(v) => v.to_object(py),
+            None => PyBytes::new(py, s.as_bytes()).to_object(py),
+        },
+        rmpv::Value::Binary(b) => PyBytes::new(py, b).to_object(py),
+        rmpv::Value::Array(items) => {
+            let list = PyList::empty(py);
+            for item in items {
+                list.append(rmpv_to_pyobject(py, item)?)?;
+            }
+            list.to_object(py)
+        }
+        rmpv::Value::Map(entries) => {
+            let dict = PyDict::new(py);
+            for (k, v) in entries {
+                dict.set_item(rmpv_to_pyobject(py, k)?, rmpv_to_pyobject(py, v)?)?;
+            }
+            dict.to_object(py)
+        }
+        rmpv::Value::Ext(tag, data) => {
+            (*tag, PyBytes::new(py, data).to_object(py)).to_object(py)
+        }
+    })
+}
+
+fn response_value_to_pyobject(py: Python<'_>, value: &ResponseValue, idx: usize) -> PyResult<PyObject> {
+    match value {
+        ResponseValue::Json(j) => pythonize::pythonize(py, j)
+            .map(|obj| {
+                #[allow(deprecated)]
+                obj.to_object(py)
+            })
+            .map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize response data at index {}: {}",
+                    idx, e
+                ))
+            }),
+        ResponseValue::Msgpack(m) => rmpv_to_pyobject(py, m),
     }
 }
 
@@ -1202,14 +1263,7 @@ impl PerformanceClient {
         for (idx, (json_val, headers_map, duration)) in
             response_data_with_times_and_headers.into_iter().enumerate()
         {
-            let py_obj_bound = pythonize::pythonize(py, &json_val).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to pythonize response data at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            #[allow(deprecated)]
-            results_py.push(py_obj_bound.to_object(py));
+            results_py.push(response_value_to_pyobject(py, &json_val, idx)?);
 
             let headers_py_obj = pythonize::pythonize(py, &headers_map).map_err(|e| {
                 PyValueError::new_err(format!(
@@ -1284,14 +1338,7 @@ impl PerformanceClient {
                 for (idx, (json_val, headers_map, duration)) in
                     response_data_with_times_and_headers.into_iter().enumerate()
                 {
-                    let py_obj_bound = pythonize::pythonize(py_gil, &json_val).map_err(|e| {
-                        PyValueError::new_err(format!(
-                            "Failed to pythonize response data at index {}: {}",
-                            idx, e
-                        ))
-                    })?;
-                    #[allow(deprecated)]
-                    results_py.push(py_obj_bound.into_py(py_gil));
+                    results_py.push(response_value_to_pyobject(py_gil, &json_val, idx)?);
 
                     let headers_py_obj =
                         pythonize::pythonize(py_gil, &headers_map).map_err(|e| {

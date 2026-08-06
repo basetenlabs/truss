@@ -17,6 +17,7 @@ openssl = { version = "0.10.75", features = ["vendored"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }
+rmpv = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }

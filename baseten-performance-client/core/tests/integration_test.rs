@@ -460,12 +460,13 @@ async fn test_batch_post_decodes_msgpack_response() {
         .expect("batch_post msgpack response should parse");
 
     assert_eq!(responses.len(), 1);
-    assert_eq!(responses[0].0["format"], "msgpack");
-    assert_eq!(responses[0].0["received"], json!({"value": 42}));
-    assert!(responses[0].0["accept"]
+    let body = responses[0].0.to_json().expect("msgpack response converts to json");
+    assert_eq!(body["format"], "msgpack");
+    assert_eq!(body["received"], json!({"value": 42}));
+    assert!(body["accept"]
         .as_str()
         .is_some_and(|accept| accept.contains("application/msgpack")));
-    assert!(responses[0].0["accept_encoding"]
+    assert!(body["accept_encoding"]
         .as_str()
         .is_some_and(|accept_encoding| accept_encoding.contains("zstd")));
     assert_eq!(
