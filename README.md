@@ -204,15 +204,6 @@ If you stopped the watch session, you can re-attach with:
 uvx truss watch
 ```
 
-This creates a production deployment with its own endpoint. The API URL changes from `/environments/development/` to `/environments/production/`:
-
-```python
-client = OpenAI(
-    api_key=os.environ["BASETEN_API_KEY"],
-    base_url="https://model-{model_id}.api.baseten.co/environments/production/sync/v1",
-)
-```
-
 Your model ID is the string after `/models/` in the logs URL from `uvx truss push`. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
 
 # IDE support
