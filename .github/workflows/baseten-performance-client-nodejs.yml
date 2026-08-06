@@ -554,12 +554,36 @@ jobs:
         with:
           path: baseten-performance-client/node_bindings/artifacts
 
-      - name: Move artifacts
+      - name: Prepare npm packages
         run: |
-          # Skip prepublish script which doesn't support OIDC trusted publishing
-          npm config set ignore-scripts true
           yarn artifacts
-          npm config set ignore-scripts false
+          node scripts/prepare_npm_release.mjs
+
+      - name: Validate optional dependencies
+        run: |
+          node -e '
+            const { optionalDependencies = {}, version } = require("./package.json")
+            const dependencies = Object.entries(optionalDependencies)
+            if (dependencies.length === 0) {
+              throw new Error("Release preparation did not generate optionalDependencies")
+            }
+            for (const [name, dependencyVersion] of dependencies) {
+              if (dependencyVersion !== version) {
+                throw new Error(`${name} has version ${dependencyVersion}; expected ${version}`)
+              }
+            }
+            console.log(`Validated ${dependencies.length} optionalDependencies for ${version}`)
+          '
+
+      - name: Validate package contents
+        run: |
+          for dir in npm/*; do
+            binary=$(node -p "require('./$dir/package.json').main")
+            if [ -f "$dir/$binary" ]; then
+              (cd "$dir" && npm pack --ignore-scripts --dry-run)
+            fi
+          done
+          npm pack --ignore-scripts --dry-run
 
       - name: List packages
         run: ls -R ./npm
@@ -581,9 +605,25 @@ jobs:
             *) echo "Not a release, skipping publish"; exit 0 ;;
           esac
 
+          VERSION=$(node -p "require('./package.json').version")
+          node -p "[...Object.keys(require('./package.json').optionalDependencies), require('./package.json').name].join('\\n')" |
+            while read -r package; do
+              PUBLISHED_VERSIONS=$(npm view "$package" versions --json)
+              if PUBLISHED_VERSIONS="$PUBLISHED_VERSIONS" VERSION="$VERSION" node -e '
+                const versions = JSON.parse(process.env.PUBLISHED_VERSIONS)
+                process.exit(versions.includes(process.env.VERSION) ? 0 : 1)
+              '; then
+                echo "$package@$VERSION already exists; refusing a partial release"
+                exit 1
+              fi
+            done
+
           # publish per-platform packages first
           for dir in npm/*; do
-            (cd "$dir" && npm publish --ignore-scripts --provenance --tag "$TAG" --access public)
+            binary=$(node -p "require('./$dir/package.json').main")
+            if [ -f "$dir/$binary" ]; then
+              (cd "$dir" && npm publish --ignore-scripts --provenance --tag "$TAG" --access public)
+            fi
           done
 
           # then publish the root package
@@ -603,8 +643,24 @@ jobs:
             *) echo "Not a release, skipping publish"; exit 0 ;;
           esac
 
+          VERSION=$(node -p "require('./package.json').version")
+          node -p "[...Object.keys(require('./package.json').optionalDependencies), require('./package.json').name].join('\\n')" |
+            while read -r package; do
+              PUBLISHED_VERSIONS=$(npm view "$package" versions --json)
+              if PUBLISHED_VERSIONS="$PUBLISHED_VERSIONS" VERSION="$VERSION" node -e '
+                const versions = JSON.parse(process.env.PUBLISHED_VERSIONS)
+                process.exit(versions.includes(process.env.VERSION) ? 0 : 1)
+              '; then
+                echo "$package@$VERSION already exists; refusing a partial release"
+                exit 1
+              fi
+            done
+
           for dir in npm/*; do
-            (cd "$dir" && npm publish --ignore-scripts --tag "$TAG" --access public)
+            binary=$(node -p "require('./$dir/package.json').main")
+            if [ -f "$dir/$binary" ]; then
+              (cd "$dir" && npm publish --ignore-scripts --tag "$TAG" --access public)
+            fi
           done
 
           npm publish --ignore-scripts --tag "$TAG" --access public
