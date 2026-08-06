@@ -614,7 +614,6 @@ impl PerformanceClient {
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
 
-
   #[napi]
   pub async fn batch_post(
     &self,
@@ -646,7 +645,10 @@ impl PerformanceClient {
     let mut individual_request_times = Vec::new();
 
     for (json_value, headers, duration) in results {
-      data.push(response_value_to_json(json_value)?);
+      data.push(
+        serde_json::to_value(json_value)
+          .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))?,
+      );
       response_headers.push(headers);
       individual_request_times.push(duration.as_secs_f64());
     }
@@ -661,44 +663,4 @@ impl PerformanceClient {
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
-}
-
-fn rmpv_to_json(value: rmpv::Value) -> napi::Result<JsonValue> {
-  match value {
-    rmpv::Value::Nil => Ok(JsonValue::Null),
-    rmpv::Value::Boolean(b) => Ok(JsonValue::Bool(b)),
-    rmpv::Value::Integer(i) => {
-      if let Some(v) = i.as_i64() {
-        Ok(JsonValue::from(v))
-      } else if let Some(v) = i.as_u64() {
-        Ok(JsonValue::from(v))
-      } else {
-        Err(create_napi_error("unrepresentable msgpack integer"))
-      }
-    }
-    rmpv::Value::F32(f) => Ok(JsonValue::from(f as f64)),
-    rmpv::Value::F64(f) => Ok(JsonValue::from(f)),
-    rmpv::Value::String(s) => Ok(JsonValue::from(s.into_str().unwrap_or_default())),
-    rmpv::Value::Array(items) => Ok(JsonValue::Array(
-      items.into_iter().map(rmpv_to_json).collect::<napi::Result<Vec<_>>>()?,
-    )),
-    rmpv::Value::Map(entries) => {
-      let mut map = serde_json::Map::with_capacity(entries.len());
-      for (k, v) in entries {
-        let key = match k {
-          rmpv::Value::String(s) => s.into_str().unwrap_or_default(),
-          other => other.to_string(),
-        };
-        map.insert(key, rmpv_to_json(v)?);
-      }
-      Ok(JsonValue::Object(map))
-    }
-    rmpv::Value::Binary(_) | rmpv::Value::Ext(..) => Err(create_napi_error(
-      "msgpack binary payloads are not supported by the node bindings",
-    )),
-  }
-}
-
-fn response_value_to_json(value: rmpv::Value) -> napi::Result<JsonValue> {
-  rmpv_to_json(value)
 }

@@ -17,7 +17,7 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyBytes, PyDict, PyList, PyType};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -564,9 +564,7 @@ impl RequestProcessingPreference {
     }
 }
 
-
 fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
-    use pyo3::types::{PyBytes, PyDict, PyList};
     #[allow(deprecated)]
     Ok(match value {
         rmpv::Value::Nil => py.None(),
@@ -582,10 +580,7 @@ fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
         }
         rmpv::Value::F32(f) => (*f as f64).to_object(py),
         rmpv::Value::F64(f) => f.to_object(py),
-        rmpv::Value::String(s) => match s.as_str() {
-            Some(v) => v.to_object(py),
-            None => PyBytes::new(py, s.as_bytes()).to_object(py),
-        },
+        rmpv::Value::String(s) => s.as_str().unwrap_or_default().to_object(py),
         rmpv::Value::Binary(b) => PyBytes::new(py, b).to_object(py),
         rmpv::Value::Array(items) => {
             let list = PyList::empty(py);
@@ -601,18 +596,7 @@ fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
             }
             dict.to_object(py)
         }
-        rmpv::Value::Ext(tag, data) => {
-            (*tag, PyBytes::new(py, data).to_object(py)).to_object(py)
-        }
-    })
-}
-
-fn response_value_to_pyobject(py: Python<'_>, value: &rmpv::Value, idx: usize) -> PyResult<PyObject> {
-    rmpv_to_pyobject(py, value).map_err(|e| {
-        PyValueError::new_err(format!(
-            "Failed to convert response data at index {}: {}",
-            idx, e
-        ))
+        rmpv::Value::Ext(tag, data) => (*tag, PyBytes::new(py, data).to_object(py)).to_object(py),
     })
 }
 
@@ -1254,7 +1238,7 @@ impl PerformanceClient {
         for (idx, (json_val, headers_map, duration)) in
             response_data_with_times_and_headers.into_iter().enumerate()
         {
-            results_py.push(response_value_to_pyobject(py, &json_val, idx)?);
+            results_py.push(rmpv_to_pyobject(py, &json_val)?);
 
             let headers_py_obj = pythonize::pythonize(py, &headers_map).map_err(|e| {
                 PyValueError::new_err(format!(
@@ -1329,7 +1313,7 @@ impl PerformanceClient {
                 for (idx, (json_val, headers_map, duration)) in
                     response_data_with_times_and_headers.into_iter().enumerate()
                 {
-                    results_py.push(response_value_to_pyobject(py_gil, &json_val, idx)?);
+                    results_py.push(rmpv_to_pyobject(py_gil, &json_val)?);
 
                     let headers_py_obj =
                         pythonize::pythonize(py_gil, &headers_map).map_err(|e| {

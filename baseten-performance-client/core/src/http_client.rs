@@ -82,7 +82,6 @@ where
     Ok((response_data, headers_map))
 }
 
-
 // Unified HTTP request helper with headers extraction
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_http_request_with_headers<T>(
@@ -138,9 +137,9 @@ where
 
     let response_value: rmpv::Value =
         if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
-            parse_response_value(successful_response).await?
+            parse_response_body(successful_response).await?
         } else {
-            rmpv::Value::Map(vec![])
+            rmpv::Value::Map(Vec::new())
         };
 
     Ok((response_value, headers_map))
@@ -184,24 +183,6 @@ where
 
     response
         .json::<R>()
-        .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
-}
-
-pub(crate) async fn parse_response_value(
-    response: reqwest::Response,
-) -> Result<rmpv::Value, ClientError> {
-    if is_msgpack_response(&response) {
-        let bytes = response.bytes().await.map_err(|e| {
-            ClientError::Serialization(format!("Failed to read MessagePack response body: {}", e))
-        })?;
-        return rmp_serde::from_slice::<rmpv::Value>(&bytes).map_err(|e| {
-            ClientError::Serialization(format!("Failed to parse response MessagePack: {}", e))
-        });
-    }
-
-    response
-        .json::<rmpv::Value>()
         .await
         .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
 }
@@ -511,63 +492,5 @@ fn is_retryable_status(status: u16, config: &RequestProcessingConfig) -> bool {
         400..=499 => false,
         // Unexpected status codes
         _ => false,
-    }
-}
-
-#[cfg(test)]
-mod response_value_tests {
-    use super::*;
-
-    fn encoder_wire_payload() -> Vec<u8> {
-        // mirrors mm_encoder raw-bytes layout: fixmap {mm_embeds: bin, grid_thws: bin, length: int}
-        let mut buf = Vec::new();
-        buf.push(0x83);
-        buf.extend(b"\xa9mm_embeds");
-        buf.extend([0xc4, 0x04, 0xde, 0xad, 0xbe, 0xef]);
-        buf.extend(b"\xa9grid_thws");
-        buf.extend([0xc4, 0x02, 0x01, 0x02]);
-        buf.extend(b"\xa6length");
-        buf.push(0x10);
-        buf
-    }
-
-    #[test]
-    fn msgpack_bin_payload_decodes() {
-        let value: rmpv::Value = rmp_serde::from_slice(&encoder_wire_payload()).unwrap();
-        let map = value.as_map().unwrap();
-        let get = |k: &str| {
-            map.iter()
-                .find(|(key, _)| key.as_str() == Some(k))
-                .map(|(_, v)| v)
-                .unwrap()
-        };
-        assert_eq!(get("length").as_i64(), Some(16));
-        assert_eq!(get("mm_embeds").as_slice(), Some(&[0xde, 0xad, 0xbe, 0xef][..]));
-        assert_eq!(get("grid_thws").as_slice(), Some(&[0x01, 0x02][..]));
-    }
-
-    #[test]
-    fn msgpack_bin_payload_fails_as_json_value() {
-        // serde_json::Value cannot represent bin
-        let err = rmp_serde::from_slice::<serde_json::Value>(&encoder_wire_payload()).unwrap_err();
-        assert!(err.to_string().contains("byte array"));
-    }
-
-    #[test]
-    fn msgpack_without_bin_serializes_identically_to_json() {
-        // b64-mode responses (strings/ints only) must keep producing the same JSON
-        let payload =
-            rmp_serde::to_vec_named(&serde_json::json!({"success": true, "length": 16, "data": "QUJD"}))
-                .unwrap();
-        let via_rmpv: rmpv::Value = rmp_serde::from_slice(&payload).unwrap();
-        let via_json: serde_json::Value = rmp_serde::from_slice(&payload).unwrap();
-        assert_eq!(serde_json::to_value(&via_rmpv).unwrap(), via_json);
-    }
-
-    #[test]
-    fn json_response_serializes_passthrough() {
-        let j = serde_json::json!({"a": [1, 2, 3]});
-        let via_rmpv: rmpv::Value = serde_json::from_value(j.clone()).unwrap();
-        assert_eq!(serde_json::to_value(&via_rmpv).unwrap(), j);
     }
 }

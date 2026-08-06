@@ -199,7 +199,6 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "once_cell",
- "rmpv",
  "serde",
  "serde_json",
  "tokio",
