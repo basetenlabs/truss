@@ -7,7 +7,6 @@ use baseten_performance_client_core::{
     Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-    ResponseValue,
     DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
     DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
     RETRY_BUDGET_PERCENTAGE,
@@ -608,21 +607,13 @@ fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
     })
 }
 
-fn response_value_to_pyobject(py: Python<'_>, value: &ResponseValue, idx: usize) -> PyResult<PyObject> {
-    match value {
-        ResponseValue::Json(j) => pythonize::pythonize(py, j)
-            .map(|obj| {
-                #[allow(deprecated)]
-                obj.to_object(py)
-            })
-            .map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to pythonize response data at index {}: {}",
-                    idx, e
-                ))
-            }),
-        ResponseValue::Msgpack(m) => rmpv_to_pyobject(py, m),
-    }
+fn response_value_to_pyobject(py: Python<'_>, value: &rmpv::Value, idx: usize) -> PyResult<PyObject> {
+    rmpv_to_pyobject(py, value).map_err(|e| {
+        PyValueError::new_err(format!(
+            "Failed to convert response data at index {}: {}",
+            idx, e
+        ))
+    })
 }
 
 fn rust_preference_from_py(

@@ -460,7 +460,7 @@ async fn test_batch_post_decodes_msgpack_response() {
         .expect("batch_post msgpack response should parse");
 
     assert_eq!(responses.len(), 1);
-    let body = responses[0].0.to_json().expect("msgpack response converts to json");
+    let body = serde_json::to_value(&responses[0].0).expect("msgpack response converts to json");
     assert_eq!(body["format"], "msgpack");
     assert_eq!(body["received"], json!({"value": 42}));
     assert!(body["accept"]

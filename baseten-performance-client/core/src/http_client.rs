@@ -82,32 +82,6 @@ where
     Ok((response_data, headers_map))
 }
 
-/// Untyped response body: JSON as `serde_json::Value`, msgpack as `rmpv::Value`
-/// (bin-capable, unlike `serde_json::Value`).
-#[derive(Debug, Clone)]
-pub enum ResponseValue {
-    Json(serde_json::Value),
-    Msgpack(rmpv::Value),
-}
-
-impl ResponseValue {
-    pub fn empty() -> Self {
-        ResponseValue::Json(serde_json::Value::Object(serde_json::Map::new()))
-    }
-
-    pub fn to_json(&self) -> Result<serde_json::Value, serde_json::Error> {
-        serde_json::to_value(self)
-    }
-}
-
-impl serde::Serialize for ResponseValue {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            ResponseValue::Json(j) => j.serialize(serializer),
-            ResponseValue::Msgpack(m) => m.serialize(serializer),
-        }
-    }
-}
 
 // Unified HTTP request helper with headers extraction
 #[allow(clippy::too_many_arguments)]
@@ -120,7 +94,7 @@ pub(crate) async fn send_http_request_with_headers<T>(
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
     method: crate::http::HttpMethod,
-) -> Result<(ResponseValue, std::collections::HashMap<String, String>), ClientError>
+) -> Result<(rmpv::Value, std::collections::HashMap<String, String>), ClientError>
 where
     T: serde::Serialize,
 {
@@ -162,11 +136,11 @@ where
         );
     }
 
-    let response_value: ResponseValue =
+    let response_value: rmpv::Value =
         if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
             parse_response_value(successful_response).await?
         } else {
-            ResponseValue::empty()
+            rmpv::Value::Map(vec![])
         };
 
     Ok((response_value, headers_map))
@@ -216,22 +190,19 @@ where
 
 pub(crate) async fn parse_response_value(
     response: reqwest::Response,
-) -> Result<ResponseValue, ClientError> {
+) -> Result<rmpv::Value, ClientError> {
     if is_msgpack_response(&response) {
         let bytes = response.bytes().await.map_err(|e| {
             ClientError::Serialization(format!("Failed to read MessagePack response body: {}", e))
         })?;
-        return rmp_serde::from_slice::<rmpv::Value>(&bytes)
-            .map(ResponseValue::Msgpack)
-            .map_err(|e| {
-                ClientError::Serialization(format!("Failed to parse response MessagePack: {}", e))
-            });
+        return rmp_serde::from_slice::<rmpv::Value>(&bytes).map_err(|e| {
+            ClientError::Serialization(format!("Failed to parse response MessagePack: {}", e))
+        });
     }
 
     response
-        .json::<serde_json::Value>()
+        .json::<rmpv::Value>()
         .await
-        .map(ResponseValue::Json)
         .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
 }
 
@@ -577,7 +548,7 @@ mod response_value_tests {
 
     #[test]
     fn msgpack_bin_payload_fails_as_json_value() {
-        // the pre-fix behavior: serde_json::Value cannot represent bin
+        // serde_json::Value cannot represent bin
         let err = rmp_serde::from_slice::<serde_json::Value>(&encoder_wire_payload()).unwrap_err();
         assert!(err.to_string().contains("byte array"));
     }
@@ -590,15 +561,13 @@ mod response_value_tests {
                 .unwrap();
         let via_rmpv: rmpv::Value = rmp_serde::from_slice(&payload).unwrap();
         let via_json: serde_json::Value = rmp_serde::from_slice(&payload).unwrap();
-        assert_eq!(
-            serde_json::to_value(ResponseValue::Msgpack(via_rmpv)).unwrap(),
-            via_json
-        );
+        assert_eq!(serde_json::to_value(&via_rmpv).unwrap(), via_json);
     }
 
     #[test]
-    fn json_variant_serializes_passthrough() {
+    fn json_response_serializes_passthrough() {
         let j = serde_json::json!({"a": [1, 2, 3]});
-        assert_eq!(serde_json::to_value(ResponseValue::Json(j.clone())).unwrap(), j);
+        let via_rmpv: rmpv::Value = serde_json::from_value(j.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&via_rmpv).unwrap(), j);
     }
 }

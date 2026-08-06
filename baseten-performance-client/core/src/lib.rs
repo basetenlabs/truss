@@ -20,7 +20,6 @@ pub use endpoint_routing::{
 };
 pub use errors::ClientError;
 pub use http::*;
-pub use http_client::ResponseValue;
 pub use split_policy::RequestProcessingPreference;
 pub use utils::*;
 

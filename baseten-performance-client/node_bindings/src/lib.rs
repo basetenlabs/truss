@@ -699,11 +699,6 @@ fn rmpv_to_json(value: rmpv::Value) -> napi::Result<JsonValue> {
   }
 }
 
-fn response_value_to_json(
-  value: baseten_performance_client_core::ResponseValue,
-) -> napi::Result<JsonValue> {
-  match value {
-    baseten_performance_client_core::ResponseValue::Json(j) => Ok(j),
-    baseten_performance_client_core::ResponseValue::Msgpack(m) => rmpv_to_json(m),
-  }
+fn response_value_to_json(value: rmpv::Value) -> napi::Result<JsonValue> {
+  rmpv_to_json(value)
 }

@@ -751,7 +751,7 @@ impl PerformanceClientCore {
         payloads_json: Vec<serde_json::Value>,
         preference: &RequestProcessingPreference,
         method: crate::http::HttpMethod,
-    ) -> Result<(Vec<(ResponseValue, HeaderMap, Duration)>, Duration), ClientError> {
+    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
         let total_payloads = payloads_json.len();
 
@@ -771,9 +771,9 @@ impl PerformanceClientCore {
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
-            Result<(usize, ResponseValue, HeaderMap, Duration), ClientError>,
+            Result<(usize, rmpv::Value, HeaderMap, Duration), ClientError>,
         > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());
-        let mut indexed_results: Vec<(usize, ResponseValue, HeaderMap, Duration)> =
+        let mut indexed_results: Vec<(usize, rmpv::Value, HeaderMap, Duration)> =
             Vec::with_capacity(total_payloads);
 
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
@@ -867,7 +867,7 @@ impl PerformanceClientCore {
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
 
-        let final_results: Vec<(ResponseValue, HeaderMap, Duration)> = indexed_results
+        let final_results: Vec<(rmpv::Value, HeaderMap, Duration)> = indexed_results
             .into_iter()
             .map(|(_, val, headers, dur)| (val, headers, dur))
             .collect();
