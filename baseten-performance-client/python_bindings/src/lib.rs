@@ -580,7 +580,10 @@ fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
         }
         rmpv::Value::F32(f) => (*f as f64).to_object(py),
         rmpv::Value::F64(f) => f.to_object(py),
-        rmpv::Value::String(s) => s.as_str().unwrap_or_default().to_object(py),
+        rmpv::Value::String(s) => match s.as_str() {
+            Some(value) => value.to_object(py),
+            None => PyBytes::new(py, s.as_bytes()).to_object(py),
+        },
         rmpv::Value::Binary(b) => PyBytes::new(py, b).to_object(py),
         rmpv::Value::Array(items) => {
             let list = PyList::empty(py);
