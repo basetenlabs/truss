@@ -101,6 +101,40 @@ dependencies = [
     assert result == ["requests>=2.28", "numpy==1.24.0"]
 
 
+def test_parse_filters_local_path_dependencies_no_warning(write_pyproject, caplog):
+    path = write_pyproject(
+        """
+[project]
+dependencies = [
+    "requests>=2.28",
+    "./local_package",
+    "/absolute/path/to/package",
+    "numpy==1.24.0",
+]
+"""
+    )
+    with caplog.at_level("WARNING"):
+        result = parse_requirements_from_pyproject(path)
+    assert result == ["requests>=2.28", "numpy==1.24.0"]
+    assert caplog.text == ""
+
+
+def test_parse_warns_on_malformed_dependency(write_pyproject, caplog):
+    path = write_pyproject(
+        """
+[project]
+dependencies = [
+    "requests>=2.28",
+    "numpy>=>1.0",
+]
+"""
+    )
+    with caplog.at_level("WARNING"):
+        result = parse_requirements_from_pyproject(path)
+    assert result == ["requests>=2.28"]
+    assert "numpy>=>1.0" in caplog.text
+
+
 def test_parse_dependencies_with_extras(write_pyproject):
     path = write_pyproject(
         """
