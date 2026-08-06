@@ -1,20 +1,16 @@
-import asyncio
 import importlib
 import os
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from threading import Event
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
-from anyio import to_thread
 from starlette.requests import Request
-from starlette.responses import StreamingResponse
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
@@ -124,200 +120,6 @@ async def test_gather_generator_decodes_byte_chunks(app_path):
         yield b"\x98\x80"
 
     assert await gather_generator(byte_stream()) == "hello \U0001f600"
-
-
-def _make_streaming_model_wrapper(app_path, streaming_read_timeout=5):
-    if "model_wrapper" in sys.modules:
-        model_wrapper_module = sys.modules["model_wrapper"]
-        importlib.reload(model_wrapper_module)
-    else:
-        model_wrapper_module = importlib.import_module("model_wrapper")
-    model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
-
-    model_wrapper = object.__new__(model_wrapper_class)
-    model_wrapper._config = {
-        "runtime": {"streaming_read_timeout": streaming_read_timeout},
-        "model_class_filename": "model.py",
-    }
-    model_wrapper._logger = MagicMock()
-    model_wrapper._tracer = sdk_trace.NoOpTracer()
-    model_wrapper._model_file_name = "model.py"
-    return model_wrapper
-
-
-async def _disconnect_after_first_chunk(response_stream):
-    first_chunk_sent = asyncio.Event()
-    sent_chunks = []
-
-    async def send(message):
-        if message["type"] == "http.response.body" and message.get("body"):
-            sent_chunks.append(message["body"])
-            first_chunk_sent.set()
-
-    async def receive():
-        await first_chunk_sent.wait()
-        return {"type": "http.disconnect"}
-
-    response = StreamingResponse(response_stream)
-    await asyncio.wait_for(
-        response(
-            {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}},
-            receive,
-            send,
-        ),
-        timeout=1,
-    )
-    return sent_chunks
-
-
-@pytest.mark.anyio
-async def test_client_disconnected_event_available_to_model_function(app_path):
-    model_wrapper = _make_streaming_model_wrapper(app_path)
-    model_wrapper_module = sys.modules["model_wrapper"]
-    method_descriptor_class = getattr(model_wrapper_module, "MethodDescriptor")
-    method_name = getattr(model_wrapper_module, "MethodName")
-    request = MagicMock(spec=Request)
-    request.is_disconnected = AsyncMock(return_value=False)
-
-    disconnect_event = None
-
-    def predict(request: Request):
-        nonlocal disconnect_event
-        disconnect_event = request.state.client_disconnected
-        return "response"
-
-    descriptor = method_descriptor_class.from_method(predict, method_name.PREDICT)
-
-    assert await model_wrapper._execute_user_model_fn(None, request, descriptor) == (
-        "response"
-    )
-    assert isinstance(disconnect_event, Event)
-    assert disconnect_event is request.state.client_disconnected
-
-
-@pytest.mark.anyio
-async def test_streaming_disconnect_signals_sync_generator(app_path):
-    model_wrapper = _make_streaming_model_wrapper(app_path)
-    request = Request({"type": "http", "headers": []})
-
-    generator_stopped = Event()
-    cleanup_finished = asyncio.Event()
-    cleanup = Mock(side_effect=cleanup_finished.set)
-
-    def model_stream():
-        yield b"first"
-        assert request.state.client_disconnected.wait(timeout=1)
-        generator_stopped.set()
-
-    response_stream = await model_wrapper._handle_generator_response(
-        request,
-        model_stream(),
-        sdk_trace.NoOpTracer().start_span("predict"),
-        None,
-        get_cleanup_fn=lambda: cleanup,
-    )
-
-    assert await _disconnect_after_first_chunk(response_stream) == [b"first"]
-    assert request.state.client_disconnected.is_set()
-    assert await to_thread.run_sync(generator_stopped.wait, 1)
-    await asyncio.wait_for(cleanup_finished.wait(), timeout=1)
-    cleanup.assert_called_once_with()
-
-
-@pytest.mark.anyio
-async def test_streaming_disconnect_does_not_cancel_generator(app_path):
-    model_wrapper = _make_streaming_model_wrapper(app_path)
-    request = Request({"type": "http", "headers": []})
-
-    finish_generation = asyncio.Event()
-    generation_finished = asyncio.Event()
-    cleanup_finished = asyncio.Event()
-    cleanup = Mock(side_effect=cleanup_finished.set)
-
-    async def model_stream():
-        yield b"first"
-        await finish_generation.wait()
-        generation_finished.set()
-
-    response_stream = await model_wrapper._handle_generator_response(
-        request,
-        model_stream(),
-        sdk_trace.NoOpTracer().start_span("predict"),
-        None,
-        get_cleanup_fn=lambda: cleanup,
-    )
-
-    assert await _disconnect_after_first_chunk(response_stream) == [b"first"]
-    assert request.state.client_disconnected.is_set()
-    assert not generation_finished.is_set()
-    cleanup.assert_not_called()
-
-    finish_generation.set()
-    await asyncio.wait_for(generation_finished.wait(), timeout=1)
-    await asyncio.wait_for(cleanup_finished.wait(), timeout=1)
-    cleanup.assert_called_once_with()
-
-
-@pytest.mark.anyio
-async def test_streaming_generator_cleanup_after_normal_completion(app_path):
-    model_wrapper = _make_streaming_model_wrapper(app_path)
-    request = Request({"type": "http", "headers": []})
-
-    generator_closed = asyncio.Event()
-    cleanup_finished = asyncio.Event()
-    cleanup = Mock(side_effect=cleanup_finished.set)
-
-    async def model_stream():
-        try:
-            yield b"first"
-            yield b"second"
-        finally:
-            generator_closed.set()
-
-    response_stream = await model_wrapper._handle_generator_response(
-        request,
-        model_stream(),
-        sdk_trace.NoOpTracer().start_span("predict"),
-        None,
-        get_cleanup_fn=lambda: cleanup,
-    )
-
-    assert [chunk async for chunk in response_stream] == [b"first", b"second"]
-    assert generator_closed.is_set()
-    assert not request.state.client_disconnected.is_set()
-    await asyncio.wait_for(cleanup_finished.wait(), timeout=1)
-    cleanup.assert_called_once_with()
-
-
-@pytest.mark.anyio
-async def test_streaming_read_timeout_signals_sync_generator(app_path):
-    model_wrapper = _make_streaming_model_wrapper(app_path, streaming_read_timeout=0.01)
-    request = Request({"type": "http", "headers": []})
-
-    generator_stopped = Event()
-    cleanup_finished = asyncio.Event()
-    cleanup = Mock(side_effect=cleanup_finished.set)
-
-    def model_stream():
-        assert request.state.client_disconnected.wait(timeout=1)
-        generator_stopped.set()
-        yield from ()
-
-    response_stream = await model_wrapper._handle_generator_response(
-        request,
-        model_stream(),
-        sdk_trace.NoOpTracer().start_span("predict"),
-        None,
-        get_cleanup_fn=lambda: cleanup,
-    )
-
-    with pytest.raises(TimeoutError):
-        await response_stream.__anext__()
-
-    assert request.state.client_disconnected.is_set()
-    assert await to_thread.run_sync(generator_stopped.wait, 1)
-    await asyncio.wait_for(cleanup_finished.wait(), timeout=1)
-    cleanup.assert_called_once_with()
 
 
 @pytest.mark.anyio

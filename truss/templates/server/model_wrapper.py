@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
-from threading import Event, Thread
+from threading import Thread
 from typing import Any, Callable, Optional, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
@@ -38,8 +38,6 @@ MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
-# Synchronous model code can poll request.state.client_disconnected while streaming.
-CLIENT_DISCONNECTED_EVENT = "client_disconnected"
 DEFAULT_PREDICT_CONCURRENCY = 1
 EXTENSIONS_DIR_NAME = "extensions"
 EXTENSION_CLASS_NAME = "Extension"
@@ -144,14 +142,6 @@ async def raise_if_disconnected(
         error_message = f"Client disconnected, skipping `{step_name}`."
         logging.warning(error_message)
         raise HTTPException(status_code=499, detail=error_message)
-
-
-def _get_client_disconnected_event(request: starlette.requests.Request) -> Event:
-    event = getattr(request.state, CLIENT_DISCONNECTED_EVENT, None)
-    if not isinstance(event, Event):
-        event = Event()
-        setattr(request.state, CLIENT_DISCONNECTED_EVENT, event)
-    return event
 
 
 class ArgConfig(enum.Enum):
@@ -728,7 +718,6 @@ class ModelWrapper:
         span: trace.Span,
         trace_ctx: trace.Context,
         cleanup_fn: Callable[[], None],
-        client_disconnected: Event,
     ) -> AsyncGenerator[bytes, None]:
         # The streaming read timeout is the amount of time in between streamed chunk
         # before a timeout is triggered.
@@ -761,19 +750,13 @@ class ModelWrapper:
             with self._tracer.start_as_current_span(
                 "buffered-response-generator", context=trace_ctx
             ):
-                stream_finished = False
-                try:
-                    while True:
-                        chunk = await asyncio.wait_for(
-                            response_queue.get(), timeout=streaming_read_timeout
-                        )
-                        if chunk == SENTINEL:
-                            stream_finished = True
-                            return
-                        yield chunk
-                finally:
-                    if not stream_finished and not gen_task.done():
-                        client_disconnected.set()
+                while True:
+                    chunk = await asyncio.wait_for(
+                        response_queue.get(), timeout=streaming_read_timeout
+                    )
+                    if chunk == SENTINEL:
+                        return
+                    yield chunk
 
         return _buffered_response_generator()
 
@@ -784,7 +767,6 @@ class ModelWrapper:
         descriptor: MethodDescriptor,
     ) -> OutputType:
         await raise_if_disconnected(request, descriptor.method_name)
-        _get_client_disconnected_event(request)
         args = ArgConfig.prepare_args(inputs, request, descriptor)
         with errors.intercept_exceptions(self._logger, self.model_file_name):
             if descriptor.is_generator:
@@ -839,11 +821,7 @@ class ModelWrapper:
             return await _gather_generator(generator)
         else:
             return await self._stream_with_background_task(
-                generator,
-                span,
-                trace_ctx,
-                cleanup_fn=get_cleanup_fn(),
-                client_disconnected=_get_client_disconnected_event(request),
+                generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
             )
 
     def _get_descriptor_or_raise(
