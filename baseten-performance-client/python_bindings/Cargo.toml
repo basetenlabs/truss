@@ -15,7 +15,6 @@ futures = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rmpv = { workspace = true }
 
 [lib]
 name = "baseten_performance_client"
