@@ -25,6 +25,7 @@ import requests
 import tenacity
 import watchfiles
 
+from truss.base import truss_config
 from truss.cli.utils import common as cli_common
 from truss.local import local_config_handler
 from truss.remote import remote_factory
@@ -323,6 +324,21 @@ def _generate_chainlet_artifacts(
     )
 
 
+def _keepalive_ping_paths(
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> dict[str, str]:
+    """Map chainlet display name -> keepalive path. docker_server chainlets don't
+    serve the truss server's `/v1/models/model`; ping their readiness endpoint."""
+    ping_paths = {}
+    for descriptor in chainlet_descriptors:
+        if descriptor.is_truss_chainlet and descriptor.truss_dir:
+            config = truss_config.TrussConfig.from_yaml(
+                descriptor.truss_dir / "config.yaml"
+            )
+            ping_paths[descriptor.display_name] = cli_common.keepalive_ping_path(config)
+    return ping_paths
+
+
 @framework.raise_validation_errors_before
 def push(
     entrypoint: Type[private_types.ABCChainlet],
@@ -349,6 +365,9 @@ def push(
             dependency_artifacts,
             progress_bar,
             entrypoint_descriptor,
+            keepalive_ping_paths=_keepalive_ping_paths(
+                _get_ordered_dependencies([entrypoint])
+            ),
         )
     elif isinstance(options, private_types.PushOptionsLocalDocker):
         if has_engine_builder_chainlets:
@@ -508,6 +527,7 @@ class BasetenChainService(ChainService):
     _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
     _entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor]
+    _keepalive_ping_paths: Mapping[str, str]
 
     def __init__(
         self,
@@ -515,11 +535,18 @@ class BasetenChainService(ChainService):
         chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
         entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
+        keepalive_ping_paths: Optional[Mapping[str, str]] = None,
     ) -> None:
         super().__init__(name)
         self._chain_deployment_handle = chain_deployment_handle
         self._remote = remote
         self._entrypoint_descriptor = entrypoint_descriptor
+        self._keepalive_ping_paths = keepalive_ping_paths or {}
+
+    @property
+    def keepalive_ping_paths(self) -> Mapping[str, str]:
+        """Chainlet display name -> keepalive path (see `_keepalive_ping_paths`)."""
+        return self._keepalive_ping_paths
 
     @property
     def run_remote_url(self) -> str:
@@ -611,6 +638,7 @@ def _create_baseten_chain(
     dependency_artifacts: list[b10_types.ChainletArtifact],
     progress_bar: Optional[Type["progress.Progress"]],
     entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
+    keepalive_ping_paths: Optional[Mapping[str, str]] = None,
 ):
     logging.info(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
@@ -663,6 +691,7 @@ def _create_baseten_chain(
         chain_deployment_handle,
         remote_provider,
         entrypoint_descriptor,
+        keepalive_ping_paths=keepalive_ping_paths,
     )
 
 
@@ -811,6 +840,7 @@ class _Watcher:
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
     _included_chainlets: set[str]
+    _keepalive_ping_paths: Mapping[str, str]
 
     def __init__(
         self,
@@ -857,6 +887,7 @@ class _Watcher:
                 chainlet_descriptors,
                 self._included_chainlets if included_chainlets else None,
             )
+            self._keepalive_ping_paths = _keepalive_ping_paths(chainlet_descriptors)
 
         resolved_chain = resolve_chain_for_watch(
             self._remote_provider, self._deployed_chain_name, provided_team_name
@@ -1084,6 +1115,7 @@ def _start_keepalives_for_ready_chainlets(
     remote_provider: b10_remote.BasetenRemote,
     started_keepalives: dict[str, threading.Event],
     resolved_hostnames: Optional[dict[str, str]] = None,
+    ping_paths: Optional[Mapping[str, str]] = None,
 ) -> None:
     """Start keepalive for each chainlet that has a usable inference endpoint.
 
@@ -1092,10 +1124,13 @@ def _start_keepalives_for_ready_chainlets(
     `/deployment/{id}/...` endpoint. Each chainlet is warmed at most once;
     ``started_keepalives`` maps already-warmed ``oracle_id`` -> stop event and is
     mutated in place so the same set can be shared across the push wait loop and
-    the subsequent watch.
+    the subsequent watch. ``ping_paths`` (chainlet display name -> path) overrides
+    the default keepalive path for docker_server chainlets.
     """
     if resolved_hostnames is None:
         resolved_hostnames = {}
+    if ping_paths is None:
+        ping_paths = {}
 
     for chainlet in chainlet_data:
         if chainlet.oracle_id in started_keepalives:
@@ -1114,6 +1149,9 @@ def _start_keepalives_for_ready_chainlets(
             remote_provider.fetch_auth_header,
             is_draft=chainlet.is_draft,
             deployment_id=chainlet.oracle_version_id,
+            ping_path=ping_paths.get(
+                chainlet.name, cli_common.KEEPALIVE_DEFAULT_PING_PATH
+            ),
         )
 
 
@@ -1124,6 +1162,7 @@ def _prepare_chainlet_models_for_watch(
     console: "rich_console.Console",
     no_sleep: bool,
     started_keepalives: Optional[dict[str, threading.Event]] = None,
+    ping_paths: Optional[Mapping[str, str]] = None,
 ) -> None:
     resolved_hostnames: dict[str, str] = {}
 
@@ -1152,6 +1191,7 @@ def _prepare_chainlet_models_for_watch(
         remote_provider,
         started_keepalives,
         resolved_hostnames=resolved_hostnames,
+        ping_paths=ping_paths,
     )
 
 
@@ -1194,6 +1234,7 @@ def watch(
         console,
         no_sleep,
         started_keepalives=started_keepalives,
+        ping_paths=patcher._keepalive_ping_paths,
     )
     patcher.watch()
 

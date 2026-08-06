@@ -423,7 +423,10 @@ def push_chain(
                 live.update(table)
                 if keep_warm_during_push and remote_provider is not None:
                     deployment_client._start_keepalives_for_ready_chainlets(
-                        chainlets, remote_provider, started_keepalives
+                        chainlets,
+                        remote_provider,
+                        started_keepalives,
+                        ping_paths=service.keepalive_ping_paths,
                     )
                 num_active = sum(s == ACTIVE_STATUS for s in statuses)
                 num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)

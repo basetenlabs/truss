@@ -20,7 +20,6 @@ pub use endpoint_routing::{
 };
 pub use errors::ClientError;
 pub use http::*;
-// http_client is internal only - not reexported
 pub use split_policy::RequestProcessingPreference;
 pub use utils::*;
 

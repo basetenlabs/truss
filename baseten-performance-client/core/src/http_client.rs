@@ -93,7 +93,7 @@ pub(crate) async fn send_http_request_with_headers<T>(
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
     method: crate::http::HttpMethod,
-) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError>
+) -> Result<(rmpv::Value, std::collections::HashMap<String, String>), ClientError>
 where
     T: serde::Serialize,
 {
@@ -135,14 +135,14 @@ where
         );
     }
 
-    let response_json_value: serde_json::Value =
+    let response_value: rmpv::Value =
         if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
             parse_response_body(successful_response).await?
         } else {
-            serde_json::Value::Object(serde_json::Map::new())
+            rmpv::Value::Map(Vec::new())
         };
 
-    Ok((response_json_value, headers_map))
+    Ok((response_value, headers_map))
 }
 
 fn add_response_negotiation_headers(
