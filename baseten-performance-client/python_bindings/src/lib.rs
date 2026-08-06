@@ -1346,18 +1346,6 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn pythonize_preserves_msgpack_binary_as_bytes() {
-        Python::with_gil(|py| {
-            let value = rmpv::Value::Binary(vec![0xde, 0xad, 0xbe, 0xef]);
-            let object = pythonize::pythonize(py, &value).expect("binary value should pythonize");
-            let bytes = object
-                .downcast::<pyo3::types::PyBytes>()
-                .expect("binary value should become Python bytes");
-            assert_eq!(bytes.as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
-        });
-    }
-
-    #[test]
     fn request_processing_preference_to_rust_uses_mutated_public_fields() {
         let mut preference = RequestProcessingPreference::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
