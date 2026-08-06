@@ -17,7 +17,7 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList, PyType};
+use pyo3::types::PyType;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -562,45 +562,6 @@ impl RequestProcessingPreference {
             non_retryable_status_codes,
         }
     }
-}
-
-fn rmpv_to_pyobject(py: Python<'_>, value: &rmpv::Value) -> PyResult<PyObject> {
-    #[allow(deprecated)]
-    Ok(match value {
-        rmpv::Value::Nil => py.None(),
-        rmpv::Value::Boolean(b) => b.to_object(py),
-        rmpv::Value::Integer(i) => {
-            if let Some(v) = i.as_i64() {
-                v.to_object(py)
-            } else if let Some(v) = i.as_u64() {
-                v.to_object(py)
-            } else {
-                return Err(PyValueError::new_err("unrepresentable msgpack integer"));
-            }
-        }
-        rmpv::Value::F32(f) => (*f as f64).to_object(py),
-        rmpv::Value::F64(f) => f.to_object(py),
-        rmpv::Value::String(s) => match s.as_str() {
-            Some(value) => value.to_object(py),
-            None => PyBytes::new(py, s.as_bytes()).to_object(py),
-        },
-        rmpv::Value::Binary(b) => PyBytes::new(py, b).to_object(py),
-        rmpv::Value::Array(items) => {
-            let list = PyList::empty(py);
-            for item in items {
-                list.append(rmpv_to_pyobject(py, item)?)?;
-            }
-            list.to_object(py)
-        }
-        rmpv::Value::Map(entries) => {
-            let dict = PyDict::new(py);
-            for (k, v) in entries {
-                dict.set_item(rmpv_to_pyobject(py, k)?, rmpv_to_pyobject(py, v)?)?;
-            }
-            dict.to_object(py)
-        }
-        rmpv::Value::Ext(tag, data) => (*tag, PyBytes::new(py, data).to_object(py)).to_object(py),
-    })
 }
 
 fn rust_preference_from_py(
@@ -1241,7 +1202,14 @@ impl PerformanceClient {
         for (idx, (json_val, headers_map, duration)) in
             response_data_with_times_and_headers.into_iter().enumerate()
         {
-            results_py.push(rmpv_to_pyobject(py, &json_val)?);
+            let py_obj_bound = pythonize::pythonize(py, &json_val).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize response data at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            #[allow(deprecated)]
+            results_py.push(py_obj_bound.to_object(py));
 
             let headers_py_obj = pythonize::pythonize(py, &headers_map).map_err(|e| {
                 PyValueError::new_err(format!(
@@ -1316,7 +1284,14 @@ impl PerformanceClient {
                 for (idx, (json_val, headers_map, duration)) in
                     response_data_with_times_and_headers.into_iter().enumerate()
                 {
-                    results_py.push(rmpv_to_pyobject(py_gil, &json_val)?);
+                    let py_obj_bound = pythonize::pythonize(py_gil, &json_val).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize response data at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                    #[allow(deprecated)]
+                    results_py.push(py_obj_bound.into_py(py_gil));
 
                     let headers_py_obj =
                         pythonize::pythonize(py_gil, &headers_map).map_err(|e| {
@@ -1369,6 +1344,18 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn pythonize_preserves_msgpack_binary_as_bytes() {
+        Python::with_gil(|py| {
+            let value = rmpv::Value::Binary(vec![0xde, 0xad, 0xbe, 0xef]);
+            let object = pythonize::pythonize(py, &value).expect("binary value should pythonize");
+            let bytes = object
+                .downcast::<pyo3::types::PyBytes>()
+                .expect("binary value should become Python bytes");
+            assert_eq!(bytes.as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+        });
+    }
 
     #[test]
     fn request_processing_preference_to_rust_uses_mutated_public_fields() {
