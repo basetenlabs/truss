@@ -1193,6 +1193,17 @@ class DockerServer(custom_types.ConfigModel):
         default=None,
         description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
     )
+    max_payload_size: Optional[str] = pydantic.Field(
+        default=None,
+        description="The maximum inbound request body size for the container's reverse proxy. Accepts nginx size syntax, such as 64M, 128M, or 1G. Defaults to 64M.",
+    )
+
+    @pydantic.field_validator("max_payload_size")
+    @classmethod
+    def _validate_max_payload_size(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.fullmatch(r"[0-9]+[kKmMgG]?", v):
+            raise ValueError(f"Invalid max_payload_size {v!r}.")
+        return v
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
