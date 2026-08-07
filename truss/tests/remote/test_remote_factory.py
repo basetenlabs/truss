@@ -337,6 +337,35 @@ def test_unusable_backend_warns_and_keeps_inline(fail_keyring, trussrc, caplog):
     assert loaded.configs["oauth_access_token"] == "access"
 
 
+def test_write_failure_warns_once_per_process(write_error_keyring, trussrc, caplog):
+    def update(token):
+        RemoteFactory.update_remote_config(
+            RemoteConfig(
+                name="baseten",
+                configs={
+                    "remote_provider": "baseten",
+                    "auth_type": "oauth",
+                    "oauth_access_token": token,
+                    "oauth_refresh_token": "refresh",
+                    "oauth_expires_at": "123",
+                    "remote_url": "http://x",
+                },
+            )
+        )
+
+    with caplog.at_level("WARNING", logger=rf_module.logger.name):
+        update("access1")
+        update("access2")
+        update("access3")
+
+    # A long-running command refreshes its OAuth token repeatedly; only the
+    # first failed write should be reported.
+    warnings = [r for r in caplog.records if "keyring write failed" in r.message]
+    assert len(warnings) == 1
+    # Every refresh still persists to the trussrc.
+    assert "oauth_access_token = access3" in trussrc.read_text()
+
+
 def test_load_raises_when_secret_missing_and_keyring_unavailable(fail_keyring, trussrc):
     trussrc.write_text(
         "[baseten]\n"
