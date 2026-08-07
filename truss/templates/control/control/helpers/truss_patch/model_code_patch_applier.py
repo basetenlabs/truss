@@ -13,9 +13,28 @@ except ModuleNotFoundError as exc:
     from truss.templates.control.control.helpers.custom_types import Action, Patch
 
 
+def _resolve_within(base_dir: Path, relative_path: str) -> Path:
+    """Resolve ``relative_path`` against ``base_dir`` and ensure the result
+    stays inside ``base_dir``.
+
+    The patch path comes from the request body of the control server's
+    ``/control/patch`` endpoint, so a value such as ``../../../etc/cron.d/x``
+    (or an absolute path, which ``/`` join would leave unchanged) must not be
+    allowed to write or delete files outside the target directory.
+    """
+    base_resolved = base_dir.resolve()
+    filepath = (base_dir / relative_path).resolve()
+    if not filepath.is_relative_to(base_resolved):
+        raise ValueError(
+            f"Invalid patch path {relative_path!r}: resolves outside the "
+            f"target directory {base_resolved}."
+        )
+    return filepath
+
+
 def apply_code_patch(relative_dir: Path, patch: Patch, logger: logging.Logger):
     logger.debug(f"Applying code patch {patch.to_dict()}")
-    filepath: Path = relative_dir / patch.path
+    filepath: Path = _resolve_within(relative_dir, patch.path)
     action = patch.action
 
     if action in [Action.ADD, Action.UPDATE]:
