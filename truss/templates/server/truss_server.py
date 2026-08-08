@@ -5,9 +5,10 @@ import logging
 import logging.config
 import os
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Generator
+from collections.abc import AsyncGenerator, Awaitable, Generator, Iterator
 from http import HTTPStatus
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import pydantic
@@ -70,6 +71,41 @@ async def parse_body(request: Request) -> bytes:
         error_message = "Client disconnected while reading request."
         logging.warning(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
+
+
+def _install_disconnect_watcher(request: Request) -> None:
+    """Install a disconnect watcher for model code.
+
+    This must run on the event loop before model code. The context manager can
+    then be entered from async model code or an offloaded thread. It yields a
+    threading event that is set when the client disconnects:
+
+        def predict(self, request: Request):
+            with request.state.watch_disconnect() as disconnected:
+                while not disconnected.is_set():
+                    yield next_chunk()
+    """
+    loop = asyncio.get_running_loop()
+
+    @contextlib.contextmanager
+    def watch_disconnect() -> Iterator[Event]:
+        disconnected = Event()
+
+        async def watch() -> None:
+            try:
+                while not await request.is_disconnected():
+                    await asyncio.sleep(1)
+                disconnected.set()
+            except Exception:
+                logging.exception("Error while watching for client disconnect.")
+
+        watch_future = asyncio.run_coroutine_threadsafe(watch(), loop)
+        try:
+            yield disconnected
+        finally:
+            watch_future.cancel()
+
+    request.state.watch_disconnect = watch_disconnect
 
 
 async def _safe_close_websocket(
@@ -184,6 +220,7 @@ class BasetenEndpoints:
         # Set request_id in context so it's included in all log records
         request_id_context.set(request_id)
         chain_request_id_context.set(chain_request_id)
+        _install_disconnect_watcher(request)
 
         logging.debug(
             f"[DEBUG] Request received - {request.method} /{method.__name__} "
