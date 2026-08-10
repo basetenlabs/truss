@@ -426,3 +426,63 @@ def test_remove_remote_config_missing_is_noop(memory_keyring, trussrc):
     trussrc.write_text("[other]\nremote_provider = baseten\n")
     RemoteFactory.remove_remote_config("baseten")
     assert "[other]" in trussrc.read_text()
+
+
+@pytest.fixture
+def env_remote(monkeypatch):
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(rf_module.API_KEY_ENV, "env_key")
+
+
+def test_env_remote_config_unset_is_none(trussrc):
+    assert rf_module.env_remote_config() is None
+
+
+@pytest.mark.parametrize("set_env", [rf_module.REMOTE_URL_ENV, rf_module.API_KEY_ENV])
+def test_env_remote_config_partial_raises(trussrc, monkeypatch, set_env):
+    monkeypatch.setenv(set_env, "value")
+    with pytest.raises(ValueError, match="set both or neither"):
+        rf_module.env_remote_config()
+
+
+def test_load_remote_config_from_env_without_trussrc(trussrc, env_remote):
+    config = RemoteFactory.load_remote_config(rf_module.ENV_REMOTE_NAME)
+    assert config.configs == {
+        "remote_provider": "baseten",
+        "remote_url": "https://app.test.com",
+        "api_key": "env_key",
+        "api_key_use_bearer": True,
+    }
+    assert not trussrc.exists()
+
+
+def test_load_remote_config_from_env_shadows_trussrc(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    config = RemoteFactory.load_remote_config(rf_module.ENV_REMOTE_NAME)
+    assert config.configs["remote_url"] == "https://app.test.com"
+
+
+def test_load_remote_config_from_env_rejects_named_remote(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    with pytest.raises(ValueError, match=rf_module.REMOTE_URL_ENV):
+        RemoteFactory.load_remote_config("test")
+
+
+def test_get_available_config_names_from_env(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    assert RemoteFactory.get_available_config_names() == [rf_module.ENV_REMOTE_NAME]
+
+
+def test_create_from_env_sends_bearer(trussrc, env_remote):
+    remote = RemoteFactory.create(rf_module.ENV_REMOTE_NAME)
+    assert remote.fetch_auth_header() == {"Authorization": "Bearer env_key"}
+
+
+def test_env_remote_cannot_be_written_or_removed(trussrc, env_remote):
+    with pytest.raises(ValueError, match=rf_module.API_KEY_ENV):
+        RemoteFactory.remove_remote_config(rf_module.ENV_REMOTE_NAME)
+    with pytest.raises(ValueError, match=rf_module.API_KEY_ENV):
+        RemoteFactory.update_remote_config(
+            RemoteConfig(name=rf_module.ENV_REMOTE_NAME, configs={})
+        )
+    assert not trussrc.exists()
