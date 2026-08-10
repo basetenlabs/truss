@@ -626,9 +626,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     # INTERNAL
     bei_image: str
-    beibert_image: str = (
-        "baseten/bei_bert:1.8.7"  # once wired up in core-product, this can be removed
-    )
+    beibert_image: str
     # Base image for the BEI torch backend (text-embeddings-router + vLLM). Backend
     # inserts a resolved image reference; the default here is a placeholder so
     # local unit tests can construct ImageVersions without wiring core-product.
