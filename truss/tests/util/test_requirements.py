@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from truss.util import requirements as requirements_module
 from truss.util.requirements import (
     _is_valid_requirement,
     parse_requirement_string,
@@ -10,8 +11,9 @@ from truss.util.requirements import (
 
 
 @pytest.fixture
-def write_pyproject(tmp_path):
+def write_pyproject(tmp_path, monkeypatch):
     """Helper to write a pyproject.toml with given content and return its path."""
+    monkeypatch.setattr(requirements_module, "_invalid_dependency_warned", False)
 
     def _write(content: str) -> Path:
         path = tmp_path / "pyproject.toml"
@@ -114,8 +116,26 @@ dependencies = [
 """
     )
     with caplog.at_level("WARNING"):
-        result = parse_requirements_from_pyproject(path)
+        result = parse_requirements_from_pyproject(path, warn_on_invalid=True)
     assert result == ["requests>=2.28", "numpy==1.24.0"]
+    assert caplog.text == ""
+
+
+def test_parse_does_not_warn_by_default(write_pyproject, caplog):
+    """`warn_on_invalid` defaults to False, so callers like truss-chains'
+    internal truss-dependency check see no behavior change."""
+    path = write_pyproject(
+        """
+[project]
+dependencies = [
+    "requests>=2.28",
+    "numpy>=>1.0",
+]
+"""
+    )
+    with caplog.at_level("WARNING"):
+        result = parse_requirements_from_pyproject(path)
+    assert result == ["requests>=2.28"]
     assert caplog.text == ""
 
 
@@ -130,9 +150,29 @@ dependencies = [
 """
     )
     with caplog.at_level("WARNING"):
-        result = parse_requirements_from_pyproject(path)
+        result = parse_requirements_from_pyproject(path, warn_on_invalid=True)
     assert result == ["requests>=2.28"]
     assert "numpy>=>1.0" in caplog.text
+
+
+def test_parse_warns_only_once_per_process(write_pyproject, caplog):
+    path = write_pyproject(
+        """
+[project]
+dependencies = [
+    "requests>=2.28",
+    "numpy>=>1.0",
+]
+"""
+    )
+    with caplog.at_level("WARNING"):
+        parse_requirements_from_pyproject(path, warn_on_invalid=True)
+        parse_requirements_from_pyproject(path, warn_on_invalid=True)
+
+    # A `truss watch` loop re-reads pyproject.toml on every change; only the
+    # first invalid-dependency warning should be reported per process.
+    warnings = [r for r in caplog.records if "Ignoring invalid dependency" in r.message]
+    assert len(warnings) == 1
 
 
 def test_parse_dependencies_with_extras(write_pyproject):
