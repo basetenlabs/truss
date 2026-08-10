@@ -238,6 +238,29 @@ def test_patch_applier_allows_nested_subdirectory_path(
     ).read_text() == "ok"
 
 
+def test_patch_applier_works_through_symlinked_app_dir(truss_container_fs, tmp_path):
+    # The containment check must not alter behavior when the inference server
+    # home is reached via a symlink: the patch is applied through the original
+    # (unresolved) path, exactly as before the check was introduced.
+    symlinked_app = tmp_path / "app_link"
+    symlinked_app.symlink_to(truss_container_fs / "app")
+    applier = ModelContainerPatchApplier(symlinked_app, mock.Mock())
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.UPDATE, path="model.py", content="updated"),
+    )
+    applier(patch, os.environ.copy())
+    assert (truss_container_fs / "app" / "model" / "model.py").read_text() == "updated"
+    # Traversal is still rejected through the symlink.
+    evil = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.ADD, path="../../escaped.py", content="x"),
+    )
+    with pytest.raises(ValueError):
+        applier(evil, os.environ.copy())
+    assert not (truss_container_fs / "escaped.py").exists()
+
+
 def test_patch_applier_external_data_patch_add(
     patch_applier: ModelContainerPatchApplier, truss_container_fs
 ):
