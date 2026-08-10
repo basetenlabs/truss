@@ -12,6 +12,11 @@ def test_api_key_auth_header():
     assert auth_service.fetch_auth_header() == {"Authorization": "Api-Key test_key"}
 
 
+def test_api_key_auth_header_use_bearer():
+    auth_service = AuthService(ApiKeyCredential(api_key="test_key", use_bearer=True))
+    assert auth_service.fetch_auth_header() == {"Authorization": "Bearer test_key"}
+
+
 def test_api_key_credential_rejects_empty():
     with pytest.raises(pydantic.ValidationError):
         ApiKeyCredential(api_key="")
