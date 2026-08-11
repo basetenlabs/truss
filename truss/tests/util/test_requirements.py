@@ -129,7 +129,7 @@ def test_parse_does_not_warn_by_default(write_pyproject, caplog):
 [project]
 dependencies = [
     "requests>=2.28",
-    "numpy>=>1.0",
+    "numpy>=1.0,,",
 ]
 """
     )
@@ -145,14 +145,14 @@ def test_parse_warns_on_malformed_dependency(write_pyproject, caplog):
 [project]
 dependencies = [
     "requests>=2.28",
-    "numpy>=>1.0",
+    "numpy>=1.0,,",
 ]
 """
     )
     with caplog.at_level("WARNING"):
         result = parse_requirements_from_pyproject(path, warn_on_invalid=True)
     assert result == ["requests>=2.28"]
-    assert "numpy>=>1.0" in caplog.text
+    assert "numpy>=1.0,," in caplog.text
 
 
 def test_parse_warns_only_once_per_process(write_pyproject, caplog):
@@ -161,7 +161,7 @@ def test_parse_warns_only_once_per_process(write_pyproject, caplog):
 [project]
 dependencies = [
     "requests>=2.28",
-    "numpy>=>1.0",
+    "numpy>=1.0,,",
 ]
 """
     )
