@@ -14,9 +14,11 @@ from truss.remote.baseten.api import resolve_rest_api_url
 from truss.remote.baseten.oauth import OAuthCredential, OAuthError
 from truss.remote.remote_factory import (
     _INLINE_SECRET_KEYS,
+    API_KEY_ENV,
     USER_TRUSSRC_PATH,
     AuthType,
     RemoteFactory,
+    env_remote_config,
     load_config,
 )
 from truss.remote.truss_remote import RemoteConfig
@@ -63,7 +65,10 @@ def auth_logout(remote: Optional[str]) -> None:
         )
         oauth.revoke(resolve_rest_api_url(cfg.configs["remote_url"]), credential)
 
-    RemoteFactory.remove_remote_config(remote_name)
+    try:
+        RemoteFactory.remove_remote_config(remote_name)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
     console.print(f"👋 Logged out of remote `{remote_name}`.")
 
 
@@ -78,6 +83,17 @@ def auth_logout(remote: Optional[str]) -> None:
 def auth_status(remote: Optional[str]) -> None:
     """Show the active authentication for a remote."""
     remote_name = remote or inquire_remote_name(allow_create=False)
+    if env_config := env_remote_config():
+        if remote_name != env_config.name:
+            raise click.ClickException(
+                f"Cannot show remote {remote_name!r}: {API_KEY_ENV} is set, which "
+                "takes precedence over the trussrc."
+            )
+        console.print(f"remote: {env_config.name}")
+        console.print(f"remote_url: {env_config.configs['remote_url']}")
+        console.print("auth_type: api_key")
+        console.print(f"source: {API_KEY_ENV}")
+        return
     if not USER_TRUSSRC_PATH.exists():
         raise click.ClickException(f"No trussrc found at {USER_TRUSSRC_PATH}.")
     raw = load_config()

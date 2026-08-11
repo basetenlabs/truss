@@ -1128,6 +1128,8 @@ def trussrc(tmp_path, monkeypatch):
     monkeypatch.setattr(remote_factory, "USER_TRUSSRC_PATH", path)
     monkeypatch.setattr("truss.cli.auth.USER_TRUSSRC_PATH", path)
     monkeypatch.delenv(remote_factory.KEYRING_DISABLED_ENV, raising=False)
+    monkeypatch.delenv(remote_factory.REMOTE_URL_ENV, raising=False)
+    monkeypatch.delenv(remote_factory.API_KEY_ENV, raising=False)
     monkeypatch.setattr(remote_factory, "_keyring_fallback_warned", False)
     return path
 
