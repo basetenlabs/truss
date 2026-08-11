@@ -13,6 +13,10 @@ class ApiKeyCredential(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True)
 
     api_key: str = pydantic.Field(min_length=1)
+    # Send as `Bearer` rather than the legacy `Api-Key`. Set for env-supplied
+    # tokens, which may be an API key or an OAuth access token; trussrc remotes
+    # keep the legacy scheme.
+    use_bearer: bool = False
 
 
 class OAuthSession(pydantic.BaseModel):
@@ -45,7 +49,8 @@ class AuthService:
             with self._refresh_lock:
                 session = self._refresh_if_expired(self._credential)
             return {"Authorization": f"Bearer {session.credential.access_token}"}
-        return {"Authorization": f"Api-Key {self._credential.api_key}"}
+        scheme = "Bearer" if self._credential.use_bearer else "Api-Key"
+        return {"Authorization": f"{scheme} {self._credential.api_key}"}
 
     def _refresh_if_expired(self, session: OAuthSession) -> OAuthSession:
         if not session.credential.is_expired():
