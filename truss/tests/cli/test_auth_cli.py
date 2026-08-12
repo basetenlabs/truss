@@ -192,3 +192,32 @@ def test_login_prints_success_message(memory_keyring, trussrc):
     assert result.exit_code == 0, result.output
     assert "Logged in to remote" in result.output
     assert "alt" in result.output
+
+
+def test_status_reports_env_remote(trussrc, monkeypatch):
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(rf_module.API_KEY_ENV, "env_key")
+    result = CliRunner().invoke(truss_cli, ["auth", "status"])
+    assert result.exit_code == 0, result.output
+    assert f"remote: {rf_module.ENV_REMOTE_NAME}" in result.output
+    assert "remote_url: https://app.test.com" in result.output
+    assert f"source: {rf_module.API_KEY_ENV}" in result.output
+
+
+def test_status_named_remote_errors_with_env_remote(trussrc, monkeypatch):
+    trussrc.write_text(
+        "[baseten]\nremote_provider = baseten\nremote_url = http://x\napi_key = plain\n"
+    )
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(rf_module.API_KEY_ENV, "env_key")
+    result = CliRunner().invoke(truss_cli, ["auth", "status", "--remote", "baseten"])
+    assert result.exit_code != 0
+    assert rf_module.API_KEY_ENV in result.output
+
+
+def test_logout_env_remote_errors(trussrc, monkeypatch):
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(rf_module.API_KEY_ENV, "env_key")
+    result = CliRunner().invoke(truss_cli, ["auth", "logout"])
+    assert result.exit_code != 0
+    assert rf_module.API_KEY_ENV in result.output
