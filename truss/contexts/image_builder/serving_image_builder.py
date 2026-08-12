@@ -491,6 +491,9 @@ def generate_docker_server_supervisord_config(build_dir, config):
         "startretries": "0",  # Don't retry if server fails to start
         "autostart": "true",  # Start automatically with supervisord
         "autorestart": "false",  # Don't restart on exit
+        # Must cover nginx's drain window: nginx can only hold client connections
+        # open while the upstream server is still alive to serve them.
+        "stopwaitsecs": "4000",
         "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
         "stdout_logfile_maxbytes": "0",  # No size limit on stdout
         "redirect_stderr": "true",  # Combine stderr into stdout
@@ -501,6 +504,10 @@ def generate_docker_server_supervisord_config(build_dir, config):
         "startsecs": "0",  # Assume nginx starts immediately
         "autostart": "true",  # Start automatically with supervisord
         "autorestart": "true",  # Always restart nginx on exit
+        # QUIT = graceful shutdown (drain in-flight requests and websockets);
+        # the default TERM is a fast shutdown that severs open connections.
+        "stopsignal": "QUIT",
+        "stopwaitsecs": "4000",  # Drain budget before supervisord SIGKILLs nginx
         "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
         "stdout_logfile_maxbytes": "0",  # No size limit on stdout
         "redirect_stderr": "true",  # Combine stderr into stdout
