@@ -319,6 +319,37 @@ def test_create_model_version_from_truss_with_deploy_timeout_minutes_zero(
     assert "deploy_timeout_minutes: 0" in gql_mutation
 
 
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_spot(mock_post, baseten_api):
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        spot=True,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "spot: true" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_does_not_send_spot_by_default(
+    mock_post, baseten_api
+):
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "spot: " not in gql_mutation
+
+
 @mock.patch("requests.post", return_value=mock_create_model_response())
 def test_create_model_from_truss(mock_post, baseten_api):
     baseten_api.create_model_from_truss(
@@ -391,6 +422,31 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
         "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_with_spot(mock_post, baseten_api):
+    baseten_api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        spot=True,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "spot: true" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_spot(mock_post, baseten_api):
+    baseten_api.create_development_model_from_truss(
+        "model_name", "s3key", "config_str", b10_types.TrussUserEnv.collect(), spot=True
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "spot: true" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_development_model_response())

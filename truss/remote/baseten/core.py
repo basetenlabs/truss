@@ -423,6 +423,7 @@ def create_truss_service(
     team_id: Optional[str] = None,
     labels: Optional[dict] = None,
     raw_config: Optional[bytes] = None,
+    spot: bool = False,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -439,6 +440,7 @@ def create_truss_service(
         deployment_name: Name to apply to the created deployment. Not applied to
             development model.
         team_id: ID of the team to create the model in.
+        spot: Whether to deploy on interruptible spot capacity.
 
     Returns:
         A Model Version handle.
@@ -455,6 +457,7 @@ def create_truss_service(
             team_id=team_id,
             labels=labels,
             raw_config=raw_config,
+            spot=spot,
         )
 
         return ModelVersionHandle(
@@ -483,6 +486,7 @@ def create_truss_service(
             team_id=team_id,
             labels=labels,
             raw_config=raw_config,
+            spot=spot,
         )
 
         return ModelVersionHandle(
@@ -509,6 +513,7 @@ def create_truss_service(
         deploy_timeout_minutes=deploy_timeout_minutes,
         labels=labels,
         raw_config=raw_config,
+        spot=spot,
     )
 
     return ModelVersionHandle(

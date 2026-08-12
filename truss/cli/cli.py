@@ -593,6 +593,13 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
+    "--spot",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Deploy on interruptible spot capacity.",
+)
+@click.option(
     "--trusted",
     is_flag=True,
     required=False,
@@ -729,6 +736,7 @@ def push(
     remote: str,
     model_name: str,
     publish: bool = False,
+    spot: bool = False,
     trusted: Optional[bool] = None,
     disable_truss_download: bool = False,
     promote: bool = False,
@@ -936,6 +944,7 @@ def push(
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
         labels=labels_dict,
+        spot=spot,
     )
 
     console.print(f"✨ Model {model_name} was successfully pushed ✨\n")

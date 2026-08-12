@@ -473,6 +473,7 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
+        spot: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -540,6 +541,7 @@ class BasetenRemote(TrussRemote):
             team_id=push_data.team_id,
             labels=push_data.labels,
             raw_config=push_data.raw_config,
+            spot=spot,
         )
 
         if model_version_handle.instance_type_name:

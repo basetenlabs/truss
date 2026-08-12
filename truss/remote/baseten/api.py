@@ -215,6 +215,7 @@ class BasetenApi:
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
         raw_config: Optional[bytes] = None,
+        spot: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
@@ -230,6 +231,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    {"spot: true" if spot else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
                 ) {{
@@ -275,6 +277,7 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
         raw_config: Optional[bytes] = None,
+        spot: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
@@ -289,6 +292,7 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {"spot: true" if spot else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
                 ) {{
@@ -333,6 +337,7 @@ class BasetenApi:
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
         raw_config: Optional[bytes] = None,
+        spot: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
@@ -344,6 +349,7 @@ class BasetenApi:
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    {"spot: true" if spot else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
                 ) {{

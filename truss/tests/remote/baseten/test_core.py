@@ -1064,6 +1064,86 @@ def test_create_truss_service_passes_labels_for_existing_model():
     assert kwargs["labels"] == labels
 
 
+def test_create_truss_service_passes_spot():
+    """Test that spot is passed through to create_model_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
+    api.create_model_from_truss.return_value = return_value
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id=None,
+        spot=True,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_from_truss.assert_called_once()
+    _, kwargs = api.create_model_from_truss.call_args
+    assert kwargs["spot"] is True
+
+
+def test_create_truss_service_passes_spot_for_development_model():
+    """Test that spot is passed through to create_development_model_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_development_model_from_truss.return_value = return_value
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=True,
+        model_id=None,
+        spot=True,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_development_model_from_truss.assert_called_once()
+    _, kwargs = api.create_development_model_from_truss.call_args
+    assert kwargs["spot"] is True
+
+
+def test_create_truss_service_passes_spot_for_existing_model():
+    """Test that spot is passed through to create_model_version_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="existing_model_id",
+        spot=True,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["spot"] is True
+
+
 def test_create_bus_llm_service_creates_new_model():
     api = MagicMock()
     api.create_bis_llm_model.return_value = {
