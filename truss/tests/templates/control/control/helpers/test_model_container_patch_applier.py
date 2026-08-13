@@ -168,6 +168,99 @@ def test_patch_applier_env_var_patch_remove(patch_applier: ModelContainerPatchAp
         _ = env_var_dict["FOO"]
 
 
+@pytest.mark.parametrize(
+    "patch_type, body_cls",
+    [(PatchType.MODEL_CODE, ModelCodePatch), (PatchType.PACKAGE, PackagePatch)],
+)
+@pytest.mark.parametrize("action", [Action.ADD, Action.UPDATE])
+def test_patch_applier_rejects_path_traversal_write(
+    patch_applier: ModelContainerPatchApplier,
+    truss_container_fs,
+    patch_type,
+    body_cls,
+    action,
+):
+    # A patch path escaping the target directory (e.g. via `..`) must be
+    # rejected instead of writing outside it (issue #2532).
+    outside_target = truss_container_fs / "escaped.py"
+    patch = Patch(
+        type=patch_type,
+        body=body_cls(action=action, path="../../escaped.py", content="pwned"),
+    )
+    with pytest.raises(ValueError):
+        patch_applier(patch, os.environ.copy())
+    assert not outside_target.exists()
+
+
+def test_patch_applier_rejects_absolute_path_write(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs, tmp_path
+):
+    # Joining an absolute path onto the target dir collapses to the absolute
+    # path, another way to escape; it must be rejected too.
+    outside_target = tmp_path / "abs_escaped.py"
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.ADD, path=str(outside_target), content="pwned"
+        ),
+    )
+    with pytest.raises(ValueError):
+        patch_applier(patch, os.environ.copy())
+    assert not outside_target.exists()
+
+
+def test_patch_applier_rejects_path_traversal_remove(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
+    # A REMOVE patch must not be able to delete files outside the target dir.
+    victim = truss_container_fs / "app" / "config.yaml"
+    assert victim.exists()
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.REMOVE, path="../config.yaml"),
+    )
+    with pytest.raises(ValueError):
+        patch_applier(patch, os.environ.copy())
+    assert victim.exists()
+
+
+def test_patch_applier_allows_nested_subdirectory_path(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
+    # Legitimate nested paths within the target dir must still work.
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.ADD, path="nested/dir/new.py", content="ok"),
+    )
+    patch_applier(patch, os.environ.copy())
+    assert (
+        truss_container_fs / "app" / "model" / "nested" / "dir" / "new.py"
+    ).read_text() == "ok"
+
+
+def test_patch_applier_works_through_symlinked_app_dir(truss_container_fs, tmp_path):
+    # The containment check must not alter behavior when the inference server
+    # home is reached via a symlink: the patch is applied through the original
+    # (unresolved) path, exactly as before the check was introduced.
+    symlinked_app = tmp_path / "app_link"
+    symlinked_app.symlink_to(truss_container_fs / "app")
+    applier = ModelContainerPatchApplier(symlinked_app, mock.Mock())
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.UPDATE, path="model.py", content="updated"),
+    )
+    applier(patch, os.environ.copy())
+    assert (truss_container_fs / "app" / "model" / "model.py").read_text() == "updated"
+    # Traversal is still rejected through the symlink.
+    evil = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(action=Action.ADD, path="../../escaped.py", content="x"),
+    )
+    with pytest.raises(ValueError):
+        applier(evil, os.environ.copy())
+    assert not (truss_container_fs / "escaped.py").exists()
+
+
 def test_patch_applier_external_data_patch_add(
     patch_applier: ModelContainerPatchApplier, truss_container_fs
 ):
