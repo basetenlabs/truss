@@ -351,6 +351,8 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "aws_oidc_region": None,
                     "gcp_oidc_service_account": None,
                     "gcp_oidc_workload_id_provider": None,
+                    "aws_assume_role_arn": None,
+                    "aws_assume_role_region": None,
                 },
             },
         ),
@@ -384,6 +386,8 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "aws_oidc_region": None,
                     "gcp_oidc_service_account": None,
                     "gcp_oidc_workload_id_provider": None,
+                    "aws_assume_role_arn": None,
+                    "aws_assume_role_region": None,
                 },
             },
         ),
@@ -422,6 +426,8 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "aws_oidc_region": "us-west-2",
                     "gcp_oidc_service_account": None,
                     "gcp_oidc_workload_id_provider": None,
+                    "aws_assume_role_arn": None,
+                    "aws_assume_role_region": None,
                 },
             },
         ),
@@ -460,6 +466,48 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "aws_oidc_region": None,
                     "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
                     "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    "aws_assume_role_arn": None,
+                    "aws_assume_role_region": None,
+                },
+            },
+        ),
+        # AWS native assume-role authentication
+        (
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_ASSUME_ROLE",
+                    "aws_assume_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_assume_role_region": "us-west-2",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                },
+            },
+            BaseImage(
+                image="123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_ASSUME_ROLE,
+                    aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+                    aws_assume_role_region="us-west-2",
+                    registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+                ),
+            ),
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_ASSUME_ROLE",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                    "aws_assume_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_assume_role_region": "us-west-2",
                 },
             },
         ),
@@ -485,6 +533,48 @@ def test_docker_auth_aws_oidc_missing_region():
         DockerAuthSettings(
             auth_method=DockerAuthType.AWS_OIDC,
             aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_assume_role_missing_role_arn():
+    with pytest.raises(ValueError, match="aws_assume_role_arn must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_ASSUME_ROLE,
+            aws_assume_role_region="us-west-2",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_assume_role_missing_region():
+    with pytest.raises(ValueError, match="aws_assume_role_region must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_ASSUME_ROLE,
+            aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_assume_role_with_oidc_params_error():
+    """AWS assume-role docker auth cannot have OIDC parameters."""
+    with pytest.raises(ValueError, match="aws_oidc_role_arn cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_ASSUME_ROLE,
+            aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_assume_role_region="us-west-2",
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_oidc_with_assume_role_params_error():
+    """AWS OIDC docker auth cannot have assume-role parameters."""
+    with pytest.raises(ValueError, match="aws_assume_role_arn cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+            aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
             registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
         )
 
@@ -1725,6 +1815,61 @@ class TestWeightsSource:
         )
         assert auth.auth_method == WeightsAuthMethod.CUSTOM_SECRET
         assert auth.auth_secret_name == "my-secret"
+
+    def test_aws_assume_role_valid(self):
+        """AWS_ASSUME_ROLE with role ARN and region should be valid."""
+        auth = WeightsAuth(
+            auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
+            aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_assume_role_region="us-west-2",
+        )
+        assert auth.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE
+        assert auth.aws_assume_role_arn == "arn:aws:iam::123456789:role/my-role"
+        assert auth.aws_assume_role_region == "us-west-2"
+
+    def test_aws_assume_role_missing_role_arn(self):
+        """AWS assume-role without role ARN should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_assume_role_arn must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
+                aws_assume_role_region="us-west-2",
+            )
+
+    def test_aws_assume_role_missing_region(self):
+        """AWS assume-role without region should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_assume_role_region must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
+                aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+    def test_aws_assume_role_with_oidc_params_error(self):
+        """AWS assume-role cannot have OIDC parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
+                aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_assume_role_region="us-west-2",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+    def test_aws_oidc_with_assume_role_params_error(self):
+        """AWS OIDC cannot have assume-role parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_assume_role_arn cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+                aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
 
     def test_aws_oidc_with_gcp_params_error(self):
         """AWS OIDC cannot have GCP parameters."""
