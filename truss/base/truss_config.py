@@ -1474,7 +1474,9 @@ class TrussConfig(custom_types.ConfigModel):
             # NB(nikhil): For patching, we resolve from `pyproject.toml` for (1) easier parsing (2) smaller file footprint.
             # If the user specified `uv.lock` as the source of truth, we'll bypass it for the patch process.
             pyproject_path = self._resolve_pyproject_path(truss_dir)
-            return parse_requirements_from_pyproject(pyproject_path)
+            return parse_requirements_from_pyproject(
+                pyproject_path, warn_on_invalid=True
+            )
         except Exception as e:
             logger.exception(
                 f"failed to read requirements file: {self.requirements_file}"
