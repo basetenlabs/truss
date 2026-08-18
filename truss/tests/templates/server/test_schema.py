@@ -322,3 +322,105 @@ def test_truss_schema_union_three_arms():
 
     assert schema.input_type == ModelInput
     assert schema.output_type is None
+
+
+# -- postprocess schema tests --------------------------------------------------
+# These mirror what ModelDescriptor._gen_truss_schema does when postprocess is
+# defined: it combines the *input* parameters from predict (or preprocess) with
+# the *return annotation* from postprocess to build the TrussSchema.
+
+
+def test_truss_schema_postprocess_pydantic_output():
+    """predict has a pydantic input type; postprocess supplies the pydantic output type."""
+
+    class Model:
+        def predict(self, request: ModelInput) -> dict:
+            return {"output": request.input}
+
+        def postprocess(self, result: dict) -> ModelOutput:
+            return ModelOutput(output=result["output"])
+
+    model = Model()
+
+    # _gen_truss_schema reads predict.parameters for input, postprocess.return for output.
+    input_params = inspect.signature(model.predict).parameters
+    output_annotation = inspect.signature(model.postprocess).return_annotation
+
+    schema = TrussSchema.from_signature(input_params, output_annotation)
+
+    assert schema is not None
+    assert schema.input_type == ModelInput
+    assert schema.output_type == ModelOutput
+    assert not schema.supports_streaming
+
+
+def test_truss_schema_preprocess_postprocess_pydantic():
+    """preprocess supplies the pydantic input type; postprocess supplies the pydantic output."""
+
+    class Model:
+        def preprocess(self, request: ModelInput) -> str:
+            return request.input
+
+        def predict(self, request: str) -> str:
+            return request
+
+        def postprocess(self, result: str) -> ModelOutput:
+            return ModelOutput(output=result)
+
+    model = Model()
+
+    # _gen_truss_schema reads preprocess.parameters for input, postprocess.return for output.
+    input_params = inspect.signature(model.preprocess).parameters
+    output_annotation = inspect.signature(model.postprocess).return_annotation
+
+    schema = TrussSchema.from_signature(input_params, output_annotation)
+
+    assert schema is not None
+    assert schema.input_type == ModelInput
+    assert schema.output_type == ModelOutput
+    assert not schema.supports_streaming
+
+
+def test_truss_schema_postprocess_non_pydantic_output():
+    """postprocess with a non-pydantic return annotation yields no output_type."""
+
+    class Model:
+        def predict(self, request: ModelInput) -> dict:
+            return {"output": request.input}
+
+        def postprocess(self, result: dict) -> str:
+            return result["output"]
+
+    model = Model()
+
+    input_params = inspect.signature(model.predict).parameters
+    output_annotation = inspect.signature(model.postprocess).return_annotation
+
+    schema = TrussSchema.from_signature(input_params, output_annotation)
+
+    assert schema is not None
+    assert schema.input_type == ModelInput
+    assert schema.output_type is None
+
+
+def test_truss_schema_postprocess_no_return_annotation():
+    """postprocess with no return annotation yields no output_type."""
+
+    class Model:
+        def predict(self, request: ModelInput):
+            return {"output": request.input}
+
+        def postprocess(self, result):
+            return result
+
+    model = Model()
+
+    input_params = inspect.signature(model.predict).parameters
+    output_annotation = inspect.signature(model.postprocess).return_annotation
+
+    schema = TrussSchema.from_signature(input_params, output_annotation)
+
+    # input_type is present but output_type is absent.
+    assert schema is not None
+    assert schema.input_type == ModelInput
+    assert schema.output_type is None

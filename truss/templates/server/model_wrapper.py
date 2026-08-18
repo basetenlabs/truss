@@ -345,6 +345,13 @@ class ModelDescriptor:
                     f"argument (because the result of `{MethodName.PREDICT}` would be discarded)."
                 )
 
+            if postprocess and postprocess.arg_config == ArgConfig.NONE:
+                raise errors.ModelDefinitionError(
+                    f"The `{MethodName.POSTPROCESS}` method must accept the result of "
+                    f"`{MethodName.PREDICT}` as its first argument. A zero-argument "
+                    f"`{MethodName.POSTPROCESS}` discards the predict output."
+                )
+
             truss_schema = cls._gen_truss_schema(
                 predict=predict, preprocess=preprocess, postprocess=postprocess
             )
