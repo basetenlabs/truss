@@ -629,8 +629,6 @@ class ServingImageBuilder(ImageBuilder):
         # Torch backend has no TRT-LLM 32-cap; 256 is a safe upper bound for KV-less
         # embedding servers before per-request scheduling overhead dominates.
         runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 256)
-        # vLLM rejects --max-batch-tokens below BEI_TORCH_REQUIRED_MAX_NUM_TOKENS;
-        # long-context embedders (Nemotron 32k) need the headroom.
         runtime_max_batch_tokens = max(
             trt_llm_config.build.max_num_tokens, BEI_TORCH_REQUIRED_MAX_NUM_TOKENS
         )

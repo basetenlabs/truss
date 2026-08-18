@@ -717,8 +717,6 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                     )
             if "ForCausalLM" in arch and self.build.base_model not in (
                 TrussTRTLLMModel.DECODER,
-                # encoder_torch is the sanctioned way to serve a causal-arch checkpoint
-                # as an embedding/reranker via bidirectional-attention override in BEI-torch.
                 TrussTRTLLMModel.ENCODER_TORCH,
             ):
                 logger.warning(
