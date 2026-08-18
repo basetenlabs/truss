@@ -264,7 +264,7 @@ def test_cache_mount_id_enabled_with_system_pkgs_ssh_and_docker_server(
         'HTTP_PROXY="$HTTP_PROXY" HTTPS_PROXY="$HTTPS_PROXY" NO_PROXY="$NO_PROXY" '
         'SSL_CERT_FILE="$SSL_CERT_FILE" REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE" PIP_CERT="$PIP_CERT" '
         'UV_CACHE_DIR="$UV_CACHE_DIR" PIP_CACHE_DIR="$PIP_CACHE_DIR" '
-        "uv pip install --no-config --python /docker_server/.venv/bin/python "
+        "uv --no-config pip install --python /docker_server/.venv/bin/python "
         "-r /app/docker_server_requirements.txt"
     ) in dockerfile
     # Sanity: no --no-cache-dir anywhere, no list cleanup anywhere, no
