@@ -337,6 +337,35 @@ def test_unusable_backend_warns_and_keeps_inline(fail_keyring, trussrc, caplog):
     assert loaded.configs["oauth_access_token"] == "access"
 
 
+def test_write_failure_warns_once_per_process(write_error_keyring, trussrc, caplog):
+    def update(token):
+        RemoteFactory.update_remote_config(
+            RemoteConfig(
+                name="baseten",
+                configs={
+                    "remote_provider": "baseten",
+                    "auth_type": "oauth",
+                    "oauth_access_token": token,
+                    "oauth_refresh_token": "refresh",
+                    "oauth_expires_at": "123",
+                    "remote_url": "http://x",
+                },
+            )
+        )
+
+    with caplog.at_level("WARNING", logger=rf_module.logger.name):
+        update("access1")
+        update("access2")
+        update("access3")
+
+    # A long-running command refreshes its OAuth token repeatedly; only the
+    # first failed write should be reported.
+    warnings = [r for r in caplog.records if "keyring write failed" in r.message]
+    assert len(warnings) == 1
+    # Every refresh still persists to the trussrc.
+    assert "oauth_access_token = access3" in trussrc.read_text()
+
+
 def test_load_raises_when_secret_missing_and_keyring_unavailable(fail_keyring, trussrc):
     trussrc.write_text(
         "[baseten]\n"
@@ -397,3 +426,63 @@ def test_remove_remote_config_missing_is_noop(memory_keyring, trussrc):
     trussrc.write_text("[other]\nremote_provider = baseten\n")
     RemoteFactory.remove_remote_config("baseten")
     assert "[other]" in trussrc.read_text()
+
+
+@pytest.fixture
+def env_remote(monkeypatch):
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(rf_module.API_KEY_ENV, "env_key")
+
+
+def test_env_remote_config_unset_is_none(trussrc):
+    assert rf_module.env_remote_config() is None
+
+
+@pytest.mark.parametrize("set_env", [rf_module.REMOTE_URL_ENV, rf_module.API_KEY_ENV])
+def test_env_remote_config_partial_raises(trussrc, monkeypatch, set_env):
+    monkeypatch.setenv(set_env, "value")
+    with pytest.raises(ValueError, match="set both or neither"):
+        rf_module.env_remote_config()
+
+
+def test_load_remote_config_from_env_without_trussrc(trussrc, env_remote):
+    config = RemoteFactory.load_remote_config(rf_module.ENV_REMOTE_NAME)
+    assert config.configs == {
+        "remote_provider": "baseten",
+        "remote_url": "https://app.test.com",
+        "api_key": "env_key",
+        "api_key_use_bearer": True,
+    }
+    assert not trussrc.exists()
+
+
+def test_load_remote_config_from_env_shadows_trussrc(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    config = RemoteFactory.load_remote_config(rf_module.ENV_REMOTE_NAME)
+    assert config.configs["remote_url"] == "https://app.test.com"
+
+
+def test_load_remote_config_from_env_rejects_named_remote(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    with pytest.raises(ValueError, match=rf_module.REMOTE_URL_ENV):
+        RemoteFactory.load_remote_config("test")
+
+
+def test_get_available_config_names_from_env(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    assert RemoteFactory.get_available_config_names() == [rf_module.ENV_REMOTE_NAME]
+
+
+def test_create_from_env_sends_bearer(trussrc, env_remote):
+    remote = RemoteFactory.create(rf_module.ENV_REMOTE_NAME)
+    assert remote.fetch_auth_header() == {"Authorization": "Bearer env_key"}
+
+
+def test_env_remote_cannot_be_written_or_removed(trussrc, env_remote):
+    with pytest.raises(ValueError, match=rf_module.API_KEY_ENV):
+        RemoteFactory.remove_remote_config(rf_module.ENV_REMOTE_NAME)
+    with pytest.raises(ValueError, match=rf_module.API_KEY_ENV):
+        RemoteFactory.update_remote_config(
+            RemoteConfig(name=rf_module.ENV_REMOTE_NAME, configs={})
+        )
+    assert not trussrc.exists()

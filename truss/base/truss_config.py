@@ -628,15 +628,6 @@ class OIDC(custom_types.ConfigModel):
     )
 
 
-class RequestBackpressure(custom_types.ConfigModel):
-    """Configuration for how the deployment handles requests when at capacity."""
-
-    policy: Optional[Literal["queue_on_full", "reject_on_full"]] = pydantic.Field(
-        default=None,
-        description="queue_on_full (default) queues requests while reject_on_full returns HTTP 429 if deployment is at capacity.",
-    )
-
-
 class RemoteSSH(custom_types.ConfigModel):
     """Configuration for SSH access to running model instances."""
 
@@ -765,10 +756,6 @@ class Runtime(custom_types.ConfigModel):
         None,
         description="By default, truss servers are built from the same release as the "
         "CLI used to push. This field allows specifying a pinned/specific version instead.",
-    )
-    request_backpressure: RequestBackpressure = pydantic.Field(
-        default_factory=RequestBackpressure,
-        description="Configuration for how the deployment handles requests when at capacity.",
     )
 
     config: ClassVar = pydantic.ConfigDict(validate_assignment=True)
@@ -1487,7 +1474,9 @@ class TrussConfig(custom_types.ConfigModel):
             # NB(nikhil): For patching, we resolve from `pyproject.toml` for (1) easier parsing (2) smaller file footprint.
             # If the user specified `uv.lock` as the source of truth, we'll bypass it for the patch process.
             pyproject_path = self._resolve_pyproject_path(truss_dir)
-            return parse_requirements_from_pyproject(pyproject_path)
+            return parse_requirements_from_pyproject(
+                pyproject_path, warn_on_invalid=True
+            )
         except Exception as e:
             logger.exception(
                 f"failed to read requirements file: {self.requirements_file}"

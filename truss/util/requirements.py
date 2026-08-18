@@ -1,8 +1,13 @@
+import logging
 import pathlib
 from typing import Optional
 
 import tomlkit
 from packaging.requirements import InvalidRequirement, Requirement
+
+logger = logging.getLogger(__name__)
+
+_invalid_dependency_warned = False
 
 
 def parse_requirement_string(req_str: str) -> Optional[str]:
@@ -19,12 +24,29 @@ def parse_requirement_string(req_str: str) -> Optional[str]:
     return stripped_line
 
 
-def parse_requirements_from_pyproject(pyproject_path: pathlib.Path) -> list[str]:
+def parse_requirements_from_pyproject(
+    pyproject_path: pathlib.Path, warn_on_invalid: bool = False
+) -> list[str]:
+    global _invalid_dependency_warned
     with open(pyproject_path) as f:
         data = tomlkit.load(f)
 
     raw_deps = data.get("project", {}).get("dependencies", [])
-    return [dep for dep in raw_deps if _is_valid_requirement(dep)]
+    valid_deps = []
+    for dep in raw_deps:
+        if _is_valid_requirement(dep):
+            valid_deps.append(dep)
+        elif (
+            warn_on_invalid
+            and not _is_local_path(dep)
+            and not _invalid_dependency_warned
+        ):
+            logger.warning(
+                f"Ignoring invalid dependency `{dep}` in pyproject.toml: could not be "
+                "parsed as a requirement."
+            )
+            _invalid_dependency_warned = True
+    return valid_deps
 
 
 def _is_valid_requirement(req: str) -> bool:
@@ -33,6 +55,10 @@ def _is_valid_requirement(req: str) -> bool:
         return True
     except InvalidRequirement:
         return False
+
+
+def _is_local_path(req: str) -> bool:
+    return req.strip().startswith((".", "/"))
 
 
 def raise_insufficent_revision(repo_id_huggingface: str, revision: str):

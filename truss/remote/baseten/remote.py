@@ -126,6 +126,7 @@ class BasetenRemote(TrussRemote):
         remote_url: str,
         api_key: Optional[str] = None,
         *,
+        api_key_use_bearer: bool = False,
         oauth_remote_name: Optional[str] = None,
         oauth_access_token: Optional[str] = None,
         oauth_refresh_token: Optional[str] = None,
@@ -159,7 +160,9 @@ class BasetenRemote(TrussRemote):
             api_key = api_key or os.environ.get("BASETEN_API_KEY")
             if not api_key:
                 raise AuthorizationError("No credentials provided.")
-            self._auth_service = AuthService(ApiKeyCredential(api_key=api_key))
+            self._auth_service = AuthService(
+                ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
+            )
         self._api = BasetenApi(remote_url, self._auth_service)
 
     def fetch_auth_header(self) -> dict[str, str]:
@@ -299,6 +302,8 @@ class BasetenRemote(TrussRemote):
             body["environment_variables"] = config.environment_variables
         if config.weights:
             body["weights"] = config.weights.model_dump(exclude_none=True)
+        if config.model_metadata:
+            body["model_metadata"] = config.model_metadata
         if labels is not None:
             body["metadata"] = labels
 

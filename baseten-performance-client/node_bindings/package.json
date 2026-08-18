@@ -1,8 +1,13 @@
 {
   "name": "@basetenlabs/performance-client",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "main": "index.js",
   "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
   "napi": {
     "name": "performance-client",
     "triples": {

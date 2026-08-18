@@ -614,6 +614,9 @@ impl PerformanceClient {
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
 
+  // TODO: This JSON-compatible return type cannot preserve MessagePack binary, invalid UTF-8
+  // strings, or maps with non-string keys. The API return type is subject to change when those
+  // values are exposed through native JavaScript types.
   #[napi]
   pub async fn batch_post(
     &self,
@@ -645,7 +648,10 @@ impl PerformanceClient {
     let mut individual_request_times = Vec::new();
 
     for (json_value, headers, duration) in results {
-      data.push(json_value);
+      data.push(
+        serde_json::to_value(json_value)
+          .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))?,
+      );
       response_headers.push(headers);
       individual_request_times.push(duration.as_secs_f64());
     }

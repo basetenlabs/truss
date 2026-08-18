@@ -1091,12 +1091,21 @@ class _InMemoryKeyring(keyring.backend.KeyringBackend):
             raise keyring.errors.PasswordDeleteError(str(exc)) from exc
 
 
+class _WriteErrorKeyring(_InMemoryKeyring):
+    # A usable backend whose writes always fail, like a macOS keychain that
+    # rejects the item.
+    def set_password(self, service, username, password):
+        raise keyring.errors.PasswordSetError("nope")
+
+
 @pytest.fixture
 def trussrc(tmp_path, monkeypatch):
     path = tmp_path / "trussrc"
     monkeypatch.setattr(remote_factory, "USER_TRUSSRC_PATH", path)
     monkeypatch.setattr("truss.cli.auth.USER_TRUSSRC_PATH", path)
     monkeypatch.delenv(remote_factory.KEYRING_DISABLED_ENV, raising=False)
+    monkeypatch.delenv(remote_factory.REMOTE_URL_ENV, raising=False)
+    monkeypatch.delenv(remote_factory.API_KEY_ENV, raising=False)
     monkeypatch.setattr(remote_factory, "_keyring_fallback_warned", False)
     return path
 
@@ -1108,6 +1117,16 @@ def memory_keyring(trussrc):
     keyring.set_keyring(backend)
     try:
         yield backend
+    finally:
+        keyring.set_keyring(prior)
+
+
+@pytest.fixture
+def write_error_keyring(trussrc):
+    prior = keyring.get_keyring()
+    keyring.set_keyring(_WriteErrorKeyring())
+    try:
+        yield
     finally:
         keyring.set_keyring(prior)
 
