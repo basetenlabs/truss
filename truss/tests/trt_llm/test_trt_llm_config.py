@@ -3,6 +3,7 @@ import copy
 import pydantic
 import pytest
 
+from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TRTLLMConfigurationV1,
@@ -246,3 +247,29 @@ def test_trt_llm_config_additional_fields(trtllm_config_v2):
 
     assert config.inference_stack == "v2"
     assert isinstance(config.build, TrussTRTLLMBuildConfiguration)
+
+
+def test_trt_llm_build_config_encoder_upgrades_max_num_tokens(trtllm_config):
+    """BEI requires a minimum max_num_tokens, and the encoder path enforces it.
+
+    The upgrade rebound the local `self` instead of assigning the field, so it
+    logged the upgrade while leaving max_num_tokens at the user's value.
+    """
+    build = copy.deepcopy(trtllm_config["trt_llm"]["build"])
+    build["base_model"] = "encoder"
+    build["max_num_tokens"] = 1024
+
+    build_config = TrussTRTLLMBuildConfiguration(**build)
+
+    assert build_config.max_num_tokens == BEI_REQUIRED_MAX_NUM_TOKENS
+
+
+def test_trt_llm_build_config_decoder_keeps_max_num_tokens(trtllm_config):
+    """Only the encoder path upgrades max_num_tokens."""
+    build = copy.deepcopy(trtllm_config["trt_llm"]["build"])
+    build["base_model"] = "decoder"
+    build["max_num_tokens"] = 1024
+
+    build_config = TrussTRTLLMBuildConfiguration(**build)
+
+    assert build_config.max_num_tokens == 1024
