@@ -555,10 +555,16 @@ class TrussServer:
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
 
-        # Unregister default prometheus metrics collectors
-        REGISTRY.unregister(process_collector.PROCESS_COLLECTOR)
-        REGISTRY.unregister(platform_collector.PLATFORM_COLLECTOR)
-        REGISTRY.unregister(gc_collector.GC_COLLECTOR)
+        # Unregister default prometheus metrics collectors (no-op if already gone)
+        for _collector in (
+            process_collector.PROCESS_COLLECTOR,
+            platform_collector.PLATFORM_COLLECTOR,
+            gc_collector.GC_COLLECTOR,
+        ):
+            try:
+                REGISTRY.unregister(_collector)
+            except KeyError:
+                pass
         # Disable exporting _created metrics
         metrics.disable_created_metrics()
         # Add prometheus asgi middleware to route /metrics requests

@@ -476,6 +476,74 @@ class Model:
         assert result["predict_count"] == 3
 
 
+@contextmanager
+def _inference_server_app(app_path):
+    """Yield a FastAPI app for the inference server with Prometheus mocked out.
+
+    The Prometheus global registry is a process-level singleton.  Calling
+    ``create_application()`` more than once per process would fail because the
+    collectors would already have been unregistered.  We mock the registry and
+    the metrics helpers so that routing (the thing under test here) is
+    exercised without touching process-global state.
+    """
+    truss_server_module = importlib.import_module("truss_server")
+    server = truss_server_module.TrussServer(
+        http_port=8080,
+        config_or_path=app_path / "config.yaml",
+    )
+    # on_startup launches background threads/tasks that are not needed for
+    # routing tests and would outlive the test.
+    with (
+        patch.object(server, "on_startup"),
+        patch.object(truss_server_module, "REGISTRY", MagicMock()),
+        patch.object(truss_server_module, "make_asgi_app", return_value=MagicMock()),
+        patch.object(truss_server_module, "metrics", MagicMock()),
+    ):
+        yield server.create_application()
+
+
+@pytest.mark.anyio
+async def test_404_for_unknown_path(app_path):
+    """Non-existent paths must return 404, not 200."""
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        with _inference_server_app(app_path) as app:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                for path in [
+                    "/v1/nonexistent",
+                    "/v1/models/model/nonexistent-subpath",
+                    "/some-random-path",
+                ]:
+                    resp = await client.get(path)
+                    assert resp.status_code == 404, (
+                        f"GET {path}: expected 404, got {resp.status_code}"
+                    )
+                    resp = await client.post(path, content=b"{}")
+                    assert resp.status_code == 404, (
+                        f"POST {path}: expected 404, got {resp.status_code}"
+                    )
+
+
+@pytest.mark.anyio
+async def test_404_for_unimplemented_optional_endpoint(app_path):
+    """Optional endpoints (chat_completions, embeddings, etc.) raise
+    ModelMethodNotImplemented -- which maps to HTTP 404 via the registered
+    exception handler -- when the deployed model does not implement them."""
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        # _get_endpoints loads the model so that check_healthy() passes.
+        endpoints = _get_endpoints(app_path)
+        errors_mod = truss_server_module.errors
+        mock_request = _make_connected_request()
+
+        for method_name in ("chat_completions", "completions", "embeddings"):
+            endpoint_fn = getattr(endpoints, method_name)
+            with pytest.raises(errors_mod.ModelMethodNotImplemented):
+                await endpoint_fn(mock_request, b"{}")
+
+
 def _is_server_listening(port):
     # Connect-based check: only an active listener counts, so lingering
     # TIME_WAIT sockets from a just-terminated server don't flake the test.
