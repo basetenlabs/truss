@@ -258,3 +258,59 @@ def _remove_model_load_sys_modules():
         del sys.modules["model.model"]
     if "model_wrapper" in sys.modules:
         del sys.modules["model_wrapper"]
+
+
+def test_model_module_registered_with_full_name(truss_container_fs: Path, helpers: Any):
+    """Model module must be registered as 'model.model' in sys.modules.
+
+    When model.py is loaded with just the file stem ('model') as the module
+    name, any code that does ``import model; model.Model`` resolves to the
+    model *package* (model/__init__.py), which does not define Model, raising
+    ``AttributeError: module 'model' has no attribute 'Model'``.
+
+    The fix registers the module under its fully-qualified name ('model.model')
+    so that the correct class can always be located.
+    """
+    app_path = truss_container_fs / "app"
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_path(app_path),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper._load_impl()
+
+        # The module must be registered under its full qualified name so that
+        # any downstream ``import model.model`` or ``from model.model import Model``
+        # resolves to the same loaded instance.
+        assert "model.model" in sys.modules
+        assert "Model" in dir(sys.modules["model.model"])
+
+
+def test_model_module_name_uses_qualified_path(truss_container_fs: Path, helpers: Any):
+    """The module __name__ for model.py must be the fully-qualified 'model.model'.
+
+    Using only the stem 'model' as __name__ conflicts with the model package and
+    can cause AttributeError when the user code resolves 'model' to the package.
+    """
+    app_path = truss_container_fs / "app"
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_path(app_path),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper._load_impl()
+
+        loaded_module = sys.modules.get("model.model")
+        assert loaded_module is not None
+        # The module's __name__ should reflect its place in the package hierarchy.
+        assert loaded_module.__name__ == "model.model"

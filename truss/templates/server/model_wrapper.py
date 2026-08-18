@@ -488,12 +488,20 @@ class ModelWrapper:
         if model_class_file_path.exists():
             self._logger.info("Loading truss model from file.")
             module_path = pathlib.Path(model_class_file_path).resolve()
-            module_name = module_path.stem  # Use the file's name as the module name
             if not os.path.isfile(module_path):
                 raise ImportError(
                     f"`{module_path}` is not a file. You must point to a python file where "
                     "the entrypoint chainlet is defined."
                 )
+            # Use the fully-qualified module name (e.g. "model.model") so the
+            # loaded module is registered under the correct key in sys.modules
+            # and does not shadow the model package itself.  Using just the
+            # file stem ("model") caused an AttributeError when any code inside
+            # the model file or its helpers did `import model; model.Model`,
+            # because sys.modules["model"] would resolve to the package
+            # (model/__init__.py) rather than the file being loaded.
+            model_module_dir = self._config["model_module_dir"]
+            module_name = f"{model_module_dir}.{module_path.stem}"
             import_error_msg = f"Could not import `{module_path}`. Check path."
             spec = importlib.util.spec_from_file_location(module_name, module_path)
             if not spec:
@@ -501,19 +509,13 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
+            # Register in sys.modules before exec_module so that circular or
+            # self-referential imports within the model file resolve correctly.
+            sys.modules[module_name] = module
             try:
                 spec.loader.exec_module(module)
-            except ImportError as e:
-                if "attempted relative import" in str(e):
-                    raise ImportError(
-                        f"During import of `{model_class_file_path}`. "
-                        f"Since Truss v0.9.36 relative imports (starting with '.') in "
-                        "the top-level model file are no longer supported. Please "
-                        "replace them with absolute imports. For guidance on importing "
-                        "custom packages refer to our documentation "
-                        "https://docs.baseten.co/truss-reference/config#packages"
-                    ) from e
-
+            except Exception:
+                sys.modules.pop(module_name, None)
                 raise
 
             model_class = getattr(module, self._config["model_class_name"])
