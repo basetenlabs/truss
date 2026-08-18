@@ -34,8 +34,8 @@ from truss.cli.resolvers.model_team_resolver import (
 from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import (
-    ACTIVE_STATUS,
-    DEPLOYING_STATUSES,
+    READY_STATUSES,
+    TERMINAL_FAILURE_STATUSES,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -1005,13 +1005,13 @@ def push(
                     f"[bold green]Deploying...Current Status: {deployment_status}"
                 )
 
-                if deployment_status == ACTIVE_STATUS:
+                if deployment_status in READY_STATUSES:
                     console.print("Deployment succeeded.", style="bold green")
                     break
 
                 # For --watch (dev deployments), enter watch mode early
                 # once past BUILDING, so user can iterate on code
-                if watch_after_push and deployment_status in ("LOADING_MODEL"):
+                if watch_after_push and deployment_status in ("LOADING_MODEL",):
                     console.print(
                         f"Deployment status: {deployment_status}. "
                         "Entering watch mode early for faster iteration...",
@@ -1019,7 +1019,7 @@ def push(
                     )
                     break
 
-                if deployment_status not in DEPLOYING_STATUSES:
+                if deployment_status in TERMINAL_FAILURE_STATUSES:
                     exc = RuntimeError(
                         f"Deployment failed with status {deployment_status}."
                     )
