@@ -48,6 +48,12 @@ def _fill_trt_llm_versions(
             tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
         elif (
             tr.spec.config.trt_llm.build.base_model
+            == trt_llm_config.TrussTRTLLMModel.ENCODER_TORCH
+        ):
+            print(f"Using BEI torch image: {image_versions.bei_torch_image}")
+            tr.set_base_image(image_versions.bei_torch_image, "/usr/bin/python3")
+        elif (
+            tr.spec.config.trt_llm.build.base_model
             == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
         ):
             accelerator = tr.spec.config.resources.accelerator.accelerator
