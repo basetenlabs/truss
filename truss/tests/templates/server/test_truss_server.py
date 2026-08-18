@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import json
 import os
@@ -9,12 +10,16 @@ import time
 from contextlib import contextmanager
 from multiprocessing import Process
 from pathlib import Path
+from threading import Event
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
 from starlette.datastructures import Headers
+from starlette.requests import Request
+from starlette.responses import Response
 
 from truss.templates.shared import serialization
 
@@ -80,6 +85,89 @@ def _make_connected_request(request_id=None):
     )
     mock_request.is_disconnected = AsyncMock(return_value=False)
     return mock_request
+
+
+@pytest.mark.anyio
+async def test_execute_request_installs_disconnect_watcher(app_path):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        model = MagicMock(skip_input_parsing=True)
+        endpoints = truss_server_module.BasetenEndpoints(model, sdk_trace.NoOpTracer())
+        endpoints.check_healthy = MagicMock()
+        request = Request({"type": "http", "method": "POST", "headers": []})
+
+        async def predict(inputs, model_request):
+            assert inputs is None
+            assert callable(model_request.state.watch_disconnect)
+            return Response()
+
+        response = await endpoints._execute_request(predict, request, b"")
+
+    assert response.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_disconnect_watcher_sets_event_from_worker_thread(app_path):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        receive_called = asyncio.Event()
+
+        async def receive():
+            receive_called.set()
+            return {"type": "http.disconnect"}
+
+        request = Request(
+            {"type": "http", "method": "POST", "headers": []}, receive=receive
+        )
+        truss_server_module._install_disconnect_watcher(request)
+
+        assert not receive_called.is_set()
+
+        def stream_until_disconnected():
+            with request.state.watch_disconnect() as disconnected:
+                assert isinstance(disconnected, Event)
+                yield b"first"
+                assert disconnected.wait(timeout=1)
+
+        stream = stream_until_disconnected()
+        assert await asyncio.to_thread(next, stream) == b"first"
+        await asyncio.wait_for(receive_called.wait(), timeout=1)
+
+        def finish_stream():
+            try:
+                next(stream)
+            except StopIteration:
+                return True
+            return False
+
+        assert await asyncio.to_thread(finish_stream)
+        assert receive_called.is_set()
+
+
+@pytest.mark.anyio
+async def test_disconnect_watcher_stops_when_context_exits(app_path):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        request = Request({"type": "http", "method": "POST", "headers": []})
+        poll_started = asyncio.Event()
+        poll_cancelled = asyncio.Event()
+
+        async def wait_for_disconnect():
+            poll_started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                poll_cancelled.set()
+
+        request.is_disconnected = AsyncMock(side_effect=wait_for_disconnect)
+        truss_server_module._install_disconnect_watcher(request)
+
+        with request.state.watch_disconnect() as disconnected:
+            await asyncio.wait_for(poll_started.wait(), timeout=1)
+            assert not disconnected.is_set()
+
+        await asyncio.wait_for(poll_cancelled.wait(), timeout=1)
+        assert not disconnected.is_set()
 
 
 @pytest.mark.anyio
@@ -201,6 +289,78 @@ def test_truss_server_termination(truss_container_fs):
     print(Path(stdout_capture_file.name).read_text())
     assert not subproc.is_alive()
     assert _wait_for(lambda: not _is_server_listening(port)), "port still in use"
+
+
+@pytest.mark.integration
+def test_sync_generator_observes_tcp_disconnect(truss_container_fs, unused_tcp_port):
+    model_file = truss_container_fs / "app" / "model" / "model.py"
+    model_file.write_text(
+        """\
+from typing import Any
+
+from fastapi import Request
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        pass
+
+    def load(self) -> None:
+        pass
+
+    def predict(self, model_input: Any, request: Request):
+        with request.state.watch_disconnect() as disconnected:
+            yield b"first"
+            if disconnected.wait(timeout=5):
+                print("SYNC_DISCONNECT_OBSERVED", flush=True)
+            else:
+                print("SYNC_DISCONNECT_MISSED", flush=True)
+"""
+    )
+
+    stdout_capture_file = tempfile.NamedTemporaryFile()
+    subproc = Process(
+        target=_start_truss_server,
+        args=(stdout_capture_file.name, truss_container_fs, unused_tcp_port),
+        daemon=True,
+    )
+    subproc.start()
+
+    model_url = f"http://127.0.0.1:{unused_tcp_port}/v1/models/x-4:predict"
+    ready_url = f"http://127.0.0.1:{unused_tcp_port}/v1/models/x-4"
+
+    def model_is_ready():
+        try:
+            return httpx.get(ready_url, timeout=1).status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    try:
+        assert _wait_for(model_is_ready), "model server never became ready"
+
+        with httpx.Client(timeout=5) as client:
+            with client.stream("POST", model_url, json={}) as response:
+                response.raise_for_status()
+                assert next(response.iter_bytes()) == b"first"
+
+        logs_path = Path(stdout_capture_file.name)
+        assert _wait_for(
+            lambda: "SYNC_DISCONNECT_OBSERVED" in logs_path.read_text(),
+            timeout_sec=8,
+            poll_sec=0.1,
+        ), "synchronous generator did not observe the TCP disconnect"
+        assert "SYNC_DISCONNECT_MISSED" not in logs_path.read_text()
+    finally:
+        if subproc.is_alive():
+            os.kill(subproc.pid, signal.SIGTERM)
+        subproc.join(timeout=30)
+        print(Path(stdout_capture_file.name).read_text())
+
+    assert not subproc.is_alive()
+    assert _wait_for(lambda: not _is_server_listening(unused_tcp_port)), (
+        "port still in use"
+    )
+    subproc.close()
 
 
 @pytest.mark.anyio
