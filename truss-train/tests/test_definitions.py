@@ -93,12 +93,48 @@ def _minimal_job(**kwargs):
 
 
 class TestTrainingJobWeightsAuthValidation:
-    """Training jobs only allow CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+    """Training weights support the same auth methods as model weights: CUSTOM_SECRET, AWS_OIDC, and GCP_OIDC."""
 
-    def test_weights_with_aws_oidc_raises(self):
-        with pytest.raises(
-            ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"
-        ):
+    def test_weights_with_aws_oidc_accepted(self):
+        job = _minimal_job(
+            weights=[
+                truss_config.WeightsSource(
+                    source="s3://bucket/path",
+                    mount_location="/weights",
+                    auth=truss_config.WeightsAuth(
+                        auth_method=truss_config.WeightsAuthMethod.AWS_OIDC,
+                        aws_oidc_role_arn="arn:aws:iam::123:role/foo",
+                        aws_oidc_region="us-west-2",
+                    ),
+                )
+            ]
+        )
+        assert (
+            job.weights[0].auth.auth_method == truss_config.WeightsAuthMethod.AWS_OIDC
+        )
+        assert job.weights[0].auth.aws_oidc_role_arn == "arn:aws:iam::123:role/foo"
+
+    def test_weights_with_gcp_oidc_accepted(self):
+        job = _minimal_job(
+            weights=[
+                truss_config.WeightsSource(
+                    source="gs://bucket/path",
+                    mount_location="/weights",
+                    auth=truss_config.WeightsAuth(
+                        auth_method=truss_config.WeightsAuthMethod.GCP_OIDC,
+                        gcp_oidc_service_account="my-sa@project.iam.gserviceaccount.com",
+                        gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+                    ),
+                )
+            ]
+        )
+        assert (
+            job.weights[0].auth.auth_method == truss_config.WeightsAuthMethod.GCP_OIDC
+        )
+
+    def test_weights_oidc_missing_required_fields_raises(self):
+        """WeightsAuth's own per-method validation still applies to training weights."""
+        with pytest.raises(ValidationError, match="aws_oidc_role_arn"):
             _minimal_job(
                 weights=[
                     truss_config.WeightsSource(
@@ -106,26 +142,7 @@ class TestTrainingJobWeightsAuthValidation:
                         mount_location="/weights",
                         auth=truss_config.WeightsAuth(
                             auth_method=truss_config.WeightsAuthMethod.AWS_OIDC,
-                            aws_oidc_role_arn="arn:aws:iam::123:role/foo",
                             aws_oidc_region="us-west-2",
-                        ),
-                    )
-                ]
-            )
-
-    def test_weights_with_gcp_oidc_raises(self):
-        with pytest.raises(
-            ValidationError, match="weight gs://bucket/path.*CUSTOM_SECRET"
-        ):
-            _minimal_job(
-                weights=[
-                    truss_config.WeightsSource(
-                        source="gs://bucket/path",
-                        mount_location="/weights",
-                        auth=truss_config.WeightsAuth(
-                            auth_method=truss_config.WeightsAuthMethod.GCP_OIDC,
-                            gcp_oidc_service_account="my-sa@project.iam.gserviceaccount.com",
-                            gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
                         ),
                     )
                 ]

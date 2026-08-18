@@ -245,20 +245,10 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     priority: Optional[int] = None
     workspace: Optional[Workspace] = None
     weights: List[truss_config.WeightsSource] = []
-    """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
+    """MDN weight sources to mount in the training container. Weights are mirrored and cached for
+    fast startup. Supports the same auth methods as model weights: CUSTOM_SECRET, AWS_OIDC, and
+    GCP_OIDC."""
     enable_baseten_workdir: bool = True
-
-    @model_validator(mode="after")
-    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
-        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
-        for w in self.weights:
-            if w.auth is not None:
-                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
-                    raise ValueError(
-                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
-                        "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
-                    )
-        return self
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
