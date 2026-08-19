@@ -61,6 +61,7 @@ GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
 AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
+AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM = "aws_assume_role_external_id_secret_name"
 
 
 def _is_numeric(number_like: str) -> bool:
@@ -285,6 +286,11 @@ class AuthFieldsMixin(custom_types.ConfigModel):
     aws_assume_role_region: Optional[str] = pydantic.Field(
         default=None, description="AWS region for assume-role authentication."
     )
+    aws_assume_role_external_id_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Name of the Baseten secret holding the sts:ExternalId "
+        "required by your role's trust policy.",
+    )
 
     def _require_fields(self, auth_method: str, *fields: str) -> None:
         """Validate that all specified fields have non-empty values.
@@ -369,6 +375,7 @@ class WeightsAuth(AuthFieldsMixin):
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
@@ -381,6 +388,7 @@ class WeightsAuth(AuthFieldsMixin):
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
@@ -396,6 +404,7 @@ class WeightsAuth(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE:
@@ -404,9 +413,10 @@ class WeightsAuth(AuthFieldsMixin):
                 required=[
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
-                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
                 forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
@@ -448,13 +458,12 @@ class WeightsSource(custom_types.ConfigModel):
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
-      or, for native AssumeRole with no OIDC provider registration
-      (auth_secret_name names the secret holding your sts:ExternalId):
+      or, for native AssumeRole with no OIDC provider registration:
         auth:
           auth_method: AWS_ASSUME_ROLE
           aws_assume_role_arn: <role_arn>
           aws_assume_role_region: <region>
-          auth_secret_name: <external_id_secret_name>
+          aws_assume_role_external_id_secret_name: <external_id_secret_name>
     - Using `auth_secret_name` at the top level (or in the `auth` section)
     """
 
@@ -1115,8 +1124,7 @@ class DockerAuthSettings(AuthFieldsMixin):
 
     auth_method: DockerAuthType
     registry: Optional[str] = ""
-    # secret_name is required for GCP_SERVICE_ACCOUNT_JSON (the service account
-    # JSON) and for AWS_ASSUME_ROLE (the secret holding your sts:ExternalId).
+    # Note that the secret_name is only required for GCP_SERVICE_ACCOUNT_JSON.
     secret_name: Optional[str] = None
 
     # These are only required for AWS_IAM, and only need to be
@@ -1142,6 +1150,7 @@ class DockerAuthSettings(AuthFieldsMixin):
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == DockerAuthType.AWS_OIDC:
@@ -1154,6 +1163,7 @@ class DockerAuthSettings(AuthFieldsMixin):
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == DockerAuthType.GCP_OIDC:
@@ -1169,6 +1179,7 @@ class DockerAuthSettings(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
             )
         elif self.auth_method == DockerAuthType.AWS_ASSUME_ROLE:
@@ -1177,9 +1188,10 @@ class DockerAuthSettings(AuthFieldsMixin):
                 required=[
                     AWS_ASSUME_ROLE_ARN_PARAM,
                     AWS_ASSUME_ROLE_REGION_PARAM,
-                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_ASSUME_ROLE_EXTERNAL_ID_SECRET_NAME_PARAM,
                 ],
                 forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
