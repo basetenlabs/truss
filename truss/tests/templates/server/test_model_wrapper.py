@@ -268,6 +268,24 @@ async def test_messages_endpoint(open_ai_container_fs, helpers, connected_reques
         assert responses_resp == "responses"
 
 
+def test_zero_arg_postprocess_raises_model_definition_error(app_path, helpers):
+    """ModelDescriptor.from_model raises ModelDefinitionError for a zero-arg postprocess."""
+    with _clear_model_load_modules(), helpers.sys_paths(app_path), _change_directory(app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        errors_module = importlib.import_module("_truss_common.errors")
+        ModelDescriptor = model_wrapper_module.ModelDescriptor
+
+        class Model:
+            def predict(self, request):
+                return {}
+
+            def postprocess(self):
+                pass
+
+        with pytest.raises(errors_module.ModelDefinitionError, match="zero-argument"):
+            ModelDescriptor.from_model(Model)
+
+
 @contextmanager
 def _change_directory(new_directory: Path):
     original_directory = os.getcwd()
