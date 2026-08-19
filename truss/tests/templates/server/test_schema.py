@@ -1,9 +1,16 @@
 import inspect
 from typing import AsyncGenerator, Awaitable, Generator, Union
 
+import pytest
 from pydantic import BaseModel
 
 from truss.templates.server._truss_common.schema import TrussSchema
+from truss.tests.templates.server.conftest import setup_server_imports
+
+setup_server_imports()
+
+from _truss_common.errors import ModelDefinitionError  # noqa: E402
+from model_wrapper import ModelDescriptor  # noqa: E402
 
 
 class ModelInput(BaseModel):
@@ -424,3 +431,17 @@ def test_truss_schema_postprocess_no_return_annotation():
     assert schema is not None
     assert schema.input_type == ModelInput
     assert schema.output_type is None
+
+
+def test_zero_arg_postprocess_raises_model_definition_error():
+    """ModelDescriptor.from_model must reject a postprocess with no arguments at all."""
+
+    class Model:
+        def predict(self):
+            return "result"
+
+        def postprocess():  # no self, no args -> ArgConfig.NONE
+            return "something"
+
+    with pytest.raises(ModelDefinitionError, match="zero-argument"):
+        ModelDescriptor.from_model(Model)
