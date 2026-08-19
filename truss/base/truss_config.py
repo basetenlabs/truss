@@ -278,8 +278,9 @@ class AuthFieldsMixin(custom_types.ConfigModel):
     aws_assume_role_arn: Optional[str] = pydantic.Field(
         default=None,
         description="AWS IAM role ARN that Baseten assumes with its own AWS "
-        "principal, scoped by your organization's external ID. No OIDC provider "
-        "registration is needed in your AWS account.",
+        "principal, scoped by the sts:ExternalId you chose and stored as a "
+        "Baseten secret. No OIDC provider registration is needed in your AWS "
+        "account.",
     )
     aws_assume_role_region: Optional[str] = pydantic.Field(
         default=None, description="AWS region for assume-role authentication."
@@ -400,9 +401,12 @@ class WeightsAuth(AuthFieldsMixin):
         elif self.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE:
             self._validate_fields(
                 self.auth_method.value,
-                required=[AWS_ASSUME_ROLE_ARN_PARAM, AWS_ASSUME_ROLE_REGION_PARAM],
-                forbidden=[
+                required=[
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                ],
+                forbidden=[
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
@@ -444,11 +448,13 @@ class WeightsSource(custom_types.ConfigModel):
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
-      or, for native AssumeRole with no OIDC provider registration:
+      or, for native AssumeRole with no OIDC provider registration
+      (auth_secret_name names the secret holding your sts:ExternalId):
         auth:
           auth_method: AWS_ASSUME_ROLE
           aws_assume_role_arn: <role_arn>
           aws_assume_role_region: <region>
+          auth_secret_name: <external_id_secret_name>
     - Using `auth_secret_name` at the top level (or in the `auth` section)
     """
 
@@ -1109,7 +1115,8 @@ class DockerAuthSettings(AuthFieldsMixin):
 
     auth_method: DockerAuthType
     registry: Optional[str] = ""
-    # Note that the secret_name is only required for GCP_SERVICE_ACCOUNT_JSON.
+    # secret_name is required for GCP_SERVICE_ACCOUNT_JSON (the service account
+    # JSON) and for AWS_ASSUME_ROLE (the secret holding your sts:ExternalId).
     secret_name: Optional[str] = None
 
     # These are only required for AWS_IAM, and only need to be
@@ -1167,9 +1174,12 @@ class DockerAuthSettings(AuthFieldsMixin):
         elif self.auth_method == DockerAuthType.AWS_ASSUME_ROLE:
             self._validate_fields(
                 self.auth_method.value,
-                required=[AWS_ASSUME_ROLE_ARN_PARAM, AWS_ASSUME_ROLE_REGION_PARAM],
-                forbidden=[
+                required=[
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                     DOCKER_AUTH_SECRET_NAME_PARAM,
+                ],
+                forbidden=[
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
