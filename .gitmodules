@@ -1,0 +1,6 @@
+[submodule "trainers/server/vendor/ms-swift"]
+	path = trainers/server/vendor/ms-swift
+	url = https://github.com/basetenlabs/ms-swift.git
+[submodule "trainers/server/vendor/megatron-lm"]
+	path = trainers/server/vendor/megatron-lm
+	url = https://github.com/NVIDIA/Megatron-LM.git
