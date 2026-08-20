@@ -11,13 +11,41 @@ use reqwest::{
 };
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing;
+
+/// Parse a truthy env var (1, true, yes, on — case-insensitive).
+fn env_flag_enabled(env_var: &str) -> bool {
+    match std::env::var(env_var) {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            matches!(v.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => false,
+    }
+}
+
+static DISABLE_TIMEOUT_HEADERS: OnceLock<bool> = OnceLock::new();
+static DISABLE_REQUEST_ID_HEADER: OnceLock<bool> = OnceLock::new();
+
+/// Whether to suppress `Request-Timeout-Ms` / `Request-Deadline-Ms` headers.
+fn disable_timeout_headers() -> bool {
+    *DISABLE_TIMEOUT_HEADERS.get_or_init(|| env_flag_enabled(DISABLE_TIMEOUT_HEADERS_ENV_VAR))
+}
+
+/// Whether to suppress the `x-baseten-customer-request-id` header.
+fn disable_request_id_header() -> bool {
+    *DISABLE_REQUEST_ID_HEADER.get_or_init(|| env_flag_enabled(DISABLE_REQUEST_ID_HEADER_ENV_VAR))
+}
 
 fn add_timeout_headers(
     request_builder: reqwest::RequestBuilder,
     request_timeout: Duration,
 ) -> reqwest::RequestBuilder {
+    if disable_timeout_headers() {
+        return request_builder;
+    }
     let timeout_ms = ((request_timeout.as_secs_f64() * 1000.0).ceil() as u64).to_string();
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -49,8 +77,12 @@ where
             .post(attempt_url)
             .bearer_auth(&api_key)
             .json(&payload)
-            .timeout(request_timeout)
-            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+            .timeout(request_timeout);
+
+        if !disable_request_id_header() {
+            request_builder =
+                request_builder.header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+        }
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
         request_builder = add_response_negotiation_headers(request_builder, config);
@@ -102,8 +134,12 @@ where
         let mut request_builder = client
             .request(method.into(), attempt_url)
             .bearer_auth(&api_key)
-            .timeout(request_timeout)
-            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+            .timeout(request_timeout);
+
+        if !disable_request_id_header() {
+            request_builder =
+                request_builder.header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+        }
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
 
@@ -492,5 +528,40 @@ fn is_retryable_status(status: u16, config: &RequestProcessingConfig) -> bool {
         400..=499 => false,
         // Unexpected status codes
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_env_flag_enabled_parsing() {
+        // Use a dedicated var and run sequentially to avoid races with other tests.
+        let var = "PERFCLIENT_TEST_FLAG_ENV_PARSE";
+        for &val in &[
+            "1", "true", "TRUE", "True", "yes", "Yes", "on", "ON", "  true  ",
+        ] {
+            std::env::set_var(var, val);
+            assert!(env_flag_enabled(var), "expected truthy for {val:?}");
+        }
+        for &val in &["", "0", "false", "no", "off", "maybe", "2", "random"] {
+            std::env::set_var(var, val);
+            assert!(!env_flag_enabled(var), "expected falsy for {val:?}");
+        }
+        std::env::remove_var(var);
+        assert!(!env_flag_enabled(var));
+    }
+
+    #[test]
+    fn test_disable_flag_constants_naming() {
+        assert_eq!(
+            DISABLE_TIMEOUT_HEADERS_ENV_VAR,
+            "PERFORMANCE_CLIENT_DISABLE_TIMEOUT_HEADERS"
+        );
+        assert_eq!(
+            DISABLE_REQUEST_ID_HEADER_ENV_VAR,
+            "PERFORMANCE_CLIENT_DISABLE_REQUEST_ID_HEADER"
+        );
     }
 }
