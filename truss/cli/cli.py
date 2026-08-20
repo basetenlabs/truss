@@ -214,6 +214,9 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     table.add_column(min_width=40)
     table.add_row("Org ID", oidc_info.org_id)
 
+    if oidc_info.aws_external_id:
+        table.add_row("AWS External ID", oidc_info.aws_external_id)
+
     if oidc_info.teams:
         teams_display = ", ".join(
             f"{team.id} ({team.name})" for team in oidc_info.teams

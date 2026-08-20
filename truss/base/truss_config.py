@@ -59,6 +59,8 @@ AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
 AWS_OIDC_REGION_PARAM = "aws_oidc_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
+AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
+AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
 
 
 def _is_numeric(number_like: str) -> bool:
@@ -254,6 +256,7 @@ class WeightsAuthMethod(str, enum.Enum):
     CUSTOM_SECRET = "CUSTOM_SECRET"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    AWS_ASSUME_ROLE = "AWS_ASSUME_ROLE"
 
 
 class AuthFieldsMixin(custom_types.ConfigModel):
@@ -271,6 +274,16 @@ class AuthFieldsMixin(custom_types.ConfigModel):
     gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
         default=None,
         description="GCP workload identity provider for OIDC authentication.",
+    )
+    aws_assume_role_arn: Optional[str] = pydantic.Field(
+        default=None,
+        description="AWS IAM role ARN that Baseten assumes with its own AWS "
+        "principal, scoped by the sts:ExternalId Baseten assigns to your "
+        "workspace. No OIDC provider registration is needed in your AWS "
+        "account.",
+    )
+    aws_assume_role_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for assume-role authentication."
     )
 
     def _require_fields(self, auth_method: str, *fields: str) -> None:
@@ -354,6 +367,8 @@ class WeightsAuth(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
         elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
@@ -364,6 +379,8 @@ class WeightsAuth(AuthFieldsMixin):
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
         elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
@@ -377,6 +394,23 @@ class WeightsAuth(AuthFieldsMixin):
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
+                ],
+            )
+        elif self.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
+                ],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 ],
             )
 
@@ -409,11 +443,16 @@ class WeightsSource(custom_types.ConfigModel):
     using the @{rev} suffix: "hf://owner/repo@revision"
 
     Authentication can be specified either:
-    - Using the `auth` section (required for OIDC):
+    - Using the `auth` section (required for OIDC and assume-role):
         auth:
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
+      or, for native AssumeRole with no OIDC provider registration:
+        auth:
+          auth_method: AWS_ASSUME_ROLE
+          aws_assume_role_arn: <role_arn>
+          aws_assume_role_region: <region>
     - Using `auth_secret_name` at the top level (or in the `auth` section)
     """
 
@@ -1065,6 +1104,7 @@ class DockerAuthType(str, enum.Enum):
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
     REGISTRY_SECRET = "REGISTRY_SECRET"
+    AWS_ASSUME_ROLE = "AWS_ASSUME_ROLE"
 
 
 class DockerAuthSettings(AuthFieldsMixin):
@@ -1097,6 +1137,8 @@ class DockerAuthSettings(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
         elif self.auth_method == DockerAuthType.AWS_OIDC:
@@ -1107,6 +1149,8 @@ class DockerAuthSettings(AuthFieldsMixin):
                     DOCKER_AUTH_SECRET_NAME_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
         elif self.auth_method == DockerAuthType.GCP_OIDC:
@@ -1120,6 +1164,23 @@ class DockerAuthSettings(AuthFieldsMixin):
                     DOCKER_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
+                ],
+            )
+        elif self.auth_method == DockerAuthType.AWS_ASSUME_ROLE:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
+                ],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 ],
             )
 

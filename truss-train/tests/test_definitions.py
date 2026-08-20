@@ -131,6 +131,25 @@ class TestTrainingJobWeightsAuthValidation:
                 ]
             )
 
+    def test_weights_with_aws_assume_role_raises(self):
+        with pytest.raises(
+            ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"
+        ):
+            _minimal_job(
+                weights=[
+                    truss_config.WeightsSource(
+                        source="s3://bucket/path",
+                        mount_location="/weights",
+                        auth=truss_config.WeightsAuth(
+                            auth_method=truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
+                            aws_assume_role_arn="arn:aws:iam::123:role/foo",
+                            aws_assume_role_region="us-west-2",
+                            aws_assume_role_external_id_secret_name="my_external_id",
+                        ),
+                    )
+                ]
+            )
+
     def test_weights_with_custom_secret_auth_accepted(self):
         job = _minimal_job(
             weights=[
