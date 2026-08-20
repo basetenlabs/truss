@@ -18,11 +18,29 @@ if not hasattr(socket, "AF_UNIX") or not hasattr(socketserver, "UnixStreamServer
     )
 
 
-def mount_body(state: str, *, error: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def mount_body(
+    state: str,
+    *,
+    revision: Optional[int] = None,
+    error: Optional[Dict[str, Any]] = None,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    revisions = {
+        "ACCEPTED": 1,
+        "RESOLVING": 2,
+        "MOUNTING": 3,
+        "READY": 4,
+        "FAILED": 4,
+        "UNMOUNTING": 5,
+    }
     return {
         "id": "mount_01",
+        "revision": revision or revisions[state],
         "source": "bdn://models/weights@deadbeef",
         "target": "weights",
+        "include": include or [],
+        "exclude": exclude or [],
         "path": "/bdn/mounts/weights",
         "pinned_source": (
             "bdn://models/weights@deadbeef" if state == "READY" else None
@@ -143,10 +161,10 @@ def test_mount_generates_idempotency_key_and_waits_until_ready(
         "target": "weights",
     }
     assert server.requests[0]["headers"]["Idempotency-Key"]
-    assert [request["method"] for request in server.requests[1:]] == [
-        "GET",
-        "GET",
-        "GET",
+    assert [request["path"] for request in server.requests[1:]] == [
+        "/v1/hotload/mount_01/watch?after=1&timeout_ms=30000",
+        "/v1/hotload/mount_01/watch?after=2&timeout_ms=30000",
+        "/v1/hotload/mount_01/watch?after=3&timeout_ms=30000",
     ]
 
 
@@ -238,6 +256,59 @@ def test_failed_mount_raises_mount_error(tmp_path: Path, hotload_module) -> None
     assert raised.value.mount.state == hotload_module.MountState.FAILED
     assert raised.value.code == "MOUNT_TIMEOUT"
     assert raised.value.retryable is True
+
+
+def test_inspect_partial_mount_watch_and_unmount_lifecycle(
+    tmp_path: Path, hotload_module
+) -> None:
+    include = ["model/**", "tokenizer.json"]
+    exclude = ["model/private/**"]
+    inspection = {
+        "source": "bdn://models/weights:prod",
+        "pinned_source": "bdn://models/weights@deadbeef",
+        "file_count": 3,
+        "total_size": 42,
+    }
+    not_found = {
+        "error": {
+            "code": "MOUNT_NOT_FOUND",
+            "message": "mount does not exist",
+            "retryable": False,
+        }
+    }
+    responses = [
+        (200, inspection),
+        (202, mount_body("ACCEPTED", include=include, exclude=exclude)),
+        (200, mount_body("READY", include=include, exclude=exclude)),
+        (204, None),
+        (404, not_found),
+    ]
+    with run_server(tmp_path, responses) as server:
+        hotload = client(server, hotload_module)
+        inspected = hotload.inspect_source("bdn://models/weights:prod")
+        mounted = hotload.mount(
+            "bdn://models/weights@deadbeef", "weights", include=include, exclude=exclude
+        )
+        watched = list(hotload.watch(mounted.id, initial_mount=mounted))
+        hotload.unmount(mounted.id)
+
+    assert inspected.pinned_source == "bdn://models/weights@deadbeef"
+    assert inspected.file_count == 3
+    assert mounted.include == tuple(include)
+    assert mounted.exclude == tuple(exclude)
+    assert watched == [mounted]
+    assert server.requests[0]["path"] == "/v1/hotload/inspect"
+    assert server.requests[1]["body"] == {
+        "source": "bdn://models/weights@deadbeef",
+        "target": "weights",
+        "include": include,
+        "exclude": exclude,
+    }
+    assert server.requests[2]["path"] == (
+        "/v1/hotload/mount_01/watch?after=1&timeout_ms=30000"
+    )
+    assert server.requests[3]["method"] == "DELETE"
+    assert server.requests[4]["method"] == "GET"
 
 
 def test_missing_socket_is_connection_error(tmp_path: Path, hotload_module) -> None:

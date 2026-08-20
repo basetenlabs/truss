@@ -10,6 +10,7 @@ from .client import (
     Mount,
     MountFailure,
     MountState,
+    SourceInspection,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "Mount",
     "MountFailure",
     "MountState",
+    "SourceInspection",
 ]
