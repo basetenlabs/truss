@@ -12,6 +12,11 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import pytest
 
+if not hasattr(socket, "AF_UNIX") or not hasattr(socketserver, "UnixStreamServer"):
+    pytest.skip(
+        "Hot Load communicates through Unix-domain sockets", allow_module_level=True
+    )
+
 
 def mount_body(state: str, *, error: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
