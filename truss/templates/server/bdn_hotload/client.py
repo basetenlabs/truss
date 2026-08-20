@@ -8,10 +8,11 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Iterator, Mapping, Optional, Sequence, Union
 
 DEFAULT_SOCKET_PATH = Path("/run/bdn/hotload.sock")
 _MOUNT_COLLECTION_PATH = "/v1/hotload"
+_INSPECTION_PATH = f"{_MOUNT_COLLECTION_PATH}/inspect"
 
 
 class MountState(str, Enum):
@@ -33,12 +34,23 @@ class MountFailure:
 @dataclass(frozen=True)
 class Mount:
     id: str
+    revision: int
     source: str
     target: str
+    include: tuple[str, ...]
+    exclude: tuple[str, ...]
     path: str
     pinned_source: Optional[str]
     state: MountState
     error: Optional[MountFailure]
+
+
+@dataclass(frozen=True)
+class SourceInspection:
+    source: str
+    pinned_source: str
+    file_count: int
+    total_size: int
 
 
 class HotLoadError(Exception):
@@ -139,8 +151,16 @@ class HotLoadClient:
         wait: bool = True,
         idempotency_key: Optional[str] = None,
         wait_timeout_sec: float = 300.0,
+        include: Sequence[str] = (),
+        exclude: Sequence[str] = (),
     ) -> Mount:
-        mount = self.create_mount(source, target, idempotency_key=idempotency_key)
+        mount = self.create_mount(
+            source,
+            target,
+            idempotency_key=idempotency_key,
+            include=include,
+            exclude=exclude,
+        )
         if not wait:
             return mount
         return self.wait_until_ready(
@@ -148,17 +168,32 @@ class HotLoadClient:
         )
 
     def create_mount(
-        self, source: str, target: str, *, idempotency_key: Optional[str] = None
+        self,
+        source: str,
+        target: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        include: Sequence[str] = (),
+        exclude: Sequence[str] = (),
     ) -> Mount:
         key = idempotency_key or uuid.uuid4().hex
+        body: dict[str, Any] = {"source": source, "target": target}
+        if include:
+            body["include"] = list(include)
+        if exclude:
+            body["exclude"] = list(exclude)
         payload = self._request(
             "POST",
             _MOUNT_COLLECTION_PATH,
-            body={"source": source, "target": target},
+            body=body,
             headers={"Idempotency-Key": key},
             retry_transport=True,
         )
         return _parse_mount(payload)
+
+    def inspect_source(self, source: str) -> SourceInspection:
+        payload = self._request("POST", _INSPECTION_PATH, body={"source": source})
+        return _parse_source_inspection(payload)
 
     def list_mounts(self) -> list[Mount]:
         payload = _expect_mapping(
@@ -177,6 +212,50 @@ class HotLoadClient:
     def delete_mount(self, mount_id: str) -> None:
         self._request("DELETE", _mount_path(mount_id))
 
+    def watch_mount(
+        self, mount_id: str, *, after_revision: int, timeout_sec: float = 30.0
+    ) -> Optional[Mount]:
+        if after_revision < 0:
+            raise ValueError("after_revision must not be negative")
+        if not 0 < timeout_sec <= 30:
+            raise ValueError("timeout_sec must be between 0 and 30 seconds")
+        timeout_ms = max(1, int(timeout_sec * 1000))
+        payload = self._request(
+            "GET",
+            f"{_mount_path(mount_id)}/watch?after={after_revision}&timeout_ms={timeout_ms}",
+            request_timeout_sec=max(self.request_timeout_sec, timeout_sec + 1),
+        )
+        return None if payload is None else _parse_mount(payload)
+
+    def watch(
+        self,
+        mount_id: str,
+        *,
+        timeout_sec: float = 300.0,
+        initial_mount: Optional[Mount] = None,
+    ) -> Iterator[Mount]:
+        if timeout_sec <= 0:
+            raise ValueError("timeout_sec must be positive")
+        deadline = time.monotonic() + timeout_sec
+        mount = initial_mount or self.get_mount(mount_id)
+        yield mount
+        while mount.state not in {
+            MountState.READY,
+            MountState.FAILED,
+            MountState.UNMOUNTING,
+        }:
+            remaining_sec = deadline - time.monotonic()
+            if remaining_sec <= 0:
+                raise HotLoadTimeoutError(mount_id, timeout_sec, mount)
+            changed = self.watch_mount(
+                mount_id,
+                after_revision=mount.revision,
+                timeout_sec=min(30.0, remaining_sec),
+            )
+            if changed is not None:
+                mount = changed
+                yield mount
+
     def wait_until_ready(
         self,
         mount_id: str,
@@ -186,9 +265,10 @@ class HotLoadClient:
     ) -> Mount:
         if timeout_sec <= 0:
             raise ValueError("timeout_sec must be positive")
-        deadline = time.monotonic() + timeout_sec
-        mount = initial_mount or self.get_mount(mount_id)
-        while True:
+        mount = initial_mount
+        for mount in self.watch(
+            mount_id, timeout_sec=timeout_sec, initial_mount=initial_mount
+        ):
             if mount.state == MountState.READY:
                 return mount
             if mount.state == MountState.FAILED:
@@ -197,26 +277,32 @@ class HotLoadClient:
                 raise HotLoadProtocolError(
                     f"Hot Load mount {mount_id} began unmounting before it became ready"
                 )
-            remaining_sec = deadline - time.monotonic()
-            if remaining_sec <= 0:
-                raise HotLoadTimeoutError(mount_id, timeout_sec, mount)
-            time.sleep(min(self.poll_interval_sec, remaining_sec))
-            mount = self.get_mount(mount_id)
+        raise HotLoadProtocolError(f"Hot Load watch for {mount_id} ended unexpectedly")
 
     def unmount(self, mount_id: str, *, wait_timeout_sec: float = 300.0) -> None:
-        mount = self.get_mount(mount_id)
-        if mount.state in {
-            MountState.ACCEPTED,
-            MountState.RESOLVING,
-            MountState.MOUNTING,
-        }:
-            try:
-                self.wait_until_ready(
-                    mount_id, timeout_sec=wait_timeout_sec, initial_mount=mount
-                )
-            except HotLoadMountError:
-                pass
+        self.cancel_mount(mount_id, wait_timeout_sec=wait_timeout_sec)
+
+    def cancel_mount(self, mount_id: str, *, wait_timeout_sec: float = 300.0) -> None:
         self.delete_mount(mount_id)
+        self.wait_until_gone(mount_id, timeout_sec=wait_timeout_sec)
+
+    def wait_until_gone(self, mount_id: str, *, timeout_sec: float = 300.0) -> None:
+        if timeout_sec <= 0:
+            raise ValueError("timeout_sec must be positive")
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            try:
+                self.get_mount(mount_id)
+            except HotLoadAPIError as error:
+                if error.status_code == 404:
+                    return
+                raise
+            remaining_sec = deadline - time.monotonic()
+            if remaining_sec <= 0:
+                raise HotLoadError(
+                    f"Hot Load mount {mount_id} was not removed within {timeout_sec:g} seconds"
+                )
+            time.sleep(min(self.poll_interval_sec, remaining_sec))
 
     def _request(
         self,
@@ -226,6 +312,7 @@ class HotLoadClient:
         body: Optional[Mapping[str, Any]] = None,
         headers: Optional[Mapping[str, str]] = None,
         retry_transport: bool = False,
+        request_timeout_sec: Optional[float] = None,
     ) -> Any:
         request_headers = {"Accept": "application/json", **(headers or {})}
         encoded_body = None
@@ -236,7 +323,9 @@ class HotLoadClient:
         retry_request = retry_transport or method == "GET"
         attempts = self.max_retries + 1 if retry_request else 1
         for attempt in range(attempts):
-            connection = _UnixHTTPConnection(self.socket_path, self.request_timeout_sec)
+            connection = _UnixHTTPConnection(
+                self.socket_path, request_timeout_sec or self.request_timeout_sec
+            )
             try:
                 connection.request(
                     method, path, body=encoded_body, headers=request_headers
@@ -314,12 +403,25 @@ def _parse_mount(payload: Any) -> Mount:
         )
     return Mount(
         id=_expect_str(raw, "id"),
+        revision=_expect_int(raw, "revision"),
         source=_expect_str(raw, "source"),
         target=_expect_str(raw, "target"),
+        include=_expect_string_tuple(raw, "include"),
+        exclude=_expect_string_tuple(raw, "exclude"),
         path=_expect_str(raw, "path"),
         pinned_source=pinned_source,
         state=state,
         error=failure,
+    )
+
+
+def _parse_source_inspection(payload: Any) -> SourceInspection:
+    raw = _expect_mapping(payload, "source inspection response")
+    return SourceInspection(
+        source=_expect_str(raw, "source"),
+        pinned_source=_expect_str(raw, "pinned_source"),
+        file_count=_expect_int(raw, "file_count"),
+        total_size=_expect_int(raw, "total_size"),
     )
 
 
@@ -345,3 +447,21 @@ def _expect_bool(value: Mapping[str, Any], field: str) -> bool:
             f"Hot Load response field {field!r} must be a boolean"
         )
     return item
+
+
+def _expect_int(value: Mapping[str, Any], field: str) -> int:
+    item = value.get(field)
+    if not isinstance(item, int) or isinstance(item, bool) or item < 0:
+        raise HotLoadProtocolError(
+            f"Hot Load response field {field!r} must be a non-negative integer"
+        )
+    return item
+
+
+def _expect_string_tuple(value: Mapping[str, Any], field: str) -> tuple[str, ...]:
+    item = value.get(field, [])
+    if not isinstance(item, list) or not all(isinstance(entry, str) for entry in item):
+        raise HotLoadProtocolError(
+            f"Hot Load response field {field!r} must be an array of strings"
+        )
+    return tuple(item)
