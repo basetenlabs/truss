@@ -921,6 +921,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - Default: `warn`
   - Priority: `PERFORMANCE_CLIENT_LOG_LEVEL` > `RUST_LOG` > default
 - `PERFORMANCE_CLIENT_REQUEST_ID_PREFIX`: Custom prefix for request IDs (default: "perfclient")
+- `PERFORMANCE_CLIENT_DISABLE_TIMEOUT_HEADERS`: When set to a truthy value (`1`, `true`, `yes`, `on`), suppresses the `Request-Timeout-Ms` and `Request-Deadline-Ms` request headers. Useful when a downstream cache hashes request headers — `Request-Deadline-Ms` is time-based and would bust the cache key on every request. Default: headers emitted.
+- `PERFORMANCE_CLIENT_DISABLE_REQUEST_ID_HEADER`: When set to a truthy value, suppresses the `x-baseten-customer-request-id` request header. That header is unique per request (UUID + batch/retry/hedge counters), so it also breaks header-based caching. Suppressing it does not affect internal retry/hedge/tracing behavior, only the emitted header. Default: header emitted.
 
 ### Logging Examples
 

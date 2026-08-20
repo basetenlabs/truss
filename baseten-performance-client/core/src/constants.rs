@@ -45,3 +45,7 @@ pub(crate) const REQUEST_DEADLINE_HEADER_NAME: &str = "Request-Deadline-Ms";
 // Logging constants
 pub const DEFAULT_LOG_LEVEL: &str = "warn";
 pub const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";
+
+// Header suppression flags (truthy values: 1, true, yes, on). Default: headers emitted.
+pub const DISABLE_TIMEOUT_HEADERS_ENV_VAR: &str = "PERFORMANCE_CLIENT_DISABLE_TIMEOUT_HEADERS";
+pub const DISABLE_REQUEST_ID_HEADER_ENV_VAR: &str = "PERFORMANCE_CLIENT_DISABLE_REQUEST_ID_HEADER";
