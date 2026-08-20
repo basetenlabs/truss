@@ -353,7 +353,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "gcp_oidc_workload_id_provider": None,
                     "aws_assume_role_arn": None,
                     "aws_assume_role_region": None,
-                    "aws_assume_role_external_id_secret_name": None,
                 },
             },
         ),
@@ -389,7 +388,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "gcp_oidc_workload_id_provider": None,
                     "aws_assume_role_arn": None,
                     "aws_assume_role_region": None,
-                    "aws_assume_role_external_id_secret_name": None,
                 },
             },
         ),
@@ -430,7 +428,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "gcp_oidc_workload_id_provider": None,
                     "aws_assume_role_arn": None,
                     "aws_assume_role_region": None,
-                    "aws_assume_role_external_id_secret_name": None,
                 },
             },
         ),
@@ -471,7 +468,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
                     "aws_assume_role_arn": None,
                     "aws_assume_role_region": None,
-                    "aws_assume_role_external_id_secret_name": None,
                 },
             },
         ),
@@ -485,7 +481,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "aws_assume_role_arn": "arn:aws:iam::123456789:role/my-role",
                     "aws_assume_role_region": "us-west-2",
                     "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
-                    "aws_assume_role_external_id_secret_name": "my_external_id",
                 },
             },
             BaseImage(
@@ -496,7 +491,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
                     aws_assume_role_region="us-west-2",
                     registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
-                    aws_assume_role_external_id_secret_name="my_external_id",
                 ),
             ),
             {
@@ -514,7 +508,6 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "gcp_oidc_workload_id_provider": None,
                     "aws_assume_role_arn": "arn:aws:iam::123456789:role/my-role",
                     "aws_assume_role_region": "us-west-2",
-                    "aws_assume_role_external_id_secret_name": "my_external_id",
                 },
             },
         ),
@@ -550,7 +543,6 @@ def test_docker_auth_aws_assume_role_missing_role_arn():
             auth_method=DockerAuthType.AWS_ASSUME_ROLE,
             aws_assume_role_region="us-west-2",
             registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
-            aws_assume_role_external_id_secret_name="my_external_id",
         )
 
 
@@ -559,20 +551,6 @@ def test_docker_auth_aws_assume_role_missing_region():
         DockerAuthSettings(
             auth_method=DockerAuthType.AWS_ASSUME_ROLE,
             aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
-            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
-            aws_assume_role_external_id_secret_name="my_external_id",
-        )
-
-
-def test_docker_auth_aws_assume_role_missing_secret_name():
-    """The secret holding the sts:ExternalId is required."""
-    with pytest.raises(
-        ValueError, match="aws_assume_role_external_id_secret_name must be provided"
-    ):
-        DockerAuthSettings(
-            auth_method=DockerAuthType.AWS_ASSUME_ROLE,
-            aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
-            aws_assume_role_region="us-west-2",
             registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
         )
 
@@ -586,7 +564,6 @@ def test_docker_auth_aws_assume_role_with_oidc_params_error():
             aws_assume_role_region="us-west-2",
             aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
             registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
-            aws_assume_role_external_id_secret_name="my_external_id",
         )
 
 
@@ -1840,17 +1817,15 @@ class TestWeightsSource:
         assert auth.auth_secret_name == "my-secret"
 
     def test_aws_assume_role_valid(self):
-        """AWS_ASSUME_ROLE with role ARN, region, and external ID secret is valid."""
+        """AWS_ASSUME_ROLE with role ARN and region is valid."""
         auth = WeightsAuth(
             auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
             aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
             aws_assume_role_region="us-west-2",
-            aws_assume_role_external_id_secret_name="my_external_id",
         )
         assert auth.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE
         assert auth.aws_assume_role_arn == "arn:aws:iam::123456789:role/my-role"
         assert auth.aws_assume_role_region == "us-west-2"
-        assert auth.aws_assume_role_external_id_secret_name == "my_external_id"
 
     def test_aws_assume_role_missing_role_arn(self):
         """AWS assume-role without role ARN should error."""
@@ -1860,7 +1835,6 @@ class TestWeightsSource:
             WeightsAuth(
                 auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
                 aws_assume_role_region="us-west-2",
-                aws_assume_role_external_id_secret_name="my_external_id",
             )
 
     def test_aws_assume_role_missing_region(self):
@@ -1871,19 +1845,6 @@ class TestWeightsSource:
             WeightsAuth(
                 auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
                 aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
-                aws_assume_role_external_id_secret_name="my_external_id",
-            )
-
-    def test_aws_assume_role_missing_external_id_secret(self):
-        """The secret holding the sts:ExternalId is required."""
-        with pytest.raises(
-            pydantic.ValidationError,
-            match="aws_assume_role_external_id_secret_name must be provided",
-        ):
-            WeightsAuth(
-                auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
-                aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
-                aws_assume_role_region="us-west-2",
             )
 
     def test_aws_assume_role_with_oidc_params_error(self):
@@ -1895,7 +1856,6 @@ class TestWeightsSource:
                 auth_method=WeightsAuthMethod.AWS_ASSUME_ROLE,
                 aws_assume_role_arn="arn:aws:iam::123456789:role/my-role",
                 aws_assume_role_region="us-west-2",
-                aws_assume_role_external_id_secret_name="my_external_id",
                 aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
             )
 
