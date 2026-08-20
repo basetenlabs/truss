@@ -433,8 +433,12 @@ def test_truss_schema_postprocess_no_return_annotation():
     assert schema.output_type is None
 
 
-def test_zero_arg_postprocess_raises_model_definition_error():
-    """ModelDescriptor.from_model must reject a postprocess with no arguments at all."""
+def test_zero_arg_postprocess_is_allowed():
+    """A postprocess with no arguments (no self, no result) is allowed.
+
+    The predict result is accessible through other means (thread-local or
+    instance state), so zero-arg postprocess is a valid pattern.
+    """
 
     class Model:
         def predict(self):
@@ -443,5 +447,6 @@ def test_zero_arg_postprocess_raises_model_definition_error():
         def postprocess():  # no self, no args -> ArgConfig.NONE
             return "something"
 
-    with pytest.raises(ModelDefinitionError, match="zero-argument"):
-        ModelDescriptor.from_model(Model)
+    # Should not raise -- zero-arg postprocess is permitted
+    descriptor = ModelDescriptor.from_model(Model)
+    assert descriptor.postprocess is not None
