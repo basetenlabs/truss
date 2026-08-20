@@ -1268,6 +1268,22 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["organization"]["id"]
 
+    def get_aws_external_id(self) -> str:
+        """
+        Get the sts:ExternalId Baseten presents when assuming this
+        organization's AWS IAM roles (AWS_ASSUME_ROLE auth method).
+        """
+        query_string = """
+        query {
+            organization {
+                aws_external_id
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["organization"]["aws_external_id"]
+
     def update_interactive_session(
         self,
         project_id: str,

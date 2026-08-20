@@ -236,6 +236,11 @@ class BasetenRemote(TrussRemote):
     def get_oidc_info(self) -> custom_types.OidcInfo:
         """Get OIDC configuration information for workload identity."""
         org_id = self._api.get_organization_id()
+        try:
+            aws_external_id = self._api.get_aws_external_id()
+        except ApiError:
+            # The server predates the aws_external_id GraphQL field.
+            aws_external_id = None
         teams = self._api.get_teams()
         team_info = [
             custom_types.OidcTeamInfo(id=team.id, name=team.name)
@@ -244,6 +249,7 @@ class BasetenRemote(TrussRemote):
 
         return custom_types.OidcInfo(
             org_id=org_id,
+            aws_external_id=aws_external_id,
             teams=team_info,
             issuer="https://oidc.baseten.co",
             audience="oidc.baseten.co",
