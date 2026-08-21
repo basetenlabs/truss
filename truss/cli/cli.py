@@ -83,6 +83,11 @@ click.rich_click.COMMAND_GROUPS = {
             "commands": ["loops"],
             "table_styles": {"row_styles": ["cyan"]},  # type: ignore
         },
+        {
+            "name": "Volumes",
+            "commands": ["volume"],
+            "table_styles": {"row_styles": ["blue"]},  # type: ignore
+        },
     ]
 }
 
@@ -1656,4 +1661,5 @@ from truss.cli import (  # noqa: F401
     migrate_commands,
     ssh_commands,
     train_commands,
+    volume_commands,
 )
