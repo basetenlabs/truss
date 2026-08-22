@@ -35,3 +35,10 @@ def test_line_breaks_rejected_without_echoing_value(value):
     with pytest.raises(ValueError, match="line break") as exc_info:
         dockerfile_env_value(value)
     assert "line1" not in str(exc_info.value)
+
+
+def test_shell_injection_metacharacters_in_url():
+    url = 'http://example.com/file" ; echo pwned ; echo "'
+    assert dockerfile_env_value(url) == (
+        '"http://example.com/file\\" ; echo pwned ; echo \\""'
+    )

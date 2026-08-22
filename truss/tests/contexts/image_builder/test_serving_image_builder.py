@@ -81,6 +81,34 @@ def test_apt_mirror_url_override(mock_machine, custom_model_truss_dir, monkeypat
 
 
 @patch("platform.machine", return_value="amd")
+def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
+    mock_machine, custom_model_truss_dir
+):
+    """external_data URLs are embedded in a shell RUN curl; metacharacters must not break out."""
+    malicious_url = 'http://example.com/model" ; echo pwned ; echo "'
+    local_data_path = "weights/model.bin"
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=malicious_url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    curl_lines = [line for line in dockerfile.splitlines() if "curl -L" in line]
+    assert len(curl_lines) == 1
+    curl_line = curl_lines[0]
+
+    expected_url = dockerfile_env_value(malicious_url)
+    expected_dst = dockerfile_env_value(f"/app/data/{local_data_path}")
+    assert f"curl -L {expected_url} -o {expected_dst}" in curl_line
+    assert "; echo pwned ;" not in curl_line.replace(expected_url, "")
+
+
+@patch("platform.machine", return_value="amd")
 def test_clean_uv_env_passes_proxy_and_ca_vars(mock_machine, custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.update_python_version("py313")
