@@ -8,6 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from truss.cli import volume_commands
+from truss.cli.cannery import config as cannery_config
 from truss.cli.cli import truss_cli
 
 
@@ -44,8 +45,12 @@ def clean_cannery_environment(monkeypatch):
         "TRUSS_CANNERY_ORG",
         "TRUSS_CANNERY_AUTH_TOKEN_FILE",
         "CANNERY_AUTH_TOKEN_FILE",
+        "CANNERY_CORRELATION_ID",
     ):
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(
+        cannery_config.RemoteFactory, "get_available_config_names", lambda: []
+    )
 
 
 def install_process(monkeypatch, process):
@@ -84,6 +89,7 @@ def test_binary_resolution_failure_is_actionable(monkeypatch):
 def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("token")
+    token_file.chmod(0o600)
     monkeypatch.setenv("TRUSS_CANNERY_API", "https://cannery.example.com")
     monkeypatch.setenv("TRUSS_CANNERY_ORG", "acme")
     monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))

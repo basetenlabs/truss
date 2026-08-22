@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import signal
 import subprocess
+import uuid
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import rich_click as click
 
-from truss.cli.cannery.auth import child_environment, resolve_token_file
+from truss.cli.cannery.auth import (
+    BasetenExchangeAdapter,
+    CanneryAuthProvider,
+    child_environment,
+    select_auth_provider,
+)
 from truss.cli.cannery.binary import resolve_cannery_binary
-from truss.cli.cannery.config import resolve_cannery_config
+from truss.cli.cannery.config import CanneryConfig, resolve_cannery_config
 from truss.cli.cannery.protocol import CanneryProtocolConsumer, Phase0ProtocolConsumer
 
 _CANCEL_GRACE_SECONDS = 5
@@ -61,64 +67,74 @@ def run_cannery(
     arguments: List[str],
     protocol_consumer: Optional[CanneryProtocolConsumer] = None,
     binary_resolver: Callable[[], str] = resolve_cannery_binary,
+    config_resolver: Callable[[], CanneryConfig] = resolve_cannery_config,
+    auth_provider: Optional[CanneryAuthProvider] = None,
+    exchange_adapter: Optional[BasetenExchangeAdapter] = None,
 ) -> Dict[str, Any]:
-    config = resolve_cannery_config()
-    token_file = resolve_token_file(config)
-    binary = binary_resolver()
-    argv = [
-        binary,
-        "-o",
-        "json",
-        "--progress",
-        "machine",
-        "--api",
-        config.api,
-        *arguments,
-    ]
+    correlation_id = str(uuid.uuid4())
+    config = config_resolver()
+    provider = auth_provider or select_auth_provider(config, exchange_adapter)
 
-    try:
-        process = subprocess.Popen(
-            argv,
-            env=child_environment(token_file, config.org),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-        )
-    except OSError as exc:
-        raise click.ClickException(
-            f"Failed to start Cannery binary {binary!r}: {exc}"
-        ) from exc
+    with provider.acquire(correlation_id) as credential:
+        binary = binary_resolver()
+        argv = [
+            binary,
+            "-o",
+            "json",
+            "--progress",
+            "machine",
+            "--api",
+            config.api,
+            *arguments,
+        ]
 
-    if process.stdout is None or process.stderr is None:
-        _cancel_process(process)
-        raise click.ClickException("Failed to capture Cannery subprocess output.")
+        try:
+            process = subprocess.Popen(
+                argv,
+                env=child_environment(credential, config.org, correlation_id),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+        except OSError as exc:
+            raise click.ClickException(
+                f"Failed to start Cannery binary {binary!r}: {exc}"
+            ) from exc
 
-    consumer = protocol_consumer or Phase0ProtocolConsumer()
-    session = consumer.start(
-        process.stdout,
-        process.stderr,
-        lambda message: click.echo(message, err=True),
-    )
-    try:
-        result = session.read_result()
-        return_code = process.wait()
-    except KeyboardInterrupt:
-        _cancel_process(process)
-        raise click.Abort()
-    finally:
-        if process.poll() is None:
+        if process.stdout is None or process.stderr is None:
             _cancel_process(process)
-        session.finish()
+            raise click.ClickException("Failed to capture Cannery subprocess output.")
 
-    machine_error = session.terminal_error
-    if return_code == 2:
-        raise click.UsageError(_format_machine_error(machine_error, return_code))
-    if return_code != 0:
-        raise click.ClickException(_format_machine_error(machine_error, return_code))
-    if machine_error is not None:
-        raise click.ClickException(_format_machine_error(machine_error, return_code))
-    return result
+        consumer = protocol_consumer or Phase0ProtocolConsumer()
+        session = consumer.start(
+            process.stdout,
+            process.stderr,
+            lambda message: click.echo(message, err=True),
+        )
+        try:
+            result = session.read_result()
+            return_code = process.wait()
+        except KeyboardInterrupt:
+            _cancel_process(process)
+            raise click.Abort()
+        finally:
+            if process.poll() is None:
+                _cancel_process(process)
+            session.finish()
+
+        machine_error = session.terminal_error
+        if return_code == 2:
+            raise click.UsageError(_format_machine_error(machine_error, return_code))
+        if return_code != 0:
+            raise click.ClickException(
+                _format_machine_error(machine_error, return_code)
+            )
+        if machine_error is not None:
+            raise click.ClickException(
+                _format_machine_error(machine_error, return_code)
+            )
+        return result
