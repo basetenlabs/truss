@@ -98,7 +98,11 @@ def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
         image_builder.prepare_image_build_dir(tmp_path)
         dockerfile = (tmp_path / "Dockerfile").read_text()
 
-    curl_lines = [line for line in dockerfile.splitlines() if "curl -L" in line]
+    curl_lines = [
+        line
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
+    ]
     assert len(curl_lines) == 1
     curl_line = curl_lines[0]
 
