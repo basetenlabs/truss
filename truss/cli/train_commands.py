@@ -33,7 +33,6 @@ from truss.cli.train.cache import (
     SORT_ORDER_DESC,
 )
 from truss.cli.train.workstation import (
-    DEFAULT_BASE_IMAGE,
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
@@ -1215,12 +1214,7 @@ def update_capacity(
     default="slurm",
     help="Multi-node orchestrator (default: slurm).",
 )
-@click.option(
-    "--image",
-    type=str,
-    required=False,
-    help="Custom Docker base image (default: nvidia/cuda:12.8.1-devel-ubuntu24.04).",
-)
+@click.option("--image", type=str, required=False, help="Custom Docker base image.")
 @click.option(
     "--enable-checkpointing",
     is_flag=True,
@@ -1302,12 +1296,11 @@ def workstation(
         remote_provider, effective_team_name, existing_project_name=project_id
     )
 
-    base_image = image or DEFAULT_BASE_IMAGE
     training_project = build_workstation_project(
         accelerator=accelerator,
         gpu_count=gpu_count,
         project_id=project_id,
-        base_image=base_image,
+        base_image=image,
         node_count=node_count,
         orchestrator=orchestrator,
         enable_checkpointing=enable_checkpointing,
