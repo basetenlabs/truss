@@ -21,9 +21,16 @@ from truss_train.definitions import (
 )
 
 DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
+B300_BASE_IMAGE = "nvidia/cuda:13.0.3-devel-ubuntu24.04"
 SUPPORTED_WORKSTATION_ACCELERATORS = [
     acc.value for acc in Accelerator if acc.value != Accelerator._B10.value
 ]
+
+
+def default_base_image(accelerator: str) -> str:
+    if accelerator in (Accelerator.B300.value, Accelerator.GB300.value):
+        return B300_BASE_IMAGE
+    return DEFAULT_BASE_IMAGE
 
 
 def copy_workstation_templates(target_dir: Path) -> None:
@@ -42,7 +49,7 @@ def build_workstation_project(
     accelerator: str,
     gpu_count: int,
     project_id: str,
-    base_image: str = DEFAULT_BASE_IMAGE,
+    base_image: Optional[str] = None,
     node_count: int = 1,
     orchestrator: str = "slurm",
     enable_checkpointing: bool = False,
@@ -90,7 +97,7 @@ def build_workstation_project(
     )
 
     job = TrainingJob(
-        image=Image(base_image=base_image),
+        image=Image(base_image=base_image or default_base_image(accelerator)),
         compute=compute,
         runtime=runtime,
         interactive_session=interactive_session,
