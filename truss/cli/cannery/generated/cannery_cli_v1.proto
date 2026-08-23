@@ -1,0 +1,328 @@
+syntax = "proto3";
+
+package cannery.cli.v1;
+
+enum Operation {
+  OPERATION_UNSPECIFIED = 0;
+  OPERATION_PUSH = 1;
+  OPERATION_LIST = 2;
+  OPERATION_SHOW = 3;
+  OPERATION_PULL = 4;
+}
+
+enum ErrorCategory {
+  ERROR_CATEGORY_UNSPECIFIED = 0;
+  ERROR_CATEGORY_INVALID_ARGUMENT = 1;
+  ERROR_CATEGORY_AUTHENTICATION = 2;
+  ERROR_CATEGORY_AUTHORIZATION = 3;
+  ERROR_CATEGORY_NOT_FOUND = 4;
+  ERROR_CATEGORY_CONFLICT = 5;
+  ERROR_CATEGORY_THROTTLED = 6;
+  ERROR_CATEGORY_QUOTA = 7;
+  ERROR_CATEGORY_UNAVAILABLE = 8;
+  ERROR_CATEGORY_INTEGRITY = 9;
+  ERROR_CATEGORY_UNSUPPORTED_PROTOCOL = 10;
+  ERROR_CATEGORY_INTERNAL = 11;
+}
+
+enum ReferenceEntryKind {
+  REFERENCE_ENTRY_KIND_UNSPECIFIED = 0;
+  REFERENCE_ENTRY_KIND_TAG = 1;
+  REFERENCE_ENTRY_KIND_IMMUTABLE_DIGEST = 2;
+}
+
+enum FileEntryKind {
+  FILE_ENTRY_KIND_UNSPECIFIED = 0;
+  FILE_ENTRY_KIND_FILE = 1;
+  FILE_ENTRY_KIND_DIRECTORY = 2;
+  FILE_ENTRY_KIND_SYMLINK = 3;
+}
+
+// Stable response from the non-mutating `cannery protocol` bootstrap command.
+//
+// Explicit json_name values preserve this version-independent bootstrap
+// envelope while machine-protocol records use normal ProtoJSON camelCase.
+message ProtocolBootstrapV1 {
+  uint32 bootstrap_version = 1 [json_name = "bootstrap_version"];
+  string cannery_version = 2 [json_name = "cannery_version"];
+  repeated uint32 supported_machine_protocols = 3 [json_name = "supported_machine_protocols"];
+  repeated string supported_encodings = 4 [json_name = "supported_encodings"];
+}
+
+// Parsed command arguments selected by `--machine-protocol 1`.
+message CommandRequestV1 {
+  uint32 protocol_version = 1;
+  string operation_id = 2;
+
+  oneof command {
+    PushRequestV1 push = 10;
+    ListRequestV1 list = 11;
+    ShowRequestV1 show = 12;
+    PullRequestV1 pull = 13;
+  }
+}
+
+// Mirrors `cannery push PATH REF` and its launch-vertical resource flags.
+message PushRequestV1 {
+  string local_path = 1;
+  string reference = 2;
+  optional uint64 max_bytes_in_flight = 3;
+  optional uint32 max_concurrency = 4;
+}
+
+// Mirrors `cannery ls [NAMESPACE_OR_REF] [--all] [--page-size SIZE] [--page-token TOKEN]`.
+message ListRequestV1 {
+  optional string namespace_or_reference = 1;
+  bool all = 2;
+
+  // Defaults to 100 and must not exceed 1,000.
+  optional uint32 page_size = 3;
+
+  // Opaque token returned by the preceding page.
+  optional string page_token = 4;
+}
+
+// Mirrors `cannery show REF [--page-size SIZE] [--page-token TOKEN]`.
+message ShowRequestV1 {
+  string reference = 1;
+
+  // Defaults to 100 and must not exceed 1,000.
+  optional uint32 page_size = 2;
+
+  // Opaque token returned by the preceding file page.
+  optional string page_token = 3;
+}
+
+// Mirrors `cannery pull REF OUT_DIR` for a complete volume.
+//
+// Subset, merge, overwrite, and discard modes are intentionally outside v1.
+message PullRequestV1 {
+  string reference = 1;
+  string output_directory = 2;
+  optional uint64 max_bytes_in_flight = 3;
+  optional uint32 max_concurrency = 4;
+}
+
+// One record in the ordered ProtoJSON NDJSON machine stream.
+message MachineRecordV1 {
+  uint32 protocol_version = 1;
+  uint64 sequence = 2;
+  string operation_id = 3;
+  Operation operation = 4;
+
+  oneof payload {
+    StartedV1 started = 10;
+    ProgressV1 progress = 11;
+    StatusV1 status = 12;
+    WarningV1 warning = 13;
+    ResultV1 result = 14;
+    ErrorV1 error = 15;
+    CancelledV1 cancelled = 16;
+  }
+}
+
+message StartedV1 {
+  CommandRequestV1 request = 1;
+  string cannery_version = 2;
+}
+
+message ProgressV1 {
+  // Stable phase name interpreted within the record's operation.
+  string phase = 1;
+  uint64 files_done = 2;
+  optional uint64 files_total = 3;
+  uint64 bytes_done = 4;
+  optional uint64 bytes_total = 5;
+  uint64 items_done = 6;
+  optional uint64 items_total = 7;
+  double elapsed_seconds = 8;
+}
+
+message StatusV1 {
+  string reason = 1;
+  string message = 2;
+}
+
+message WarningV1 {
+  string reason = 1;
+  string message = 2;
+}
+
+message ResultV1 {
+  oneof result {
+    PushResultV1 push = 1;
+    ListResultV1 list = 2;
+    ShowResultV1 show = 3;
+    PullResultV1 pull = 4;
+  }
+}
+
+message PushResultV1 {
+  string manifest_digest = 1;
+  uint64 snapshot_sequence = 2;
+  string canonical_reference = 3;
+  uint64 logical_bytes = 4;
+  uint64 uploaded_bytes = 5;
+  uint64 reused_bytes = 6;
+  uint64 file_count = 7;
+  uint64 directory_count = 8;
+  optional bool content_created = 9;
+  optional bool tag_changed = 10;
+}
+
+message ListResultV1 {
+  oneof page {
+    NamespacePageV1 namespaces = 1;
+    ReferencePageV1 references = 2;
+  }
+}
+
+message NamespacePageV1 {
+  // Contains at most 1,000 entries.
+  repeated NamespaceEntryV1 namespaces = 1;
+  optional string next_page_token = 2;
+}
+
+message NamespaceEntryV1 {
+  string name = 1;
+}
+
+message ReferencePageV1 {
+  string namespace = 1;
+
+  // Contains at most 1,000 entries.
+  repeated ReferenceEntryV1 references = 2;
+  optional string next_page_token = 3;
+}
+
+message ReferenceEntryV1 {
+  string reference = 1;
+  string volume = 2;
+  string manifest_digest = 3;
+  optional string tag = 4;
+  ReferenceEntryKind kind = 5;
+  uint64 snapshot_sequence = 6;
+  string created_at = 7;
+}
+
+message ShowResultV1 {
+  string requested_reference = 1;
+  string canonical_reference = 2;
+  string manifest_digest = 3;
+  uint64 snapshot_sequence = 4;
+  string created_at = 5;
+  repeated string tags = 6;
+  uint64 logical_bytes = 7;
+  uint64 file_count = 8;
+  uint64 directory_count = 9;
+  FilePageV1 file_page = 10;
+}
+
+// A bounded page containing at most the request's effective page size.
+message FilePageV1 {
+  // Contains at most 1,000 entries.
+  repeated FileEntryV1 files = 1;
+  optional string next_page_token = 2;
+}
+
+message FileEntryV1 {
+  string path = 1;
+  FileEntryKind kind = 2;
+  uint64 size_bytes = 3;
+  optional string backing_object_digest = 4;
+  optional string symlink_target = 5;
+}
+
+message PullResultV1 {
+  string requested_reference = 1;
+  string canonical_reference = 2;
+  string manifest_digest = 3;
+  string output_directory = 4;
+  uint64 logical_bytes = 5;
+  uint64 downloaded_bytes = 6;
+  uint64 reused_bytes = 7;
+  uint64 file_count = 8;
+  uint64 directory_count = 9;
+  bool content_verified = 10;
+}
+
+message ErrorV1 {
+  ErrorCategory category = 1;
+
+  // Stable UPPER_SNAKE_CASE reason within the category.
+  string reason = 2;
+
+  string message = 3;
+  optional bool retryable = 4;
+  optional uint64 retry_after_ms = 5;
+  ErrorDetailsV1 details = 6;
+}
+
+message ErrorDetailsV1 {
+  oneof details {
+    InvalidArgumentDetailsV1 invalid_argument = 1;
+    AuthenticationDetailsV1 authentication = 2;
+    AuthorizationDetailsV1 authorization = 3;
+    NotFoundDetailsV1 not_found = 4;
+    ConflictDetailsV1 conflict = 5;
+    ThrottledDetailsV1 throttled = 6;
+    QuotaDetailsV1 quota = 7;
+    UnavailableDetailsV1 unavailable = 8;
+    IntegrityDetailsV1 integrity = 9;
+    UnsupportedProtocolDetailsV1 unsupported_protocol = 10;
+  }
+}
+
+message InvalidArgumentDetailsV1 {
+  optional string field = 1;
+  string constraint = 2;
+}
+
+message AuthenticationDetailsV1 {
+  optional string credential_kind = 1;
+}
+
+message AuthorizationDetailsV1 {
+  optional string required_scope = 1;
+  optional string resource = 2;
+}
+
+message NotFoundDetailsV1 {
+  string resource_kind = 1;
+  string resource = 2;
+}
+
+message ConflictDetailsV1 {
+  string resource = 1;
+  optional string current_state = 2;
+}
+
+message ThrottledDetailsV1 {
+  optional string limit_name = 1;
+}
+
+message QuotaDetailsV1 {
+  string quota_name = 1;
+  optional uint64 limit = 2;
+  optional uint64 used = 3;
+  optional uint64 requested = 4;
+}
+
+message UnavailableDetailsV1 {
+  optional string service = 1;
+}
+
+message IntegrityDetailsV1 {
+  optional string path = 1;
+  optional string expected_digest = 2;
+  optional string actual_digest = 3;
+}
+
+message UnsupportedProtocolDetailsV1 {
+  repeated uint32 supported_machine_protocols = 1;
+}
+
+message CancelledV1 {
+  string message = 1;
+  bool cleanup_completed = 2;
+}

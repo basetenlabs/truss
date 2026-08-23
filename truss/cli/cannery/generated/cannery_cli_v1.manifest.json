@@ -1,0 +1,16 @@
+{
+  "contract_sha256": {
+    "cannery_cli_v1.proto": "ec811cf64303816bdce07b1ee247f421bf0e396417ba13bd0433bc21552e513f",
+    "fixtures/protojson/list-quota-error.ndjson": "b7bd99e15c6c9f59ad1f83b9c2abc5e6169acc844e09fd7439fc8f7baff8b209",
+    "fixtures/protojson/list-success.ndjson": "8174441600539c6ea8afad701e6a59ba0bad21885ef1dbfa5fbd6ea2d4731b29",
+    "fixtures/protojson/pull-cancelled.ndjson": "1f9408e0b5ee9a7a6e138c667a74676a2b82b76b3f709635ecd68a41db22ca92",
+    "fixtures/protojson/pull-integrity-error.ndjson": "0f9f6b7314b1d3299483583f67f0e435519459b937f4c50e1c216c54a8071cf2",
+    "fixtures/protojson/pull-success.ndjson": "ab54e2688104765241af1f430a1ce2909b7d295bff120d6be9ca360bffd13759",
+    "fixtures/protojson/push-success.ndjson": "1968d60c78d23a695fbabad77a6046b9a95b3727bc41903305e152a2934bc299",
+    "fixtures/protojson/push-throttled.ndjson": "2892859ed1f45ee27db55d2194c851b36e07cfb04d54b01e79f4a5991b65ad2a",
+    "fixtures/protojson/show-not-found.ndjson": "f6cae3b3196948b752a4a4cd72b0affb87415c14f384f92884d1ff260d72b6e7",
+    "fixtures/protojson/show-success.ndjson": "3d3ea81f0ab5fd8a0c0ccd6c7d499337e44f2496e6b3c10714c0f50730446b62",
+    "v1.md": "79ccbb06fdafc0d88d30aa2ff36970675c783c578abd556a16152817fa3e73a8"
+  },
+  "generator": "grpcio-tools==1.73.1"
+}
