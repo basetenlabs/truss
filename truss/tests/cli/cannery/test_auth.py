@@ -7,9 +7,11 @@ import pytest
 
 from truss.cli.cannery.auth import (
     BasetenExchangeAuthProvider,
-    ExplicitTokenFileAuthProvider,
+    CanneryCredential,
     ExchangedToken,
+    ExplicitTokenFileAuthProvider,
     LoopbackNoAuthProvider,
+    child_environment,
 )
 from truss.cli.cannery.config import ActiveRemote
 from truss.remote.truss_remote import RemoteConfig
@@ -93,6 +95,23 @@ def test_exchange_failure_does_not_include_adapter_secret():
         provider.acquire("correlation")
 
     assert "top-secret" not in str(exc_info.value)
+
+
+def test_child_environment_preserves_proxy_but_removes_parent_credentials(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example")
+    monkeypatch.setenv("BASETEN_API_KEY", "parent-secret")
+    monkeypatch.setenv("CANNERY_AUTH_TOKEN", "stale-secret")
+    token_file = tmp_path / "token"
+    credential = CanneryCredential(token_file, "test")
+
+    env = child_environment(credential, "org", "corr-123", tmp_path / "diagnostic")
+
+    assert env["HTTPS_PROXY"] == "http://proxy.example"
+    assert "BASETEN_API_KEY" not in env
+    assert "CANNERY_AUTH_TOKEN" not in env
+    assert env["CANNERY_AUTH_TOKEN_FILE"] == str(token_file)
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="Unix ownership check")

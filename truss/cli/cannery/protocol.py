@@ -18,18 +18,14 @@ class CanneryProtocolSession(Protocol):
     """
 
     @property
-    def terminal_error(self) -> Optional[Mapping[str, Any]]:
-        ...
+    def terminal_error(self) -> Optional[Mapping[str, Any]]: ...
 
     @property
-    def last_phase(self) -> Optional[str]:
-        ...
+    def last_phase(self) -> Optional[str]: ...
 
-    def read_result(self) -> Dict[str, Any]:
-        ...
+    def read_result(self) -> Dict[str, Any]: ...
 
-    def finish(self) -> None:
-        ...
+    def finish(self) -> None: ...
 
 
 class CanneryProtocolConsumer(Protocol):
@@ -38,8 +34,7 @@ class CanneryProtocolConsumer(Protocol):
         stdout: TextIO,
         stderr: Iterable[str],
         render_progress: Callable[[str], None],
-    ) -> CanneryProtocolSession:
-        ...
+    ) -> CanneryProtocolSession: ...
 
 
 class Phase0ProtocolConsumer:
@@ -67,9 +62,7 @@ class _Phase0ProtocolSession:
         self._state = BoundedProgressState()
         self._protocol_error: Optional[CanneryProtocolError] = None
         self._stderr_thread = threading.Thread(
-            target=self._drain_machine_events,
-            name="truss-cannery-stderr",
-            daemon=True,
+            target=self._drain_machine_events, name="truss-cannery-stderr", daemon=True
         )
         self._stderr_thread.start()
 

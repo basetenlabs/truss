@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+import shutil  # noqa: F401 - compatibility re-export for existing integrations
+import subprocess  # noqa: F401 - compatibility re-export for existing integrations
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 import rich_click as click
 
-from truss.cli.cannery.binary import resolve_cannery_binary
-from truss.cli.cannery.errors import CanneryProtocolError
+from truss.cli.cannery.binary import resolve_cannery_binary  # noqa: F401
+from truss.cli.cannery.errors import CanneryProtocolError  # noqa: F401
 from truss.cli.cannery.runner import run_cannery as _run_cannery
 from truss.cli.cli import truss_cli
 from truss.cli.utils import common
@@ -18,7 +18,7 @@ from truss.cli.utils.output import console, console_to_stderr
 
 
 def run_cannery(arguments):
-    return _run_cannery(arguments, binary_resolver=resolve_cannery_binary)
+    return _run_cannery(arguments)
 
 
 def _output_option(function):

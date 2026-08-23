@@ -26,9 +26,7 @@ def test_explicit_endpoint_override_bypasses_remote_resolution(monkeypatch):
 
 
 def test_no_configured_remote_preserves_local_development_default(monkeypatch):
-    monkeypatch.setattr(
-        config.RemoteFactory, "get_available_config_names", lambda: []
-    )
+    monkeypatch.setattr(config.RemoteFactory, "get_available_config_names", lambda: [])
 
     resolved = config.resolve_cannery_config()
 
@@ -46,19 +44,13 @@ def test_endpoint_is_derived_from_active_truss_remote(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        config.RemoteFactory,
-        "get_available_config_names",
-        lambda: ["production"],
+        config.RemoteFactory, "get_available_config_names", lambda: ["production"]
     )
     monkeypatch.setattr(
-        config.remote_cli,
-        "inquire_remote_name",
-        lambda allow_create: "production",
+        config.remote_cli, "inquire_remote_name", lambda allow_create: "production"
     )
     monkeypatch.setattr(
-        config.RemoteFactory,
-        "load_remote_config",
-        lambda remote_name: remote_config,
+        config.RemoteFactory, "load_remote_config", lambda remote_name: remote_config
     )
 
     resolved = config.resolve_cannery_config()
@@ -83,9 +75,7 @@ def test_unknown_remote_endpoint_fails_closed(monkeypatch):
         config.remote_cli, "inquire_remote_name", lambda allow_create: "custom"
     )
     monkeypatch.setattr(
-        config.RemoteFactory,
-        "load_remote_config",
-        lambda remote_name: remote_config,
+        config.RemoteFactory, "load_remote_config", lambda remote_name: remote_config
     )
 
     with pytest.raises(click.UsageError, match="No Cannery endpoint"):

@@ -13,6 +13,14 @@ import rich_click as click
 
 from truss.cli.cannery.config import ActiveRemote, CanneryConfig
 
+_PARENT_CREDENTIAL_ENV_KEYS = (
+    "BASETEN_API_KEY",
+    "BASETEN_TRUSS_AUTH_API_KEY",
+    "CANNERY_AUTH_TOKEN",
+    "CANNERY_AUTH_TOKEN_FILE",
+    "TRUSS_CANNERY_AUTH_TOKEN_FILE",
+)
+
 
 @dataclass(frozen=True)
 class ExchangedToken:
@@ -25,13 +33,11 @@ class BasetenExchangeAdapter(Protocol):
 
     def exchange(
         self, active_remote: ActiveRemote, correlation_id: str
-    ) -> ExchangedToken:
-        ...
+    ) -> ExchangedToken: ...
 
 
 class TokenRefreshHook(Protocol):
-    def refresh(self, token_file: Path) -> None:
-        ...
+    def refresh(self, token_file: Path) -> None: ...
 
 
 @dataclass
@@ -62,8 +68,7 @@ class CanneryCredential:
 
 
 class CanneryAuthProvider(Protocol):
-    def acquire(self, correlation_id: str) -> CanneryCredential:
-        ...
+    def acquire(self, correlation_id: str) -> CanneryCredential: ...
 
 
 class LoopbackNoAuthProvider:
@@ -79,9 +84,7 @@ class ExplicitTokenFileAuthProvider:
     def acquire(self, correlation_id: str) -> CanneryCredential:
         del correlation_id
         token_file = _validate_owner_only_file(self._token_file)
-        return CanneryCredential(
-            token_file=token_file, mechanism="explicit-token-file"
-        )
+        return CanneryCredential(token_file=token_file, mechanism="explicit-token-file")
 
 
 class _ExchangeRefreshHook:
@@ -110,9 +113,7 @@ class BasetenExchangeAuthProvider:
         self._active_remote = active_remote
 
     def acquire(self, correlation_id: str) -> CanneryCredential:
-        token = _exchange_token(
-            self._adapter, self._active_remote, correlation_id
-        )
+        token = _exchange_token(self._adapter, self._active_remote, correlation_id)
         token_directory = Path(tempfile.mkdtemp(prefix="truss-cannery-auth-"))
         try:
             token_directory.chmod(0o700)
@@ -132,9 +133,7 @@ class BasetenExchangeAuthProvider:
 
 
 def _exchange_token(
-    adapter: BasetenExchangeAdapter,
-    active_remote: ActiveRemote,
-    correlation_id: str,
+    adapter: BasetenExchangeAdapter, active_remote: ActiveRemote, correlation_id: str
 ) -> ExchangedToken:
     try:
         token = adapter.exchange(active_remote, correlation_id)
@@ -202,8 +201,7 @@ def _validate_owner_only_file(token_file: Path) -> Path:
 
 
 def select_auth_provider(
-    config: CanneryConfig,
-    exchange_adapter: Optional[BasetenExchangeAdapter],
+    config: CanneryConfig, exchange_adapter: Optional[BasetenExchangeAdapter]
 ) -> CanneryAuthProvider:
     explicit_token_file = os.environ.get("TRUSS_CANNERY_AUTH_TOKEN_FILE")
     if explicit_token_file:
@@ -226,12 +224,14 @@ def select_auth_provider(
 
 
 def child_environment(
-    credential: CanneryCredential, org: str, correlation_id: str
+    credential: CanneryCredential, org: str, correlation_id: str, diagnostic_path: Path
 ) -> Dict[str, str]:
     env = os.environ.copy()
-    env.pop("CANNERY_AUTH_TOKEN_FILE", None)
+    for key in _PARENT_CREDENTIAL_ENV_KEYS:
+        env.pop(key, None)
     env["CANNERY_ORG"] = org
     env["CANNERY_CORRELATION_ID"] = correlation_id
+    env["CANNERY_DIAGNOSTIC_LOG"] = str(diagnostic_path)
     if credential.token_file is not None:
         env["CANNERY_AUTH_TOKEN_FILE"] = str(credential.token_file)
     return env

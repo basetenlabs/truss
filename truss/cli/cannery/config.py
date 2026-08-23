@@ -74,9 +74,7 @@ def _resolve_active_remote() -> Optional[ActiveRemote]:
         )
     remote_url = remote_config.configs.get("remote_url")
     if not isinstance(remote_url, str) or not remote_url:
-        raise click.UsageError(
-            f"Truss remote {remote_name!r} has no valid remote_url."
-        )
+        raise click.UsageError(f"Truss remote {remote_name!r} has no valid remote_url.")
     return ActiveRemote(
         name=remote_name,
         remote_url=_normalize_remote_url(remote_url),
@@ -98,9 +96,10 @@ def resolve_cannery_config() -> CanneryConfig:
 
     api = CANNERY_API_BY_REMOTE_URL.get(active_remote.remote_url)
     if api is None:
+        remote_hostname = urlparse(active_remote.remote_url).hostname or "<invalid>"
         raise click.UsageError(
-            f"No Cannery endpoint is configured for Truss remote "
-            f"{active_remote.remote_url!r}. Set TRUSS_CANNERY_API explicitly "
+            f"No Cannery endpoint is configured for Truss remote host "
+            f"{remote_hostname!r}. Set TRUSS_CANNERY_API explicitly "
             "for local development."
         )
     return CanneryConfig(api=api, org=org, active_remote=active_remote)

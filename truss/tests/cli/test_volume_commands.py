@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from truss.cli import volume_commands
 from truss.cli.cannery import config as cannery_config
+from truss.cli.cannery import runner as cannery_runner
 from truss.cli.cli import truss_cli
 
 
@@ -38,7 +39,7 @@ class FakeProcess:
 
 
 @pytest.fixture(autouse=True)
-def clean_cannery_environment(monkeypatch):
+def clean_cannery_environment(monkeypatch, tmp_path):
     for variable in (
         "TRUSS_CANNERY_BIN",
         "TRUSS_CANNERY_API",
@@ -46,8 +47,10 @@ def clean_cannery_environment(monkeypatch):
         "TRUSS_CANNERY_AUTH_TOKEN_FILE",
         "CANNERY_AUTH_TOKEN_FILE",
         "CANNERY_CORRELATION_ID",
+        "CANNERY_DIAGNOSTIC_LOG",
     ):
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(tmp_path / "diagnostics"))
     monkeypatch.setattr(
         cannery_config.RemoteFactory, "get_available_config_names", lambda: []
     )
@@ -56,7 +59,7 @@ def clean_cannery_environment(monkeypatch):
 def install_process(monkeypatch, process):
     popen = Mock(return_value=process)
     monkeypatch.setattr(
-        volume_commands, "resolve_cannery_binary", lambda: "/bin/cannery"
+        cannery_runner, "resolve_cannery_binary", lambda **_kwargs: "/bin/cannery"
     )
     monkeypatch.setattr(volume_commands.subprocess, "Popen", popen)
     return popen
@@ -75,7 +78,10 @@ def test_binary_resolution_falls_back_to_path(monkeypatch):
     which = Mock(return_value="/usr/local/bin/cannery")
     monkeypatch.setattr(volume_commands.shutil, "which", which)
 
-    assert volume_commands.resolve_cannery_binary() == "/usr/local/bin/cannery"
+    assert (
+        volume_commands.resolve_cannery_binary(allow_path_fallback=True)
+        == "/usr/local/bin/cannery"
+    )
     which.assert_called_once_with("cannery")
 
 
@@ -98,10 +104,10 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
         monkeypatch, FakeProcess(stdout='{"protocol_version":1,"refs":[]}')
     )
 
-    assert volume_commands.run_cannery(["ls", "models", "--all"]) == {
-        "protocol_version": 1,
-        "refs": [],
-    }
+    result = volume_commands.run_cannery(["ls", "models", "--all"])
+    correlation_id = result.pop("correlation_id")
+    assert result == {"protocol_version": 1, "refs": []}
+    assert correlation_id == popen.call_args.kwargs["env"]["CANNERY_CORRELATION_ID"]
 
     argv = popen.call_args.args[0]
     assert argv == [
@@ -175,10 +181,9 @@ def test_result_parser_requires_one_final_object(monkeypatch):
         monkeypatch, FakeProcess(stdout='  {"protocol_version":1,"digest":"b3:abc"}\n')
     )
 
-    assert volume_commands.run_cannery(["show", "bdn://dev/model"]) == {
-        "protocol_version": 1,
-        "digest": "b3:abc",
-    }
+    result = volume_commands.run_cannery(["show", "bdn://dev/model"])
+    result.pop("correlation_id")
+    assert result == {"protocol_version": 1, "digest": "b3:abc"}
 
 
 @pytest.mark.parametrize("stdout", ["", "[]", "{}", '{"protocol_version":2}', "{}\n{}"])

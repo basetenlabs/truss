@@ -11,6 +11,13 @@ from truss.cli.cannery.config import ActiveRemote, CanneryConfig
 from truss.remote.truss_remote import RemoteConfig
 
 
+@pytest.fixture(autouse=True)
+def diagnostic_directory(monkeypatch, tmp_path):
+    directory = tmp_path / "diagnostics"
+    monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(directory))
+    return directory
+
+
 class FakeProcess:
     def __init__(self):
         self.stdout = io.StringIO('{"protocol_version":1}')
@@ -37,18 +44,18 @@ def _remote_config() -> CanneryConfig:
         api="https://bdn.baseten.co",
         org="org",
         active_remote=ActiveRemote(
-            name="baseten",
-            remote_url="https://app.baseten.co",
-            config=remote_config,
+            name="baseten", remote_url="https://app.baseten.co", config=remote_config
         ),
     )
 
 
-def test_remote_without_exchange_adapter_fails_before_subprocess(monkeypatch):
+def test_remote_without_exchange_adapter_fails_before_subprocess(
+    monkeypatch, diagnostic_directory
+):
     popen = Mock()
     monkeypatch.setattr(runner.subprocess, "Popen", popen)
 
-    with pytest.raises(click.UsageError, match="RUN-869"):
+    with pytest.raises(click.UsageError, match="RUN-869") as exc_info:
         runner.run_cannery(
             ["ls"],
             config_resolver=_remote_config,
@@ -56,9 +63,14 @@ def test_remote_without_exchange_adapter_fails_before_subprocess(monkeypatch):
         )
 
     popen.assert_not_called()
+    diagnostics = list(diagnostic_directory.glob("diagnostic-*.jsonl"))
+    assert len(diagnostics) == 1
+    assert str(diagnostics[0]) in str(exc_info.value)
 
 
-def test_exchange_token_uses_environment_and_is_always_cleaned_up(monkeypatch):
+def test_exchange_token_uses_environment_and_is_always_cleaned_up(
+    monkeypatch, diagnostic_directory
+):
     adapter = Mock()
     adapter.exchange.return_value = ExchangedToken("cannery-secret")
     token_path = None
@@ -85,6 +97,7 @@ def test_exchange_token_uses_environment_and_is_always_cleaned_up(monkeypatch):
     assert token_path is not None
     assert not token_path.exists()
     assert adapter.exchange.call_args.args[1] == child_correlation_id
+    assert not list(diagnostic_directory.glob("diagnostic-*.jsonl"))
 
 
 def test_exchange_token_is_cleaned_up_when_subprocess_start_fails(monkeypatch):
