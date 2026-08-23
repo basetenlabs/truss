@@ -22,6 +22,22 @@ def test_vendored_contract_matches_hash_manifest():
         assert hashlib.sha256(contents).hexdigest() == expected_hash
 
 
+def test_vendored_fixture_set_matches_protocol_contract():
+    assert {path.name for path in FIXTURES_ROOT.glob("*.ndjson")} == {
+        "list-quota-error.ndjson",
+        "list-success.ndjson",
+        "pull-cancelled.ndjson",
+        "pull-integrity-error.ndjson",
+        "pull-invalid-include.ndjson",
+        "pull-no-match.ndjson",
+        "pull-success.ndjson",
+        "push-success.ndjson",
+        "push-throttled.ndjson",
+        "show-not-found.ndjson",
+        "show-success.ndjson",
+    }
+
+
 @pytest.mark.parametrize("fixture_path", sorted(FIXTURES_ROOT.glob("*.ndjson")))
 def test_cross_repo_protojson_golden_fixture(fixture_path):
     records = []

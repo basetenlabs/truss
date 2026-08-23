@@ -22,6 +22,8 @@ CONTRACT_FILES = (
     "fixtures/protojson/list-success.ndjson",
     "fixtures/protojson/pull-cancelled.ndjson",
     "fixtures/protojson/pull-integrity-error.ndjson",
+    "fixtures/protojson/pull-invalid-include.ndjson",
+    "fixtures/protojson/pull-no-match.ndjson",
     "fixtures/protojson/pull-success.ndjson",
     "fixtures/protojson/push-success.ndjson",
     "fixtures/protojson/push-throttled.ndjson",

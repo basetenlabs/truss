@@ -52,6 +52,21 @@ uv run truss volume show bdn://default/weights:local
 uv run truss volume pull bdn://default/weights:local ./downloaded
 ```
 
+To pull a subset, repeat `--include` in the desired order:
+
+```sh
+uv run truss volume pull bdn://default/weights:local ./downloaded \
+  --include model.safetensors \
+  --include tokenizer/
+```
+
+With no `--include`, Cannery pulls the complete volume. Includes are portable
+volume-relative file or directory paths, not globs; repeated selectors form a
+union. Cannery is the normative validator and reports invalid or unmatched
+selectors as structured usage errors. Pull results report logical bytes and
+file/directory counts for the selected graph. Subset results additionally
+include the corresponding complete-volume totals.
+
 For a local server that enforces authentication, also set:
 
 ```sh

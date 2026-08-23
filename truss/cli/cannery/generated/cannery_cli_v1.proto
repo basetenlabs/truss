@@ -93,14 +93,16 @@ message ShowRequestV1 {
   optional string page_token = 3;
 }
 
-// Mirrors `cannery pull REF OUT_DIR` for a complete volume.
-//
-// Subset, merge, overwrite, and discard modes are intentionally outside v1.
+// Mirrors `cannery pull REF OUT_DIR [--include PATH]...`.
 message PullRequestV1 {
   string reference = 1;
   string output_directory = 2;
   optional uint64 max_bytes_in_flight = 3;
   optional uint32 max_concurrency = 4;
+
+  // Empty means the complete volume. Otherwise paths are normalized,
+  // portable, volume-relative selectors whose union is extracted.
+  repeated string include_paths = 5;
 }
 
 // One record in the ordered ProtoJSON NDJSON machine stream.
@@ -244,6 +246,12 @@ message PullResultV1 {
   uint64 file_count = 8;
   uint64 directory_count = 9;
   bool content_verified = 10;
+
+  // Present for subset pulls so consumers can distinguish selected totals
+  // from the complete resolved volume.
+  optional uint64 volume_logical_bytes = 11;
+  optional uint64 volume_file_count = 12;
+  optional uint64 volume_directory_count = 13;
 }
 
 message ErrorV1 {

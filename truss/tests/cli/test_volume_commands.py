@@ -397,6 +397,37 @@ def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
     assert "Volume weights/missing was not found" in str(exc.value)
 
 
+@pytest.mark.parametrize(
+    ("fixture_name", "reason", "constraint"),
+    [
+        (
+            "pull-invalid-include.ndjson",
+            "INVALID_INCLUDE_PATH",
+            "paths must be nonempty",
+        ),
+        (
+            "pull-no-match.ndjson",
+            "INCLUDE_PATH_NOT_FOUND",
+            "selectors must match at least one file or symlink",
+        ),
+    ],
+)
+def test_pull_include_fixture_errors_are_structured_usage_errors(
+    monkeypatch, fixture_name, reason, constraint
+):
+    install_process(
+        monkeypatch, FakeProcess(stdout=_fixture(fixture_name), return_code=1)
+    )
+
+    with pytest.raises(click.UsageError) as exc_info:
+        volume_commands.run_cannery(
+            ["pull", "bdn://weights/model:prod", "/tmp/output", "--include", "bad"]
+        )
+
+    assert reason in str(exc_info.value)
+    assert constraint in str(exc_info.value)
+
+
 def test_exit_two_becomes_usage_error(monkeypatch):
     install_process(monkeypatch, FakeProcess(stdout="", return_code=2))
 
@@ -481,8 +512,8 @@ def test_cancellation_is_forwarded_to_child(monkeypatch):
         (["ls", "models", "--all"], ["ls", "models", "--all"]),
         (["show", "bdn://models/weights"], ["show", "bdn://models/weights"]),
         (
-            ["pull", "bdn://models/weights", "output", "--discard"],
-            ["pull", "bdn://models/weights", "output", "--discard"],
+            ["pull", "bdn://models/weights", "output"],
+            ["pull", "bdn://models/weights", "output"],
         ),
     ],
 )
@@ -508,6 +539,56 @@ def test_volume_commands_are_registered_and_forward_arguments(
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == command_result
     run.assert_called_once_with(expected, remote=None)
+
+
+def test_pull_command_forwards_repeated_includes_in_user_order(monkeypatch):
+    run = Mock(return_value={"content_verified": True})
+    monkeypatch.setattr(volume_commands, "run_cannery", run)
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli,
+        [
+            "volume",
+            "pull",
+            "bdn://models/weights",
+            "output",
+            "--include",
+            "model.safetensors",
+            "--include",
+            "tokenizer/",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    run.assert_called_once_with(
+        [
+            "pull",
+            "bdn://models/weights",
+            "output",
+            "--include",
+            "model.safetensors",
+            "--include",
+            "tokenizer/",
+        ],
+        remote=None,
+    )
+
+
+def test_pull_command_rejects_empty_include_before_cannery(monkeypatch):
+    run = Mock()
+    monkeypatch.setattr(volume_commands, "run_cannery", run)
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli, ["volume", "pull", "bdn://models/weights", "output", "--include", ""]
+    )
+
+    assert result.exit_code != 0
+    assert "must not be empty" in result.output
+    run.assert_not_called()
 
 
 def test_push_command_forwards_optional_ref(monkeypatch, tmp_path):
@@ -546,6 +627,30 @@ def test_json_output_keeps_status_off_stdout(monkeypatch):
     assert json.loads(result.stdout) == {"namespaces": [], "protocol_version": 1}
     assert "upgrade available" not in result.stdout
     assert "upgrade available" in result.stderr
+
+
+@pytest.mark.parametrize("output_format", ["json", "text"])
+def test_pull_output_preserves_selected_and_volume_totals(monkeypatch, output_format):
+    command_result = {
+        "logical_bytes": "268435456",
+        "file_count": "3",
+        "directory_count": "1",
+        "volume_logical_bytes": "1073741824",
+        "volume_file_count": "12",
+        "volume_directory_count": "3",
+    }
+    monkeypatch.setattr(
+        volume_commands, "run_cannery", Mock(return_value=command_result)
+    )
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli,
+        ["volume", "pull", "bdn://weights/model", "output", "--output", output_format],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == command_result
 
 
 def test_remote_option_is_forwarded(monkeypatch):
@@ -639,3 +744,11 @@ def test_volume_help_lists_all_mvp_commands():
     assert result.exit_code == 0
     for command in ("push", "ls", "show", "pull"):
         assert command in result.output
+
+
+def test_pull_help_exposes_include_without_discard():
+    result = CliRunner().invoke(truss_cli, ["volume", "pull", "--help"])
+
+    assert result.exit_code == 0
+    assert "--include" in result.output
+    assert "--discard" not in result.output

@@ -1,16 +1,18 @@
 {
   "contract_sha256": {
-    "cannery_cli_v1.proto": "ec811cf64303816bdce07b1ee247f421bf0e396417ba13bd0433bc21552e513f",
+    "cannery_cli_v1.proto": "9730aa79f272611718cf8728f0f629090c4d662a200b74f46eb0af0bc54f0881",
     "fixtures/protojson/list-quota-error.ndjson": "b7bd99e15c6c9f59ad1f83b9c2abc5e6169acc844e09fd7439fc8f7baff8b209",
     "fixtures/protojson/list-success.ndjson": "8174441600539c6ea8afad701e6a59ba0bad21885ef1dbfa5fbd6ea2d4731b29",
     "fixtures/protojson/pull-cancelled.ndjson": "1f9408e0b5ee9a7a6e138c667a74676a2b82b76b3f709635ecd68a41db22ca92",
     "fixtures/protojson/pull-integrity-error.ndjson": "0f9f6b7314b1d3299483583f67f0e435519459b937f4c50e1c216c54a8071cf2",
-    "fixtures/protojson/pull-success.ndjson": "ab54e2688104765241af1f430a1ce2909b7d295bff120d6be9ca360bffd13759",
+    "fixtures/protojson/pull-invalid-include.ndjson": "6812c43077036fc062e0d375d353f5f3f648020a791e40c1093fcc94678c5823",
+    "fixtures/protojson/pull-no-match.ndjson": "5a62fdd347c4a42b3a633b6e8bc5dc85e7d1ab939ca5349a450236a30c5aed2e",
+    "fixtures/protojson/pull-success.ndjson": "a2c97b63538f1f703ff1baead3962f95172ca14027238d0c95634363c1d716f1",
     "fixtures/protojson/push-success.ndjson": "1968d60c78d23a695fbabad77a6046b9a95b3727bc41903305e152a2934bc299",
     "fixtures/protojson/push-throttled.ndjson": "2892859ed1f45ee27db55d2194c851b36e07cfb04d54b01e79f4a5991b65ad2a",
     "fixtures/protojson/show-not-found.ndjson": "f6cae3b3196948b752a4a4cd72b0affb87415c14f384f92884d1ff260d72b6e7",
     "fixtures/protojson/show-success.ndjson": "3d3ea81f0ab5fd8a0c0ccd6c7d499337e44f2496e6b3c10714c0f50730446b62",
-    "v1.md": "344aed7690ef0dc14b887cb98727788ef86d13ed91b18c863224005333455cf3"
+    "v1.md": "10f04ab470ed91f4ad1b91638be3ee2898a2d977f1114e015c9f7cbe4ccaea11"
   },
   "generator": "grpcio-tools==1.73.1"
 }

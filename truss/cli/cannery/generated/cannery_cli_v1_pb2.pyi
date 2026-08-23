@@ -130,16 +130,18 @@ class ShowRequestV1(_message.Message):
     def __init__(self, reference: _Optional[str] = ..., page_size: _Optional[int] = ..., page_token: _Optional[str] = ...) -> None: ...
 
 class PullRequestV1(_message.Message):
-    __slots__ = ("reference", "output_directory", "max_bytes_in_flight", "max_concurrency")
+    __slots__ = ("reference", "output_directory", "max_bytes_in_flight", "max_concurrency", "include_paths")
     REFERENCE_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_DIRECTORY_FIELD_NUMBER: _ClassVar[int]
     MAX_BYTES_IN_FLIGHT_FIELD_NUMBER: _ClassVar[int]
     MAX_CONCURRENCY_FIELD_NUMBER: _ClassVar[int]
+    INCLUDE_PATHS_FIELD_NUMBER: _ClassVar[int]
     reference: str
     output_directory: str
     max_bytes_in_flight: int
     max_concurrency: int
-    def __init__(self, reference: _Optional[str] = ..., output_directory: _Optional[str] = ..., max_bytes_in_flight: _Optional[int] = ..., max_concurrency: _Optional[int] = ...) -> None: ...
+    include_paths: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, reference: _Optional[str] = ..., output_directory: _Optional[str] = ..., max_bytes_in_flight: _Optional[int] = ..., max_concurrency: _Optional[int] = ..., include_paths: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class MachineRecordV1(_message.Message):
     __slots__ = ("protocol_version", "sequence", "operation_id", "operation", "started", "progress", "status", "warning", "result", "error", "cancelled")
@@ -344,7 +346,7 @@ class FileEntryV1(_message.Message):
     def __init__(self, path: _Optional[str] = ..., kind: _Optional[_Union[FileEntryKind, str]] = ..., size_bytes: _Optional[int] = ..., backing_object_digest: _Optional[str] = ..., symlink_target: _Optional[str] = ...) -> None: ...
 
 class PullResultV1(_message.Message):
-    __slots__ = ("requested_reference", "canonical_reference", "manifest_digest", "output_directory", "logical_bytes", "downloaded_bytes", "reused_bytes", "file_count", "directory_count", "content_verified")
+    __slots__ = ("requested_reference", "canonical_reference", "manifest_digest", "output_directory", "logical_bytes", "downloaded_bytes", "reused_bytes", "file_count", "directory_count", "content_verified", "volume_logical_bytes", "volume_file_count", "volume_directory_count")
     REQUESTED_REFERENCE_FIELD_NUMBER: _ClassVar[int]
     CANONICAL_REFERENCE_FIELD_NUMBER: _ClassVar[int]
     MANIFEST_DIGEST_FIELD_NUMBER: _ClassVar[int]
@@ -355,6 +357,9 @@ class PullResultV1(_message.Message):
     FILE_COUNT_FIELD_NUMBER: _ClassVar[int]
     DIRECTORY_COUNT_FIELD_NUMBER: _ClassVar[int]
     CONTENT_VERIFIED_FIELD_NUMBER: _ClassVar[int]
+    VOLUME_LOGICAL_BYTES_FIELD_NUMBER: _ClassVar[int]
+    VOLUME_FILE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    VOLUME_DIRECTORY_COUNT_FIELD_NUMBER: _ClassVar[int]
     requested_reference: str
     canonical_reference: str
     manifest_digest: str
@@ -365,7 +370,10 @@ class PullResultV1(_message.Message):
     file_count: int
     directory_count: int
     content_verified: bool
-    def __init__(self, requested_reference: _Optional[str] = ..., canonical_reference: _Optional[str] = ..., manifest_digest: _Optional[str] = ..., output_directory: _Optional[str] = ..., logical_bytes: _Optional[int] = ..., downloaded_bytes: _Optional[int] = ..., reused_bytes: _Optional[int] = ..., file_count: _Optional[int] = ..., directory_count: _Optional[int] = ..., content_verified: bool = ...) -> None: ...
+    volume_logical_bytes: int
+    volume_file_count: int
+    volume_directory_count: int
+    def __init__(self, requested_reference: _Optional[str] = ..., canonical_reference: _Optional[str] = ..., manifest_digest: _Optional[str] = ..., output_directory: _Optional[str] = ..., logical_bytes: _Optional[int] = ..., downloaded_bytes: _Optional[int] = ..., reused_bytes: _Optional[int] = ..., file_count: _Optional[int] = ..., directory_count: _Optional[int] = ..., content_verified: bool = ..., volume_logical_bytes: _Optional[int] = ..., volume_file_count: _Optional[int] = ..., volume_directory_count: _Optional[int] = ...) -> None: ...
 
 class ErrorV1(_message.Message):
     __slots__ = ("category", "reason", "message", "retryable", "retry_after_ms", "details")

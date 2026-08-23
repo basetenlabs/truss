@@ -105,6 +105,40 @@ def test_v1_consumer_preserves_retry_after_milliseconds():
     assert session.terminal_error["retryable"] is True
 
 
+def test_v1_pull_preserves_selected_and_optional_volume_totals():
+    _, result, rendered = _consume(_fixture("pull-success.ndjson"), "pull", 0)
+
+    assert result["logical_bytes"] == "268435456"
+    assert result["file_count"] == "3"
+    assert result["directory_count"] == "1"
+    assert result["volume_logical_bytes"] == "1073741824"
+    assert result["volume_file_count"] == "12"
+    assert result["volume_directory_count"] == "3"
+    assert "1/3 files" in rendered[0]
+    assert "67108864/268435456 bytes" in rendered[0]
+    assert all("/12 files" not in message for message in rendered)
+
+
+@pytest.mark.parametrize(
+    ("camel_name", "snake_name"),
+    [
+        ("logicalBytes", "logical_bytes"),
+        ("fileCount", "file_count"),
+        ("directoryCount", "directory_count"),
+    ],
+)
+def test_v1_pull_requires_selected_totals(camel_name, snake_name):
+    def omit_selected_total(record):
+        pull = record["result"]["pull"]
+        pull.pop(camel_name, None)
+        pull.pop(snake_name, None)
+
+    stream = _replace_record(_fixture("pull-success.ndjson"), 3, omit_selected_total)
+
+    with pytest.raises(CanneryProtocolError, match="required selected totals"):
+        _consume(stream, "pull", 0)
+
+
 def test_v1_consumer_maps_cancelled_exit_130():
     session, result, _ = _consume(_fixture("pull-cancelled.ndjson"), "pull", 130)
 

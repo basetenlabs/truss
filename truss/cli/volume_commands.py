@@ -5,7 +5,7 @@ import shutil  # noqa: F401 - compatibility re-export for existing integrations
 import subprocess  # noqa: F401 - compatibility re-export for existing integrations
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Set
+from typing import Any, Callable, Dict, Mapping, Optional, Set, Tuple
 
 import rich_click as click
 
@@ -226,19 +226,26 @@ def show_volume(
 @click.argument("ref")
 @click.argument("out_dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option(
-    "--discard",
-    is_flag=True,
-    help="Download and verify content without writing files (benchmark mode).",
+    "--include",
+    "include_paths",
+    multiple=True,
+    help="Volume-relative file or directory to pull. May be repeated.",
 )
 @_output_option
 @_remote_option
 @_clean_json_stdout
 @common.common_options()
 def pull_volume(
-    ref: str, out_dir: Path, discard: bool, output_format: str, remote: Optional[str]
+    ref: str,
+    out_dir: Path,
+    include_paths: Tuple[str, ...],
+    output_format: str,
+    remote: Optional[str],
 ) -> None:
-    """Download all files from REF into OUT_DIR."""
+    """Download files from REF into OUT_DIR."""
+    if any(not include_path for include_path in include_paths):
+        raise click.BadParameter("must not be empty", param_hint="'--include'")
     arguments = ["pull", ref, str(out_dir)]
-    if discard:
-        arguments.append("--discard")
+    for include_path in include_paths:
+        arguments.extend(["--include", include_path])
     _emit_result(run_cannery(arguments, remote=remote), output_format)

@@ -22,6 +22,11 @@ _MAX_PAGE_ENTRIES = 1_000
 _TERMINAL_EXIT_TIMEOUT_SEC = 5.0
 _STREAM_DRAIN_TIMEOUT_SEC = 5.0
 _STABLE_REASON = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_REQUIRED_PULL_SELECTED_TOTALS = {
+    "logicalBytes": "logical_bytes",
+    "fileCount": "file_count",
+    "directoryCount": "directory_count",
+}
 
 _OPERATION_BY_COMMAND = {
     "push": protocol_v1.OPERATION_PUSH,
@@ -253,6 +258,7 @@ class _V1ProtocolSession:
             raise CanneryProtocolError(
                 f"Cannery machine record at line {line_number} is not an object."
             )
+        _validate_required_pull_selected_totals(document)
         _validate_symbolic_enums(document)
         record = protocol_v1.MachineRecordV1()
         try:
@@ -606,6 +612,25 @@ def _validate_symbolic_enums(document: Mapping[str, Any]) -> None:
                 _require_symbolic_enum(
                     entry, "kind", protocol_v1.FileEntryKind.keys(), "file kind"
                 )
+
+
+def _validate_required_pull_selected_totals(document: Mapping[str, Any]) -> None:
+    result = document.get("result")
+    if not isinstance(result, Mapping):
+        return
+    pull = result.get("pull")
+    if not isinstance(pull, Mapping):
+        return
+    missing = [
+        camel_name
+        for camel_name, snake_name in _REQUIRED_PULL_SELECTED_TOTALS.items()
+        if camel_name not in pull and snake_name not in pull
+    ]
+    if missing:
+        raise CanneryProtocolError(
+            "Cannery pull result omitted required selected totals: "
+            f"{', '.join(missing)}."
+        )
 
 
 def _require_symbolic_enum(
