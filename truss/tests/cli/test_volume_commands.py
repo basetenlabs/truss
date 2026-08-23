@@ -211,6 +211,7 @@ def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
             "type": "status",
             "operation": "push",
             "phase": "scanning",
+            "message": "bare-credential-value-9f4c",
         },
         {
             "protocol_version": 1,
@@ -234,6 +235,7 @@ def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
     assert "2/5 files" in captured.err
     assert "100/400 bytes" in captured.err
     assert "human text must not be used" not in captured.err
+    assert "bare-credential-value-9f4c" not in captured.err
     assert captured.out == ""
 
 
@@ -256,12 +258,11 @@ def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
         monkeypatch, FakeProcess(stderr=f"{json.dumps(event)}\n", return_code=1)
     )
 
-    with pytest.raises(
-        click.ClickException, match="unauthorized.*token expired"
-    ) as exc:
+    with pytest.raises(click.ClickException, match="reason unauthorized") as exc:
         volume_commands.run_cannery(["ls"])
 
-    assert "Hint: create a new token" in str(exc.value)
+    assert "token expired" not in str(exc.value)
+    assert "create a new token" not in str(exc.value)
 
 
 def test_exit_two_becomes_usage_error(monkeypatch):

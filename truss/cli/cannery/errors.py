@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import enum
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Union
 
 import rich_click as click
 
-from truss.cli.cannery.diagnostics import diagnostic_failure_suffix, redact_text
+from truss.cli.cannery.diagnostics import diagnostic_failure_suffix
 
 
-class CanneryProtocolError(click.ClickException):
+class CanneryClickException(click.ClickException):
+    """An error whose message contains only reviewed wrapper-generated text."""
+
+
+class CanneryUsageError(click.UsageError):
+    """A usage error whose message contains only reviewed wrapper-generated text."""
+
+
+class CanneryProtocolError(CanneryClickException):
     """The Cannery subprocess violated its selected machine protocol."""
 
 
@@ -44,6 +53,7 @@ _REASON_CATEGORY = {
     "rate_limited": ErrorCategory.THROTTLED,
     "resource_exhausted": ErrorCategory.QUOTA,
 }
+_MACHINE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
 
 
 def error_category(
@@ -115,12 +125,12 @@ def command_failure(
     rendered = _format_machine_error(error, return_code)
     rendered += f" Category: {category.value}."
     if error is not None:
-        operation = error.get("operation")
-        phase = error.get("phase")
-        if isinstance(operation, str):
-            rendered += f" Operation: {redact_text(operation)}."
-        if isinstance(phase, str):
-            rendered += f" Phase: {redact_text(phase)}."
+        operation = safe_machine_identifier(error.get("operation"))
+        phase = safe_machine_identifier(error.get("phase"))
+        if operation is not None:
+            rendered += f" Operation: {operation}."
+        if phase is not None:
+            rendered += f" Phase: {phase}."
         retryable = error.get("retryable")
         if isinstance(retryable, bool):
             rendered += f" Retryable: {'yes' if retryable else 'no'}."
@@ -133,16 +143,18 @@ def command_failure(
 
     rendered += " " + diagnostic_failure_suffix(correlation_id, diagnostic_path)
     if category == ErrorCategory.USAGE or return_code == 2:
-        return click.UsageError(rendered)
-    return click.ClickException(rendered)
+        return CanneryUsageError(rendered)
+    return CanneryClickException(rendered)
 
 
 def attach_failure_context(
-    error: click.ClickException, correlation_id: str, diagnostic_path: Optional[Path]
+    error: Union[CanneryClickException, CanneryUsageError],
+    correlation_id: str,
+    diagnostic_path: Optional[Path],
 ) -> click.ClickException:
     suffix = diagnostic_failure_suffix(correlation_id, diagnostic_path)
     if suffix not in error.message:
-        error.message = f"{redact_text(error.message)} {suffix}"
+        error.message = f"{error.message} {suffix}"
     return error
 
 
@@ -152,15 +164,13 @@ def _format_machine_error(error: Optional[Mapping[str, Any]], return_code: int) 
             f"Cannery exited with status {return_code} without a machine error event."
         )
 
-    reason = error.get("reason") or error.get("status")
-    message = error.get("message") or error.get("detail")
-    hint = error.get("hint")
-    parts = []
-    if isinstance(reason, str):
-        parts.append(redact_text(reason))
-    if isinstance(message, str) and message != reason:
-        parts.append(redact_text(message))
-    rendered = ": ".join(parts) or f"Cannery exited with status {return_code}"
-    if isinstance(hint, str):
-        rendered += f" Hint: {redact_text(hint)}"
-    return rendered
+    reason = safe_machine_identifier(error.get("reason") or error.get("status"))
+    if reason is not None:
+        return f"Cannery failed with reason {reason}"
+    return f"Cannery exited with status {return_code}"
+
+
+def safe_machine_identifier(value: Any) -> Optional[str]:
+    if isinstance(value, str) and _MACHINE_IDENTIFIER.fullmatch(value):
+        return value
+    return None

@@ -38,6 +38,7 @@ def test_loopback_provider_has_no_token_file():
         assert credential.mechanism == "loopback-no-auth"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Unix permission bits")
 def test_explicit_token_file_requires_owner_only_permissions(tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("secret")
@@ -47,6 +48,7 @@ def test_explicit_token_file_requires_owner_only_permissions(tmp_path):
         ExplicitTokenFileAuthProvider(token_file).acquire("correlation")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlink support is deferred")
 def test_explicit_token_file_rejects_symlink(tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("secret")
@@ -71,8 +73,9 @@ def test_exchange_token_is_private_refreshable_and_cleaned_up():
         token_file = credential.token_file
         token_directory = token_file.parent
         assert token_file.read_text() == "first-secret"
-        assert token_file.stat().st_mode & 0o777 == 0o600
-        assert token_directory.stat().st_mode & 0o777 == 0o700
+        if os.name != "nt":
+            assert token_file.stat().st_mode & 0o777 == 0o600
+            assert token_directory.stat().st_mode & 0o777 == 0o700
 
         original_inode = token_file.stat().st_ino
         credential.refresh()
@@ -114,7 +117,7 @@ def test_child_environment_preserves_proxy_but_removes_parent_credentials(
     assert env["CANNERY_AUTH_TOKEN_FILE"] == str(token_file)
 
 
-@pytest.mark.skipif(not hasattr(os, "getuid"), reason="Unix ownership check")
+@pytest.mark.skipif(os.name == "nt", reason="Unix ownership check")
 def test_explicit_token_file_rejects_unowned_file(monkeypatch, tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("secret")

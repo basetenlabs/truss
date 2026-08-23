@@ -111,8 +111,8 @@ def _validate_machine_event(event: Any) -> Mapping[str, Any]:
     version = event.get("protocol_version")
     if type(version) is not int or version != _PHASE_0_PROTOCOL_VERSION:
         raise CanneryProtocolError(
-            "Unsupported Cannery machine progress protocol version "
-            f"{version!r}; Truss requires version {_PHASE_0_PROTOCOL_VERSION}."
+            "Unsupported Cannery machine progress protocol version; "
+            f"Truss requires version {_PHASE_0_PROTOCOL_VERSION}."
         )
     if event_kind(event) is None:
         raise CanneryProtocolError(
@@ -133,7 +133,7 @@ def _parse_result(stdout: str) -> Dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise CanneryProtocolError(
             f"Cannery emitted an invalid final JSON result: {exc.msg}."
-        ) from exc
+        ) from None
     if stripped[end:].strip():
         raise CanneryProtocolError(
             "Cannery emitted more than one value on result stdout."
@@ -143,7 +143,7 @@ def _parse_result(stdout: str) -> Dict[str, Any]:
     version = result.get("protocol_version")
     if type(version) is not int or version != _PHASE_0_PROTOCOL_VERSION:
         raise CanneryProtocolError(
-            "Unsupported Cannery result protocol version "
-            f"{version!r}; Truss requires version {_PHASE_0_PROTOCOL_VERSION}."
+            "Unsupported Cannery result protocol version; "
+            f"Truss requires version {_PHASE_0_PROTOCOL_VERSION}."
         )
     return result

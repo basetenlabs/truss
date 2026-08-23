@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -123,3 +124,31 @@ def test_exchange_token_is_cleaned_up_when_subprocess_start_fails(monkeypatch):
 
     assert token_path is not None
     assert not token_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("unsafe_error", "expected_exception_class"),
+    [
+        (RuntimeError("bare-credential-value-9f4c"), "RuntimeError"),
+        (click.ClickException("bare-credential-value-9f4c"), "Exception"),
+    ],
+)
+def test_unreviewed_exception_values_are_never_exposed(
+    unsafe_error, expected_exception_class, diagnostic_directory
+):
+    def fail_config():
+        raise unsafe_error
+
+    with pytest.raises(click.ClickException) as exc_info:
+        runner.run_cannery(["ls"], config_resolver=fail_config)
+
+    assert "bare-credential-value-9f4c" not in str(exc_info.value)
+    diagnostic_path = next(diagnostic_directory.glob("diagnostic-*.jsonl"))
+    diagnostic_text = diagnostic_path.read_text()
+    assert "bare-credential-value-9f4c" not in diagnostic_text
+    records = [json.loads(line) for line in diagnostic_text.splitlines()]
+    assert records[-1]["message"] in {
+        "Cannery wrapper encountered an unexpected exception.",
+        "Cannery wrapper rejected an unreviewed error.",
+    }
+    assert records[-1]["exception_class"] == expected_exception_class

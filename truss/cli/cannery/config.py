@@ -6,10 +6,9 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 from urllib.parse import urlparse
 
-import rich_click as click
-
 from truss.base.constants import DEFAULT_REMOTE_URL
 from truss.cli import remote_cli
+from truss.cli.cannery.errors import CanneryUsageError
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -44,7 +43,7 @@ class CanneryConfig:
 def is_loopback_endpoint(api: str) -> bool:
     parsed = urlparse(api)
     if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
-        raise click.UsageError(
+        raise CanneryUsageError(
             "TRUSS_CANNERY_API must be an http(s) URL with a hostname."
         )
 
@@ -68,13 +67,13 @@ def _resolve_active_remote() -> Optional[ActiveRemote]:
     remote_name = remote_cli.inquire_remote_name(allow_create=False)
     remote_config = RemoteFactory.load_remote_config(remote_name)
     if remote_config.configs.get("remote_provider") != "baseten":
-        raise click.UsageError(
-            f"Truss remote {remote_name!r} is not a Baseten remote. "
-            "Set TRUSS_CANNERY_API for local Cannery development."
+        raise CanneryUsageError(
+            "The selected Truss remote is not a Baseten remote. Set "
+            "TRUSS_CANNERY_API for local Cannery development."
         )
     remote_url = remote_config.configs.get("remote_url")
     if not isinstance(remote_url, str) or not remote_url:
-        raise click.UsageError(f"Truss remote {remote_name!r} has no valid remote_url.")
+        raise CanneryUsageError("The selected Truss remote has no valid remote_url.")
     return ActiveRemote(
         name=remote_name,
         remote_url=_normalize_remote_url(remote_url),
@@ -96,10 +95,9 @@ def resolve_cannery_config() -> CanneryConfig:
 
     api = CANNERY_API_BY_REMOTE_URL.get(active_remote.remote_url)
     if api is None:
-        remote_hostname = urlparse(active_remote.remote_url).hostname or "<invalid>"
-        raise click.UsageError(
-            f"No Cannery endpoint is configured for Truss remote host "
-            f"{remote_hostname!r}. Set TRUSS_CANNERY_API explicitly "
+        raise CanneryUsageError(
+            "No Cannery endpoint is configured for the selected Truss remote. "
+            "Set TRUSS_CANNERY_API explicitly "
             "for local development."
         )
     return CanneryConfig(api=api, org=org, active_remote=active_remote)

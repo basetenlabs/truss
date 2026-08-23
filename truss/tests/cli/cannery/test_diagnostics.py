@@ -1,4 +1,5 @@
 import json
+import os
 
 import click
 import pytest
@@ -26,6 +27,7 @@ def test_endpoint_diagnostics_exclude_credentials_path_and_query():
     )
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Unix permission bits")
 def test_diagnostic_log_is_private_structured_and_allowlisted(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(tmp_path / "logs"))
     diagnostic = DiagnosticLog.create("corr-123")
@@ -48,6 +50,7 @@ def test_diagnostic_log_is_private_structured_and_allowlisted(monkeypatch, tmp_p
     assert payload["operation"] == "push"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlink support is deferred")
 def test_diagnostic_log_rejects_symlink_replacement(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(tmp_path / "logs"))
     diagnostic = DiagnosticLog.create("corr-123")

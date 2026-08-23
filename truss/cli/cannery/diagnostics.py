@@ -25,6 +25,7 @@ _SAFE_FIELDS = frozenset(
         "category",
         "duration_sec",
         "endpoint_hostname",
+        "exception_class",
         "exit_code",
         "mechanism",
         "message",
@@ -81,7 +82,8 @@ class DiagnosticLog:
             prefix="diagnostic-", suffix=".jsonl", dir=directory
         )
         try:
-            os.fchmod(descriptor, 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(descriptor, 0o600)
         finally:
             os.close(descriptor)
         return cls(Path(name), correlation_id)
@@ -134,20 +136,20 @@ def _diagnostic_directory() -> Path:
 def _prepare_private_directory(directory: Path) -> None:
     try:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    except OSError as exc:
+    except OSError:
         raise click.ClickException(
             "Could not create the private Cannery diagnostics directory."
-        ) from exc
+        ) from None
     directory_stat = directory.lstat()
     if stat.S_ISLNK(directory_stat.st_mode) or not stat.S_ISDIR(directory_stat.st_mode):
         raise click.ClickException(
             "Cannery diagnostics path must be a regular directory, not a symlink."
         )
-    if hasattr(os, "getuid") and directory_stat.st_uid != os.getuid():
+    if os.name != "nt" and directory_stat.st_uid != os.getuid():
         raise click.ClickException(
             "Cannery diagnostics directory must be owned by the current user."
         )
-    if directory_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if os.name != "nt" and directory_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise click.ClickException(
             "Cannery diagnostics directory must be owner-only (mode 0700)."
         )
@@ -159,11 +161,11 @@ def _validate_private_log(path: Path) -> os.stat_result:
         raise click.ClickException(
             "Cannery diagnostic log must be a regular file, not a symlink."
         )
-    if hasattr(os, "getuid") and path_stat.st_uid != os.getuid():
+    if os.name != "nt" and path_stat.st_uid != os.getuid():
         raise click.ClickException(
             "Cannery diagnostic log must be owned by the current user."
         )
-    if path_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if os.name != "nt" and path_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise click.ClickException(
             "Cannery diagnostic log must be owner-only (mode 0600)."
         )

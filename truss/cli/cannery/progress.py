@@ -63,11 +63,7 @@ def _format_status_event(event: Mapping[str, Any]) -> Optional[str]:
     ]
     if not typed_values:
         return None
-    rendered = f"Cannery {' — '.join(typed_values)}"
-    message = event.get("message")
-    if isinstance(message, str) and message:
-        rendered += f": {message}"
-    return rendered
+    return f"Cannery {' — '.join(typed_values)}"
 
 
 def format_event(event: Mapping[str, Any]) -> Optional[str]:

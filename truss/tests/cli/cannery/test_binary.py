@@ -64,8 +64,9 @@ def test_download_is_verified_private_atomic_and_proxy_compatible(
 
     assert resolved.name == f"cannery-{artifact.sha256}"
     assert resolved.read_bytes() == content
-    assert resolved.stat().st_mode & 0o777 == 0o700
-    assert resolved.parent.stat().st_mode & 0o777 == 0o700
+    if os.name != "nt":
+        assert resolved.stat().st_mode & 0o777 == 0o700
+        assert resolved.parent.stat().st_mode & 0o777 == 0o700
     assert not list(resolved.parent.glob(".cannery-download-*"))
     request_kwargs = http_client.get.call_args.kwargs
     assert request_kwargs["stream"] is True
@@ -129,6 +130,7 @@ def test_digest_mismatch_is_rejected_and_temp_removed(tmp_path):
     assert not list(cache.iterdir())
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlink support is deferred")
 def test_cached_symlink_is_rejected(tmp_path):
     artifact = _artifact()
     cache = tmp_path / "cache"
@@ -142,6 +144,7 @@ def test_cached_symlink_is_rejected(tmp_path):
         binary.resolve_artifact(artifact, cache_dir=cache)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Unix permission bits")
 def test_cached_group_writable_file_is_rejected(tmp_path):
     artifact = _artifact()
     cache = tmp_path / "cache"
@@ -154,6 +157,7 @@ def test_cached_group_writable_file_is_rejected(tmp_path):
         binary.resolve_artifact(artifact, cache_dir=cache)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Unix permission bits")
 def test_non_private_cache_directory_is_rejected(tmp_path):
     cache = tmp_path / "cache"
     cache.mkdir(mode=0o755)
@@ -173,7 +177,7 @@ def test_remote_resolution_does_not_use_path_fallback(monkeypatch):
     which.assert_not_called()
 
 
-@pytest.mark.skipif(not hasattr(os, "getuid"), reason="Unix ownership check")
+@pytest.mark.skipif(os.name == "nt", reason="Unix ownership check")
 def test_cached_unowned_file_is_rejected(monkeypatch, tmp_path):
     artifact = _artifact()
     cache = tmp_path / "cache"

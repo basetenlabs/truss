@@ -65,8 +65,7 @@ def current_platform() -> Tuple[str, str]:
     }.get(platform.machine().lower())
     if operating_system is None or architecture is None:
         raise click.ClickException(
-            "Cannery does not provide a native artifact for "
-            f"{platform.system()} {platform.machine()}."
+            "Cannery does not provide a native artifact for this platform."
         )
     return (operating_system, architecture)
 
@@ -182,20 +181,20 @@ def _validate_metadata(
 def _prepare_private_cache(cache: Path) -> None:
     try:
         cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-    except OSError as exc:
+    except OSError:
         raise click.ClickException(
             "Could not create the private Cannery binary cache."
-        ) from exc
+        ) from None
     cache_stat = cache.lstat()
     if stat.S_ISLNK(cache_stat.st_mode) or not stat.S_ISDIR(cache_stat.st_mode):
         raise click.ClickException(
             "Cannery binary cache must be a regular directory, not a symlink."
         )
-    if hasattr(os, "getuid") and cache_stat.st_uid != os.getuid():
+    if os.name != "nt" and cache_stat.st_uid != os.getuid():
         raise click.ClickException(
             "Cannery binary cache must be owned by the current user."
         )
-    if cache_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if os.name != "nt" and cache_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise click.ClickException(
             "Cannery binary cache must be owner-only (mode 0700)."
         )
@@ -211,7 +210,8 @@ def _download_artifact(
     digest = hashlib.sha256()
     size_bytes = 0
     try:
-        os.fchmod(descriptor, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "wb") as file:
             with http_client.get(
                 artifact.url, stream=True, timeout=_DOWNLOAD_TIMEOUT_SEC
@@ -251,7 +251,7 @@ def _download_artifact(
             raise
         raise click.ClickException(
             "Failed to download the pinned Cannery artifact over HTTPS."
-        ) from exc
+        ) from None
 
 
 def _verify_executable(path: Path, artifact: ArtifactMetadata) -> None:
@@ -260,11 +260,11 @@ def _verify_executable(path: Path, artifact: ArtifactMetadata) -> None:
         raise click.ClickException(
             "Cached Cannery artifact must be a regular file, not a symlink."
         )
-    if hasattr(os, "getuid") and path_stat.st_uid != os.getuid():
+    if os.name != "nt" and path_stat.st_uid != os.getuid():
         raise click.ClickException(
             "Cached Cannery artifact must be owned by the current user."
         )
-    if path_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+    if os.name != "nt" and path_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise click.ClickException(
             "Cached Cannery artifact must not be group- or world-writable."
         )

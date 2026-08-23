@@ -25,13 +25,22 @@ from truss.cli.cannery.diagnostics import (
     endpoint_hostname,
 )
 from truss.cli.cannery.errors import (
+    CanneryClickException,
+    CanneryUsageError,
     attach_failure_context,
     command_failure,
     error_category,
+    safe_machine_identifier,
 )
 from truss.cli.cannery.protocol import CanneryProtocolConsumer, Phase0ProtocolConsumer
 
 _CANCEL_GRACE_SECONDS = 5
+_SAFE_EXCEPTION_CLASS_NAMES = {
+    OSError: "OSError",
+    RuntimeError: "RuntimeError",
+    TypeError: "TypeError",
+    ValueError: "ValueError",
+}
 
 
 def _cancel_process(process: "subprocess.Popen[str]") -> None:
@@ -98,25 +107,39 @@ def run_cannery(
         )
         click.echo(diagnostic_failure_suffix(correlation_id, diagnostic.path), err=True)
         raise
+    except (CanneryClickException, CanneryUsageError) as exc:
+        diagnostic.record(
+            "failed",
+            operation=operation,
+            message="Cannery operation failed.",
+            exception_class=_safe_exception_class_name(exc),
+            duration_sec=time.monotonic() - started_at,
+        )
+        raise attach_failure_context(exc, correlation_id, diagnostic.path)
     except click.ClickException as exc:
         diagnostic.record(
             "failed",
             operation=operation,
-            message=exc.message,
+            message="Cannery wrapper rejected an unreviewed error.",
+            exception_class=_safe_exception_class_name(exc),
             duration_sec=time.monotonic() - started_at,
         )
-        raise attach_failure_context(exc, correlation_id, diagnostic.path)
+        wrapped = CanneryClickException(
+            "Cannery wrapper failed before a safe typed error was available."
+        )
+        raise attach_failure_context(wrapped, correlation_id, diagnostic.path) from None
     except Exception as exc:
         diagnostic.record(
             "failed",
             operation=operation,
-            message=str(exc),
+            message="Cannery wrapper encountered an unexpected exception.",
+            exception_class=_safe_exception_class_name(exc),
             duration_sec=time.monotonic() - started_at,
         )
-        wrapped = click.ClickException(
-            "Cannery wrapper failed before a typed error was available."
+        wrapped = CanneryClickException(
+            "Cannery wrapper failed before a safe typed error was available."
         )
-        raise attach_failure_context(wrapped, correlation_id, diagnostic.path) from exc
+        raise attach_failure_context(wrapped, correlation_id, diagnostic.path) from None
     else:
         diagnostic.delete()
         return result
@@ -144,7 +167,13 @@ def _run_cannery(
     with provider.acquire(correlation_id) as credential:
         diagnostic.record("authenticated", mechanism=credential.mechanism)
         if binary_resolver is None:
-            binary = resolve_cannery_binary(allow_path_fallback=config.is_loopback)
+            try:
+                binary = resolve_cannery_binary(allow_path_fallback=config.is_loopback)
+            except click.ClickException:
+                raise CanneryClickException(
+                    "Could not resolve a trusted Cannery binary. For local "
+                    "development, set TRUSS_CANNERY_BIN to an executable client."
+                ) from None
         else:
             binary = binary_resolver()
         artifact_version, artifact_sha256 = binary_diagnostic_metadata(Path(binary))
@@ -183,14 +212,12 @@ def _run_cannery(
                 bufsize=1,
                 **popen_options,
             )
-        except OSError as exc:
-            raise click.ClickException(
-                f"Failed to start Cannery binary {binary!r}."
-            ) from exc
+        except OSError:
+            raise CanneryClickException("Failed to start the Cannery binary.") from None
 
         if process.stdout is None or process.stderr is None:
             _cancel_process(process)
-            raise click.ClickException("Failed to capture Cannery subprocess output.")
+            raise CanneryClickException("Failed to capture Cannery subprocess output.")
 
         consumer = protocol_consumer or Phase0ProtocolConsumer()
         session = consumer.start(
@@ -219,10 +246,18 @@ def _run_cannery(
                 category=error_category(machine_error, return_code).value,
                 exit_code=return_code,
                 phase=session.last_phase,
-                reason=machine_error.get("reason") if machine_error else None,
+                reason=(
+                    safe_machine_identifier(machine_error.get("reason"))
+                    if machine_error
+                    else None
+                ),
                 retryable=machine_error.get("retryable") if machine_error else None,
             )
             raise command_failure(
                 machine_error, return_code, correlation_id, diagnostic.path
             )
         return result
+
+
+def _safe_exception_class_name(error: BaseException) -> str:
+    return _SAFE_EXCEPTION_CLASS_NAMES.get(type(error), "Exception")

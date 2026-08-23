@@ -9,9 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Protocol
 
-import rich_click as click
-
 from truss.cli.cannery.config import ActiveRemote, CanneryConfig
+from truss.cli.cannery.errors import CanneryClickException, CanneryUsageError
 
 _PARENT_CREDENTIAL_ENV_KEYS = (
     "BASETEN_API_KEY",
@@ -49,9 +48,9 @@ class CanneryCredential:
 
     def refresh(self) -> None:
         if self._refresh_hook is None or self.token_file is None:
-            raise click.ClickException(
-                f"Cannery authentication mechanism {self.mechanism!r} "
-                "does not support refresh."
+            raise CanneryClickException(
+                "The selected Cannery authentication mechanism does not support "
+                "refresh."
             )
         self._refresh_hook.refresh(self.token_file)
 
@@ -137,12 +136,12 @@ def _exchange_token(
 ) -> ExchangedToken:
     try:
         token = adapter.exchange(active_remote, correlation_id)
-    except Exception as exc:
-        raise click.ClickException(
+    except Exception:
+        raise CanneryClickException(
             "Cannery credential exchange failed. No credential details were logged."
-        ) from exc
+        ) from None
     if not token.value:
-        raise click.ClickException(
+        raise CanneryClickException(
             "Cannery credential exchange returned an empty token."
         )
     return token
@@ -181,20 +180,20 @@ def _fsync_directory(directory: Path) -> None:
 def _validate_owner_only_file(token_file: Path) -> Path:
     try:
         file_stat = token_file.lstat()
-    except FileNotFoundError as exc:
-        raise click.UsageError(
+    except FileNotFoundError:
+        raise CanneryUsageError(
             "TRUSS_CANNERY_AUTH_TOKEN_FILE must point to an existing token file."
-        ) from exc
+        ) from None
     if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
-        raise click.UsageError(
+        raise CanneryUsageError(
             "TRUSS_CANNERY_AUTH_TOKEN_FILE must be a regular file, not a symlink."
         )
-    if hasattr(os, "getuid") and file_stat.st_uid != os.getuid():
-        raise click.UsageError(
+    if os.name != "nt" and file_stat.st_uid != os.getuid():
+        raise CanneryUsageError(
             "TRUSS_CANNERY_AUTH_TOKEN_FILE must be owned by the current user."
         )
-    if file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise click.UsageError(
+    if os.name != "nt" and file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        raise CanneryUsageError(
             "TRUSS_CANNERY_AUTH_TOKEN_FILE must be owner-only (mode 0600)."
         )
     return token_file.resolve()
@@ -209,13 +208,13 @@ def select_auth_provider(
     if config.is_loopback:
         return LoopbackNoAuthProvider()
     if config.active_remote is None:
-        raise click.UsageError(
+        raise CanneryUsageError(
             "A Cannery token is required for non-loopback endpoints. Set "
             "TRUSS_CANNERY_AUTH_TOKEN_FILE for development, or use a configured "
             "Truss remote. Automatic Baseten exchange remains pending RUN-869."
         )
     if exchange_adapter is None:
-        raise click.UsageError(
+        raise CanneryUsageError(
             "Cannery token exchange is not configured in this Truss build. "
             "Automatic Baseten exchange remains pending RUN-869; for development, "
             "set TRUSS_CANNERY_AUTH_TOKEN_FILE to an owner-only token file."
