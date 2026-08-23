@@ -1,6 +1,7 @@
 import io
 import json
 import signal
+from pathlib import Path
 from unittest.mock import Mock
 
 import click
@@ -12,10 +13,29 @@ from truss.cli.cannery import config as cannery_config
 from truss.cli.cannery import runner as cannery_runner
 from truss.cli.cli import truss_cli
 
+GENERATED_ROOT = Path(volume_commands.__file__).parent / "cannery" / "generated"
+FIXTURES = GENERATED_ROOT / "fixtures" / "protojson"
+BOOTSTRAP = (
+    '{"bootstrap_version":1,"cannery_version":"1.2.3",'
+    '"supported_machine_protocols":[1],'
+    '"supported_encodings":["protojson-ndjson"]}\n'
+)
+SUCCESS_FIXTURE = {
+    "push": "push-success.ndjson",
+    "ls": "list-success.ndjson",
+    "show": "show-success.ndjson",
+    "pull": "pull-success.ndjson",
+}
+
+
+def _fixture(name):
+    return (FIXTURES / name).read_text()
+
 
 class FakeProcess:
-    def __init__(self, stdout='{"protocol_version":1}', stderr="", return_code=0):
-        self.stdout = io.StringIO(stdout)
+    def __init__(self, stdout=None, stderr="", return_code=0):
+        self.default_stdout = stdout is None
+        self.stdout = io.StringIO(stdout or "")
         self.stderr = io.StringIO(stderr)
         self.returncode = return_code
         self.signals = []
@@ -48,6 +68,7 @@ def clean_cannery_environment(monkeypatch, tmp_path):
         "CANNERY_AUTH_TOKEN_FILE",
         "CANNERY_CORRELATION_ID",
         "CANNERY_DIAGNOSTIC_LOG",
+        "TRUSS_CANNERY_PHASE0",
     ):
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(tmp_path / "diagnostics"))
@@ -57,7 +78,15 @@ def clean_cannery_environment(monkeypatch, tmp_path):
 
 
 def install_process(monkeypatch, process):
-    popen = Mock(return_value=process)
+    def start(argv, **_kwargs):
+        if argv == ["/bin/cannery", "protocol"]:
+            return FakeProcess(stdout=BOOTSTRAP)
+        if process.default_stdout:
+            command = argv[argv.index("--api") + 2]
+            process.stdout = io.StringIO(_fixture(SUCCESS_FIXTURE[command]))
+        return process
+
+    popen = Mock(side_effect=start)
     monkeypatch.setattr(
         cannery_runner, "resolve_cannery_binary", lambda **_kwargs: "/bin/cannery"
     )
@@ -101,21 +130,20 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("CANNERY_AUTH_TOKEN_FILE", "/must/not/leak")
     popen = install_process(
-        monkeypatch, FakeProcess(stdout='{"protocol_version":1,"refs":[]}')
+        monkeypatch, FakeProcess(stdout=_fixture("list-success.ndjson"))
     )
 
     result = volume_commands.run_cannery(["ls", "models", "--all"])
     correlation_id = result.pop("correlation_id")
-    assert result == {"protocol_version": 1, "refs": []}
+    assert result["namespace"] == "weights"
+    assert len(result["references"]) == 2
     assert correlation_id == popen.call_args.kwargs["env"]["CANNERY_CORRELATION_ID"]
 
     argv = popen.call_args.args[0]
     assert argv == [
         "/bin/cannery",
-        "-o",
-        "json",
-        "--progress",
-        "machine",
+        "--machine-protocol",
+        "1",
         "--api",
         "https://cannery.example.com",
         "ls",
@@ -154,6 +182,62 @@ def test_default_api_and_org_are_local_dev(monkeypatch):
     assert popen.call_args.kwargs["env"]["CANNERY_ORG"] == "dev"
 
 
+def test_v1_bootstrap_mismatch_prevents_operation(monkeypatch):
+    unsupported = (
+        '{"bootstrap_version":1,"cannery_version":"2.0.0",'
+        '"supported_machine_protocols":[2],'
+        '"supported_encodings":["protojson-ndjson"]}\n'
+    )
+    popen = Mock(return_value=FakeProcess(stdout=unsupported))
+    monkeypatch.setattr(
+        cannery_runner, "resolve_cannery_binary", lambda **_kwargs: "/bin/cannery"
+    )
+    monkeypatch.setattr(volume_commands.subprocess, "Popen", popen)
+
+    with pytest.raises(click.ClickException, match="does not support"):
+        volume_commands.run_cannery(["ls"])
+
+    popen.assert_called_once()
+    assert popen.call_args.args[0] == ["/bin/cannery", "protocol"]
+
+
+def test_explicit_phase_zero_fallback_is_loopback_only(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRUSS_CANNERY_PHASE0", "1")
+    process = FakeProcess(stdout='{"protocol_version":1,"refs":[]}')
+    popen = install_process(monkeypatch, process)
+
+    result = volume_commands.run_cannery(["ls"])
+
+    assert result["refs"] == []
+    assert popen.call_count == 1
+    assert popen.call_args.args[0][1:5] == ["-o", "json", "--progress", "machine"]
+
+    token_file = tmp_path / "token"
+    token_file.write_text("token")
+    token_file.chmod(0o600)
+    monkeypatch.setenv("TRUSS_CANNERY_API", "https://cannery.example.com")
+    monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))
+    popen.reset_mock()
+
+    with pytest.raises(click.UsageError, match="non-loopback"):
+        volume_commands.run_cannery(["ls"])
+
+    popen.assert_not_called()
+
+
+def test_pinned_artifact_rejects_phase_zero_fallback(monkeypatch):
+    monkeypatch.setenv("TRUSS_CANNERY_PHASE0", "1")
+    popen = install_process(monkeypatch, FakeProcess(stdout='{"protocol_version":1}'))
+    monkeypatch.setattr(
+        cannery_runner, "binary_diagnostic_metadata", lambda _path: ("1.2.3", "a" * 64)
+    )
+
+    with pytest.raises(click.UsageError, match="Pinned Cannery artifacts"):
+        volume_commands.run_cannery(["ls"])
+
+    popen.assert_not_called()
+
+
 def test_non_loopback_endpoint_rejected_without_token(monkeypatch):
     monkeypatch.setenv("TRUSS_CANNERY_API", "https://cannery.example.com")
     popen = Mock()
@@ -177,16 +261,15 @@ def test_missing_explicit_token_file_rejected_before_subprocess(monkeypatch, tmp
 
 
 def test_result_parser_requires_one_final_object(monkeypatch):
-    install_process(
-        monkeypatch, FakeProcess(stdout='  {"protocol_version":1,"digest":"b3:abc"}\n')
-    )
+    install_process(monkeypatch, FakeProcess(stdout=_fixture("show-success.ndjson")))
 
     result = volume_commands.run_cannery(["show", "bdn://dev/model"])
     result.pop("correlation_id")
-    assert result == {"protocol_version": 1, "digest": "b3:abc"}
+    assert result["manifest_digest"].startswith("b3:")
+    assert result["file_page"]["files"]
 
 
-@pytest.mark.parametrize("stdout", ["", "[]", "{}", '{"protocol_version":2}', "{}\n{}"])
+@pytest.mark.parametrize("stdout", ["", "[]\n", "{}\n", "{}\n{}\n"])
 def test_result_parser_rejects_invalid_result_contract(monkeypatch, stdout):
     install_process(monkeypatch, FakeProcess(stdout=stdout))
 
@@ -195,8 +278,11 @@ def test_result_parser_rejects_invalid_result_contract(monkeypatch, stdout):
 
 
 def test_protocol_mismatch_fails(monkeypatch):
-    event = json.dumps({"protocol_version": 2, "type": "status", "phase": "start"})
-    install_process(monkeypatch, FakeProcess(stderr=f"{event}\n"))
+    lines = _fixture("list-success.ndjson").splitlines()
+    event = json.loads(lines[0])
+    event["protocolVersion"] = 2
+    lines[0] = json.dumps(event)
+    install_process(monkeypatch, FakeProcess(stdout="\n".join(lines) + "\n"))
 
     with pytest.raises(
         volume_commands.CanneryProtocolError, match="requires version 1"
@@ -205,78 +291,60 @@ def test_protocol_mismatch_fails(monkeypatch):
 
 
 def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
-    events = [
-        {
-            "protocol_version": 1,
-            "type": "status",
-            "operation": "push",
-            "phase": "scanning",
-            "message": "bare-credential-value-9f4c",
-        },
-        {
-            "protocol_version": 1,
-            "type": "progress",
-            "operation": "push",
-            "phase": "upload",
-            "files_done": 2,
-            "files_total": 5,
-            "bytes_done": 100,
-            "bytes_total": 400,
-            "message": "human text must not be used",
-        },
-    ]
-    stderr = "".join(f"{json.dumps(event)}\n" for event in events)
-    install_process(monkeypatch, FakeProcess(stderr=stderr))
+    install_process(monkeypatch, FakeProcess(stdout=_fixture("push-success.ndjson")))
 
     volume_commands.run_cannery(["push", "/tmp/model"])
 
     captured = capsys.readouterr()
-    assert "Cannery push — scanning" in captured.err
-    assert "2/5 files" in captured.err
-    assert "100/400 bytes" in captured.err
-    assert "human text must not be used" not in captured.err
-    assert "bare-credential-value-9f4c" not in captured.err
+    assert "Cannery push (upload)" in captured.err
+    assert "4/12 files" in captured.err
+    assert "33554432/1073741824 bytes" in captured.err
+    assert "COMMITTING_VERSION" in captured.err
+    assert "SOURCE_SCAN_RETRIED" in captured.err
     assert captured.out == ""
 
 
 def test_invalid_ndjson_fails_loudly(monkeypatch):
-    install_process(monkeypatch, FakeProcess(stderr="not-json\n"))
+    install_process(monkeypatch, FakeProcess(stdout="not-json\n"))
 
-    with pytest.raises(volume_commands.CanneryProtocolError, match="invalid NDJSON"):
+    with pytest.raises(volume_commands.CanneryProtocolError, match="invalid ProtoJSON"):
         volume_commands.run_cannery(["ls"])
+
+
+def test_v1_stderr_is_bounded_redacted_diagnostics_only(monkeypatch):
+    secret = "bare-credential-value-9f4c"
+    process = FakeProcess(
+        stdout="not-json\n",
+        stderr="x" * 100_000 + f"\nAuthorization: Bearer {secret}\n",
+    )
+    install_process(monkeypatch, process)
+
+    with pytest.raises(volume_commands.CanneryProtocolError):
+        volume_commands.run_cannery(["ls"])
+
+    diagnostic_dir = Path(cannery_runner.os.environ["TRUSS_CANNERY_DIAGNOSTIC_DIR"])
+    diagnostic_text = next(diagnostic_dir.glob("diagnostic-*.jsonl")).read_text()
+    assert secret not in diagnostic_text
+    assert "[REDACTED]" in diagnostic_text
+    assert len(diagnostic_text) < 70_000
 
 
 def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
-    event = {
-        "protocol_version": 1,
-        "type": "error",
-        "reason": "unauthorized",
-        "message": "token expired",
-        "hint": "create a new token",
-    }
     install_process(
-        monkeypatch, FakeProcess(stderr=f"{json.dumps(event)}\n", return_code=1)
+        monkeypatch,
+        FakeProcess(stdout=_fixture("show-not-found.ndjson"), return_code=1),
     )
 
-    with pytest.raises(click.ClickException, match="reason unauthorized") as exc:
-        volume_commands.run_cannery(["ls"])
+    with pytest.raises(click.ClickException, match="reason VOLUME_NOT_FOUND") as exc:
+        volume_commands.run_cannery(["show", "bdn://weights/missing:prod"])
 
-    assert "token expired" not in str(exc.value)
-    assert "create a new token" not in str(exc.value)
+    assert "weights/missing" not in str(exc.value)
 
 
 def test_exit_two_becomes_usage_error(monkeypatch):
-    event = {
-        "protocol_version": 1,
-        "type": "error",
-        "reason": "invalid_ref",
-        "message": "bad volume ref",
-    }
-    install_process(
-        monkeypatch, FakeProcess(stderr=f"{json.dumps(event)}\n", return_code=2)
-    )
+    install_process(monkeypatch, FakeProcess(stdout="", return_code=2))
 
-    with pytest.raises(click.UsageError, match="invalid_ref"):
+    with pytest.raises(click.UsageError, match="INVALID_ARGUMENT"):
         volume_commands.run_cannery(["show", "bad-ref"])
 
 
@@ -284,10 +352,11 @@ def test_cancellation_is_forwarded_to_child(monkeypatch):
     process = FakeProcess(return_code=None)
 
     class InterruptingStdout:
-        def read(self):
+        def readline(self, _size):
             raise KeyboardInterrupt
 
     process.stdout = InterruptingStdout()
+    process.default_stdout = False
 
     def finish_on_signal(value):
         process.signals.append(value)

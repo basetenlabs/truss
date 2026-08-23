@@ -4,10 +4,11 @@ import os
 import platform
 import signal
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TextIO, Tuple
 
 import rich_click as click
 
@@ -26,21 +27,45 @@ from truss.cli.cannery.diagnostics import (
 )
 from truss.cli.cannery.errors import (
     CanneryClickException,
+    CanneryProtocolError,
     CanneryUsageError,
     attach_failure_context,
     command_failure,
     error_category,
     safe_machine_identifier,
 )
-from truss.cli.cannery.protocol import CanneryProtocolConsumer, Phase0ProtocolConsumer
+from truss.cli.cannery.protocol import (
+    CanneryProtocolConsumer,
+    Phase0ProtocolConsumer,
+    V1ProtocolConsumer,
+    parse_protocol_bootstrap,
+)
 
 _CANCEL_GRACE_SECONDS = 5
+_BOOTSTRAP_OUTPUT_LIMIT = 64 * 1024
+_PHASE_0_ENVIRONMENT_VARIABLE = "TRUSS_CANNERY_PHASE0"
 _SAFE_EXCEPTION_CLASS_NAMES = {
     OSError: "OSError",
     RuntimeError: "RuntimeError",
     TypeError: "TypeError",
     ValueError: "ValueError",
 }
+
+
+class _BoundedCapture:
+    def __init__(self, stream: TextIO, limit: int) -> None:
+        self._stream = stream
+        self._limit = limit
+        self.value = ""
+        self.truncated = False
+
+    def drain(self) -> None:
+        for chunk in iter(lambda: self._stream.read(8192), ""):
+            remaining = self._limit - len(self.value)
+            if remaining > 0:
+                self.value += chunk[:remaining]
+            if len(chunk) > remaining:
+                self.truncated = True
 
 
 def _cancel_process(process: "subprocess.Popen[str]") -> None:
@@ -65,6 +90,64 @@ def _cancel_process(process: "subprocess.Popen[str]") -> None:
 
     process.kill()
     process.wait()
+
+
+def _capture_bootstrap(
+    binary: str, environment: Dict[str, str]
+) -> Tuple[str, str, int]:
+    popen_options: Dict[str, Any] = {}
+    if os.name == "nt":
+        popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        process = subprocess.Popen(
+            [binary, "protocol"],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            **popen_options,
+        )
+    except OSError:
+        raise CanneryClickException(
+            "Failed to start the Cannery protocol bootstrap."
+        ) from None
+    if process.stdout is None or process.stderr is None:
+        _cancel_process(process)
+        raise CanneryClickException(
+            "Failed to capture Cannery protocol bootstrap output."
+        )
+
+    stdout = _BoundedCapture(process.stdout, _BOOTSTRAP_OUTPUT_LIMIT)
+    stderr = _BoundedCapture(process.stderr, _BOOTSTRAP_OUTPUT_LIMIT)
+    threads = [
+        threading.Thread(
+            target=stdout.drain, name="truss-cannery-bootstrap-stdout", daemon=True
+        ),
+        threading.Thread(
+            target=stderr.drain, name="truss-cannery-bootstrap-stderr", daemon=True
+        ),
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        return_code = process.wait()
+    except KeyboardInterrupt:
+        _cancel_process(process)
+        raise
+    finally:
+        if process.poll() is None:
+            _cancel_process(process)
+        for thread in threads:
+            thread.join()
+    if stdout.truncated:
+        raise CanneryProtocolError(
+            "Cannery protocol bootstrap stdout exceeds the size limit."
+        )
+    return (stdout.value, stderr.value, return_code)
 
 
 def run_cannery(
@@ -145,6 +228,26 @@ def run_cannery(
         return result
 
 
+def _default_protocol_consumer(
+    arguments: List[str], config: CanneryConfig
+) -> CanneryProtocolConsumer:
+    if not arguments:
+        raise CanneryUsageError("A Cannery operation is required.")
+    phase_0 = os.environ.get(_PHASE_0_ENVIRONMENT_VARIABLE)
+    if phase_0 is not None and phase_0 != "1":
+        raise CanneryUsageError(
+            f"{_PHASE_0_ENVIRONMENT_VARIABLE} must be 1 when explicitly enabled."
+        )
+    if phase_0 == "1":
+        if not config.is_loopback:
+            raise CanneryUsageError(
+                "The Phase 0 Cannery protocol cannot be used with a non-loopback "
+                "endpoint."
+            )
+        return Phase0ProtocolConsumer()
+    return V1ProtocolConsumer(arguments[0])
+
+
 def _run_cannery(
     *,
     arguments: List[str],
@@ -183,16 +286,49 @@ def _run_cannery(
             artifact_version=artifact_version,
             artifact_sha256=artifact_sha256,
         )
-        argv = [
-            binary,
-            "-o",
-            "json",
-            "--progress",
-            "machine",
-            "--api",
-            config.api,
-            *arguments,
-        ]
+        environment = child_environment(
+            credential, config.org, correlation_id, diagnostic.path
+        )
+        consumer = protocol_consumer or _default_protocol_consumer(arguments, config)
+        phase_0 = isinstance(consumer, Phase0ProtocolConsumer)
+        if phase_0 and not config.is_loopback:
+            raise CanneryUsageError(
+                "The Phase 0 Cannery protocol is restricted to explicit loopback "
+                "development. Non-loopback endpoints require machine protocol v1."
+            )
+        if phase_0 and artifact_version != "development-override":
+            raise CanneryUsageError(
+                "Pinned Cannery artifacts require machine protocol v1."
+            )
+        if phase_0:
+            argv = [
+                binary,
+                "-o",
+                "json",
+                "--progress",
+                "machine",
+                "--api",
+                config.api,
+                *arguments,
+            ]
+        else:
+            try:
+                bootstrap_stdout, bootstrap_stderr, bootstrap_return_code = (
+                    _capture_bootstrap(binary, environment)
+                )
+            except KeyboardInterrupt:
+                raise click.Abort() from None
+            if bootstrap_stderr:
+                diagnostic.record("bootstrap_stderr", message=bootstrap_stderr)
+            bootstrap = parse_protocol_bootstrap(
+                bootstrap_stdout, bootstrap_return_code
+            )
+            diagnostic.record(
+                "protocol_negotiated",
+                protocol_version=1,
+                artifact_version=bootstrap.cannery_version,
+            )
+            argv = [binary, "--machine-protocol", "1", "--api", config.api, *arguments]
 
         popen_options: Dict[str, Any] = {}
         if os.name == "nt":
@@ -200,9 +336,7 @@ def _run_cannery(
         try:
             process = subprocess.Popen(
                 argv,
-                env=child_environment(
-                    credential, config.org, correlation_id, diagnostic.path
-                ),
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -219,26 +353,51 @@ def _run_cannery(
             _cancel_process(process)
             raise CanneryClickException("Failed to capture Cannery subprocess output.")
 
-        consumer = protocol_consumer or Phase0ProtocolConsumer()
         session = consumer.start(
             process.stdout,
             process.stderr,
             lambda message: click.echo(message, err=True),
         )
         interrupted = False
+        return_code: Optional[int] = None
         try:
             result = session.read_result()
             return_code = process.wait()
         except KeyboardInterrupt:
             interrupted = True
             _cancel_process(process)
+            cancelled_return_code = process.poll()
+            if cancelled_return_code is None:
+                cancelled_return_code = 130
+            try:
+                session.finish(cancelled_return_code)
+            except CanneryProtocolError:
+                pass
+            if session.stderr_diagnostic:
+                diagnostic.record(
+                    "subprocess_stderr", message=session.stderr_diagnostic
+                )
             raise click.Abort()
         finally:
             if process.poll() is None:
                 _cancel_process(process)
             if not interrupted:
-                session.finish()
+                completed_return_code = return_code
+                if completed_return_code is None:
+                    completed_return_code = process.poll()
+                if completed_return_code is None:
+                    completed_return_code = process.wait()
+                try:
+                    session.finish(completed_return_code)
+                finally:
+                    if session.stderr_diagnostic:
+                        diagnostic.record(
+                            "subprocess_stderr", message=session.stderr_diagnostic
+                        )
 
+        if session.cancelled:
+            raise click.Abort()
+        assert return_code is not None
         machine_error = session.terminal_error
         if return_code != 0 or machine_error is not None:
             diagnostic.record(

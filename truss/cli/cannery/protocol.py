@@ -6,8 +6,18 @@ from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Protocol, T
 
 from truss.cli.cannery.errors import CanneryProtocolError
 from truss.cli.cannery.progress import BoundedProgressState, event_kind, format_event
+from truss.cli.cannery.v1_protocol import V1ProtocolConsumer, parse_protocol_bootstrap
+
+__all__ = [
+    "CanneryProtocolConsumer",
+    "CanneryProtocolSession",
+    "Phase0ProtocolConsumer",
+    "V1ProtocolConsumer",
+    "parse_protocol_bootstrap",
+]
 
 _PHASE_0_PROTOCOL_VERSION = 1
+_MAX_STDERR_CHARACTERS = 64 * 1024
 
 
 class CanneryProtocolSession(Protocol):
@@ -23,9 +33,15 @@ class CanneryProtocolSession(Protocol):
     @property
     def last_phase(self) -> Optional[str]: ...
 
+    @property
+    def cancelled(self) -> bool: ...
+
+    @property
+    def stderr_diagnostic(self) -> str: ...
+
     def read_result(self) -> Dict[str, Any]: ...
 
-    def finish(self) -> None: ...
+    def finish(self, return_code: int) -> None: ...
 
 
 class CanneryProtocolConsumer(Protocol):
@@ -61,6 +77,8 @@ class _Phase0ProtocolSession:
         self._render_progress = render_progress
         self._state = BoundedProgressState()
         self._protocol_error: Optional[CanneryProtocolError] = None
+        self._stderr_diagnostic = ""
+        self._stderr_truncated = False
         self._stderr_thread = threading.Thread(
             target=self._drain_machine_events, name="truss-cannery-stderr", daemon=True
         )
@@ -74,8 +92,23 @@ class _Phase0ProtocolSession:
     def last_phase(self) -> Optional[str]:
         return self._state.last_phase
 
+    @property
+    def cancelled(self) -> bool:
+        return False
+
+    @property
+    def stderr_diagnostic(self) -> str:
+        prefix = "[earlier stderr truncated]\n" if self._stderr_truncated else ""
+        return prefix + self._stderr_diagnostic
+
     def _drain_machine_events(self) -> None:
         for line_number, line in enumerate(self._stderr, start=1):
+            self._stderr_diagnostic += line
+            if len(self._stderr_diagnostic) > _MAX_STDERR_CHARACTERS:
+                self._stderr_truncated = True
+                self._stderr_diagnostic = self._stderr_diagnostic[
+                    -_MAX_STDERR_CHARACTERS:
+                ]
             if not line.strip():
                 continue
             try:
@@ -97,7 +130,7 @@ class _Phase0ProtocolSession:
     def read_result(self) -> Dict[str, Any]:
         return _parse_result(self._stdout.read())
 
-    def finish(self) -> None:
+    def finish(self, return_code: int) -> None:
         self._stderr_thread.join()
         if self._protocol_error is not None:
             raise self._protocol_error

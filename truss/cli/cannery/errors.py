@@ -28,6 +28,7 @@ class ErrorCategory(str, enum.Enum):
     AUTHENTICATION = "authentication"
     AUTHORIZATION = "authorization"
     NOT_FOUND = "not_found"
+    CONFLICT = "conflict"
     NETWORK = "network"
     THROTTLED = "throttled"
     QUOTA = "quota"
@@ -84,6 +85,8 @@ def retry_info(error: Optional[Mapping[str, Any]]) -> Optional[RetryInfo]:
     if not isinstance(details, Mapping):
         details = error
     for key in (
+        "retry_after_ms",
+        "retryAfterMs",
         "retry_after_seconds",
         "retryAfterSeconds",
         "delay_seconds",
@@ -92,6 +95,8 @@ def retry_info(error: Optional[Mapping[str, Any]]) -> Optional[RetryInfo]:
         value = details.get(key)
         parsed = _nonnegative_float(value)
         if parsed is not None:
+            if key in {"retry_after_ms", "retryAfterMs"}:
+                parsed /= 1_000
             return RetryInfo(parsed)
     delay = details.get("retry_delay") or details.get("retryDelay")
     if isinstance(delay, Mapping):

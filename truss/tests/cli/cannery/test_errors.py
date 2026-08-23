@@ -53,6 +53,10 @@ def test_protojson_retry_duration_is_preserved():
     assert retry_info({"retryInfo": {"retryDelay": "1.25s"}}).delay_sec == 1.25
 
 
+def test_v1_retry_after_milliseconds_is_preserved():
+    assert retry_info({"retry_after_ms": 1250}).delay_sec == 1.25
+
+
 def test_machine_error_omits_unstructured_external_text(tmp_path):
     error = command_failure(
         {

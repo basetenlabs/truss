@@ -11,6 +11,16 @@ from truss.cli.cannery.auth import ExchangedToken
 from truss.cli.cannery.config import ActiveRemote, CanneryConfig
 from truss.remote.truss_remote import RemoteConfig
 
+GENERATED_ROOT = Path(runner.__file__).parent / "generated"
+BOOTSTRAP = (
+    '{"bootstrap_version":1,"cannery_version":"1.2.3",'
+    '"supported_machine_protocols":[1],'
+    '"supported_encodings":["protojson-ndjson"]}\n'
+)
+LIST_SUCCESS = (
+    GENERATED_ROOT / "fixtures" / "protojson" / "list-success.ndjson"
+).read_text()
+
 
 @pytest.fixture(autouse=True)
 def diagnostic_directory(monkeypatch, tmp_path):
@@ -20,8 +30,8 @@ def diagnostic_directory(monkeypatch, tmp_path):
 
 
 class FakeProcess:
-    def __init__(self):
-        self.stdout = io.StringIO('{"protocol_version":1}')
+    def __init__(self, stdout=LIST_SUCCESS):
+        self.stdout = io.StringIO(stdout)
         self.stderr = io.StringIO("")
         self.returncode = 0
 
@@ -84,6 +94,8 @@ def test_exchange_token_uses_environment_and_is_always_cleaned_up(
         assert token_path.read_text() == "cannery-secret"
         assert "cannery-secret" not in argv
         assert str(token_path) not in argv
+        if argv == ["/bin/cannery", "protocol"]:
+            return FakeProcess(BOOTSTRAP)
         return FakeProcess()
 
     monkeypatch.setattr(runner.subprocess, "Popen", start_process)
