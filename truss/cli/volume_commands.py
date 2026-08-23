@@ -231,6 +231,9 @@ def show_volume(
     multiple=True,
     help="Volume-relative file or directory to pull. May be repeated.",
 )
+@click.option(
+    "--restart", is_flag=True, help="Remove matching saved pull state and start again."
+)
 @_output_option
 @_remote_option
 @_clean_json_stdout
@@ -239,6 +242,7 @@ def pull_volume(
     ref: str,
     out_dir: Path,
     include_paths: Tuple[str, ...],
+    restart: bool,
     output_format: str,
     remote: Optional[str],
 ) -> None:
@@ -248,4 +252,6 @@ def pull_volume(
     arguments = ["pull", ref, str(out_dir)]
     for include_path in include_paths:
         arguments.extend(["--include", include_path])
+    if restart:
+        arguments.append("--restart")
     _emit_result(run_cannery(arguments, remote=remote), output_format)

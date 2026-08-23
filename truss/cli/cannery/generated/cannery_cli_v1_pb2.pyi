@@ -130,18 +130,20 @@ class ShowRequestV1(_message.Message):
     def __init__(self, reference: _Optional[str] = ..., page_size: _Optional[int] = ..., page_token: _Optional[str] = ...) -> None: ...
 
 class PullRequestV1(_message.Message):
-    __slots__ = ("reference", "output_directory", "max_bytes_in_flight", "max_concurrency", "include_paths")
+    __slots__ = ("reference", "output_directory", "max_bytes_in_flight", "max_concurrency", "include_paths", "restart")
     REFERENCE_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_DIRECTORY_FIELD_NUMBER: _ClassVar[int]
     MAX_BYTES_IN_FLIGHT_FIELD_NUMBER: _ClassVar[int]
     MAX_CONCURRENCY_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_PATHS_FIELD_NUMBER: _ClassVar[int]
+    RESTART_FIELD_NUMBER: _ClassVar[int]
     reference: str
     output_directory: str
     max_bytes_in_flight: int
     max_concurrency: int
     include_paths: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, reference: _Optional[str] = ..., output_directory: _Optional[str] = ..., max_bytes_in_flight: _Optional[int] = ..., max_concurrency: _Optional[int] = ..., include_paths: _Optional[_Iterable[str]] = ...) -> None: ...
+    restart: bool
+    def __init__(self, reference: _Optional[str] = ..., output_directory: _Optional[str] = ..., max_bytes_in_flight: _Optional[int] = ..., max_concurrency: _Optional[int] = ..., include_paths: _Optional[_Iterable[str]] = ..., restart: bool = ...) -> None: ...
 
 class MachineRecordV1(_message.Message):
     __slots__ = ("protocol_version", "sequence", "operation_id", "operation", "started", "progress", "status", "warning", "result", "error", "cancelled")

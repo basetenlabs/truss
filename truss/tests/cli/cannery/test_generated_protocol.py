@@ -38,6 +38,13 @@ def test_vendored_fixture_set_matches_protocol_contract():
     }
 
 
+def test_pull_request_field_numbers_remain_compatible():
+    fields = cannery_cli_v1_pb2.PullRequestV1.DESCRIPTOR.fields_by_name
+
+    assert fields["include_paths"].number == 5
+    assert fields["restart"].number == 6
+
+
 @pytest.mark.parametrize("fixture_path", sorted(FIXTURES_ROOT.glob("*.ndjson")))
 def test_cross_repo_protojson_golden_fixture(fixture_path):
     records = []

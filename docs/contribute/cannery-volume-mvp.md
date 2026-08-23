@@ -67,6 +67,28 @@ selectors as structured usage errors. Pull results report logical bytes and
 file/directory counts for the selected graph. Subset results additionally
 include the corresponding complete-volume totals.
 
+Pulls resume automatically when matching saved state exists; no resume flag is
+needed. Resume identity includes the resolved manifest digest, absolute
+destination, and normalized selector set. Selector order and duplicates do not
+change that identity, while a moved tag or different selector set cannot reuse
+the saved data. Cannery rechecks saved ranges before reuse.
+
+Use `--restart` to remove only the saved state matching that identity and start
+again:
+
+```sh
+uv run truss volume pull bdn://default/weights:local ./downloaded \
+  --include model.safetensors \
+  --restart
+```
+
+When a pull starts, Cannery cleans up eligible resume state in the destination
+parent after 30 days without an update. Resume staging directories are
+owner-only (`0700`), and checkpoint and lock files are owner-only (`0600`).
+Checkpoints remain local but contain destination paths, selectors, and content
+digests, so they must be treated as private. Durable pull resume currently
+launches only on Unix systems; unsupported systems fail before transfer.
+
 For a local server that enforces authentication, also set:
 
 ```sh

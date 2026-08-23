@@ -180,6 +180,44 @@ def _replace_record(stream, index, update):
     return "\n".join(lines) + "\n"
 
 
+def test_v1_pull_accepts_restart_request_without_changing_result():
+    def enable_restart(record):
+        record["started"]["request"]["pull"]["restart"] = True
+
+    stream = _replace_record(_fixture("pull-success.ndjson"), 0, enable_restart)
+
+    _, result, _ = _consume(stream, "pull", 0)
+
+    assert result["content_verified"] is True
+    assert result["manifest_digest"].startswith("b3:")
+
+
+def test_v1_pull_rejects_non_boolean_restart_request():
+    def set_invalid_restart(record):
+        record["started"]["request"]["pull"]["restart"] = "yes"
+
+    stream = _replace_record(_fixture("pull-success.ndjson"), 0, set_invalid_restart)
+
+    with pytest.raises(CanneryProtocolError, match="does not match v1"):
+        _consume(stream, "pull", 0)
+
+
+def test_v1_pull_preserves_reused_bytes():
+    def add_resumed_transfer_counts(record):
+        pull = record["result"]["pull"]
+        pull["downloadedBytes"] = "201326592"
+        pull["reusedBytes"] = "67108864"
+
+    stream = _replace_record(
+        _fixture("pull-success.ndjson"), 3, add_resumed_transfer_counts
+    )
+
+    _, result, _ = _consume(stream, "pull", 0)
+
+    assert result["downloaded_bytes"] == "201326592"
+    assert result["reused_bytes"] == "67108864"
+
+
 @pytest.mark.parametrize(
     ("update", "message"),
     [

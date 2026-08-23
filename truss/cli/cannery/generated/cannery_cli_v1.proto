@@ -103,6 +103,9 @@ message PullRequestV1 {
   // Empty means the complete volume. Otherwise paths are normalized,
   // portable, volume-relative selectors whose union is extracted.
   repeated string include_paths = 5;
+
+  // Discard resumable state matching the resolved manifest, destination, and selectors.
+  bool restart = 6;
 }
 
 // One record in the ordered ProtoJSON NDJSON machine stream.

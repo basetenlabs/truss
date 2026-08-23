@@ -541,7 +541,7 @@ def test_volume_commands_are_registered_and_forward_arguments(
     run.assert_called_once_with(expected, remote=None)
 
 
-def test_pull_command_forwards_repeated_includes_in_user_order(monkeypatch):
+def test_pull_command_forwards_repeated_includes_then_restart(monkeypatch):
     run = Mock(return_value={"content_verified": True})
     monkeypatch.setattr(volume_commands, "run_cannery", run)
     monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
@@ -557,6 +557,7 @@ def test_pull_command_forwards_repeated_includes_in_user_order(monkeypatch):
             "model.safetensors",
             "--include",
             "tokenizer/",
+            "--restart",
             "--output",
             "json",
         ],
@@ -572,6 +573,7 @@ def test_pull_command_forwards_repeated_includes_in_user_order(monkeypatch):
             "model.safetensors",
             "--include",
             "tokenizer/",
+            "--restart",
         ],
         remote=None,
     )
@@ -633,6 +635,8 @@ def test_json_output_keeps_status_off_stdout(monkeypatch):
 def test_pull_output_preserves_selected_and_volume_totals(monkeypatch, output_format):
     command_result = {
         "logical_bytes": "268435456",
+        "downloaded_bytes": "201326592",
+        "reused_bytes": "67108864",
         "file_count": "3",
         "directory_count": "1",
         "volume_logical_bytes": "1073741824",
@@ -746,9 +750,10 @@ def test_volume_help_lists_all_mvp_commands():
         assert command in result.output
 
 
-def test_pull_help_exposes_include_without_discard():
+def test_pull_help_exposes_resume_controls_without_discard():
     result = CliRunner().invoke(truss_cli, ["volume", "pull", "--help"])
 
     assert result.exit_code == 0
     assert "--include" in result.output
+    assert "--restart" in result.output
     assert "--discard" not in result.output
