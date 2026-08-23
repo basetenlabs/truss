@@ -23,6 +23,7 @@ from truss.templates.control.control.helpers.truss_patch.model_code_patch_applie
     apply_code_patch,
 )
 from truss.truss_handle.patch.calc_patch import (
+    _calc_changed_paths,
     _calc_python_requirements_patches,
     _calc_unignored_paths,
     calc_truss_patch,
@@ -916,6 +917,41 @@ def test_calc_unignored_paths():
 
     unignored_paths = _calc_unignored_paths(root_relative_paths, ignore_patterns)
     assert unignored_paths == {"config.yaml", "model/model.py"}
+
+
+def test_calc_unignored_paths_matches_directory_patterns_with_trailing_slash():
+    root_relative_paths = {"ignored", "ignored/file.txt", "model/model.py"}
+
+    unignored_paths = _calc_unignored_paths(
+        root_relative_paths, ["ignored/"], directory_paths={"ignored"}
+    )
+
+    assert unignored_paths == {"model/model.py"}
+
+
+def test_calc_changed_paths_prunes_ignored_dirs(tmp_path, monkeypatch):
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "model.py").touch()
+    (tmp_path / "ignored" / "deep").mkdir(parents=True)
+    (tmp_path / "ignored" / "deep" / "large.bin").touch()
+
+    walked_dirs = []
+    original_walk = os.walk
+
+    def tracking_walk(*args, **kwargs):
+        for entry in original_walk(*args, **kwargs):
+            walked_dirs.append(Path(entry[0]).relative_to(tmp_path))
+            yield entry
+
+    monkeypatch.setattr("truss.util.path.os.walk", tracking_walk)
+
+    changed_paths = _calc_changed_paths(tmp_path, {}, ["ignored/"])
+
+    assert set(changed_paths["added"]) == {"model", os.path.join("model", "model.py")}
+    assert changed_paths["updated"] == []
+    assert changed_paths["removed"] == []
+    assert Path("ignored") not in walked_dirs
+    assert Path("ignored/deep") not in walked_dirs
 
 
 def _apply_config_change_and_calc_patches(

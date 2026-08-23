@@ -29,7 +29,10 @@ from truss.templates.control.control.helpers.truss_patch.system_packages import 
 )
 from truss.truss_handle.patch.custom_types import ChangedPaths, TrussSignature
 from truss.truss_handle.patch.hash import file_content_hash_str
-from truss.util.path import get_ignored_relative_paths
+from truss.util.path import (
+    get_ignored_relative_paths,
+    get_unignored_relative_paths_from_root,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = ["**/__pycache__/**/*", "**/__pycache__/**"]
@@ -203,15 +206,19 @@ def _calc_changed_paths(
     """
     TODO(pankaj) add support for directory creation in patch
     """
-    root_relative_new_paths = set(
-        (str(path.relative_to(root)) for path in root.glob("**/*"))
-    )
-    unignored_new_paths = _calc_unignored_paths(
-        root_relative_new_paths, ignore_patterns
+    unignored_new_paths = set(
+        str(path)
+        for path in get_unignored_relative_paths_from_root(root, ignore_patterns)
     )
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
     unignored_prev_paths = _calc_unignored_paths(
-        previous_root_relative_paths, ignore_patterns
+        previous_root_relative_paths,
+        ignore_patterns,
+        directory_paths={
+            path
+            for path, content_hash in previous_root_path_content_hashes.items()
+            if content_hash is None
+        },
     )
 
     added_paths = unignored_new_paths - unignored_prev_paths
@@ -235,10 +242,24 @@ def _calc_changed_paths(
 
 
 def _calc_unignored_paths(
-    root_relative_paths: Set[str], ignore_patterns: Optional[List[str]] = None
+    root_relative_paths: Set[str],
+    ignore_patterns: Optional[List[str]] = None,
+    directory_paths: Optional[Set[str]] = None,
 ) -> Set[str]:
+    """Filter stored paths, matching directory-only patterns with a trailing slash."""
     ignored_paths = set(
         get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    directory_paths_by_match_path = {
+        f"{Path(path).as_posix()}/": path for path in directory_paths or set()
+    }
+    ignored_directory_match_paths = set(
+        get_ignored_relative_paths(directory_paths_by_match_path, ignore_patterns)
+    )
+    ignored_paths.update(
+        path
+        for match_path, path in directory_paths_by_match_path.items()
+        if match_path in ignored_directory_match_paths
     )
     return root_relative_paths - ignored_paths  # type: ignore
 
