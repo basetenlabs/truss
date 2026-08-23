@@ -1,10 +1,13 @@
 import os
+import threading
+import time
 from pathlib import Path
 from unittest.mock import Mock
 
 import click
 import pytest
 
+from truss.cli.cannery import auth
 from truss.cli.cannery.auth import (
     BasetenExchangeAuthProvider,
     CanneryCredential,
@@ -87,6 +90,72 @@ def test_exchange_token_is_private_refreshable_and_cleaned_up():
     assert not token_directory.exists()
     assert adapter.exchange.call_args_list[0].args[1] == "corr-123"
     assert adapter.exchange.call_args_list[1].args[1] == "corr-123"
+
+
+def test_expiring_exchange_token_refreshes_in_background_and_joins(monkeypatch):
+    refreshed = threading.Event()
+    call_count = 0
+
+    def exchange(_active_remote, _correlation_id):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return ExchangedToken("first-secret", time.time() + 0.05)
+        refreshed.set()
+        return ExchangedToken("second-secret")
+
+    adapter = Mock(exchange=exchange)
+    monkeypatch.setattr(auth, "_MIN_REFRESH_WAIT_SEC", 0.001)
+    provider = BasetenExchangeAuthProvider(adapter, _active_remote())
+
+    with provider.acquire("corr-123") as credential:
+        assert refreshed.wait(1)
+        assert credential.token_file is not None
+        deadline = time.monotonic() + 1
+        while (
+            credential.token_file.read_text() != "second-secret"
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        assert credential.token_file.read_text() == "second-secret"
+        refresh_thread = credential._refresh_thread
+
+    assert refresh_thread is not None
+    assert not refresh_thread.is_alive()
+    assert credential._refresh_thread is None
+
+
+def test_refresh_thread_stops_and_token_directory_cleans_on_exception():
+    adapter = Mock()
+    adapter.exchange.return_value = ExchangedToken(
+        "first-secret", time.time() + 60 * 60
+    )
+    provider = BasetenExchangeAuthProvider(adapter, _active_remote())
+    credential = provider.acquire("corr-123")
+    token_directory = credential.token_file.parent
+
+    with pytest.raises(RuntimeError):
+        with credential:
+            refresh_thread = credential._refresh_thread
+            raise RuntimeError("cancelled command")
+
+    assert refresh_thread is not None
+    assert not refresh_thread.is_alive()
+    assert not token_directory.exists()
+    adapter.exchange.assert_called_once()
+
+
+def test_later_exchange_cleans_auth_directory_from_dead_parent(monkeypatch, tmp_path):
+    stale_directory = tmp_path / "truss-cannery-auth-999999-parent"
+    stale_directory.mkdir(mode=0o700)
+    (stale_directory / "token").write_text("stale-secret")
+    monkeypatch.setattr(auth.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(auth, "_process_is_running", lambda _process_id: False)
+    adapter = Mock()
+    adapter.exchange.return_value = ExchangedToken("new-secret")
+
+    with BasetenExchangeAuthProvider(adapter, _active_remote()).acquire("corr"):
+        assert not stale_directory.exists()
 
 
 def test_exchange_failure_does_not_include_adapter_secret():

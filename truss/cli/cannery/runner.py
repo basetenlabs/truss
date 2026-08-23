@@ -452,6 +452,7 @@ def _run_cannery(
             raise command_failure(
                 machine_error, return_code, correlation_id, diagnostic.path
             )
+        credential.raise_refresh_error()
         return result
 
 
