@@ -10,8 +10,15 @@ from truss.cli.cannery import binary
 
 
 class FakeResponse:
-    def __init__(self, content: bytes):
+    def __init__(
+        self,
+        content: bytes,
+        url: str = "https://baseten-public.s3.amazonaws.com/cannery",
+        history=None,
+    ):
         self._content = content
+        self.url = url
+        self.history = history or []
 
     def raise_for_status(self):
         return None
@@ -70,6 +77,7 @@ def test_download_is_verified_private_atomic_and_proxy_compatible(
     assert not list(resolved.parent.glob(".cannery-download-*"))
     request_kwargs = http_client.get.call_args.kwargs
     assert request_kwargs["stream"] is True
+    assert request_kwargs["allow_redirects"] is True
     assert "proxies" not in request_kwargs
     assert "verify" not in request_kwargs
 
@@ -175,6 +183,33 @@ def test_remote_resolution_does_not_use_path_fallback(monkeypatch):
         binary.resolve_cannery_binary(allow_path_fallback=False, artifacts={})
 
     which.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [Mock(url="https://redirect.example/one")],
+        [
+            Mock(url="https://redirect.example/one"),
+            Mock(url="https://redirect.example/two"),
+        ],
+    ],
+)
+def test_download_rejects_direct_and_multi_hop_https_downgrade(tmp_path, history):
+    content = b"cannery-binary"
+    artifact = _artifact(content)
+    response = FakeResponse(
+        content, url="http://downloads.example/cannery", history=history
+    )
+
+    with pytest.raises(click.ClickException, match="non-HTTPS"):
+        binary.resolve_artifact(
+            artifact,
+            cache_dir=tmp_path / "cache",
+            http_client=Mock(get=Mock(return_value=response)),
+        )
+
+    assert not list((tmp_path / "cache").iterdir())
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix ownership check")

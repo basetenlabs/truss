@@ -46,3 +46,15 @@ repos:
         language: system
         files: (truss/base/|truss/config\.schema\.json$)
         pass_filenames: false
+      - id: check-cannery-protocol-v1
+        name: check Cannery protocol v1 generated files
+        entry: uv run python scripts/sync_cannery_protocol_v1.py --check
+        language: system
+        files: ^(scripts/sync_cannery_protocol_v1\.py|truss/cli/cannery/generated/)
+        pass_filenames: false
+      - id: check-cannery-artifact-pins
+        name: check bundled Cannery artifact pins
+        entry: uv run python scripts/update_cannery_artifact_pins.py --check
+        language: system
+        files: ^(scripts/update_cannery_artifact_pins\.py|truss/cli/cannery/bundled_artifacts\.json|truss/cli/cannery/binary\.py)$
+        pass_filenames: false

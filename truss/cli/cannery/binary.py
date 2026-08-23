@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import shutil
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Iterator, Mapping, Optional, Protocol, Tuple
+from urllib.parse import urlparse
 
 import requests
 import rich_click as click
@@ -35,6 +37,8 @@ class ArtifactMetadata:
 
 
 class StreamingResponse(Protocol):
+    url: str
+
     def raise_for_status(self) -> None: ...
 
     def iter_content(self, chunk_size: int) -> Iterator[bytes]: ...
@@ -48,9 +52,9 @@ class ArtifactHttpClient(Protocol):
     def get(self, url: str, **kwargs: object) -> StreamingResponse: ...
 
 
-# No customer-native artifact has been published yet. Release automation adds
-# reviewed, exact entries here; an empty trust anchor fails closed for remote use.
-BUNDLED_ARTIFACTS: Mapping[Tuple[str, str], ArtifactMetadata] = MappingProxyType({})
+# Populated from the reviewed Baseten raw-artifact release pins. The checked-in
+# table remains empty until publication.
+BUNDLED_ARTIFACTS: Mapping[Tuple[str, str], ArtifactMetadata]
 
 
 def current_platform() -> Tuple[str, str]:
@@ -157,16 +161,29 @@ def _default_cache_dir() -> Path:
 def _validate_metadata(
     artifact: ArtifactMetadata, expected_platform: Tuple[str, str]
 ) -> None:
+    if (
+        not isinstance(artifact.cannery_version, str)
+        or not artifact.cannery_version
+        or not isinstance(artifact.operating_system, str)
+        or not isinstance(artifact.architecture, str)
+    ):
+        raise click.ClickException(
+            "Pinned Cannery artifact has invalid identity metadata."
+        )
     if artifact.platform_key != expected_platform:
         raise click.ClickException(
             "Pinned Cannery artifact metadata does not match the selected platform."
         )
-    if artifact.protocol_version != 1:
+    if type(artifact.protocol_version) is not int or artifact.protocol_version != 1:
         raise click.ClickException(
             "Pinned Cannery artifact does not support the required protocol."
         )
-    if artifact.size_bytes <= 0:
+    if type(artifact.size_bytes) is not int or artifact.size_bytes <= 0:
         raise click.ClickException("Pinned Cannery artifact has an invalid size.")
+    if not isinstance(artifact.sha256, str):
+        raise click.ClickException(
+            "Pinned Cannery artifact has an invalid SHA-256 digest."
+        )
     digest = artifact.sha256.lower()
     if len(digest) != _SHA256_HEX_LENGTH or any(
         character not in "0123456789abcdef" for character in digest
@@ -174,7 +191,7 @@ def _validate_metadata(
         raise click.ClickException(
             "Pinned Cannery artifact has an invalid SHA-256 digest."
         )
-    if not artifact.url.startswith("https://"):
+    if not isinstance(artifact.url, str) or not artifact.url.startswith("https://"):
         raise click.ClickException("Pinned Cannery artifact URL must use HTTPS.")
 
 
@@ -214,8 +231,12 @@ def _download_artifact(
             os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "wb") as file:
             with http_client.get(
-                artifact.url, stream=True, timeout=_DOWNLOAD_TIMEOUT_SEC
+                artifact.url,
+                stream=True,
+                timeout=_DOWNLOAD_TIMEOUT_SEC,
+                allow_redirects=True,
             ) as response:
+                _validate_final_download_url(response.url)
                 response.raise_for_status()
                 for chunk in response.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
                     if not chunk:
@@ -302,6 +323,43 @@ def _verify_executable(path: Path, artifact: ArtifactMetadata) -> None:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+
+
+def _validate_final_download_url(url: str) -> None:
+    if not isinstance(url, str) or urlparse(url).scheme.lower() != "https":
+        raise click.ClickException(
+            "Pinned Cannery artifact download redirected to a non-HTTPS URL."
+        )
+
+
+def _load_bundled_artifacts() -> Mapping[Tuple[str, str], ArtifactMetadata]:
+    table_path = Path(__file__).with_name("bundled_artifacts.json")
+    try:
+        document = json.loads(table_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise RuntimeError("Bundled Cannery artifact pins are invalid.") from None
+    if not isinstance(document, dict) or set(document) != {"artifacts"}:
+        raise RuntimeError("Bundled Cannery artifact pins are invalid.")
+    raw_artifacts = document["artifacts"]
+    if not isinstance(raw_artifacts, list):
+        raise RuntimeError("Bundled Cannery artifact pins are invalid.")
+    artifacts = {}
+    expected_fields = set(ArtifactMetadata.__dataclass_fields__)
+    for raw_artifact in raw_artifacts:
+        if not isinstance(raw_artifact, dict) or set(raw_artifact) != expected_fields:
+            raise RuntimeError("Bundled Cannery artifact pins are invalid.")
+        try:
+            artifact = ArtifactMetadata(**raw_artifact)
+            _validate_metadata(artifact, artifact.platform_key)
+        except (TypeError, click.ClickException):
+            raise RuntimeError("Bundled Cannery artifact pins are invalid.") from None
+        if artifact.platform_key in artifacts:
+            raise RuntimeError("Bundled Cannery artifact pins contain a duplicate.")
+        artifacts[artifact.platform_key] = artifact
+    return MappingProxyType(artifacts)
+
+
+BUNDLED_ARTIFACTS = _load_bundled_artifacts()
 
 
 def _sha256_file(path: Path) -> str:

@@ -17,6 +17,10 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: uv sync
+      - name: Check Cannery generated protocol and artifact pins
+        run: |
+          uv run python scripts/sync_cannery_protocol_v1.py --check
+          uv run python scripts/update_cannery_artifact_pins.py --check
       - name: pre-commit
         run: uv run pre-commit run --all-files
         env:

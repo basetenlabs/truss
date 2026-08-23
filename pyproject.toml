@@ -168,6 +168,7 @@ lint.ignore = [
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
+exclude = ["truss/cli/cannery/generated/*"]
 
 [tool.ruff.lint.isort]
 # Matches the Google Python Style Guide.

@@ -1,5 +1,7 @@
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ from truss.cli.cannery.generated import cannery_cli_v1_pb2
 
 GENERATED_ROOT = Path(__file__).parents[3] / "cli" / "cannery" / "generated"
 FIXTURES_ROOT = GENERATED_ROOT / "fixtures" / "protojson"
+REPO_ROOT = Path(__file__).parents[4]
 
 
 def test_vendored_contract_matches_hash_manifest():
@@ -28,3 +31,14 @@ def test_cross_repo_protojson_golden_fixture(fixture_path):
     assert records[0].WhichOneof("payload") == "started"
     assert records[-1].WhichOneof("payload") in {"result", "error", "cancelled"}
     assert [record.sequence for record in records] == list(range(1, len(records) + 1))
+
+
+def test_vendored_generated_contract_has_no_drift():
+    subprocess.run(
+        [
+            sys.executable,
+            REPO_ROOT / "scripts" / "sync_cannery_protocol_v1.py",
+            "--check",
+        ],
+        check=True,
+    )
