@@ -26,6 +26,7 @@ from truss.cli.cannery.diagnostics import (
     endpoint_hostname,
 )
 from truss.cli.cannery.errors import (
+    CanneryCancelled,
     CanneryClickException,
     CanneryProtocolError,
     CanneryUsageError,
@@ -152,9 +153,10 @@ def _capture_bootstrap(
 
 def run_cannery(
     arguments: List[str],
+    remote: Optional[str] = None,
     protocol_consumer: Optional[CanneryProtocolConsumer] = None,
     binary_resolver: Optional[Callable[[], str]] = None,
-    config_resolver: Callable[[], CanneryConfig] = resolve_cannery_config,
+    config_resolver: Callable[[Optional[str]], CanneryConfig] = resolve_cannery_config,
     auth_provider: Optional[CanneryAuthProvider] = None,
     exchange_adapter: Optional[BasetenExchangeAdapter] = None,
 ) -> Dict[str, Any]:
@@ -179,12 +181,19 @@ def run_cannery(
             config_resolver=config_resolver,
             auth_provider=auth_provider,
             exchange_adapter=exchange_adapter,
+            remote=remote,
         )
         result.setdefault("correlation_id", correlation_id)
         diagnostic.record(
             "completed", operation=operation, duration_sec=time.monotonic() - started_at
         )
     except click.Abort:
+        diagnostic.record(
+            "cancelled", operation=operation, duration_sec=time.monotonic() - started_at
+        )
+        click.echo(diagnostic_failure_suffix(correlation_id, diagnostic.path), err=True)
+        raise CanneryCancelled() from None
+    except CanneryCancelled:
         diagnostic.record(
             "cancelled", operation=operation, duration_sec=time.monotonic() - started_at
         )
@@ -255,11 +264,12 @@ def _run_cannery(
     diagnostic: DiagnosticLog,
     protocol_consumer: Optional[CanneryProtocolConsumer],
     binary_resolver: Optional[Callable[[], str]],
-    config_resolver: Callable[[], CanneryConfig],
+    config_resolver: Callable[[Optional[str]], CanneryConfig],
     auth_provider: Optional[CanneryAuthProvider],
     exchange_adapter: Optional[BasetenExchangeAdapter],
+    remote: Optional[str],
 ) -> Dict[str, Any]:
-    config = config_resolver()
+    config = config_resolver(remote)
     diagnostic.record(
         "configured",
         endpoint_hostname=endpoint_hostname(config.api),
@@ -271,7 +281,9 @@ def _run_cannery(
         diagnostic.record("authenticated", mechanism=credential.mechanism)
         if binary_resolver is None:
             try:
-                binary = resolve_cannery_binary(allow_path_fallback=config.is_loopback)
+                binary = resolve_cannery_binary(
+                    allow_path_fallback=config.allow_path_fallback
+                )
             except click.ClickException:
                 raise CanneryClickException(
                     "Could not resolve a trusted Cannery binary. For local "
@@ -317,7 +329,7 @@ def _run_cannery(
                     _capture_bootstrap(binary, environment)
                 )
             except KeyboardInterrupt:
-                raise click.Abort() from None
+                raise CanneryCancelled() from None
             if bootstrap_stderr:
                 diagnostic.record("bootstrap_stderr", message=bootstrap_stderr)
             bootstrap = parse_protocol_bootstrap(
@@ -390,7 +402,7 @@ def _run_cannery(
                 diagnostic.record(
                     "subprocess_stderr", message=session.stderr_diagnostic
                 )
-            raise click.Abort()
+            raise CanneryCancelled()
         finally:
             if process.poll() is None:
                 _cancel_process(process)
@@ -421,7 +433,7 @@ def _run_cannery(
                 f"{session.terminal_exit_timeout_sec:g} seconds."
             )
         if session.cancelled:
-            raise click.Abort()
+            raise CanneryCancelled()
         assert return_code is not None
         machine_error = session.terminal_error
         if return_code != 0 or machine_error is not None:

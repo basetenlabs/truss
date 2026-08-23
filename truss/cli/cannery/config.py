@@ -14,6 +14,7 @@ from truss.remote.truss_remote import RemoteConfig
 
 DEFAULT_LOCAL_API = "http://127.0.0.1:8787"
 DEFAULT_LOCAL_ORG = "dev"
+_ALLOW_PATH_ENV = "TRUSS_CANNERY_ALLOW_PATH"
 
 # Keep the public volume API mapping explicit so an unknown control-plane host
 # fails closed instead of guessing its data endpoint.
@@ -34,6 +35,7 @@ class CanneryConfig:
     api: str
     org: str
     active_remote: Optional[ActiveRemote] = None
+    allow_path_fallback: bool = False
 
     @property
     def is_loopback(self) -> bool:
@@ -60,12 +62,19 @@ def _normalize_remote_url(remote_url: str) -> str:
     return remote_url.rstrip("/")
 
 
-def _resolve_active_remote() -> Optional[ActiveRemote]:
-    if not RemoteFactory.get_available_config_names():
+def _resolve_active_remote(remote: Optional[str]) -> Optional[ActiveRemote]:
+    available_remotes = RemoteFactory.get_available_config_names()
+    if not available_remotes and remote is None:
         return None
 
-    remote_name = remote_cli.inquire_remote_name(allow_create=False)
-    remote_config = RemoteFactory.load_remote_config(remote_name)
+    remote_name = remote or remote_cli.inquire_remote_name(allow_create=False)
+    try:
+        remote_config = RemoteFactory.load_remote_config(remote_name)
+    except (FileNotFoundError, ValueError):
+        raise CanneryUsageError(
+            f"Could not load Truss remote {remote_name!r}. Run `truss auth status "
+            f"--remote {remote_name}` to verify its configuration."
+        ) from None
     if remote_config.configs.get("remote_provider") != "baseten":
         raise CanneryUsageError(
             "The selected Truss remote is not a Baseten remote. Set "
@@ -81,17 +90,40 @@ def _resolve_active_remote() -> Optional[ActiveRemote]:
     )
 
 
-def resolve_cannery_config() -> CanneryConfig:
+def resolve_cannery_config(remote: Optional[str] = None) -> CanneryConfig:
     explicit_api = os.environ.get("TRUSS_CANNERY_API")
     org = os.environ.get("TRUSS_CANNERY_ORG", DEFAULT_LOCAL_ORG)
     if explicit_api:
-        config = CanneryConfig(api=explicit_api, org=org)
-        is_loopback_endpoint(config.api)
-        return config
+        if remote is not None:
+            raise CanneryUsageError(
+                "--remote cannot be combined with TRUSS_CANNERY_API. Unset the "
+                "local endpoint override to use a configured Truss remote."
+            )
+        if not is_loopback_endpoint(explicit_api):
+            raise CanneryUsageError(
+                "TRUSS_CANNERY_API is restricted to an explicit loopback URL. "
+                "Use --remote for authenticated Cannery access."
+            )
+        allow_path = os.environ.get(_ALLOW_PATH_ENV)
+        if allow_path not in {None, "1"}:
+            raise CanneryUsageError(f"{_ALLOW_PATH_ENV} must be 1 when enabled.")
+        if not os.environ.get("TRUSS_CANNERY_BIN") and allow_path != "1":
+            raise CanneryUsageError(
+                "Local Cannery development requires TRUSS_CANNERY_BIN. To "
+                "explicitly opt in to `cannery` on PATH, set "
+                f"{_ALLOW_PATH_ENV}=1."
+            )
+        return CanneryConfig(
+            api=explicit_api, org=org, allow_path_fallback=allow_path == "1"
+        )
 
-    active_remote = _resolve_active_remote()
+    active_remote = _resolve_active_remote(remote)
     if active_remote is None:
-        return CanneryConfig(api=DEFAULT_LOCAL_API, org=org)
+        raise CanneryUsageError(
+            "No Cannery endpoint is configured. Run `truss auth login` and use "
+            "--remote, or explicitly configure local development with "
+            "TRUSS_CANNERY_API and TRUSS_CANNERY_BIN."
+        )
 
     api = CANNERY_API_BY_REMOTE_URL.get(active_remote.remote_url)
     if api is None:

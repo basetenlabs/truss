@@ -151,6 +151,8 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
             f(*args, **kwargs)
         except click.UsageError as e:
             raise e
+        except click.exceptions.Exit:
+            raise
         except Exception as e:
             ctx = click.get_current_context()
             log_level = get_required_option(ctx, "log")

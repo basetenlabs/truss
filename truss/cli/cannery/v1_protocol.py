@@ -11,7 +11,7 @@ from google.protobuf import json_format
 from google.protobuf.message import Message
 
 from truss.cli.cannery.diagnostics import redact_text
-from truss.cli.cannery.errors import CanneryProtocolError
+from truss.cli.cannery.errors import CanneryProtocolError, TypedMachineError
 from truss.cli.cannery.generated import cannery_cli_v1_pb2 as protocol_v1
 
 _PROTOCOL_VERSION = 1
@@ -444,12 +444,14 @@ class _V1ProtocolSession:
             raise CanneryProtocolError(
                 "Cannery error category must not include typed details."
             )
-        result: Dict[str, Any] = {
-            "category": category,
-            "reason": error.reason,
-            "message": redact_text(error.message),
-            "operation": _DISPLAY_OPERATION[self._command],
-        }
+        result: TypedMachineError = TypedMachineError(
+            {
+                "category": category,
+                "reason": error.reason,
+                "message": redact_text(error.message),
+                "operation": _DISPLAY_OPERATION[self._command],
+            }
+        )
         if error.HasField("retryable"):
             result["retryable"] = error.retryable
         if error.HasField("retry_after_ms"):

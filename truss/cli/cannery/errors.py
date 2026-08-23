@@ -8,7 +8,7 @@ from typing import Any, Mapping, Optional, Union
 
 import rich_click as click
 
-from truss.cli.cannery.diagnostics import diagnostic_failure_suffix
+from truss.cli.cannery.diagnostics import diagnostic_failure_suffix, redact_text
 
 
 class CanneryClickException(click.ClickException):
@@ -21,6 +21,17 @@ class CanneryUsageError(click.UsageError):
 
 class CanneryProtocolError(CanneryClickException):
     """The Cannery subprocess violated its selected machine protocol."""
+
+
+class CanneryCancelled(click.exceptions.Exit):
+    """A user cancellation that preserves the conventional shell status."""
+
+    def __init__(self) -> None:
+        super().__init__(130)
+
+
+class TypedMachineError(dict):
+    """A schema-validated machine error whose human text is already redacted."""
 
 
 class ErrorCategory(str, enum.Enum):
@@ -139,6 +150,13 @@ def command_failure(
         retryable = error.get("retryable")
         if isinstance(retryable, bool):
             rendered += f" Retryable: {'yes' if retryable else 'no'}."
+        if isinstance(error, TypedMachineError):
+            message = _safe_typed_text(error.get("message"))
+            hint = _typed_error_hint(error)
+            if message is not None:
+                rendered += f" Message: {message}."
+            if hint is not None and hint != message:
+                rendered += f" Hint: {hint}."
 
     retry = retry_info(error)
     if category == ErrorCategory.THROTTLED and retry is not None:
@@ -179,3 +197,22 @@ def safe_machine_identifier(value: Any) -> Optional[str]:
     if isinstance(value, str) and _MACHINE_IDENTIFIER.fullmatch(value):
         return value
     return None
+
+
+def _typed_error_hint(error: Mapping[str, Any]) -> Optional[str]:
+    hint = _safe_typed_text(error.get("hint"))
+    if hint is not None:
+        return hint
+    details = error.get("details")
+    if isinstance(details, Mapping):
+        return _safe_typed_text(details.get("constraint"))
+    return None
+
+
+def _safe_typed_text(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    rendered = " ".join(redact_text(value).split())
+    if not rendered:
+        return None
+    return rendered[:2_048]

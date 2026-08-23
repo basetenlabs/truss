@@ -42,9 +42,10 @@ class FakeProcess:
         return self.returncode
 
 
-def _remote_config() -> CanneryConfig:
+def _remote_config(remote=None) -> CanneryConfig:
+    remote_name = remote or "baseten"
     remote_config = RemoteConfig(
-        name="baseten",
+        name=remote_name,
         configs={
             "remote_provider": "baseten",
             "remote_url": "https://app.baseten.co",
@@ -55,7 +56,7 @@ def _remote_config() -> CanneryConfig:
         api="https://bdn.baseten.co",
         org="org",
         active_remote=ActiveRemote(
-            name="baseten", remote_url="https://app.baseten.co", config=remote_config
+            name=remote_name, remote_url="https://app.baseten.co", config=remote_config
         ),
     )
 
@@ -102,6 +103,7 @@ def test_exchange_token_uses_environment_and_is_always_cleaned_up(
 
     runner.run_cannery(
         ["ls"],
+        remote="staging",
         config_resolver=_remote_config,
         binary_resolver=lambda: "/bin/cannery",
         exchange_adapter=adapter,
@@ -110,6 +112,7 @@ def test_exchange_token_uses_environment_and_is_always_cleaned_up(
     assert token_path is not None
     assert not token_path.exists()
     assert adapter.exchange.call_args.args[1] == child_correlation_id
+    assert adapter.exchange.call_args.args[0].name == "staging"
     assert not list(diagnostic_directory.glob("diagnostic-*.jsonl"))
 
 
@@ -148,7 +151,7 @@ def test_exchange_token_is_cleaned_up_when_subprocess_start_fails(monkeypatch):
 def test_unreviewed_exception_values_are_never_exposed(
     unsafe_error, expected_exception_class, diagnostic_directory
 ):
-    def fail_config():
+    def fail_config(_remote):
         raise unsafe_error
 
     with pytest.raises(click.ClickException) as exc_info:

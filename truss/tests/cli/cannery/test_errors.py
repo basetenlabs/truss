@@ -2,6 +2,7 @@ import click
 
 from truss.cli.cannery.errors import (
     ErrorCategory,
+    TypedMachineError,
     command_failure,
     error_category,
     retry_info,
@@ -73,3 +74,22 @@ def test_machine_error_omits_unstructured_external_text(tmp_path):
     assert "bare-credential-value-9f4c" not in str(error)
     assert "another-bare-secret" not in str(error)
     assert "UNAUTHENTICATED" in str(error)
+
+
+def test_typed_machine_error_preserves_redacted_message_and_hint(tmp_path):
+    error = command_failure(
+        TypedMachineError(
+            {
+                "category": "usage",
+                "reason": "INVALID_ARGUMENT",
+                "message": "The command arguments are invalid",
+                "details": {"constraint": "pull destination is not empty: /tmp/output"},
+            }
+        ),
+        return_code=1,
+        correlation_id="corr-123",
+        diagnostic_path=tmp_path / "diagnostic.jsonl",
+    )
+
+    assert "Message: The command arguments are invalid" in str(error)
+    assert "Hint: pull destination is not empty: /tmp/output" in str(error)

@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import click
 import pytest
@@ -15,6 +15,7 @@ from truss.cli import volume_commands
 from truss.cli.cannery import config as cannery_config
 from truss.cli.cannery import runner as cannery_runner
 from truss.cli.cannery import v1_protocol
+from truss.cli.cannery.errors import CanneryCancelled
 from truss.cli.cli import truss_cli
 
 GENERATED_ROOT = Path(volume_commands.__file__).parent / "cannery" / "generated"
@@ -108,8 +109,11 @@ def clean_cannery_environment(monkeypatch, tmp_path):
         "CANNERY_CORRELATION_ID",
         "CANNERY_DIAGNOSTIC_LOG",
         "TRUSS_CANNERY_PHASE0",
+        "TRUSS_CANNERY_ALLOW_PATH",
     ):
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("TRUSS_CANNERY_API", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRUSS_CANNERY_BIN", "/bin/cannery")
     monkeypatch.setenv("TRUSS_CANNERY_DIAGNOSTIC_DIR", str(tmp_path / "diagnostics"))
     monkeypatch.setattr(
         cannery_config.RemoteFactory, "get_available_config_names", lambda: []
@@ -143,6 +147,7 @@ def test_binary_resolution_prefers_configured_binary(monkeypatch):
 
 
 def test_binary_resolution_falls_back_to_path(monkeypatch):
+    monkeypatch.delenv("TRUSS_CANNERY_BIN")
     which = Mock(return_value="/usr/local/bin/cannery")
     monkeypatch.setattr(volume_commands.shutil, "which", which)
 
@@ -164,7 +169,7 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("token")
     token_file.chmod(0o600)
-    monkeypatch.setenv("TRUSS_CANNERY_API", "https://cannery.example.com")
+    monkeypatch.setenv("TRUSS_CANNERY_API", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRUSS_CANNERY_ORG", "acme")
     monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("CANNERY_AUTH_TOKEN_FILE", "/must/not/leak")
@@ -184,7 +189,7 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
         "--machine-protocol",
         "1",
         "--api",
-        "https://cannery.example.com",
+        "http://127.0.0.1:8787",
         "ls",
         "models",
         "--all",
@@ -211,14 +216,16 @@ def test_loopback_endpoint_allows_no_token(monkeypatch, api):
     assert "CANNERY_AUTH_TOKEN_FILE" not in popen.call_args.kwargs["env"]
 
 
-def test_default_api_and_org_are_local_dev(monkeypatch):
-    popen = install_process(monkeypatch, FakeProcess())
+def test_fresh_install_fails_closed(monkeypatch):
+    monkeypatch.delenv("TRUSS_CANNERY_API")
+    monkeypatch.delenv("TRUSS_CANNERY_BIN")
+    popen = Mock()
+    monkeypatch.setattr(volume_commands.subprocess, "Popen", popen)
 
-    volume_commands.run_cannery(["ls"])
+    with pytest.raises(click.UsageError, match="truss auth login"):
+        volume_commands.run_cannery(["ls"])
 
-    argv = popen.call_args.args[0]
-    assert argv[argv.index("--api") + 1] == "http://127.0.0.1:8787"
-    assert popen.call_args.kwargs["env"]["CANNERY_ORG"] == "dev"
+    popen.assert_not_called()
 
 
 def test_v1_bootstrap_mismatch_prevents_operation(monkeypatch):
@@ -258,7 +265,7 @@ def test_explicit_phase_zero_fallback_is_loopback_only(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))
     popen.reset_mock()
 
-    with pytest.raises(click.UsageError, match="non-loopback"):
+    with pytest.raises(click.UsageError, match="loopback"):
         volume_commands.run_cannery(["ls"])
 
     popen.assert_not_called()
@@ -277,12 +284,12 @@ def test_pinned_artifact_rejects_phase_zero_fallback(monkeypatch):
     popen.assert_not_called()
 
 
-def test_non_loopback_endpoint_rejected_without_token(monkeypatch):
+def test_non_loopback_endpoint_override_is_rejected(monkeypatch):
     monkeypatch.setenv("TRUSS_CANNERY_API", "https://cannery.example.com")
     popen = Mock()
     monkeypatch.setattr(volume_commands.subprocess, "Popen", popen)
 
-    with pytest.raises(click.UsageError, match="production token exchange"):
+    with pytest.raises(click.UsageError, match="restricted to an explicit loopback"):
         volume_commands.run_cannery(["ls"])
 
     popen.assert_not_called()
@@ -377,7 +384,7 @@ def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
     with pytest.raises(click.ClickException, match="reason VOLUME_NOT_FOUND") as exc:
         volume_commands.run_cannery(["show", "bdn://weights/missing:prod"])
 
-    assert "weights/missing" not in str(exc.value)
+    assert "Volume weights/missing was not found" in str(exc.value)
 
 
 def test_exit_two_becomes_usage_error(monkeypatch):
@@ -385,6 +392,36 @@ def test_exit_two_becomes_usage_error(monkeypatch):
 
     with pytest.raises(click.UsageError, match="INVALID_ARGUMENT"):
         volume_commands.run_cannery(["show", "bad-ref"])
+
+
+def test_nonempty_pull_destination_error_is_actionable(monkeypatch):
+    started = _fixture("pull-integrity-error.ndjson").splitlines()[0]
+    error = {
+        "protocolVersion": 1,
+        "sequence": "2",
+        "operationId": "01K0PULL000000000000000002",
+        "operation": "OPERATION_PULL",
+        "error": {
+            "category": "ERROR_CATEGORY_INVALID_ARGUMENT",
+            "reason": "INVALID_ARGUMENT",
+            "message": "The command arguments are invalid",
+            "retryable": False,
+            "details": {
+                "invalidArgument": {
+                    "constraint": "pull destination is not empty: /tmp/output"
+                }
+            },
+        },
+    }
+    install_process(
+        monkeypatch,
+        FakeProcess(stdout=f"{started}\n{json.dumps(error)}\n", return_code=1),
+    )
+
+    with pytest.raises(click.UsageError) as exc_info:
+        volume_commands.run_cannery(["pull", "bdn://weights/model:prod", "/tmp/output"])
+
+    assert "pull destination is not empty: /tmp/output" in str(exc_info.value)
 
 
 def test_terminal_then_hanging_process_is_killed_within_bound(monkeypatch):
@@ -421,9 +458,10 @@ def test_cancellation_is_forwarded_to_child(monkeypatch):
     process.send_signal = finish_on_signal
     install_process(monkeypatch, process)
 
-    with pytest.raises(click.Abort):
+    with pytest.raises(CanneryCancelled) as exc_info:
         volume_commands.run_cannery(["pull", "bdn://dev/model", "/tmp/out"])
 
+    assert exc_info.value.exit_code == 130
     assert process.signals == [signal.SIGINT]
 
 
@@ -441,15 +479,25 @@ def test_cancellation_is_forwarded_to_child(monkeypatch):
 def test_volume_commands_are_registered_and_forward_arguments(
     monkeypatch, arguments, expected
 ):
-    run = Mock(return_value={"ok": True})
+    if arguments[0] == "ls":
+        command_result = {"namespaces": []}
+    elif arguments[0] == "show":
+        command_result = {
+            "manifest_digest": "b3:abc",
+            "canonical_reference": arguments[1],
+            "file_page": {"files": []},
+        }
+    else:
+        command_result = {"ok": True}
+    run = Mock(return_value=command_result)
     monkeypatch.setattr(volume_commands, "run_cannery", run)
     monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
 
     result = CliRunner().invoke(truss_cli, ["volume", *arguments, "--output", "json"])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {"ok": True}
-    run.assert_called_once_with(expected)
+    assert json.loads(result.stdout) == command_result
+    run.assert_called_once_with(expected, remote=None)
 
 
 def test_push_command_forwards_optional_ref(monkeypatch, tmp_path):
@@ -465,12 +513,16 @@ def test_push_command_forwards_optional_ref(monkeypatch, tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    run.assert_called_once_with(["push", str(source), "bdn://models/weights:dev"])
+    run.assert_called_once_with(
+        ["push", str(source), "bdn://models/weights:dev"], remote=None
+    )
 
 
 def test_json_output_keeps_status_off_stdout(monkeypatch):
     monkeypatch.setattr(
-        volume_commands, "run_cannery", lambda _: {"protocol_version": 1}
+        volume_commands,
+        "run_cannery",
+        lambda _arguments, remote=None: {"namespaces": [], "protocol_version": 1},
     )
     monkeypatch.setattr(
         volume_commands.common,
@@ -481,9 +533,94 @@ def test_json_output_keeps_status_off_stdout(monkeypatch):
     result = CliRunner().invoke(truss_cli, ["volume", "ls", "--output", "json"])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {"protocol_version": 1}
+    assert json.loads(result.stdout) == {"namespaces": [], "protocol_version": 1}
     assert "upgrade available" not in result.stdout
     assert "upgrade available" in result.stderr
+
+
+def test_remote_option_is_forwarded(monkeypatch):
+    run = Mock(return_value={"namespaces": []})
+    monkeypatch.setattr(volume_commands, "run_cannery", run)
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli, ["volume", "ls", "--remote", "staging", "--output", "json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    run.assert_called_once_with(["ls"], remote="staging")
+
+
+def test_list_consumes_all_metadata_pages(monkeypatch):
+    run = Mock(
+        side_effect=[
+            {
+                "namespace": "weights",
+                "references": [{"reference": "first"}],
+                "next_page_token": "p2",
+            },
+            {"namespace": "weights", "references": [{"reference": "second"}]},
+        ]
+    )
+    monkeypatch.setattr(volume_commands, "run_cannery", run)
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli,
+        ["volume", "ls", "weights", "--page-size", "1000", "--output", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["references"] == [
+        {"reference": "first"},
+        {"reference": "second"},
+    ]
+    assert run.call_args_list == [
+        call(["ls", "weights", "--page-size", "1000"], remote=None),
+        call(
+            ["ls", "weights", "--page-size", "1000", "--page-token", "p2"], remote=None
+        ),
+    ]
+
+
+def test_show_rejects_repeated_page_token(monkeypatch):
+    run = Mock(
+        side_effect=[
+            {
+                "manifest_digest": "b3:abc",
+                "canonical_reference": "bdn://weights/model@b3:abc",
+                "file_page": {"files": [], "next_page_token": "repeat"},
+            },
+            {
+                "manifest_digest": "b3:abc",
+                "canonical_reference": "bdn://weights/model@b3:abc",
+                "file_page": {"files": [], "next_page_token": "repeat"},
+            },
+        ]
+    )
+    monkeypatch.setattr(volume_commands, "run_cannery", run)
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli, ["volume", "show", "bdn://weights/model", "--output", "json"]
+    )
+
+    assert result.exit_code != 0
+    assert "repeated" in result.output
+    assert "next_page_token" in result.output
+
+
+def test_cli_cancellation_exits_130(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        volume_commands, "run_cannery", Mock(side_effect=CanneryCancelled())
+    )
+    monkeypatch.setattr(volume_commands.common, "maybe_upgrade_dialogue", lambda: None)
+
+    result = CliRunner().invoke(
+        truss_cli, ["volume", "pull", "bdn://weights/model", str(tmp_path / "out")]
+    )
+
+    assert result.exit_code == 130
 
 
 def test_volume_help_lists_all_mvp_commands():
