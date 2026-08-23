@@ -10,7 +10,7 @@
     "fixtures/protojson/push-throttled.ndjson": "2892859ed1f45ee27db55d2194c851b36e07cfb04d54b01e79f4a5991b65ad2a",
     "fixtures/protojson/show-not-found.ndjson": "f6cae3b3196948b752a4a4cd72b0affb87415c14f384f92884d1ff260d72b6e7",
     "fixtures/protojson/show-success.ndjson": "3d3ea81f0ab5fd8a0c0ccd6c7d499337e44f2496e6b3c10714c0f50730446b62",
-    "v1.md": "79ccbb06fdafc0d88d30aa2ff36970675c783c578abd556a16152817fa3e73a8"
+    "v1.md": "344aed7690ef0dc14b887cb98727788ef86d13ed91b18c863224005333455cf3"
   },
   "generator": "grpcio-tools==1.73.1"
 }
