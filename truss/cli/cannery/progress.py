@@ -3,6 +3,39 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
+from rich.console import Console
+from rich.live import Live
+from rich.text import Text
+
+from truss.cli.utils.output import stderr_console
+
+
+class ProgressRenderer:
+    """Render machine progress in place on terminals and as lines in logs."""
+
+    def __init__(self, console: Console = stderr_console) -> None:
+        self._console = console
+        self._live = (
+            Live("", console=console, auto_refresh=False, transient=False)
+            if console.is_terminal
+            else None
+        )
+        self._started = False
+
+    def __call__(self, message: str) -> None:
+        if self._live is None:
+            self._console.print(message)
+            return
+        if not self._started:
+            self._live.start(refresh=False)
+            self._started = True
+        self._live.update(Text(message), refresh=True)
+
+    def close(self) -> None:
+        if self._live is not None and self._started:
+            self._live.stop()
+            self._started = False
+
 
 def event_kind(event: Mapping[str, Any]) -> Optional[str]:
     for key in ("type", "event", "kind"):

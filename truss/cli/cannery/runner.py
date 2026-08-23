@@ -35,6 +35,7 @@ from truss.cli.cannery.errors import (
     error_category,
     safe_machine_identifier,
 )
+from truss.cli.cannery.progress import ProgressRenderer
 from truss.cli.cannery.protocol import (
     CanneryProtocolConsumer,
     Phase0ProtocolConsumer,
@@ -365,11 +366,8 @@ def _run_cannery(
             _cancel_process(process)
             raise CanneryClickException("Failed to capture Cannery subprocess output.")
 
-        session = consumer.start(
-            process.stdout,
-            process.stderr,
-            lambda message: click.echo(message, err=True),
-        )
+        progress_renderer = ProgressRenderer()
+        session = consumer.start(process.stdout, process.stderr, progress_renderer)
         interrupted = False
         terminal_exit_timed_out = False
         read_protocol_error: Optional[CanneryProtocolError] = None
@@ -404,28 +402,31 @@ def _run_cannery(
                 )
             raise CanneryCancelled()
         finally:
-            if process.poll() is None:
-                _cancel_process(process)
-            if not interrupted:
-                completed_return_code = return_code
-                if completed_return_code is None:
-                    completed_return_code = process.poll()
-                if completed_return_code is None:
-                    completed_return_code = process.wait()
-                try:
+            try:
+                if process.poll() is None:
+                    _cancel_process(process)
+                if not interrupted:
+                    completed_return_code = return_code
+                    if completed_return_code is None:
+                        completed_return_code = process.poll()
+                    if completed_return_code is None:
+                        completed_return_code = process.wait()
                     try:
-                        session.finish(
-                            completed_return_code,
-                            enforce_exit_status=not terminal_exit_timed_out,
-                        )
-                    except CanneryProtocolError:
-                        if read_protocol_error is None:
-                            raise
-                finally:
-                    if session.stderr_diagnostic:
-                        diagnostic.record(
-                            "subprocess_stderr", message=session.stderr_diagnostic
-                        )
+                        try:
+                            session.finish(
+                                completed_return_code,
+                                enforce_exit_status=not terminal_exit_timed_out,
+                            )
+                        except CanneryProtocolError:
+                            if read_protocol_error is None:
+                                raise
+                    finally:
+                        if session.stderr_diagnostic:
+                            diagnostic.record(
+                                "subprocess_stderr", message=session.stderr_diagnostic
+                            )
+            finally:
+                progress_renderer.close()
 
         if terminal_exit_timed_out:
             raise CanneryProtocolError(
