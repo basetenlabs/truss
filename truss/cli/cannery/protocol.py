@@ -39,9 +39,12 @@ class CanneryProtocolSession(Protocol):
     @property
     def stderr_diagnostic(self) -> str: ...
 
+    @property
+    def terminal_exit_timeout_sec(self) -> Optional[float]: ...
+
     def read_result(self) -> Dict[str, Any]: ...
 
-    def finish(self, return_code: int) -> None: ...
+    def finish(self, return_code: int, *, enforce_exit_status: bool = True) -> None: ...
 
 
 class CanneryProtocolConsumer(Protocol):
@@ -101,6 +104,10 @@ class _Phase0ProtocolSession:
         prefix = "[earlier stderr truncated]\n" if self._stderr_truncated else ""
         return prefix + self._stderr_diagnostic
 
+    @property
+    def terminal_exit_timeout_sec(self) -> Optional[float]:
+        return None
+
     def _drain_machine_events(self) -> None:
         for line_number, line in enumerate(self._stderr, start=1):
             self._stderr_diagnostic += line
@@ -130,7 +137,7 @@ class _Phase0ProtocolSession:
     def read_result(self) -> Dict[str, Any]:
         return _parse_result(self._stdout.read())
 
-    def finish(self, return_code: int) -> None:
+    def finish(self, return_code: int, *, enforce_exit_status: bool = True) -> None:
         self._stderr_thread.join()
         if self._protocol_error is not None:
             raise self._protocol_error

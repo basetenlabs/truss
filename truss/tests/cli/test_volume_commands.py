@@ -1,6 +1,9 @@
 import io
 import json
 import signal
+import subprocess
+import threading
+import time
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -11,6 +14,7 @@ from click.testing import CliRunner
 from truss.cli import volume_commands
 from truss.cli.cannery import config as cannery_config
 from truss.cli.cannery import runner as cannery_runner
+from truss.cli.cannery import v1_protocol
 from truss.cli.cli import truss_cli
 
 GENERATED_ROOT = Path(volume_commands.__file__).parent / "cannery" / "generated"
@@ -56,6 +60,41 @@ class FakeProcess:
 
     def kill(self):
         self.killed = True
+
+
+class _BlockingStderr:
+    def __init__(self, closed: threading.Event):
+        self._closed = closed
+
+    def read(self, _size):
+        self._closed.wait()
+        return ""
+
+
+class HangingAfterTerminalProcess(FakeProcess):
+    def __init__(self, stdout):
+        super().__init__(stdout=stdout, return_code=None)
+        self._closed = threading.Event()
+        self.stderr = _BlockingStderr(self._closed)
+
+    def wait(self, timeout=None):
+        if self.returncode is not None:
+            return self.returncode
+        if timeout is not None:
+            raise subprocess.TimeoutExpired("cannery", timeout)
+        self._closed.wait()
+        return self.returncode
+
+    def send_signal(self, value):
+        self.signals.append(value)
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -signal.SIGKILL
+        self._closed.set()
 
 
 @pytest.fixture(autouse=True)
@@ -346,6 +385,23 @@ def test_exit_two_becomes_usage_error(monkeypatch):
 
     with pytest.raises(click.UsageError, match="INVALID_ARGUMENT"):
         volume_commands.run_cannery(["show", "bad-ref"])
+
+
+def test_terminal_then_hanging_process_is_killed_within_bound(monkeypatch):
+    process = HangingAfterTerminalProcess(_fixture("list-success.ndjson"))
+    install_process(monkeypatch, process)
+    monkeypatch.setattr(v1_protocol, "_TERMINAL_EXIT_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(cannery_runner, "_CANCEL_GRACE_SECONDS", 0.01)
+    started_at = time.monotonic()
+
+    with pytest.raises(
+        volume_commands.CanneryProtocolError, match="did not exit within"
+    ):
+        volume_commands.run_cannery(["ls"])
+
+    assert time.monotonic() - started_at < 1
+    assert process.killed
+    assert process._closed.is_set()
 
 
 def test_cancellation_is_forwarded_to_child(monkeypatch):

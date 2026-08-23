@@ -173,6 +173,34 @@ def test_v1_consumer_requires_exactly_one_terminal_record():
         _consume("\n".join([*lines, lines[-1]]) + "\n", "push", 0)
 
 
+def test_v1_read_result_returns_at_terminal_then_finish_drains_eof():
+    lines = iter(_fixture("push-success.ndjson").splitlines(keepends=True))
+
+    class TerminalThenPausedStdout:
+        allow_eof = False
+
+        def readline(self, _size):
+            try:
+                return next(lines)
+            except StopIteration:
+                if not self.allow_eof:
+                    raise AssertionError("read_result read beyond the terminal record")
+                return ""
+
+    stdout = TerminalThenPausedStdout()
+    session = V1ProtocolConsumer("push").start(
+        stdout, io.StringIO(""), lambda _message: None
+    )
+
+    result = session.read_result()
+
+    assert result["manifest_digest"].startswith("b3:")
+    assert not session._stream_complete
+    stdout.allow_eof = True
+    session.finish(0)
+    assert session._stream_complete
+
+
 def test_v1_consumer_rejects_exit_terminal_mismatch():
     session = V1ProtocolConsumer("push").start(
         io.StringIO(_fixture("push-success.ndjson")),

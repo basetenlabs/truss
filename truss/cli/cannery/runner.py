@@ -359,10 +359,23 @@ def _run_cannery(
             lambda message: click.echo(message, err=True),
         )
         interrupted = False
+        terminal_exit_timed_out = False
+        read_protocol_error: Optional[CanneryProtocolError] = None
         return_code: Optional[int] = None
         try:
             result = session.read_result()
-            return_code = process.wait()
+            terminal_exit_timeout_sec = session.terminal_exit_timeout_sec
+            try:
+                return_code = process.wait(timeout=terminal_exit_timeout_sec)
+            except subprocess.TimeoutExpired:
+                terminal_exit_timed_out = True
+                _cancel_process(process)
+                return_code = process.poll()
+                if return_code is None:
+                    return_code = -1
+        except CanneryProtocolError as exc:
+            read_protocol_error = exc
+            raise
         except KeyboardInterrupt:
             interrupted = True
             _cancel_process(process)
@@ -370,8 +383,8 @@ def _run_cannery(
             if cancelled_return_code is None:
                 cancelled_return_code = 130
             try:
-                session.finish(cancelled_return_code)
-            except CanneryProtocolError:
+                session.finish(cancelled_return_code, enforce_exit_status=False)
+            except (CanneryProtocolError, KeyboardInterrupt):
                 pass
             if session.stderr_diagnostic:
                 diagnostic.record(
@@ -388,13 +401,25 @@ def _run_cannery(
                 if completed_return_code is None:
                     completed_return_code = process.wait()
                 try:
-                    session.finish(completed_return_code)
+                    try:
+                        session.finish(
+                            completed_return_code,
+                            enforce_exit_status=not terminal_exit_timed_out,
+                        )
+                    except CanneryProtocolError:
+                        if read_protocol_error is None:
+                            raise
                 finally:
                     if session.stderr_diagnostic:
                         diagnostic.record(
                             "subprocess_stderr", message=session.stderr_diagnostic
                         )
 
+        if terminal_exit_timed_out:
+            raise CanneryProtocolError(
+                "Cannery emitted a terminal machine record but did not exit within "
+                f"{session.terminal_exit_timeout_sec:g} seconds."
+            )
         if session.cancelled:
             raise click.Abort()
         assert return_code is not None

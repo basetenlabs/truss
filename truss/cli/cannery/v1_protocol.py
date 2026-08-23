@@ -4,7 +4,8 @@ import json
 import math
 import re
 import threading
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional, TextIO
+import time
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, TextIO
 
 from google.protobuf import json_format
 from google.protobuf.message import Message
@@ -18,6 +19,8 @@ _ENCODING = "protojson-ndjson"
 _MAX_RECORD_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_CHARACTERS = 64 * 1024
 _MAX_PAGE_ENTRIES = 1_000
+_TERMINAL_EXIT_TIMEOUT_SEC = 5.0
+_STREAM_DRAIN_TIMEOUT_SEC = 5.0
 _STABLE_REASON = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 
 _OPERATION_BY_COMMAND = {
@@ -186,6 +189,7 @@ class _V1ProtocolSession:
         self._last_phase: Optional[str] = None
         self._progress_counters: Dict[str, int] = {}
         self._stream_complete = False
+        self._line_number = 0
         self._stderr = _BoundedStderrCapture(stderr)
         self._stderr_thread = threading.Thread(
             target=self._stderr.drain, name="truss-cannery-v1-stderr", daemon=True
@@ -208,15 +212,18 @@ class _V1ProtocolSession:
     def stderr_diagnostic(self) -> str:
         return self._stderr.value
 
+    @property
+    def terminal_exit_timeout_sec(self) -> Optional[float]:
+        return _TERMINAL_EXIT_TIMEOUT_SEC
+
     def read_result(self) -> Dict[str, Any]:
-        line_number = 0
-        while True:
+        while self._terminal_kind is None:
             line = self._stdout.readline(_MAX_RECORD_BYTES + 1)
             if not line:
+                self._stream_complete = True
                 break
-            line_number += 1
-            self._consume_line(line, line_number)
-        self._stream_complete = True
+            self._line_number += 1
+            self._consume_line(line, self._line_number)
         return self._terminal_result or {}
 
     def _consume_line(self, line: str, line_number: int) -> None:
@@ -453,10 +460,40 @@ class _V1ProtocolSession:
             result["phase"] = self._last_phase
         return result
 
-    def finish(self, return_code: int) -> None:
-        self._stderr_thread.join()
+    def finish(self, return_code: int, *, enforce_exit_status: bool = True) -> None:
+        stdout_errors: List[BaseException] = []
+        stdout_thread: Optional[threading.Thread] = None
         if not self._stream_complete:
-            return
+            stdout_thread = threading.Thread(
+                target=self._drain_remaining_stdout,
+                args=(stdout_errors,),
+                name="truss-cannery-v1-stdout-drain",
+                daemon=True,
+            )
+            stdout_thread.start()
+
+        deadline = time.monotonic() + _STREAM_DRAIN_TIMEOUT_SEC
+        if stdout_thread is not None:
+            stdout_thread.join(max(0.0, deadline - time.monotonic()))
+        self._stderr_thread.join(max(0.0, deadline - time.monotonic()))
+
+        if stdout_errors:
+            error = stdout_errors[0]
+            if isinstance(error, (CanneryProtocolError, KeyboardInterrupt)):
+                raise error
+            raise CanneryProtocolError(
+                "Cannery stdout could not be drained after process exit."
+            ) from None
+        if (stdout_thread is not None and stdout_thread.is_alive()) or (
+            self._stderr_thread.is_alive()
+        ):
+            raise CanneryProtocolError(
+                "Cannery output pipes did not close after process exit."
+            )
+        if self._stderr.error is not None:
+            raise CanneryProtocolError(
+                "Cannery stderr could not be drained after process exit."
+            )
         if self._terminal_kind is None:
             if self._record_count == 0 and return_code == 2:
                 self._terminal_kind = "error"
@@ -474,6 +511,8 @@ class _V1ProtocolSession:
                 raise CanneryProtocolError(
                     "Cannery machine stream ended without a terminal record."
                 )
+        if not enforce_exit_status:
+            return
         expected_exit_code = {"result": 0, "error": 1, "cancelled": 130}[
             self._terminal_kind
         ]
@@ -483,12 +522,25 @@ class _V1ProtocolSession:
                 f"got {return_code}, expected {expected_exit_code}."
             )
 
+    def _drain_remaining_stdout(self, errors: List[BaseException]) -> None:
+        try:
+            while True:
+                line = self._stdout.readline(_MAX_RECORD_BYTES + 1)
+                if not line:
+                    self._stream_complete = True
+                    return
+                self._line_number += 1
+                self._consume_line(line, self._line_number)
+        except BaseException as exc:
+            errors.append(exc)
+
 
 class _BoundedStderrCapture:
     def __init__(self, stderr: Iterable[str]) -> None:
         self._stderr = stderr
         self._value = ""
         self._truncated = False
+        self.error: Optional[BaseException] = None
 
     @property
     def value(self) -> str:
@@ -497,15 +549,20 @@ class _BoundedStderrCapture:
         return self._value
 
     def drain(self) -> None:
-        reader = getattr(self._stderr, "read", None)
-        chunks = (
-            iter(lambda: reader(8192), "") if callable(reader) else iter(self._stderr)
-        )
-        for chunk in chunks:
-            self._value += chunk
-            if len(self._value) > _MAX_STDERR_CHARACTERS:
-                self._truncated = True
-                self._value = self._value[-_MAX_STDERR_CHARACTERS:]
+        try:
+            reader = getattr(self._stderr, "read", None)
+            chunks = (
+                iter(lambda: reader(8192), "")
+                if callable(reader)
+                else iter(self._stderr)
+            )
+            for chunk in chunks:
+                self._value += chunk
+                if len(self._value) > _MAX_STDERR_CHARACTERS:
+                    self._truncated = True
+                    self._value = self._value[-_MAX_STDERR_CHARACTERS:]
+        except BaseException as exc:
+            self.error = exc
 
 
 def _validate_symbolic_enums(document: Mapping[str, Any]) -> None:
