@@ -579,7 +579,9 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
-_BDN_PREFIX = "bdn://"
+_BDN_TAGGED_VOLUME_SOURCE_REGEX = re.compile(
+    r"^bdn://[^/:@\x00]+/[^/:@\x00]+:[^/:@\x00]+$"
+)
 
 
 class VolumeAccessMode(str, enum.Enum):
@@ -605,24 +607,7 @@ class VolumeMount(custom_types.ConfigModel):
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, value: str) -> str:
-        if not value.startswith(_BDN_PREFIX):
-            raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
-        reference = value[len(_BDN_PREFIX) :]
-        namespace, namespace_separator, volume_and_tag = reference.partition("/")
-        volume, tag_separator, tag = volume_and_tag.partition(":")
-        if (
-            not namespace_separator
-            or not namespace
-            or not volume
-            or not tag_separator
-            or not tag
-            or "/" in volume_and_tag
-            or ":" in namespace
-            or "@" in namespace
-            or "@" in volume
-            or ":" in tag
-            or "@" in tag
-        ):
+        if _BDN_TAGGED_VOLUME_SOURCE_REGEX.fullmatch(value) is None:
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
                 "Expected format: bdn://namespace/volume:tag"
