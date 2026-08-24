@@ -2034,8 +2034,8 @@ class TestTrussConfigVolumes:
             - source: bdn://weights/llama-8b:prod
               mount: /models/llama
           access:
-            shared-weights: pull
-            model-outputs: push
+            weights: [pull, tag]
+            checkpoints: [push, pull, tag]
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
@@ -2046,8 +2046,12 @@ class TestTrussConfigVolumes:
             VolumeMount(source="bdn://weights/llama-8b:prod", mount="/models/llama")
         ]
         assert config.volumes.access == {
-            "shared-weights": VolumeAccessMode.PULL,
-            "model-outputs": VolumeAccessMode.PUSH,
+            "weights": [VolumeAccessMode.PULL, VolumeAccessMode.TAG],
+            "checkpoints": [
+                VolumeAccessMode.PUSH,
+                VolumeAccessMode.PULL,
+                VolumeAccessMode.TAG,
+            ],
         }
 
     def test_volumes_serialization_roundtrip(self, tmp_path):
@@ -2059,7 +2063,7 @@ class TestTrussConfigVolumes:
                         mount="/models/some-model",
                     )
                 ],
-                access={"weights": VolumeAccessMode.PULL},
+                access={"weights": [VolumeAccessMode.PULL, VolumeAccessMode.TAG]},
             )
         )
         config_path = tmp_path / "config.yaml"
@@ -2073,7 +2077,7 @@ class TestTrussConfigVolumes:
                     "mount": "/models/some-model",
                 }
             ],
-            "access": {"weights": "pull"},
+            "access": {"weights": ["pull", "tag"]},
         }
         assert TrussConfig.from_yaml(config_path).volumes == config.volumes
 
@@ -2088,13 +2092,17 @@ class TestTrussConfigVolumes:
 
     @pytest.mark.parametrize("scope", list(VolumeAccessMode))
     def test_volume_access_accepts_all_bdn_scopes(self, scope):
-        volumes = Volumes(access={"weights": scope.value})
+        volumes = Volumes(access={"weights": [scope.value]})
 
-        assert volumes.access == {"weights": scope}
+        assert volumes.access == {"weights": [scope]}
 
     def test_volume_access_rejects_unknown_scope(self):
         with pytest.raises(pydantic.ValidationError):
-            Volumes(access={"weights": "write"})
+            Volumes(access={"weights": ["write"]})
+
+    def test_volume_access_requires_scope_lists(self):
+        with pytest.raises(pydantic.ValidationError):
+            Volumes(access={"weights": "pull"})
 
     def test_volume_mount_paths_must_be_unique(self):
         with pytest.raises(

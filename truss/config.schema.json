@@ -1824,9 +1824,7 @@
         "pull",
         "push",
         "tag",
-        "delete",
-        "inspect",
-        "admin"
+        "delete"
       ],
       "title": "VolumeAccessMode",
       "type": "string"
@@ -1869,9 +1867,12 @@
         },
         "access": {
           "additionalProperties": {
-            "$ref": "#/$defs/VolumeAccessMode"
+            "items": {
+              "$ref": "#/$defs/VolumeAccessMode"
+            },
+            "type": "array"
           },
-          "description": "Namespace names mapped to a BDN volume operation scope.",
+          "description": "Namespace names mapped to BDN volume operation scopes.",
           "title": "Access",
           "type": "object"
         }

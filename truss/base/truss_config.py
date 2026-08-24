@@ -589,8 +589,6 @@ class VolumeAccessMode(str, enum.Enum):
     PUSH = "push"
     TAG = "tag"
     DELETE = "delete"
-    INSPECT = "inspect"
-    ADMIN = "admin"
 
 
 class VolumeMount(custom_types.ConfigModel):
@@ -633,16 +631,16 @@ class Volumes(custom_types.ConfigModel):
         default_factory=list,
         description="Existing BDN volumes to mount when the model starts.",
     )
-    access: dict[str, VolumeAccessMode] = pydantic.Field(
+    access: dict[str, list[VolumeAccessMode]] = pydantic.Field(
         default_factory=dict,
-        description="Namespace names mapped to a BDN volume operation scope.",
+        description="Namespace names mapped to BDN volume operation scopes.",
     )
 
     @pydantic.field_validator("access")
     @classmethod
     def _validate_access_namespaces(
-        cls, value: dict[str, VolumeAccessMode]
-    ) -> dict[str, VolumeAccessMode]:
+        cls, value: dict[str, list[VolumeAccessMode]]
+    ) -> dict[str, list[VolumeAccessMode]]:
         if any(not namespace for namespace in value):
             raise ValueError("Volume access namespace names cannot be empty.")
         return value
