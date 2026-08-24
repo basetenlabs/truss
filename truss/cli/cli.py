@@ -214,9 +214,6 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     table.add_column(min_width=40)
     table.add_row("Org ID", oidc_info.org_id)
 
-    if oidc_info.aws_external_id:
-        table.add_row("AWS External ID", oidc_info.aws_external_id)
-
     if oidc_info.teams:
         teams_display = ", ".join(
             f"{team.id} ({team.name})" for team in oidc_info.teams
@@ -252,8 +249,17 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     default=False,
     help="Show OIDC configuration for workload identity.",
 )
+@click.option(
+    "--show-aws-external-id",
+    is_flag=True,
+    default=False,
+    help=(
+        "Show the AWS external ID Baseten presents when assuming your IAM "
+        "roles (the sts:ExternalId condition for AWS AssumeRole trust policies)."
+    ),
+)
 @common.common_options()
-def whoami(remote: Optional[str], show_oidc: bool):
+def whoami(remote: Optional[str], show_oidc: bool, show_aws_external_id: bool):
     """
     Shows user information and exit.
     """
@@ -275,6 +281,21 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print(table)
         console.print(
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
+        )
+
+    if show_aws_external_id:
+        remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+        aws_external_id = remote_provider.get_aws_external_id()
+        if aws_external_id is None:
+            raise click.ClickException(
+                "This Baseten server does not expose AWS external IDs yet; "
+                "contact Baseten support for yours."
+            )
+
+        console.print()
+        console.print(f"AWS External ID: {aws_external_id}")
+        console.print(
+            f"Learn more: {common.format_link('https://docs.baseten.co/organization/aws-assume-role')}"
         )
 
 

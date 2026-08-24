@@ -681,7 +681,6 @@ def test_whoami_with_show_oidc():
     mock_user = RemoteUser("test_workspace", "user@example.com")
     mock_oidc_info = OidcInfo(
         org_id="PJAd5Q0",
-        aws_external_id="baseten-2fdd8a01c4c34e6bb92a2b96fca29b70",
         teams=[
             OidcTeamInfo(id="wgeyxoq", name="Default Team"),
             OidcTeamInfo(id="abc123", name="ML Team"),
@@ -705,12 +704,53 @@ def test_whoami_with_show_oidc():
     assert "test_workspace\\user@example.com" in result.output
     assert "OIDC Configuration for Workload Identity" in result.output
     assert "PJAd5Q0" in result.output
-    assert "AWS External ID" in result.output
-    assert "baseten-2fdd8a01c4c34e6bb92a2b96fca29b70" in result.output
     assert "wgeyxoq (Default Team)" in result.output
     assert "abc123 (ML Team)" in result.output
     assert "https://oidc.baseten.co" in result.output
     assert "oidc.baseten.co" in result.output
+
+
+def test_whoami_with_show_aws_external_id():
+    """Test whoami --show-aws-external-id prints the workspace's external ID."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+    mock_remote = MagicMock()
+    mock_remote.get_aws_external_id.return_value = (
+        "baseten-2fdd8a01c4c34e6bb92a2b96fca29b70"
+    )
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+                result = runner.invoke(
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-external-id"],
+                )
+
+    assert result.exit_code == 0
+    assert "test_workspace\\user@example.com" in result.output
+    assert "AWS External ID: baseten-2fdd8a01c4c34e6bb92a2b96fca29b70" in result.output
+
+
+def test_whoami_show_aws_external_id_unsupported_server():
+    """Test whoami --show-aws-external-id fails clearly when the server predates it."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+    mock_remote = MagicMock()
+    mock_remote.get_aws_external_id.return_value = None
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+                result = runner.invoke(
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-external-id"],
+                )
+
+    assert result.exit_code != 0
+    assert "does not expose AWS external IDs" in result.output
 
 
 def test_push_defaults_to_published(

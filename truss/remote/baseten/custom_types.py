@@ -187,13 +187,6 @@ class OidcInfo(pydantic.BaseModel):
     """OIDC configuration information for workload identity."""
 
     org_id: str = pydantic.Field(description="Organization identifier")
-    aws_external_id: Optional[str] = pydantic.Field(
-        default=None,
-        description=(
-            "sts:ExternalId Baseten presents when assuming the organization's "
-            "AWS IAM roles (AWS_ASSUME_ROLE); None when the server predates it"
-        ),
-    )
     teams: list[OidcTeamInfo] = pydantic.Field(
         description="List of teams with id and name"
     )
