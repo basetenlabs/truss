@@ -2,6 +2,7 @@ import io
 import json
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -10,6 +11,7 @@ from unittest.mock import Mock, call
 import click
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from truss.cli import volume_commands
 from truss.cli.cannery import config as cannery_config
@@ -337,6 +339,14 @@ def test_protocol_mismatch_fails(monkeypatch):
 
 
 def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
+    renderer_type = cannery_runner.ProgressRenderer
+    monkeypatch.setattr(
+        cannery_runner,
+        "ProgressRenderer",
+        lambda: renderer_type(
+            Console(file=sys.stderr, force_terminal=False, color_system=None)
+        ),
+    )
     install_process(monkeypatch, FakeProcess(stdout=_fixture("push-success.ndjson")))
 
     volume_commands.run_cannery(["push", "/tmp/model"])
