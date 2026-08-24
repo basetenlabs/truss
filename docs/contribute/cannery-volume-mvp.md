@@ -86,10 +86,9 @@ directory they supply to compare or synchronize the vendored files.
 
 The check runs in unit tests, pre-commit, and PR CI. It validates the vendored
 schema, generated Python files, documentation, fixtures, and hash manifest
-against one another. It does not automatically query the Baseten repository:
-there is no cross-repository token in this workflow. For a protocol update,
-check out the reviewed Baseten commit, run the sync script with its canonical
-`--source-root`, commit all generated changes, and run `--check` locally.
+against one another. For a protocol update, obtain the canonical protocol
+source supplied by maintainers, pass its contract directory as `--source-root`,
+commit all generated changes, and run `--check` locally.
 
 Truss follows `next_page_token` from the Cannery namespace, reference, and
 inspect metadata APIs until the final page. `volume ls` and `volume show`
@@ -99,10 +98,11 @@ tokens fail as protocol errors.
 
 ## Updating released artifacts
 
-The Baseten raw-artifact release emits one `*.truss-pin.json` per platform with
-exactly `cannery_version`, `protocol_version`, `operating_system`,
-`architecture`, `url`, `size_bytes`, and `sha256`. After publication and
-independent verification of the public bytes, import the reviewed pin files:
+A trusted producer release manifest provides one `*.truss-pin.json` per
+platform with exactly `cannery_version`, `protocol_version`,
+`operating_system`, `architecture`, `url`, `size_bytes`, and `sha256`. After an
+immutable public artifact release is published and independently verified,
+perform a maintainer-reviewed import:
 
 ```sh
 uv run python scripts/update_cannery_artifact_pins.py \

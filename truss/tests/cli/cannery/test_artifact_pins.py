@@ -22,7 +22,7 @@ def _pin(**updates):
     return pin
 
 
-def test_release_pin_imports_exact_baseten_shape(tmp_path):
+def test_release_pin_imports_exact_trusted_manifest_shape(tmp_path):
     pin_paths = []
     for name, pin in (
         ("linux.json", _pin()),
@@ -69,6 +69,13 @@ def test_release_pin_rejects_manifest_only_fields(tmp_path):
     assert result.returncode != 0
     assert "must contain exactly" in result.stderr
     assert not (tmp_path / "output.json").exists()
+
+
+def test_release_pin_import_requires_trusted_producer_manifest():
+    result = subprocess.run([sys.executable, SCRIPT], capture_output=True, text=True)
+
+    assert result.returncode != 0
+    assert "trusted producer *.truss-pin.json manifest" in result.stderr
 
 
 def test_checked_in_artifact_table_is_valid_and_empty():

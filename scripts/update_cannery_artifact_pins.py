@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import reviewed Baseten raw-artifact pins into the Truss trust table."""
+"""Import reviewed trusted producer release pins into the Truss trust table."""
 
 from __future__ import annotations
 
@@ -120,7 +120,12 @@ def _check_table(path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("pins", nargs="*", type=Path, help="Baseten *.truss-pin.json")
+    parser.add_argument(
+        "pins",
+        nargs="*",
+        type=Path,
+        help="Trusted producer *.truss-pin.json release manifests.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
         "--check", action="store_true", help="Validate the checked-in table only."
@@ -134,7 +139,9 @@ def main() -> int:
             print("Bundled Cannery artifact pins are valid.")
             return 0
         if not args.pins:
-            parser.error("at least one Baseten *.truss-pin.json is required")
+            parser.error(
+                "at least one trusted producer *.truss-pin.json manifest is required"
+            )
         table = _build_table(_load_pin(path) for path in args.pins)
         _write_table(args.output, table)
     except ValueError as exc:

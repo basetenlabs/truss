@@ -52,8 +52,9 @@ class ArtifactHttpClient(Protocol):
     def get(self, url: str, **kwargs: object) -> StreamingResponse: ...
 
 
-# Populated from the reviewed Baseten raw-artifact release pins. The checked-in
-# table remains empty until publication.
+# Populated by a maintainer-reviewed import from trusted producer release
+# manifests. The table remains empty until an immutable public artifact release
+# is published.
 BUNDLED_ARTIFACTS: Mapping[Tuple[str, str], ArtifactMetadata]
 
 
