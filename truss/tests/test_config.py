@@ -2034,8 +2034,8 @@ class TestTrussConfigVolumes:
             - source: bdn://weights/llama-8b:prod
               mount: /models/llama
           access:
-            shared-weights: read
-            model-outputs: publish
+            shared-weights: pull
+            model-outputs: push
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
@@ -2046,8 +2046,8 @@ class TestTrussConfigVolumes:
             VolumeMount(source="bdn://weights/llama-8b:prod", mount="/models/llama")
         ]
         assert config.volumes.access == {
-            "shared-weights": VolumeAccessMode.READ,
-            "model-outputs": VolumeAccessMode.PUBLISH,
+            "shared-weights": VolumeAccessMode.PULL,
+            "model-outputs": VolumeAccessMode.PUSH,
         }
 
     def test_volumes_serialization_roundtrip(self, tmp_path):
@@ -2059,7 +2059,7 @@ class TestTrussConfigVolumes:
                         mount="/models/some-model",
                     )
                 ],
-                access={"weights": VolumeAccessMode.READ},
+                access={"weights": VolumeAccessMode.PULL},
             )
         )
         config_path = tmp_path / "config.yaml"
@@ -2073,7 +2073,7 @@ class TestTrussConfigVolumes:
                     "mount": "/models/some-model",
                 }
             ],
-            "access": {"weights": "read"},
+            "access": {"weights": "pull"},
         }
         assert TrussConfig.from_yaml(config_path).volumes == config.volumes
 

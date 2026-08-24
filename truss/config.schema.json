@@ -1821,8 +1821,8 @@
     "VolumeAccessMode": {
       "description": "Permissions granted to a model for a BDN volume namespace.",
       "enum": [
-        "read",
-        "publish"
+        "pull",
+        "push"
       ],
       "title": "VolumeAccessMode",
       "type": "string"
@@ -1867,7 +1867,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/VolumeAccessMode"
           },
-          "description": "Namespace names mapped to read or publish access.",
+          "description": "Namespace names mapped to pull or push access.",
           "title": "Access",
           "type": "object"
         }

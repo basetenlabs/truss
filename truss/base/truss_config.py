@@ -585,8 +585,8 @@ _BDN_PREFIX = "bdn://"
 class VolumeAccessMode(str, enum.Enum):
     """Permissions granted to a model for a BDN volume namespace."""
 
-    READ = "read"
-    PUBLISH = "publish"
+    PULL = "pull"
+    PUSH = "push"
 
 
 class VolumeMount(custom_types.ConfigModel):
@@ -631,7 +631,7 @@ class Volumes(custom_types.ConfigModel):
     )
     access: dict[str, VolumeAccessMode] = pydantic.Field(
         default_factory=dict,
-        description="Namespace names mapped to read or publish access.",
+        description="Namespace names mapped to pull or push access.",
     )
 
     @pydantic.field_validator("access")
