@@ -607,7 +607,22 @@ class VolumeMount(custom_types.ConfigModel):
     def _validate_source(cls, value: str) -> str:
         if not value.startswith(_BDN_PREFIX):
             raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
-        if not value[len(_BDN_PREFIX) :] or value[len(_BDN_PREFIX) :].startswith("/"):
+        reference = value[len(_BDN_PREFIX) :]
+        namespace, namespace_separator, volume_and_tag = reference.partition("/")
+        volume, tag_separator, tag = volume_and_tag.partition(":")
+        if (
+            not namespace_separator
+            or not namespace
+            or not volume
+            or not tag_separator
+            or not tag
+            or "/" in volume_and_tag
+            or ":" in namespace
+            or "@" in namespace
+            or "@" in volume
+            or ":" in tag
+            or "@" in tag
+        ):
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
                 "Expected format: bdn://namespace/volume:tag"

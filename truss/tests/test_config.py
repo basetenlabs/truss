@@ -2081,9 +2081,23 @@ class TestTrussConfigVolumes:
         }
         assert TrussConfig.from_yaml(config_path).volumes == config.volumes
 
-    @pytest.mark.parametrize("source", ["weights/llama:prod", "hf://weights/llama"])
-    def test_volume_source_requires_bdn_scheme(self, source):
-        with pytest.raises(pydantic.ValidationError, match="bdn:// scheme"):
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "weights/llama:prod",
+            "hf://weights/llama",
+            "bdn://foo",
+            "bdn:///llama:prod",
+            "bdn://weights/:prod",
+            "bdn://weights/llama",
+            "bdn://weights/llama:",
+            "bdn://weights/models/llama:prod",
+            "bdn://weights/llama@b3:abcdef",
+            "bdn://weights/llama:prod:extra",
+        ],
+    )
+    def test_volume_source_rejects_invalid_reference(self, source):
+        with pytest.raises(pydantic.ValidationError):
             VolumeMount(source=source, mount="/models/llama")
 
     def test_volume_mount_requires_absolute_path(self):
