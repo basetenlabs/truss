@@ -592,6 +592,7 @@ class VolumeAccessMode(str, enum.Enum):
     PUSH = "push"
     TAG = "tag"
     DELETE = "delete"
+    INSPECT = "inspect"
 
 
 class VolumeMount(custom_types.ConfigModel):

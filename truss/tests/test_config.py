@@ -2034,7 +2034,7 @@ class TestTrussConfigVolumes:
             - source: bdn://weights/llama-8b:prod
               mount: /models/llama
           access:
-            weights: [pull, tag]
+            weights: [pull, tag, inspect]
             checkpoints: [push, pull, tag]
         """
         config_path = tmp_path / "config.yaml"
@@ -2046,7 +2046,11 @@ class TestTrussConfigVolumes:
             VolumeMount(source="bdn://weights/llama-8b:prod", mount="/models/llama")
         ]
         assert config.volumes.access == {
-            "weights": [VolumeAccessMode.PULL, VolumeAccessMode.TAG],
+            "weights": [
+                VolumeAccessMode.PULL,
+                VolumeAccessMode.TAG,
+                VolumeAccessMode.INSPECT,
+            ],
             "checkpoints": [
                 VolumeAccessMode.PUSH,
                 VolumeAccessMode.PULL,
