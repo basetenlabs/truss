@@ -108,7 +108,7 @@ message PullRequestV1 {
   bool restart = 6;
 }
 
-// One record in the ordered ProtoJSON NDJSON machine stream.
+// One record in the ordered production Protobuf-delimited or debug ProtoJSON stream.
 message MachineRecordV1 {
   uint32 protocol_version = 1;
   uint64 sequence = 2;
