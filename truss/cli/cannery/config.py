@@ -15,8 +15,8 @@ from truss.remote.truss_remote import RemoteConfig
 DEFAULT_LOCAL_API = "http://127.0.0.1:8787"
 DEFAULT_LOCAL_ORG = "dev"
 
-# RUN-867 owns the final discovery contract. Keeping this mapping explicit makes
-# an unknown control-plane host fail closed instead of guessing its data endpoint.
+# Keep the public volume API mapping explicit so an unknown control-plane host
+# fails closed instead of guessing its data endpoint.
 CANNERY_API_BY_REMOTE_URL: Dict[str, str] = {
     DEFAULT_REMOTE_URL: "https://bdn.baseten.co"
 }
@@ -96,8 +96,7 @@ def resolve_cannery_config() -> CanneryConfig:
     api = CANNERY_API_BY_REMOTE_URL.get(active_remote.remote_url)
     if api is None:
         raise CanneryUsageError(
-            "No Cannery endpoint is configured for the selected Truss remote. "
-            "Set TRUSS_CANNERY_API explicitly "
-            "for local development."
+            "No public volume API endpoint is configured for the selected Truss "
+            "remote. Set TRUSS_CANNERY_API explicitly for local development."
         )
     return CanneryConfig(api=api, org=org, active_remote=active_remote)

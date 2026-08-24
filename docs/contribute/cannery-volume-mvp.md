@@ -1,9 +1,8 @@
 # Cannery volume CLI MVP
 
 `truss volume push|ls|show|pull` delegates volume operations to the Cannery
-client binary. This remains a developer-facing vertical slice for RUN-871.
-The wrapper has a verified artifact cache, but no customer-native Cannery
-artifact is pinned until release automation publishes and reviews one.
+client binary. The wrapper has a verified artifact cache, but no client artifact
+is pinned until an immutable public artifact release is published and reviewed.
 
 ## Temporary configuration
 
@@ -18,26 +17,24 @@ The following environment variables bridge Truss to Cannery:
 | `TRUSS_CANNERY_CACHE_DIR` | Verified binary cache override for tests | `~/.cache/truss/cannery` |
 | `TRUSS_CANNERY_DIAGNOSTIC_DIR` | Redacted diagnostic-log directory override | `~/.cache/truss/cannery/diagnostics` |
 
-This authentication path is temporary pending RUN-869. Truss does not exchange
-a Baseten API token for a Cannery token yet. An explicit token file is required
-for an explicit non-loopback endpoint. It must be a regular file owned and
-readable only by the current user (`0600` on Unix). Only `localhost`,
-`127.0.0.0/8`, and `::1` endpoints may run without a token. Truss passes a
-token file to the child as `CANNERY_AUTH_TOKEN_FILE`; token values never appear
-in process arguments. Truss forwards the selected organization as
-`CANNERY_ORG`; Cannery versions that no longer need a separate organization
-selector ignore it.
+Production token exchange is not configured yet. An explicit token file is
+required for an explicit non-loopback endpoint. It must be a regular file owned
+and readable only by the current user (`0600` on Unix). Only `localhost`,
+`127.0.0.0/8`, and `::1` endpoints may run without a token. Truss passes a token
+file to the child as `CANNERY_AUTH_TOKEN_FILE`; token values never appear in
+process arguments. Truss forwards the selected organization as `CANNERY_ORG`;
+Cannery versions that no longer need a separate organization selector ignore
+it.
 
-Without `TRUSS_CANNERY_API`, Truss maps the selected Baseten remote through an
-explicit endpoint table. Unknown control-plane URLs fail closed pending the
-final RUN-867 discovery contract. Remote execution also fails before starting
-Cannery until a RUN-869 exchange adapter is configured.
+Without `TRUSS_CANNERY_API`, Truss maps the selected Baseten remote to an
+explicit public volume API endpoint. Unknown control-plane URLs fail closed
+rather than guessing an endpoint. Remote execution also fails before starting
+Cannery until a production token exchange adapter is configured.
 
 ## Local test flow
 
-Build or obtain the matching Cannery client, then start a local Cannery server
-and its object-store dependency as described in the Baseten BDN developer docs.
-Point Truss at the client:
+Build or obtain the matching Cannery client, then start a compatible local
+server and its object-store dependency. Point Truss at the client:
 
 ```sh
 export TRUSS_CANNERY_BIN=/path/to/cannery
@@ -71,10 +68,11 @@ Use `--output json` on a Truss volume subcommand to preserve the final object on
 stdout for scripts; progress remains on stderr.
 
 > **Protocol migration TODO:** replace `Phase0ProtocolConsumer` with the
-> generated Protobuf v1 ProtoJSON consumer after the schema branch lands. The
-> swap occurs at `CanneryProtocolConsumer.start(...)`; command definitions,
-> authentication, binary resolution, and subprocess supervision must not parse
-> generated messages or change for that migration.
+> generated Protobuf v1 ProtoJSON consumer after importing the canonical
+> protocol source supplied by maintainers. The swap occurs at
+> `CanneryProtocolConsumer.start(...)`; command definitions, authentication,
+> binary resolution, and subprocess supervision must not parse generated
+> messages or change for that migration.
 
 Truss creates a correlation ID before authentication or network access.
 Failures retain an owner-only, redacted local diagnostic log and print its

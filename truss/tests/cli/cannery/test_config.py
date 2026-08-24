@@ -78,5 +78,5 @@ def test_unknown_remote_endpoint_fails_closed(monkeypatch):
         config.RemoteFactory, "load_remote_config", lambda remote_name: remote_config
     )
 
-    with pytest.raises(click.UsageError, match="No Cannery endpoint"):
+    with pytest.raises(click.UsageError, match="No public volume API endpoint"):
         config.resolve_cannery_config()

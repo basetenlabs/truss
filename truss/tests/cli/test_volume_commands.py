@@ -159,7 +159,7 @@ def test_non_loopback_endpoint_rejected_without_token(monkeypatch):
     popen = Mock()
     monkeypatch.setattr(volume_commands.subprocess, "Popen", popen)
 
-    with pytest.raises(click.UsageError, match="RUN-869"):
+    with pytest.raises(click.UsageError, match="production token exchange"):
         volume_commands.run_cannery(["ls"])
 
     popen.assert_not_called()

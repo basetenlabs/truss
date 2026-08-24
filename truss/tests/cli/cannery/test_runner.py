@@ -56,7 +56,7 @@ def test_remote_without_exchange_adapter_fails_before_subprocess(
     popen = Mock()
     monkeypatch.setattr(runner.subprocess, "Popen", popen)
 
-    with pytest.raises(click.UsageError, match="RUN-869") as exc_info:
+    with pytest.raises(click.UsageError, match="Production token exchange") as exc_info:
         runner.run_cannery(
             ["ls"],
             config_resolver=_remote_config,

@@ -28,7 +28,7 @@ class ExchangedToken:
 
 
 class BasetenExchangeAdapter(Protocol):
-    """RUN-869 integration seam implemented when its endpoint contract lands."""
+    """Adapter for production token exchange."""
 
     def exchange(
         self, active_remote: ActiveRemote, correlation_id: str
@@ -210,14 +210,15 @@ def select_auth_provider(
     if config.active_remote is None:
         raise CanneryUsageError(
             "A Cannery token is required for non-loopback endpoints. Set "
-            "TRUSS_CANNERY_AUTH_TOKEN_FILE for development, or use a configured "
-            "Truss remote. Automatic Baseten exchange remains pending RUN-869."
+            "TRUSS_CANNERY_AUTH_TOKEN_FILE to an owner-only token file for "
+            "development, or use a configured Truss remote that supports "
+            "production token exchange."
         )
     if exchange_adapter is None:
         raise CanneryUsageError(
-            "Cannery token exchange is not configured in this Truss build. "
-            "Automatic Baseten exchange remains pending RUN-869; for development, "
-            "set TRUSS_CANNERY_AUTH_TOKEN_FILE to an owner-only token file."
+            "Production token exchange is not available in this Truss build. "
+            "For development, set TRUSS_CANNERY_AUTH_TOKEN_FILE to an owner-only "
+            "token file."
         )
     return BasetenExchangeAuthProvider(exchange_adapter, config.active_remote)
 
