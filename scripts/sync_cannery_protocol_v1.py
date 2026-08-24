@@ -114,7 +114,10 @@ def main() -> int:
     parser.add_argument(
         "--source-root",
         type=Path,
-        help="Directory containing the canonical cannery_cli_v1.proto and fixtures.",
+        help=(
+            "Maintainer-provided canonical contract directory containing "
+            "cannery_cli_v1.proto and fixtures."
+        ),
     )
     parser.add_argument(
         "--check", action="store_true", help="Verify without modifying vendored files."
@@ -129,7 +132,7 @@ def main() -> int:
 
     VENDORED_ROOT.mkdir(parents=True, exist_ok=True)
     _build_expected(source_root, VENDORED_ROOT)
-    print(f"Synchronized Cannery protocol v1 from {source_root}.")
+    print("Synchronized Cannery protocol v1 from the supplied contract directory.")
     return 0
 
 

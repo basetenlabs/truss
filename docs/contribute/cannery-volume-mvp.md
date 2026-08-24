@@ -73,9 +73,8 @@ redacted, and retained only in failure diagnostics.
 The generated schema, Python types, protocol documentation, and cross-language
 golden fixtures are vendored under `truss/cli/cannery/generated`. Run
 `scripts/sync_cannery_protocol_v1.py --check` to verify generated-code and hash
-drift. Pass `--source-root` pointing at the canonical
-`protocol/cannery/cli/v1` directory to compare with or synchronize from the
-Baseten repository.
+drift. Maintainers can pass `--source-root` pointing at a canonical contract
+directory they supply to compare or synchronize the vendored files.
 
 Prototype binaries that implement only the previous split stdout/stderr
 contract remain available for loopback development by explicitly setting
