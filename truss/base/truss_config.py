@@ -579,8 +579,9 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
-_BDN_TAGGED_VOLUME_SOURCE_REGEX = re.compile(
-    r"^bdn://[^/:@\x00]+/[^/:@\x00]+:[^/:@\x00]+$"
+_BDN_VOLUME_SOURCE_REGEX = re.compile(
+    r"^bdn://[^/:@\x00]+/[^/:@\x00]+"
+    r"(?::[^/:@\x00]+|@(?:b3:)?[0-9a-fA-F]+)?$"
 )
 
 
@@ -607,10 +608,10 @@ class VolumeMount(custom_types.ConfigModel):
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, value: str) -> str:
-        if _BDN_TAGGED_VOLUME_SOURCE_REGEX.fullmatch(value) is None:
+        if _BDN_VOLUME_SOURCE_REGEX.fullmatch(value) is None:
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
-                "Expected format: bdn://namespace/volume:tag"
+                "Expected format: bdn://namespace/volume[:tag|@digest]"
             )
         return value
 

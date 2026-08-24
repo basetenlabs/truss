@@ -2089,16 +2089,30 @@ class TestTrussConfigVolumes:
             "bdn://foo",
             "bdn:///llama:prod",
             "bdn://weights/:prod",
-            "bdn://weights/llama",
             "bdn://weights/llama:",
             "bdn://weights/models/llama:prod",
-            "bdn://weights/llama@b3:abcdef",
             "bdn://weights/llama:prod:extra",
+            "bdn://weights/llama@not-a-digest",
+            "bdn://weights/llama@b3:",
         ],
     )
     def test_volume_source_rejects_invalid_reference(self, source):
         with pytest.raises(pydantic.ValidationError):
             VolumeMount(source=source, mount="/models/llama")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "bdn://weights/llama",
+            "bdn://weights/llama:prod",
+            "bdn://weights/llama@abcdef",
+            "bdn://weights/llama@b3:abcdef",
+        ],
+    )
+    def test_volume_source_accepts_supported_references(self, source):
+        volume_mount = VolumeMount(source=source, mount="/models/llama")
+
+        assert volume_mount.source == source
 
     def test_volume_mount_requires_absolute_path(self):
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
