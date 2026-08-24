@@ -919,14 +919,17 @@ def test_calc_unignored_paths():
     assert unignored_paths == {"config.yaml", "model/model.py"}
 
 
-def test_calc_unignored_paths_matches_directory_patterns_with_trailing_slash():
-    root_relative_paths = {"ignored", "ignored/file.txt", "model/model.py"}
+def test_calc_truss_patch_ignores_old_signature_directory_entry(
+    custom_model_truss_dir: Path,
+):
+    previous_signature = calc_truss_signature(custom_model_truss_dir)
+    previous_signature.content_hashes_by_path["model/cache"] = None
 
-    unignored_paths = _calc_unignored_paths(
-        root_relative_paths, ["ignored/"], directory_paths={"ignored"}
+    patches = calc_truss_patch(
+        custom_model_truss_dir, previous_signature, ignore_patterns=["cache/"]
     )
 
-    assert unignored_paths == {"model/model.py"}
+    assert patches == []
 
 
 def test_calc_changed_paths_prunes_ignored_dirs(tmp_path, monkeypatch):
