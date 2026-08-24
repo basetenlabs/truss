@@ -15,11 +15,11 @@ GENERATED_ROOT = Path(runner.__file__).parent / "generated"
 BOOTSTRAP = (
     '{"bootstrap_version":1,"cannery_version":"1.2.3",'
     '"supported_machine_protocols":[1],'
-    '"supported_encodings":["protojson-ndjson"]}\n'
+    '"supported_encodings":["protobuf-delimited","protojson-ndjson"]}\n'
 )
 LIST_SUCCESS = (
-    GENERATED_ROOT / "fixtures" / "protojson" / "list-success.ndjson"
-).read_text()
+    GENERATED_ROOT / "fixtures" / "protobuf-delimited" / "list-success.bin"
+).read_bytes()
 
 
 @pytest.fixture(autouse=True)
@@ -31,8 +31,9 @@ def diagnostic_directory(monkeypatch, tmp_path):
 
 class FakeProcess:
     def __init__(self, stdout=LIST_SUCCESS):
-        self.stdout = io.StringIO(stdout)
-        self.stderr = io.StringIO("")
+        stream_type = io.StringIO if isinstance(stdout, str) else io.BytesIO
+        self.stdout = stream_type(stdout)
+        self.stderr = stream_type("" if isinstance(stdout, str) else b"")
         self.returncode = 0
 
     def wait(self, timeout=None):

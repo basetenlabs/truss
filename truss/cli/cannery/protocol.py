@@ -2,17 +2,25 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Protocol, TextIO
+from typing import Any, BinaryIO, Callable, Dict, Mapping, Optional, Protocol
 
+from truss.cli.cannery.diagnostics import redact_text
 from truss.cli.cannery.errors import CanneryProtocolError
 from truss.cli.cannery.progress import BoundedProgressState, event_kind, format_event
-from truss.cli.cannery.v1_protocol import V1ProtocolConsumer, parse_protocol_bootstrap
+from truss.cli.cannery.v1_protocol import (
+    V1_MACHINE_ENCODING,
+    V1ProtocolConsumer,
+    V1ProtoJSONProtocolConsumer,
+    parse_protocol_bootstrap,
+)
 
 __all__ = [
     "CanneryProtocolConsumer",
     "CanneryProtocolSession",
     "Phase0ProtocolConsumer",
+    "V1_MACHINE_ENCODING",
     "V1ProtocolConsumer",
+    "V1ProtoJSONProtocolConsumer",
     "parse_protocol_bootstrap",
 ]
 
@@ -49,10 +57,7 @@ class CanneryProtocolSession(Protocol):
 
 class CanneryProtocolConsumer(Protocol):
     def start(
-        self,
-        stdout: TextIO,
-        stderr: Iterable[str],
-        render_progress: Callable[[str], None],
+        self, stdout: BinaryIO, stderr: BinaryIO, render_progress: Callable[[str], None]
     ) -> CanneryProtocolSession: ...
 
 
@@ -60,20 +65,14 @@ class Phase0ProtocolConsumer:
     """Consumes the temporary split stdout/stderr JSON protocol."""
 
     def start(
-        self,
-        stdout: TextIO,
-        stderr: Iterable[str],
-        render_progress: Callable[[str], None],
+        self, stdout: BinaryIO, stderr: BinaryIO, render_progress: Callable[[str], None]
     ) -> CanneryProtocolSession:
         return _Phase0ProtocolSession(stdout, stderr, render_progress)
 
 
 class _Phase0ProtocolSession:
     def __init__(
-        self,
-        stdout: TextIO,
-        stderr: Iterable[str],
-        render_progress: Callable[[str], None],
+        self, stdout: BinaryIO, stderr: BinaryIO, render_progress: Callable[[str], None]
     ) -> None:
         self._stdout = stdout
         self._stderr = stderr
@@ -102,14 +101,21 @@ class _Phase0ProtocolSession:
     @property
     def stderr_diagnostic(self) -> str:
         prefix = "[earlier stderr truncated]\n" if self._stderr_truncated else ""
-        return prefix + self._stderr_diagnostic
+        return prefix + redact_text(self._stderr_diagnostic)
 
     @property
     def terminal_exit_timeout_sec(self) -> Optional[float]:
         return None
 
     def _drain_machine_events(self) -> None:
-        for line_number, line in enumerate(self._stderr, start=1):
+        for line_number, encoded_line in enumerate(self._stderr, start=1):
+            if not isinstance(encoded_line, bytes):
+                if self._protocol_error is None:
+                    self._protocol_error = CanneryProtocolError(
+                        "Cannery Phase 0 stderr is not a binary stream."
+                    )
+                return
+            line = encoded_line.decode("utf-8", errors="replace")
             self._stderr_diagnostic += line
             if len(self._stderr_diagnostic) > _MAX_STDERR_CHARACTERS:
                 self._stderr_truncated = True
@@ -161,9 +167,17 @@ def _validate_machine_event(event: Any) -> Mapping[str, Any]:
     return event
 
 
-def _parse_result(stdout: str) -> Dict[str, Any]:
+def _parse_result(stdout: bytes) -> Dict[str, Any]:
+    if not isinstance(stdout, bytes):
+        raise CanneryProtocolError("Cannery Phase 0 stdout is not a binary stream.")
+    try:
+        decoded_stdout = stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        raise CanneryProtocolError(
+            "Cannery emitted an invalid UTF-8 final JSON result."
+        ) from None
     decoder = json.JSONDecoder()
-    stripped = stdout.lstrip()
+    stripped = decoded_stdout.lstrip()
     if not stripped:
         raise CanneryProtocolError(
             "Cannery succeeded without emitting its final JSON result."

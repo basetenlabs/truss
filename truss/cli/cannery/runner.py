@@ -8,7 +8,18 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TextIO, Tuple
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    TextIO,
+    Tuple,
+    Type,
+    cast,
+)
 
 import rich_click as click
 
@@ -37,6 +48,7 @@ from truss.cli.cannery.errors import (
 )
 from truss.cli.cannery.progress import ProgressRenderer
 from truss.cli.cannery.protocol import (
+    V1_MACHINE_ENCODING,
     CanneryProtocolConsumer,
     Phase0ProtocolConsumer,
     V1ProtocolConsumer,
@@ -46,7 +58,8 @@ from truss.cli.cannery.protocol import (
 _CANCEL_GRACE_SECONDS = 5
 _BOOTSTRAP_OUTPUT_LIMIT = 64 * 1024
 _PHASE_0_ENVIRONMENT_VARIABLE = "TRUSS_CANNERY_PHASE0"
-_SAFE_EXCEPTION_CLASS_NAMES = {
+_CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+_SAFE_EXCEPTION_CLASS_NAMES: Dict[Type[BaseException], str] = {
     OSError: "OSError",
     RuntimeError: "RuntimeError",
     TypeError: "TypeError",
@@ -70,7 +83,7 @@ class _BoundedCapture:
                 self.truncated = True
 
 
-def _cancel_process(process: "subprocess.Popen[str]") -> None:
+def _cancel_process(process: "subprocess.Popen[Any]") -> None:
     if process.poll() is not None:
         return
     try:
@@ -99,9 +112,9 @@ def _capture_bootstrap(
 ) -> Tuple[str, str, int]:
     popen_options: Dict[str, Any] = {}
     if os.name == "nt":
-        popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        popen_options["creationflags"] = _CREATE_NEW_PROCESS_GROUP
     try:
-        process = subprocess.Popen(
+        process: subprocess.Popen[str] = subprocess.Popen(
             [binary, "protocol"],
             env=environment,
             stdin=subprocess.DEVNULL,
@@ -123,8 +136,8 @@ def _capture_bootstrap(
             "Failed to capture Cannery protocol bootstrap output."
         )
 
-    stdout = _BoundedCapture(process.stdout, _BOOTSTRAP_OUTPUT_LIMIT)
-    stderr = _BoundedCapture(process.stderr, _BOOTSTRAP_OUTPUT_LIMIT)
+    stdout = _BoundedCapture(cast(TextIO, process.stdout), _BOOTSTRAP_OUTPUT_LIMIT)
+    stderr = _BoundedCapture(cast(TextIO, process.stderr), _BOOTSTRAP_OUTPUT_LIMIT)
     threads = [
         threading.Thread(
             target=stdout.drain, name="truss-cannery-bootstrap-stdout", daemon=True
@@ -341,22 +354,29 @@ def _run_cannery(
                 protocol_version=1,
                 artifact_version=bootstrap.cannery_version,
             )
-            argv = [binary, "--machine-protocol", "1", "--api", config.api, *arguments]
+            argv = [
+                binary,
+                "--machine-protocol",
+                "1",
+                "--machine-encoding",
+                V1_MACHINE_ENCODING,
+                "--api",
+                config.api,
+                *arguments,
+            ]
 
         popen_options: Dict[str, Any] = {}
         if os.name == "nt":
-            popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            popen_options["creationflags"] = _CREATE_NEW_PROCESS_GROUP
         try:
-            process = subprocess.Popen(
+            process: subprocess.Popen[bytes] = subprocess.Popen(
                 argv,
                 env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
+                text=False,
+                bufsize=0,
                 **popen_options,
             )
         except OSError:
@@ -367,7 +387,11 @@ def _run_cannery(
             raise CanneryClickException("Failed to capture Cannery subprocess output.")
 
         progress_renderer = ProgressRenderer()
-        session = consumer.start(process.stdout, process.stderr, progress_renderer)
+        session = consumer.start(
+            cast(BinaryIO, process.stdout),
+            cast(BinaryIO, process.stderr),
+            progress_renderer,
+        )
         interrupted = False
         terminal_exit_timed_out = False
         read_protocol_error: Optional[CanneryProtocolError] = None

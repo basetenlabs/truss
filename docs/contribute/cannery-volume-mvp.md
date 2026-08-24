@@ -108,15 +108,27 @@ the normal corporate CA bundle mechanisms. TLS verification cannot be
 disabled by this integration.
 
 Truss first runs the non-mutating `cannery protocol` bootstrap and requires
-machine protocol `1` with the `protojson-ndjson` encoding. The operation then
-runs as `cannery --machine-protocol 1 ...`. Generated Protobuf types parse the
-ordered stdout stream; typed progress, status, and warnings render on stderr,
-and the typed terminal result becomes Truss text or `--output json`. Cannery
-stderr is never parsed as protocol data. It is drained concurrently, bounded,
-redacted, and retained only in failure diagnostics.
+machine protocol `1` with the `protobuf-delimited` encoding. The operation then
+runs as
+`cannery --machine-protocol 1 --machine-encoding protobuf-delimited ...`.
+Stdout is a binary stream of canonical varint-length-delimited
+`MachineRecordV1` messages; Truss reads and validates one bounded frame at a
+time without decoding stdout as UTF-8. Typed progress, status, and warnings
+render on stderr, and the typed terminal result becomes Truss text or
+`--output json`. Cannery stderr is never parsed as protocol data. It is decoded
+safely, drained concurrently, bounded, redacted, and retained only in failure
+diagnostics.
 
-The generated schema, Python types, protocol documentation, and cross-language
-golden fixtures are vendored under `truss/cli/cannery/generated`. Run
+To inspect a captured production stream, run
+`cannery protocol decode [FILE|-]`. The decoder validates the same framing and
+stream invariants and emits canonical ProtoJSON NDJSON for review. The checked
+ProtoJSON fixtures are decoded debug artifacts; the
+`fixtures/protobuf-delimited/*.bin` files are the authoritative production
+goldens. Truss never falls back to ProtoJSON when binary negotiation fails.
+
+The generated schema, Python types, protocol documentation, decoded ProtoJSON
+fixtures, and authoritative binary goldens are vendored under
+`truss/cli/cannery/generated`. Run
 `scripts/sync_cannery_protocol_v1.py --check` to verify generated-code and hash
 drift. Maintainers can pass `--source-root` pointing at a canonical contract
 directory they supply to compare or synchronize the vendored files.

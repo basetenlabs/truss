@@ -11,6 +11,7 @@ from unittest.mock import Mock, call
 import click
 import pytest
 from click.testing import CliRunner
+from google.protobuf import json_format
 from rich.console import Console
 
 from truss.cli import volume_commands
@@ -18,32 +19,89 @@ from truss.cli.cannery import config as cannery_config
 from truss.cli.cannery import runner as cannery_runner
 from truss.cli.cannery import v1_protocol
 from truss.cli.cannery.errors import CanneryCancelled
+from truss.cli.cannery.generated import cannery_cli_v1_pb2 as protocol_v1
 from truss.cli.cli import truss_cli
 
 GENERATED_ROOT = Path(volume_commands.__file__).parent / "cannery" / "generated"
-FIXTURES = GENERATED_ROOT / "fixtures" / "protojson"
+FIXTURES = GENERATED_ROOT / "fixtures" / "protobuf-delimited"
+PROTOJSON_FIXTURES = GENERATED_ROOT / "fixtures" / "protojson"
 BOOTSTRAP = (
     '{"bootstrap_version":1,"cannery_version":"1.2.3",'
     '"supported_machine_protocols":[1],'
-    '"supported_encodings":["protojson-ndjson"]}\n'
+    '"supported_encodings":["protobuf-delimited","protojson-ndjson"]}\n'
 )
 SUCCESS_FIXTURE = {
-    "push": "push-success.ndjson",
-    "ls": "list-success.ndjson",
-    "show": "show-success.ndjson",
-    "pull": "pull-success.ndjson",
+    "push": "push-success.bin",
+    "ls": "list-success.bin",
+    "show": "show-success.bin",
+    "pull": "pull-success.bin",
 }
 
 
 def _fixture(name):
-    return (FIXTURES / name).read_text()
+    return (FIXTURES / name.replace(".ndjson", ".bin")).read_bytes()
+
+
+def _encode_varint(value):
+    encoded = bytearray()
+    while value >= 0x80:
+        encoded.append((value & 0x7F) | 0x80)
+        value >>= 7
+    encoded.append(value)
+    return bytes(encoded)
+
+
+def _frame_record(record):
+    payload = record.SerializeToString(deterministic=True)
+    return _encode_varint(len(payload)) + payload
+
+
+def _decode_records(stream):
+    records = []
+    offset = 0
+    while offset < len(stream):
+        payload_size = 0
+        shift = 0
+        while True:
+            byte = stream[offset]
+            offset += 1
+            payload_size |= (byte & 0x7F) << shift
+            if not byte & 0x80:
+                break
+            shift += 7
+        record = protocol_v1.MachineRecordV1()
+        record.ParseFromString(stream[offset : offset + payload_size])
+        records.append(record)
+        offset += payload_size
+    return records
+
+
+def _encode_records(records):
+    return b"".join(_frame_record(record) for record in records)
+
+
+def _protojson_record(fixture_name, index):
+    line = (
+        (PROTOJSON_FIXTURES / fixture_name.replace(".bin", ".ndjson"))
+        .read_text()
+        .splitlines()[index]
+    )
+    return json_format.Parse(line, protocol_v1.MachineRecordV1())
 
 
 class FakeProcess:
-    def __init__(self, stdout=None, stderr="", return_code=0):
+    def __init__(self, stdout=None, stderr=None, return_code=0):
         self.default_stdout = stdout is None
-        self.stdout = io.StringIO(stdout or "")
-        self.stderr = io.StringIO(stderr)
+        stdout = b"" if stdout is None else stdout
+        if stderr is None:
+            stderr = "" if isinstance(stdout, str) else b""
+        stream_type = io.StringIO if isinstance(stdout, str) else io.BytesIO
+        if stream_type is io.StringIO and isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        elif stream_type is io.BytesIO and isinstance(stderr, str):
+            stderr = stderr.encode()
+        self.stdout = stream_type(stdout)
+        self.stderr = stream_type(stderr)
         self.returncode = return_code
         self.signals = []
         self.terminated = False
@@ -71,7 +129,7 @@ class _BlockingStderr:
 
     def read(self, _size):
         self._closed.wait()
-        return ""
+        return b""
 
 
 class HangingAfterTerminalProcess(FakeProcess):
@@ -128,7 +186,7 @@ def install_process(monkeypatch, process):
             return FakeProcess(stdout=BOOTSTRAP)
         if process.default_stdout:
             command = argv[argv.index("--api") + 2]
-            process.stdout = io.StringIO(_fixture(SUCCESS_FIXTURE[command]))
+            process.stdout = io.BytesIO(_fixture(SUCCESS_FIXTURE[command]))
         return process
 
     popen = Mock(side_effect=start)
@@ -176,7 +234,7 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_AUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("CANNERY_AUTH_TOKEN_FILE", "/must/not/leak")
     popen = install_process(
-        monkeypatch, FakeProcess(stdout=_fixture("list-success.ndjson"))
+        monkeypatch, FakeProcess(stdout=_fixture("list-success.bin"))
     )
 
     result = volume_commands.run_cannery(["ls", "models", "--all"])
@@ -190,12 +248,16 @@ def test_runner_builds_argv_and_environment(monkeypatch, tmp_path):
         "/bin/cannery",
         "--machine-protocol",
         "1",
+        "--machine-encoding",
+        "protobuf-delimited",
         "--api",
         "http://127.0.0.1:8787",
         "ls",
         "models",
         "--all",
     ]
+    assert popen.call_args.kwargs["text"] is False
+    assert popen.call_args.kwargs["bufsize"] == 0
     assert popen.call_args.kwargs["env"]["CANNERY_ORG"] == "acme"
     assert popen.call_args.kwargs["env"]["CANNERY_AUTH_TOKEN_FILE"] == str(token_file)
 
@@ -251,7 +313,7 @@ def test_v1_bootstrap_mismatch_prevents_operation(monkeypatch):
 
 def test_explicit_phase_zero_fallback_is_loopback_only(monkeypatch, tmp_path):
     monkeypatch.setenv("TRUSS_CANNERY_PHASE0", "1")
-    process = FakeProcess(stdout='{"protocol_version":1,"refs":[]}')
+    process = FakeProcess(stdout=b'{"protocol_version":1,"refs":[]}')
     popen = install_process(monkeypatch, process)
 
     result = volume_commands.run_cannery(["ls"])
@@ -275,7 +337,7 @@ def test_explicit_phase_zero_fallback_is_loopback_only(monkeypatch, tmp_path):
 
 def test_pinned_artifact_rejects_phase_zero_fallback(monkeypatch):
     monkeypatch.setenv("TRUSS_CANNERY_PHASE0", "1")
-    popen = install_process(monkeypatch, FakeProcess(stdout='{"protocol_version":1}'))
+    popen = install_process(monkeypatch, FakeProcess(stdout=b'{"protocol_version":1}'))
     monkeypatch.setattr(
         cannery_runner, "binary_diagnostic_metadata", lambda _path: ("1.2.3", "a" * 64)
     )
@@ -309,7 +371,7 @@ def test_missing_explicit_token_file_rejected_before_subprocess(monkeypatch, tmp
 
 
 def test_result_parser_requires_one_final_object(monkeypatch):
-    install_process(monkeypatch, FakeProcess(stdout=_fixture("show-success.ndjson")))
+    install_process(monkeypatch, FakeProcess(stdout=_fixture("show-success.bin")))
 
     result = volume_commands.run_cannery(["show", "bdn://dev/model"])
     result.pop("correlation_id")
@@ -317,7 +379,7 @@ def test_result_parser_requires_one_final_object(monkeypatch):
     assert result["file_page"]["files"]
 
 
-@pytest.mark.parametrize("stdout", ["", "[]\n", "{}\n", "{}\n{}\n"])
+@pytest.mark.parametrize("stdout", [b"", b"[]\n", b"{}\n", b"{}\n{}\n"])
 def test_result_parser_rejects_invalid_result_contract(monkeypatch, stdout):
     install_process(monkeypatch, FakeProcess(stdout=stdout))
 
@@ -326,11 +388,9 @@ def test_result_parser_rejects_invalid_result_contract(monkeypatch, stdout):
 
 
 def test_protocol_mismatch_fails(monkeypatch):
-    lines = _fixture("list-success.ndjson").splitlines()
-    event = json.loads(lines[0])
-    event["protocolVersion"] = 2
-    lines[0] = json.dumps(event)
-    install_process(monkeypatch, FakeProcess(stdout="\n".join(lines) + "\n"))
+    records = _decode_records(_fixture("list-success.bin"))
+    records[0].protocol_version = 2
+    install_process(monkeypatch, FakeProcess(stdout=_encode_records(records)))
 
     with pytest.raises(
         volume_commands.CanneryProtocolError, match="requires version 1"
@@ -338,7 +398,7 @@ def test_protocol_mismatch_fails(monkeypatch):
         volume_commands.run_cannery(["ls"])
 
 
-def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
+def test_binary_progress_is_drained_and_rendered(monkeypatch, capsys):
     renderer_type = cannery_runner.ProgressRenderer
     monkeypatch.setattr(
         cannery_runner,
@@ -347,7 +407,7 @@ def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
             Console(file=sys.stderr, force_terminal=False, color_system=None)
         ),
     )
-    install_process(monkeypatch, FakeProcess(stdout=_fixture("push-success.ndjson")))
+    install_process(monkeypatch, FakeProcess(stdout=_fixture("push-success.bin")))
 
     volume_commands.run_cannery(["push", "/tmp/model"])
 
@@ -360,18 +420,34 @@ def test_ndjson_progress_is_drained_and_rendered(monkeypatch, capsys):
     assert captured.out == ""
 
 
-def test_invalid_ndjson_fails_loudly(monkeypatch):
-    install_process(monkeypatch, FakeProcess(stdout="not-json\n"))
+def test_invalid_binary_frame_fails_loudly(monkeypatch):
+    install_process(monkeypatch, FakeProcess(stdout=b"\x01\x0f"))
 
-    with pytest.raises(volume_commands.CanneryProtocolError, match="invalid ProtoJSON"):
+    with pytest.raises(
+        volume_commands.CanneryProtocolError, match="malformed Protobuf"
+    ):
         volume_commands.run_cannery(["ls"])
+
+
+def test_binary_machine_payload_is_not_copied_to_diagnostics(monkeypatch):
+    local_path = "/Users/customer/private/model"
+    payload = local_path.encode() + b"\xff"
+    stream = _encode_varint(len(payload)) + payload
+    install_process(monkeypatch, FakeProcess(stdout=stream))
+
+    with pytest.raises(volume_commands.CanneryProtocolError):
+        volume_commands.run_cannery(["ls"])
+
+    diagnostic_dir = Path(cannery_runner.os.environ["TRUSS_CANNERY_DIAGNOSTIC_DIR"])
+    diagnostic_text = next(diagnostic_dir.glob("diagnostic-*.jsonl")).read_text()
+    assert local_path not in diagnostic_text
+    assert repr(stream) not in diagnostic_text
 
 
 def test_v1_stderr_is_bounded_redacted_diagnostics_only(monkeypatch):
     secret = "bare-credential-value-9f4c"
     process = FakeProcess(
-        stdout="not-json\n",
-        stderr="x" * 100_000 + f"\nAuthorization: Bearer {secret}\n",
+        stdout=b"\x01\x0f", stderr="x" * 100_000 + f"\nAuthorization: Bearer {secret}\n"
     )
     install_process(monkeypatch, process)
 
@@ -387,8 +463,7 @@ def test_v1_stderr_is_bounded_redacted_diagnostics_only(monkeypatch):
 
 def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
     install_process(
-        monkeypatch,
-        FakeProcess(stdout=_fixture("show-not-found.ndjson"), return_code=1),
+        monkeypatch, FakeProcess(stdout=_fixture("show-not-found.bin"), return_code=1)
     )
 
     with pytest.raises(click.ClickException, match="reason VOLUME_NOT_FOUND") as exc:
@@ -400,13 +475,9 @@ def test_machine_error_and_exit_one_become_click_exception(monkeypatch):
 @pytest.mark.parametrize(
     ("fixture_name", "reason", "constraint"),
     [
+        ("pull-invalid-include.bin", "INVALID_INCLUDE_PATH", "paths must be nonempty"),
         (
-            "pull-invalid-include.ndjson",
-            "INVALID_INCLUDE_PATH",
-            "paths must be nonempty",
-        ),
-        (
-            "pull-no-match.ndjson",
+            "pull-no-match.bin",
             "INCLUDE_PATH_NOT_FOUND",
             "selectors must match at least one file or symlink",
         ),
@@ -429,34 +500,37 @@ def test_pull_include_fixture_errors_are_structured_usage_errors(
 
 
 def test_exit_two_becomes_usage_error(monkeypatch):
-    install_process(monkeypatch, FakeProcess(stdout="", return_code=2))
+    install_process(monkeypatch, FakeProcess(stdout=b"", return_code=2))
 
     with pytest.raises(click.UsageError, match="INVALID_ARGUMENT"):
         volume_commands.run_cannery(["show", "bad-ref"])
 
 
 def test_nonempty_pull_destination_error_is_actionable(monkeypatch):
-    started = _fixture("pull-integrity-error.ndjson").splitlines()[0]
-    error = {
-        "protocolVersion": 1,
-        "sequence": "2",
-        "operationId": "01K0PULL000000000000000002",
-        "operation": "OPERATION_PULL",
-        "error": {
-            "category": "ERROR_CATEGORY_INVALID_ARGUMENT",
-            "reason": "INVALID_ARGUMENT",
-            "message": "The command arguments are invalid",
-            "retryable": False,
-            "details": {
-                "invalidArgument": {
-                    "constraint": "pull destination is not empty: /tmp/output"
-                }
+    started = _protojson_record("pull-integrity-error.ndjson", 0)
+    error = json_format.ParseDict(
+        {
+            "protocolVersion": 1,
+            "sequence": "2",
+            "operationId": "01K0PULL000000000000000002",
+            "operation": "OPERATION_PULL",
+            "error": {
+                "category": "ERROR_CATEGORY_INVALID_ARGUMENT",
+                "reason": "INVALID_ARGUMENT",
+                "message": "The command arguments are invalid",
+                "retryable": False,
+                "details": {
+                    "invalidArgument": {
+                        "constraint": "pull destination is not empty: /tmp/output"
+                    }
+                },
             },
         },
-    }
+        protocol_v1.MachineRecordV1(),
+    )
     install_process(
         monkeypatch,
-        FakeProcess(stdout=f"{started}\n{json.dumps(error)}\n", return_code=1),
+        FakeProcess(stdout=_encode_records([started, error]), return_code=1),
     )
 
     with pytest.raises(click.UsageError) as exc_info:
@@ -466,7 +540,7 @@ def test_nonempty_pull_destination_error_is_actionable(monkeypatch):
 
 
 def test_terminal_then_hanging_process_is_killed_within_bound(monkeypatch):
-    process = HangingAfterTerminalProcess(_fixture("list-success.ndjson"))
+    process = HangingAfterTerminalProcess(_fixture("list-success.bin"))
     install_process(monkeypatch, process)
     monkeypatch.setattr(v1_protocol, "_TERMINAL_EXIT_TIMEOUT_SEC", 0.01)
     monkeypatch.setattr(cannery_runner, "_CANCEL_GRACE_SECONDS", 0.01)
@@ -486,7 +560,7 @@ def test_cancellation_is_forwarded_to_child(monkeypatch):
     process = FakeProcess(return_code=None)
 
     class InterruptingStdout:
-        def readline(self, _size):
+        def read(self, _size):
             raise KeyboardInterrupt
 
     process.stdout = InterruptingStdout()

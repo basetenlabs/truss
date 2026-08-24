@@ -1,23 +1,38 @@
 from __future__ import annotations
 
+import codecs
 import json
 import math
 import re
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, TextIO
+from collections import deque
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Deque,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+)
 
 from google.protobuf import json_format
-from google.protobuf.message import Message
+from google.protobuf.message import DecodeError, Message
 
 from truss.cli.cannery.diagnostics import redact_text
 from truss.cli.cannery.errors import CanneryProtocolError, TypedMachineError
 from truss.cli.cannery.generated import cannery_cli_v1_pb2 as protocol_v1
 
 _PROTOCOL_VERSION = 1
-_ENCODING = "protojson-ndjson"
-_MAX_RECORD_BYTES = 16 * 1024 * 1024
+V1_MACHINE_ENCODING = "protobuf-delimited"
+_MAX_RECORD_BYTES = 8 * 1024 * 1024
+_MAX_VARINT_BYTES = 4
 _MAX_STDERR_CHARACTERS = 64 * 1024
+_STDERR_REDACTION_CONTEXT_CHARACTERS = 1024
 _MAX_PAGE_ENTRIES = 1_000
 _TERMINAL_EXIT_TIMEOUT_SEC = 5.0
 _STREAM_DRAIN_TIMEOUT_SEC = 5.0
@@ -34,6 +49,7 @@ _OPERATION_BY_COMMAND = {
     "show": protocol_v1.OPERATION_SHOW,
     "pull": protocol_v1.OPERATION_PULL,
 }
+_KNOWN_OPERATIONS = frozenset(_OPERATION_BY_COMMAND.values())
 _REQUEST_BY_COMMAND = {"push": "push", "ls": "list", "show": "show", "pull": "pull"}
 _OPERATION_WIRE_NAME = {
     "push": "OPERATION_PUSH",
@@ -73,6 +89,19 @@ _DETAIL_BY_CATEGORY = {
     protocol_v1.ERROR_CATEGORY_INTEGRITY: "integrity",
     protocol_v1.ERROR_CATEGORY_UNSUPPORTED_PROTOCOL: "unsupported_protocol",
 }
+_KNOWN_REFERENCE_ENTRY_KINDS = frozenset(
+    {
+        protocol_v1.REFERENCE_ENTRY_KIND_TAG,
+        protocol_v1.REFERENCE_ENTRY_KIND_IMMUTABLE_DIGEST,
+    }
+)
+_KNOWN_FILE_ENTRY_KINDS = frozenset(
+    {
+        protocol_v1.FILE_ENTRY_KIND_FILE,
+        protocol_v1.FILE_ENTRY_KIND_DIRECTORY,
+        protocol_v1.FILE_ENTRY_KIND_SYMLINK,
+    }
+)
 
 
 def parse_protocol_bootstrap(
@@ -117,9 +146,9 @@ def parse_protocol_bootstrap(
         raise CanneryProtocolError(
             "Cannery does not support machine protocol version 1."
         )
-    if _ENCODING not in bootstrap.supported_encodings:
+    if V1_MACHINE_ENCODING not in bootstrap.supported_encodings:
         raise CanneryProtocolError(
-            "Cannery does not support the protojson-ndjson v1 encoding."
+            "Cannery does not support the protobuf-delimited v1 encoding."
         )
     return bootstrap
 
@@ -166,24 +195,182 @@ class V1ProtocolConsumer:
         self._command = command
 
     def start(
-        self,
-        stdout: TextIO,
-        stderr: Iterable[str],
-        render_progress: Callable[[str], None],
+        self, stdout: BinaryIO, stderr: BinaryIO, render_progress: Callable[[str], None]
     ) -> "_V1ProtocolSession":
-        return _V1ProtocolSession(self._command, stdout, stderr, render_progress)
+        return _V1ProtocolSession(
+            self._command, _DelimitedRecordReader(stdout), stderr, render_progress
+        )
+
+
+class V1ProtoJSONProtocolConsumer:
+    """Explicit local/debug consumer for the optional ProtoJSON encoding."""
+
+    def __init__(self, command: str) -> None:
+        if command not in _OPERATION_BY_COMMAND:
+            raise CanneryProtocolError(f"Unsupported Cannery operation: {command}.")
+        self._command = command
+
+    def start(
+        self, stdout: BinaryIO, stderr: BinaryIO, render_progress: Callable[[str], None]
+    ) -> "_V1ProtocolSession":
+        return _V1ProtocolSession(
+            self._command, _ProtoJSONRecordReader(stdout), stderr, render_progress
+        )
+
+
+class _DelimitedRecordReader:
+    def __init__(self, stdout: BinaryIO) -> None:
+        self._stdout = stdout
+        self._next_frame_number = 1
+
+    def read(self) -> Optional[protocol_v1.MachineRecordV1]:
+        frame_number = self._next_frame_number
+        payload_size = _read_canonical_varint(self._stdout, frame_number)
+        if payload_size is None:
+            return None
+        payload = _read_exact_payload(self._stdout, payload_size, frame_number)
+        record = protocol_v1.MachineRecordV1()
+        try:
+            record.ParseFromString(payload)
+        except DecodeError:
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} contains malformed Protobuf."
+            ) from None
+        if not record.ListFields():
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} decoded to the default record."
+            )
+        self._next_frame_number += 1
+        return record
+
+
+class _RecordReader(Protocol):
+    def read(self) -> Optional[protocol_v1.MachineRecordV1]: ...
+
+
+class _ProtoJSONRecordReader:
+    def __init__(self, stdout: BinaryIO) -> None:
+        self._stdout = stdout
+        self._line_number = 0
+
+    def read(self) -> Optional[protocol_v1.MachineRecordV1]:
+        line = self._stdout.readline(_MAX_RECORD_BYTES + 2)
+        if not line:
+            return None
+        self._line_number += 1
+        line_number = self._line_number
+        if not isinstance(line, bytes):
+            raise CanneryProtocolError(
+                "Cannery ProtoJSON debug stdout must be a binary pipe."
+            )
+        if len(line) > _MAX_RECORD_BYTES + 1:
+            raise CanneryProtocolError(
+                f"Cannery machine record at line {line_number} exceeds the size limit."
+            )
+        if not line.endswith(b"\n"):
+            raise CanneryProtocolError(
+                f"Cannery machine record at line {line_number} is not newline-terminated."
+            )
+        if not line.strip():
+            raise CanneryProtocolError(
+                f"Cannery machine stream contains an empty record at line {line_number}."
+            )
+        try:
+            text = line.decode("utf-8")
+        except UnicodeDecodeError:
+            raise CanneryProtocolError(
+                f"Cannery emitted invalid UTF-8 ProtoJSON at line {line_number}."
+            ) from None
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise CanneryProtocolError(
+                f"Cannery emitted invalid ProtoJSON at line {line_number}: {exc.msg}."
+            ) from None
+        if not isinstance(document, dict):
+            raise CanneryProtocolError(
+                f"Cannery machine record at line {line_number} is not an object."
+            )
+        _validate_required_pull_selected_totals(document)
+        _validate_symbolic_enums(document)
+        record = protocol_v1.MachineRecordV1()
+        try:
+            json_format.ParseDict(document, record)
+        except json_format.ParseError as exc:
+            raise CanneryProtocolError(
+                f"Cannery machine record at line {line_number} does not match v1: {exc}."
+            ) from None
+        return record
+
+
+def _read_canonical_varint(stdout: BinaryIO, frame_number: int) -> Optional[int]:
+    value = 0
+    for byte_index in range(_MAX_VARINT_BYTES):
+        encoded = stdout.read(1)
+        if not encoded:
+            if byte_index == 0:
+                return None
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} has a truncated length prefix."
+            )
+        if not isinstance(encoded, bytes) or len(encoded) != 1:
+            raise CanneryProtocolError(
+                "Cannery machine stdout did not provide a binary byte stream."
+            )
+        byte = encoded[0]
+        value |= (byte & 0x7F) << (7 * byte_index)
+        if byte & 0x80:
+            if byte_index == _MAX_VARINT_BYTES - 1:
+                raise CanneryProtocolError(
+                    f"Cannery machine frame {frame_number} has an overlong length prefix."
+                )
+            continue
+        if byte_index > 0 and value < 1 << (7 * byte_index):
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} has a non-minimal length prefix."
+            )
+        if value == 0:
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} has a zero-length payload."
+            )
+        if value > _MAX_RECORD_BYTES:
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} exceeds the size limit."
+            )
+        return value
+    raise AssertionError("canonical varint reader exhausted without a decision")
+
+
+def _read_exact_payload(
+    stdout: BinaryIO, payload_size: int, frame_number: int
+) -> bytearray:
+    payload = bytearray(payload_size)
+    offset = 0
+    while offset < payload_size:
+        chunk = stdout.read(payload_size - offset)
+        if not chunk:
+            raise CanneryProtocolError(
+                f"Cannery machine frame {frame_number} has a truncated payload."
+            )
+        if not isinstance(chunk, bytes) or len(chunk) > payload_size - offset:
+            raise CanneryProtocolError(
+                "Cannery machine stdout did not provide a bounded binary byte stream."
+            )
+        payload[offset : offset + len(chunk)] = chunk
+        offset += len(chunk)
+    return payload
 
 
 class _V1ProtocolSession:
     def __init__(
         self,
         command: str,
-        stdout: TextIO,
-        stderr: Iterable[str],
+        record_reader: _RecordReader,
+        stderr: BinaryIO,
         render_progress: Callable[[str], None],
     ) -> None:
         self._command = command
-        self._stdout = stdout
+        self._record_reader = record_reader
         self._render_progress = render_progress
         self._operation_id: Optional[str] = None
         self._next_sequence = 1
@@ -194,7 +381,6 @@ class _V1ProtocolSession:
         self._last_phase: Optional[str] = None
         self._progress_counters: Dict[str, int] = {}
         self._stream_complete = False
-        self._line_number = 0
         self._stderr = _BoundedStderrCapture(stderr)
         self._stderr_thread = threading.Thread(
             target=self._stderr.drain, name="truss-cannery-v1-stderr", daemon=True
@@ -223,53 +409,18 @@ class _V1ProtocolSession:
 
     def read_result(self) -> Dict[str, Any]:
         while self._terminal_kind is None:
-            line = self._stdout.readline(_MAX_RECORD_BYTES + 1)
-            if not line:
+            record = self._record_reader.read()
+            if record is None:
                 self._stream_complete = True
                 break
-            self._line_number += 1
-            self._consume_line(line, self._line_number)
+            self._observe(record)
         return self._terminal_result or {}
 
-    def _consume_line(self, line: str, line_number: int) -> None:
-        if len(line) > _MAX_RECORD_BYTES:
-            raise CanneryProtocolError(
-                f"Cannery machine record at line {line_number} exceeds the size limit."
-            )
-        if not line.endswith("\n"):
-            raise CanneryProtocolError(
-                f"Cannery machine record at line {line_number} is not newline-terminated."
-            )
-        if not line.strip():
-            raise CanneryProtocolError(
-                f"Cannery machine stream contains an empty record at line {line_number}."
-            )
+    def _observe(self, record: protocol_v1.MachineRecordV1) -> None:
         if self._terminal_kind is not None:
             raise CanneryProtocolError(
                 "Cannery emitted a record after its terminal machine record."
             )
-        try:
-            document = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise CanneryProtocolError(
-                f"Cannery emitted invalid ProtoJSON at line {line_number}: {exc.msg}."
-            ) from None
-        if not isinstance(document, dict):
-            raise CanneryProtocolError(
-                f"Cannery machine record at line {line_number} is not an object."
-            )
-        _validate_required_pull_selected_totals(document)
-        _validate_symbolic_enums(document)
-        record = protocol_v1.MachineRecordV1()
-        try:
-            json_format.ParseDict(document, record)
-        except json_format.ParseError as exc:
-            raise CanneryProtocolError(
-                f"Cannery machine record at line {line_number} does not match v1: {exc}."
-            ) from None
-        self._observe(record)
-
-    def _observe(self, record: protocol_v1.MachineRecordV1) -> None:
         payload = record.WhichOneof("payload")
         if record.protocol_version != _PROTOCOL_VERSION:
             raise CanneryProtocolError(
@@ -289,6 +440,10 @@ class _V1ProtocolSession:
         elif record.operation_id != self._operation_id:
             raise CanneryProtocolError(
                 "Cannery machine record operationId changed during the operation."
+            )
+        if record.operation not in _KNOWN_OPERATIONS:
+            raise CanneryProtocolError(
+                "Cannery machine record has an unsupported operation enum value."
             )
         if record.operation != _OPERATION_BY_COMMAND[self._command]:
             raise CanneryProtocolError(
@@ -327,11 +482,20 @@ class _V1ProtocolSession:
             self._terminal_kind = "cancelled"
 
     def _validate_started(self, started: protocol_v1.StartedV1) -> None:
+        if not started.HasField("request"):
+            raise CanneryProtocolError(
+                "Cannery started record is missing its command request."
+            )
         request = started.request
+        command = request.WhichOneof("command")
+        if command is None:
+            raise CanneryProtocolError(
+                "Cannery started request is missing its command variant."
+            )
         if (
             request.protocol_version != _PROTOCOL_VERSION
             or request.operation_id != self._operation_id
-            or request.WhichOneof("command") != _REQUEST_BY_COMMAND[self._command]
+            or command != _REQUEST_BY_COMMAND[self._command]
         ):
             raise CanneryProtocolError(
                 "Cannery started request metadata does not match the invocation."
@@ -386,6 +550,10 @@ class _V1ProtocolSession:
 
     def _convert_result(self, result: protocol_v1.ResultV1) -> Dict[str, Any]:
         variant = result.WhichOneof("result")
+        if variant is None:
+            raise CanneryProtocolError(
+                "Cannery terminal result is missing its operation variant."
+            )
         expected = _REQUEST_BY_COMMAND[self._command]
         if variant != expected:
             raise CanneryProtocolError(
@@ -407,6 +575,11 @@ class _V1ProtocolSession:
                 raise CanneryProtocolError(
                     "Cannery list result exceeds the v1 page limit."
                 )
+            if page == "references":
+                for entry in entries:
+                    _require_known_enum(
+                        entry.kind, _KNOWN_REFERENCE_ENTRY_KINDS, "reference kind"
+                    )
         elif variant == "show":
             if not value.manifest_digest or not value.canonical_reference:
                 raise CanneryProtocolError(
@@ -420,6 +593,8 @@ class _V1ProtocolSession:
                 raise CanneryProtocolError(
                     "Cannery show result exceeds the v1 page limit."
                 )
+            for entry in value.file_page.files:
+                _require_known_enum(entry.kind, _KNOWN_FILE_ENTRY_KINDS, "file kind")
         elif variant == "pull":
             if (
                 not value.manifest_digest
@@ -533,44 +708,64 @@ class _V1ProtocolSession:
     def _drain_remaining_stdout(self, errors: List[BaseException]) -> None:
         try:
             while True:
-                line = self._stdout.readline(_MAX_RECORD_BYTES + 1)
-                if not line:
+                record = self._record_reader.read()
+                if record is None:
                     self._stream_complete = True
                     return
-                self._line_number += 1
-                self._consume_line(line, self._line_number)
+                self._observe(record)
         except BaseException as exc:
             errors.append(exc)
 
 
 class _BoundedStderrCapture:
-    def __init__(self, stderr: Iterable[str]) -> None:
+    def __init__(self, stderr: BinaryIO) -> None:
         self._stderr = stderr
-        self._value = ""
+        self._chunks: Deque[str] = deque()
+        self._character_count = 0
         self._truncated = False
         self.error: Optional[BaseException] = None
 
     @property
     def value(self) -> str:
+        value = redact_text("".join(self._chunks))
+        value = value[-_MAX_STDERR_CHARACTERS:]
         if self._truncated:
-            return "[earlier stderr truncated]\n" + self._value
-        return self._value
+            return "[earlier stderr truncated]\n" + value
+        return value
 
     def drain(self) -> None:
         try:
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
             reader = getattr(self._stderr, "read", None)
             chunks = (
-                iter(lambda: reader(8192), "")
+                iter(lambda: reader(8192), b"")
                 if callable(reader)
                 else iter(self._stderr)
             )
             for chunk in chunks:
-                self._value += chunk
-                if len(self._value) > _MAX_STDERR_CHARACTERS:
-                    self._truncated = True
-                    self._value = self._value[-_MAX_STDERR_CHARACTERS:]
+                if not isinstance(chunk, bytes):
+                    raise TypeError("Cannery stderr is not a binary stream")
+                self._append(decoder.decode(chunk))
+            self._append(decoder.decode(b"", final=True))
         except BaseException as exc:
             self.error = exc
+
+    def _append(self, text: str) -> None:
+        if not text:
+            return
+        self._chunks.append(text)
+        self._character_count += len(text)
+        storage_limit = _MAX_STDERR_CHARACTERS + _STDERR_REDACTION_CONTEXT_CHARACTERS
+        while self._character_count > storage_limit:
+            self._truncated = True
+            overflow = self._character_count - storage_limit
+            first = self._chunks[0]
+            if len(first) <= overflow:
+                self._chunks.popleft()
+                self._character_count -= len(first)
+            else:
+                self._chunks[0] = first[overflow:]
+                self._character_count -= overflow
 
 
 def _validate_symbolic_enums(document: Mapping[str, Any]) -> None:
@@ -646,6 +841,13 @@ def _require_symbolic_enum(
     ):
         raise CanneryProtocolError(
             f"Cannery {description} must be a supported symbolic enum."
+        )
+
+
+def _require_known_enum(value: int, allowed: Iterable[int], description: str) -> None:
+    if value not in allowed:
+        raise CanneryProtocolError(
+            f"Cannery {description} has an unsupported enum value."
         )
 
 
