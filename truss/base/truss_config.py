@@ -617,11 +617,12 @@ class VolumeMount(custom_types.ConfigModel):
     @pydantic.field_validator("mount")
     @classmethod
     def _validate_mount(cls, value: str) -> str:
-        if not pathlib.PurePosixPath(value).is_absolute():
+        mount_path = pathlib.PurePosixPath(value)
+        if not mount_path.is_absolute():
             raise ValueError(
                 f"Volume mount must be an absolute path (start with /), got: {value}"
             )
-        return value
+        return str(mount_path)
 
 
 class Volumes(custom_types.ConfigModel):

@@ -2104,6 +2104,13 @@ class TestTrussConfigVolumes:
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
             VolumeMount(source="bdn://weights/llama:prod", mount="models/llama")
 
+    def test_volume_mount_normalizes_path(self):
+        volume_mount = VolumeMount(
+            source="bdn://weights/llama:prod", mount="/models/./llama/"
+        )
+
+        assert volume_mount.mount == "/models/llama"
+
     @pytest.mark.parametrize("scope", list(VolumeAccessMode))
     def test_volume_access_accepts_all_bdn_scopes(self, scope):
         volumes = Volumes(access={"weights": [scope.value]})
@@ -2125,7 +2132,7 @@ class TestTrussConfigVolumes:
             Volumes(
                 mounts=[
                     VolumeMount(source="bdn://weights/llama:prod", mount="/models"),
-                    VolumeMount(source="bdn://weights/mistral:prod", mount="/models"),
+                    VolumeMount(source="bdn://weights/mistral:prod", mount="/models/"),
                 ]
             )
 
