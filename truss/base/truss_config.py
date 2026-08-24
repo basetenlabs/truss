@@ -423,6 +423,66 @@ _HTTPS_PREFIX = "https://"
 _SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
 
 
+def _validate_external_source_uri(v: str) -> str:
+    """Validate an external (non-BDN) source URI.
+
+    Shared by `WeightsSource.source` and the external form of
+    `VolumeMount.source` so the two accept exactly the same references.
+    """
+    supported_schemes_str = ", ".join(sorted(_SUPPORTED_SCHEMES))
+
+    # URI scheme prefix is required
+    if "://" not in v:
+        raise ValueError(
+            f"Source '{v}' is missing a URI scheme. "
+            f"Supported schemes: {supported_schemes_str}"
+        )
+
+    scheme = v.split("://")[0] + "://"
+
+    # Check for unsupported URI schemes
+    if scheme not in _SUPPORTED_SCHEMES:
+        raise ValueError(
+            f"Unsupported source scheme '{scheme}'. "
+            f"Supported schemes: {supported_schemes_str}"
+        )
+
+    # Validate URI format for cloud storage
+    if scheme in _CLOUD_STORAGE_PREFIXES:
+        path_part = v[len(scheme) :]
+        if not path_part or path_part.startswith("/"):
+            raise ValueError(
+                f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
+                f"Expected format: {scheme}bucket/path"
+            )
+        # Reject @ revision syntax for cloud storage (HF-only feature)
+        if "@" in path_part:
+            raise ValueError(
+                f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
+                f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
+            )
+
+    # Validate https:// format
+    if scheme == _HTTPS_PREFIX:
+        url_part = v[len(_HTTPS_PREFIX) :]
+        if not url_part or url_part.startswith("/"):
+            raise ValueError(
+                f"Invalid HTTPS URL format: '{v}'. "
+                f"Expected format: https://hostname/path"
+            )
+
+    # Validate hf:// format
+    if scheme == _HF_PREFIX:
+        repo_part = v[len(_HF_PREFIX) :]
+        if not repo_part or repo_part.startswith("/"):
+            raise ValueError(
+                f"Invalid HuggingFace URI format: '{v}'. "
+                f"Expected format: hf://owner/repo"
+            )
+
+    return v
+
+
 class WeightsSource(custom_types.ConfigModel):
     """Configuration for a weights source in the new weights API.
 
@@ -485,58 +545,7 @@ class WeightsSource(custom_types.ConfigModel):
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, v: str) -> str:
-        supported_schemes_str = ", ".join(sorted(_SUPPORTED_SCHEMES))
-
-        # URI scheme prefix is required
-        if "://" not in v:
-            raise ValueError(
-                f"Source '{v}' is missing a URI scheme. "
-                f"Supported schemes: {supported_schemes_str}"
-            )
-
-        scheme = v.split("://")[0] + "://"
-
-        # Check for unsupported URI schemes
-        if scheme not in _SUPPORTED_SCHEMES:
-            raise ValueError(
-                f"Unsupported source scheme '{scheme}'. "
-                f"Supported schemes: {supported_schemes_str}"
-            )
-
-        # Validate URI format for cloud storage
-        if scheme in _CLOUD_STORAGE_PREFIXES:
-            path_part = v[len(scheme) :]
-            if not path_part or path_part.startswith("/"):
-                raise ValueError(
-                    f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
-                    f"Expected format: {scheme}bucket/path"
-                )
-            # Reject @ revision syntax for cloud storage (HF-only feature)
-            if "@" in path_part:
-                raise ValueError(
-                    f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
-                    f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
-                )
-
-        # Validate https:// format
-        if scheme == _HTTPS_PREFIX:
-            url_part = v[len(_HTTPS_PREFIX) :]
-            if not url_part or url_part.startswith("/"):
-                raise ValueError(
-                    f"Invalid HTTPS URL format: '{v}'. "
-                    f"Expected format: https://hostname/path"
-                )
-
-        # Validate hf:// format
-        if scheme == _HF_PREFIX:
-            repo_part = v[len(_HF_PREFIX) :]
-            if not repo_part or repo_part.startswith("/"):
-                raise ValueError(
-                    f"Invalid HuggingFace URI format: '{v}'. "
-                    f"Expected format: hf://owner/repo"
-                )
-
-        return v
+        return _validate_external_source_uri(v)
 
     @pydantic.field_validator("mount_location")
     @classmethod
@@ -579,14 +588,56 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+_BDN_PREFIX = "bdn://"
 _BDN_VOLUME_SOURCE_REGEX = re.compile(
-    r"^bdn://[^/:@\x00]+/[^/:@\x00]+"
-    r"(?::[^/:@\x00]+|@(?:b3:)?[0-9a-fA-F]+)?$"
+    r"bdn://(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
+    r"(?::(?P<tag>[^/:@\x00]+)|@(?:b3:)?(?P<digest>[0-9a-fA-F]+))?"
 )
 
 
+def _validate_bdn_identifier(kind: str, value: str) -> None:
+    if not value:
+        raise ValueError(f"BDN {kind} must not be empty")
+    if len(value) > 256:
+        raise ValueError(f"BDN {kind} must be at most 256 characters")
+    if "/" in value or ".." in value or "\0" in value:
+        raise ValueError(f"Invalid BDN {kind}: {value!r}")
+
+
+def _normalize_bdn_mount_path(value: str) -> str:
+    if "\0" in value:
+        raise ValueError("Volume mount must not contain null bytes")
+    mount_path = pathlib.PurePosixPath(value)
+    if not mount_path.is_absolute():
+        raise ValueError(
+            f"Volume mount must be an absolute path (start with /), got: {value}"
+        )
+    if mount_path == pathlib.PurePosixPath("/"):
+        raise ValueError("Volume mount must not be the filesystem root")
+    if ".." in mount_path.parts:
+        raise ValueError(f"Volume mount must not contain parent traversal: {value}")
+    return str(mount_path)
+
+
 class VolumeAccessMode(str, enum.Enum):
-    """Permissions granted to a model for a BDN volume namespace."""
+    """An operation a model is allowed to perform on a BDN volume namespace.
+
+    These are registry permissions, not filesystem mount options: they govern
+    what the deployment may ask the BDN volume service to do, and mirror the
+    scopes carried by the credentials issued to the deployment. Mounting a
+    volume declared under `volumes.mounts` does not require an entry here.
+
+    - `pull`: read volume content, resolving a reference and fetching the
+      manifests and objects behind it. Needed to download data.
+    - `push`: create volumes and upload new content, and point tags at the
+      versions it uploads.
+    - `tag`: create, move, and remove tags, without permission to upload
+      content or delete versions.
+    - `delete`: remove tags, versions, and whole volumes.
+    - `inspect`: read metadata only, listing namespaces and volumes and
+      reading version, tag, and history metadata, with no access to the
+      content itself.
+    """
 
     PULL = "pull"
     PUSH = "push"
@@ -596,39 +647,158 @@ class VolumeAccessMode(str, enum.Enum):
 
 
 class VolumeMount(custom_types.ConfigModel):
-    """A BDN volume mounted into a model container."""
+    """A volume mounted into a model container.
+
+    A mount takes one of two forms, distinguished by the scheme on `source`:
+
+    - *Internal*: `source` is a `bdn://` reference to a volume that already
+      exists in BDN, and is mounted as-is. BDN volumes are read through the
+      deployment's own credentials, so `auth` does not apply.
+    - *External*: `source` is a weights-style URI (`hf://`, `s3://`, `gs://`,
+      `azure://`, `r2://`, `cw://`, or `https://`). The content is ingested
+      into the BDN volume named by `dest`, then mounted from there. `dest` is
+      required for this form, and `auth` supplies the credentials for reading
+      the external source.
+
+    ```
+    volumes:
+      mounts:
+        - source: bdn://weights/llama-8b:prod
+          mount: /models/llama
+        - source: hf://Qwen/Qwen3-Omni-30B-A3B-Instruct
+          dest: bdn://weights/qwen3-omni-30b-a3b-instruct
+          mount: /models/qwen3
+    ```
+    """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+        description="Volume to mount. Either a BDN reference (bdn://weights/llama-8b:prod) "
+        "or an external URI using hf://, s3://, gs://, azure://, r2://, cw://, or https://.",
+    )
+    dest: Optional[str] = pydantic.Field(
+        default=None,
+        description="BDN volume the external source is ingested into, as "
+        "bdn://namespace/volume[:tag]. Required for external sources, and not "
+        "permitted when source is already a bdn:// reference.",
     )
     mount: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ..., description="Absolute path where the volume will be mounted at runtime."
     )
+    auth: Optional[WeightsAuth] = pydantic.Field(
+        default=None,
+        description="Authentication configuration for reading an external source. "
+        "Not applicable to bdn:// sources.",
+    )
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Baseten secret name containing credentials for an external source. "
+        "Can also be specified in auth.auth_secret_name.",
+    )
+
+    @property
+    def is_external(self) -> bool:
+        """Whether the content originates outside BDN and must be ingested."""
+        return not self.source.startswith(_BDN_PREFIX)
 
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, value: str) -> str:
-        if _BDN_VOLUME_SOURCE_REGEX.fullmatch(value) is None:
+        if not value.startswith(_BDN_PREFIX):
+            # External source: accept exactly what the weights API accepts.
+            return _validate_external_source_uri(value)
+
+        match = _BDN_VOLUME_SOURCE_REGEX.fullmatch(value)
+        if match is None:
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
                 "Expected format: bdn://namespace/volume[:tag|@digest]"
             )
+
+        _validate_bdn_identifier("namespace", match.group("namespace"))
+        _validate_bdn_identifier("volume", match.group("volume"))
+        if tag := match.group("tag"):
+            _validate_bdn_identifier("tag", tag)
+        return value
+
+    @pydantic.field_validator("dest")
+    @classmethod
+    def _validate_dest(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+
+        match = _BDN_VOLUME_SOURCE_REGEX.fullmatch(value)
+        if match is None:
+            raise ValueError(
+                f"Invalid BDN volume destination: '{value}'. "
+                "Expected format: bdn://namespace/volume[:tag]"
+            )
+        if match.group("digest"):
+            raise ValueError(
+                f"Volume destination '{value}' must not pin a digest: a digest names "
+                "content that already exists and cannot be published to. Use a tag."
+            )
+
+        _validate_bdn_identifier("namespace", match.group("namespace"))
+        _validate_bdn_identifier("volume", match.group("volume"))
+        if tag := match.group("tag"):
+            _validate_bdn_identifier("tag", tag)
         return value
 
     @pydantic.field_validator("mount")
     @classmethod
     def _validate_mount(cls, value: str) -> str:
-        mount_path = pathlib.PurePosixPath(value)
-        if not mount_path.is_absolute():
+        return _normalize_bdn_mount_path(value)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_dest_matches_source(self) -> "VolumeMount":
+        if self.is_external and self.dest is None:
             raise ValueError(
-                f"Volume mount must be an absolute path (start with /), got: {value}"
+                f"External volume source '{self.source}' requires `dest`, the "
+                "bdn://namespace/volume reference to ingest the content into."
             )
-        return str(mount_path)
+        if not self.is_external and self.dest is not None:
+            raise ValueError(
+                f"`dest` is not allowed for the internal volume source '{self.source}', "
+                "which already names the BDN volume to mount."
+            )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth(self) -> "VolumeMount":
+        if not self.is_external and (self.auth or self.auth_secret_name):
+            raise ValueError(
+                f"Authentication is not configurable for the internal volume source "
+                f"'{self.source}'; BDN volumes are read with the deployment's own "
+                "credentials."
+            )
+        if self.auth_secret_name and (self.auth and self.auth.auth_secret_name):
+            raise ValueError(
+                "auth_secret_name cannot be specified both at the top level and in auth section. "
+                "Please use only one location."
+            )
+        return self
 
 
 class Volumes(custom_types.ConfigModel):
-    """BDN volume mounts and namespace access grants for a deployment."""
+    """Volume mounts and BDN namespace access grants for a deployment.
+
+    `mounts` accepts internal volumes, already in BDN, and external volumes
+    ingested into BDN from elsewhere; see `VolumeMount`. `access` grants the
+    deployment operations on BDN namespaces, and applies only to BDN.
+
+    BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
+
+    - A *namespace* (`weights`) groups volumes within your organization, and is
+      the unit that access grants and storage are scoped to. Names are
+      lowercase alphanumeric plus hyphens, at least two characters, and may not
+      begin with a digit; `namespaces` and `resolve` are reserved.
+    - A *volume* (`llama-8b`) is one versioned collection of files. Every
+      published version is immutable and identified by its content digest.
+    - A *tag* (`prod`) is a mutable, case-sensitive name pointing at one
+      version, repointed as newer versions are published. A reference carrying
+      neither tag nor digest resolves to the volume's head, its latest version.
+    """
 
     mounts: list[VolumeMount] = pydantic.Field(
         default_factory=list,

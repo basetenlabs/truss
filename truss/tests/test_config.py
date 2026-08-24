@@ -2089,7 +2089,7 @@ class TestTrussConfigVolumes:
         "source",
         [
             "weights/llama:prod",
-            "hf://weights/llama",
+            "ftp://weights/llama",
             "bdn://foo",
             "bdn:///llama:prod",
             "bdn://weights/:prod",
@@ -2152,6 +2152,143 @@ class TestTrussConfigVolumes:
                     VolumeMount(source="bdn://weights/llama:prod", mount="/models"),
                     VolumeMount(source="bdn://weights/mistral:prod", mount="/models/"),
                 ]
+            )
+
+    def test_volumes_mixes_internal_and_external_from_yaml(self, tmp_path):
+        yaml_content = """
+        volumes:
+          mounts:
+            - source: bdn://weights/llama-8b:prod
+              mount: /models/llama
+            - source: hf://Qwen/Qwen3-Omni-30B-A3B-Instruct
+              dest: bdn://weights/qwen3-omni-30b-a3b-instruct
+              mount: /models/qwen3
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+
+        internal, external = config.volumes.mounts
+        assert internal.source == "bdn://weights/llama-8b:prod"
+        assert internal.dest is None
+        assert not internal.is_external
+        assert external.source == "hf://Qwen/Qwen3-Omni-30B-A3B-Instruct"
+        assert external.dest == "bdn://weights/qwen3-omni-30b-a3b-instruct"
+        assert external.mount == "/models/qwen3"
+        assert external.is_external
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "hf://Qwen/Qwen3-Omni-30B-A3B-Instruct",
+            "hf://meta-llama/Llama-2-7b@main",
+            "s3://bucket/path",
+            "gs://bucket/path",
+            "azure://account/container/path",
+            "r2://account_id.bucket/path",
+            "cw://bucket/path",
+            "https://example.com/model.bin",
+        ],
+    )
+    def test_volume_external_source_accepts_weights_schemes(self, source):
+        volume_mount = VolumeMount(
+            source=source, dest="bdn://weights/ingested", mount="/models/external"
+        )
+
+        assert volume_mount.source == source
+        assert volume_mount.is_external
+
+    def test_volume_external_source_requires_dest(self):
+        with pytest.raises(pydantic.ValidationError, match="requires `dest`"):
+            VolumeMount(source="s3://bucket/path", mount="/models/external")
+
+    def test_volume_internal_source_rejects_dest(self):
+        with pytest.raises(pydantic.ValidationError, match="`dest` is not allowed"):
+            VolumeMount(
+                source="bdn://weights/llama:prod",
+                dest="bdn://weights/copy",
+                mount="/models/llama",
+            )
+
+    @pytest.mark.parametrize(
+        "dest",
+        [
+            "weights/ingested",
+            "hf://weights/ingested",
+            "bdn://weights",
+            "bdn://weights/ingested/nested",
+            "bdn://weights/ingested:",
+        ],
+    )
+    def test_volume_dest_rejects_invalid_reference(self, dest):
+        with pytest.raises(pydantic.ValidationError):
+            VolumeMount(source="s3://bucket/path", dest=dest, mount="/models/external")
+
+    @pytest.mark.parametrize(
+        "dest", ["bdn://weights/ingested@abcdef", "bdn://weights/ingested@b3:abcdef"]
+    )
+    def test_volume_dest_rejects_digest(self, dest):
+        with pytest.raises(pydantic.ValidationError, match="must not pin a digest"):
+            VolumeMount(source="s3://bucket/path", dest=dest, mount="/models/external")
+
+    def test_volume_dest_accepts_tag(self):
+        volume_mount = VolumeMount(
+            source="s3://bucket/path",
+            dest="bdn://weights/ingested:prod",
+            mount="/models/external",
+        )
+
+        assert volume_mount.dest == "bdn://weights/ingested:prod"
+
+    def test_volume_external_source_accepts_auth(self):
+        volume_mount = VolumeMount(
+            source="s3://bucket/path",
+            dest="bdn://weights/ingested",
+            mount="/models/external",
+            auth=WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789012:role/example",
+                aws_oidc_region="us-east-1",
+            ),
+        )
+
+        assert volume_mount.auth is not None
+        assert volume_mount.auth.auth_method == WeightsAuthMethod.AWS_OIDC
+
+    def test_volume_external_source_accepts_auth_secret_name(self):
+        volume_mount = VolumeMount(
+            source="s3://bucket/path",
+            dest="bdn://weights/ingested",
+            mount="/models/external",
+            auth_secret_name="my-secret",
+        )
+
+        assert volume_mount.auth_secret_name == "my-secret"
+
+    def test_volume_internal_source_rejects_auth(self):
+        with pytest.raises(
+            pydantic.ValidationError, match="Authentication is not configurable"
+        ):
+            VolumeMount(
+                source="bdn://weights/llama:prod",
+                mount="/models/llama",
+                auth_secret_name="my-secret",
+            )
+
+    def test_volume_external_source_rejects_duplicate_auth_secret_name(self):
+        with pytest.raises(
+            pydantic.ValidationError, match="cannot be specified both at the top level"
+        ):
+            VolumeMount(
+                source="s3://bucket/path",
+                dest="bdn://weights/ingested",
+                mount="/models/external",
+                auth_secret_name="my-secret",
+                auth=WeightsAuth(
+                    auth_method=WeightsAuthMethod.CUSTOM_SECRET,
+                    auth_secret_name="other-secret",
+                ),
             )
 
 
