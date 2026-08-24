@@ -769,8 +769,7 @@ class VolumeMount(custom_types.ConfigModel):
         if not self.is_external and (self.auth or self.auth_secret_name):
             raise ValueError(
                 f"Authentication is not configurable for the internal volume source "
-                f"'{self.source}'; BDN volumes are read with the deployment's own "
-                "credentials."
+                f"'{self.source}'."
             )
         if self.auth_secret_name and (self.auth and self.auth.auth_secret_name):
             raise ValueError(
