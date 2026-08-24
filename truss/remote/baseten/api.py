@@ -1268,21 +1268,24 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["organization"]["id"]
 
-    def get_aws_external_id(self) -> str:
+    def get_aws_assume_role_info(self) -> dict:
         """
-        Get the sts:ExternalId Baseten presents when assuming this
-        organization's AWS IAM roles (AWS_ASSUME_ROLE auth method).
+        Get the AWS AssumeRole trust-policy inputs for this workspace: the
+        Baseten role ARN to allow and the sts:ExternalId Baseten presents.
+        Both fields are null unless AWS AssumeRole is enabled for the
+        workspace.
         """
         query_string = """
         query {
             organization {
+                aws_customer_access_role_arn
                 aws_external_id
             }
         }
         """
 
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["organization"]["aws_external_id"]
+        return resp["data"]["organization"]
 
     def update_interactive_session(
         self,

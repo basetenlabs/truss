@@ -250,16 +250,18 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     help="Show OIDC configuration for workload identity.",
 )
 @click.option(
-    "--show-aws-external-id",
+    "--show-assume-role",
     is_flag=True,
     default=False,
     help=(
-        "Show the AWS external ID Baseten presents when assuming your IAM "
-        "roles (the sts:ExternalId condition for AWS AssumeRole trust policies)."
+        "Show the AWS AssumeRole trust-policy inputs for your workspace: the "
+        "Baseten role ARN to allow and the external ID to require via "
+        "sts:ExternalId. Available once AWS AssumeRole is enabled for your "
+        "workspace (contact Baseten support)."
     ),
 )
 @common.common_options()
-def whoami(remote: Optional[str], show_oidc: bool, show_aws_external_id: bool):
+def whoami(remote: Optional[str], show_oidc: bool, show_assume_role: bool):
     """
     Shows user information and exit.
     """
@@ -283,17 +285,19 @@ def whoami(remote: Optional[str], show_oidc: bool, show_aws_external_id: bool):
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
         )
 
-    if show_aws_external_id:
+    if show_assume_role:
         remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
-        aws_external_id = remote_provider.get_aws_external_id()
-        if aws_external_id is None:
+        assume_role_info = remote_provider.get_aws_assume_role_info()
+        if assume_role_info is None:
             raise click.ClickException(
-                "This Baseten server does not expose AWS external IDs yet; "
-                "contact Baseten support for yours."
+                "AWS AssumeRole is not enabled for this workspace; "
+                "contact Baseten support to enable it."
             )
 
         console.print()
-        console.print(f"AWS External ID: {aws_external_id}")
+        if assume_role_info.role_arn:
+            console.print(f"Baseten Role ARN: {assume_role_info.role_arn}")
+        console.print(f"AWS External ID: {assume_role_info.external_id}")
         console.print(
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/aws-assume-role')}"
         )
