@@ -32,6 +32,9 @@ from truss.base.truss_config import (
     TrainingArtifactReference,
     TransportKind,
     TrussConfig,
+    VolumeAccessMode,
+    VolumeMount,
+    Volumes,
     WebsocketOptions,
     Weights,
     WeightsAuth,
@@ -2021,6 +2024,82 @@ class TestTrussConfigWeights:
         assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
         assert config_new.weights.sources[0].mount_location == "/models/llama"
         assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
+
+
+class TestTrussConfigVolumes:
+    def test_volumes_from_yaml(self, tmp_path):
+        yaml_content = """
+        volumes:
+          mounts:
+            - source: bdn://weights/llama-8b:prod
+              mount: /models/llama
+          access:
+            shared-weights: read
+            model-outputs: publish
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+
+        assert config.volumes.mounts == [
+            VolumeMount(source="bdn://weights/llama-8b:prod", mount="/models/llama")
+        ]
+        assert config.volumes.access == {
+            "shared-weights": VolumeAccessMode.READ,
+            "model-outputs": VolumeAccessMode.PUBLISH,
+        }
+
+    def test_volumes_serialization_roundtrip(self, tmp_path):
+        config = TrussConfig(
+            volumes=Volumes(
+                mounts=[
+                    VolumeMount(
+                        source="bdn://weights/some-model:mytag",
+                        mount="/models/some-model",
+                    )
+                ],
+                access={"weights": VolumeAccessMode.READ},
+            )
+        )
+        config_path = tmp_path / "config.yaml"
+        config.write_to_yaml_file(config_path, verbose=False)
+
+        serialized = yaml.safe_load(config_path.read_text())
+        assert serialized["volumes"] == {
+            "mounts": [
+                {
+                    "source": "bdn://weights/some-model:mytag",
+                    "mount": "/models/some-model",
+                }
+            ],
+            "access": {"weights": "read"},
+        }
+        assert TrussConfig.from_yaml(config_path).volumes == config.volumes
+
+    @pytest.mark.parametrize("source", ["weights/llama:prod", "hf://weights/llama"])
+    def test_volume_source_requires_bdn_scheme(self, source):
+        with pytest.raises(pydantic.ValidationError, match="bdn:// scheme"):
+            VolumeMount(source=source, mount="/models/llama")
+
+    def test_volume_mount_requires_absolute_path(self):
+        with pytest.raises(pydantic.ValidationError, match="absolute path"):
+            VolumeMount(source="bdn://weights/llama:prod", mount="models/llama")
+
+    def test_volume_access_rejects_unknown_mode(self):
+        with pytest.raises(pydantic.ValidationError):
+            Volumes(access={"weights": "write"})
+
+    def test_volume_mount_paths_must_be_unique(self):
+        with pytest.raises(
+            pydantic.ValidationError, match="Duplicate volume mount path"
+        ):
+            Volumes(
+                mounts=[
+                    VolumeMount(source="bdn://weights/llama:prod", mount="/models"),
+                    VolumeMount(source="bdn://weights/mistral:prod", mount="/models"),
+                ]
+            )
 
 
 class TestCheckpointListNoMixing:

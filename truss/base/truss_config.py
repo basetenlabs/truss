@@ -579,6 +579,83 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+_BDN_PREFIX = "bdn://"
+
+
+class VolumeAccessMode(str, enum.Enum):
+    """Permissions granted to a model for a BDN volume namespace."""
+
+    READ = "read"
+    PUBLISH = "publish"
+
+
+class VolumeMount(custom_types.ConfigModel):
+    """A BDN volume mounted into a model container."""
+
+    source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+    )
+    mount: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ..., description="Absolute path where the volume will be mounted at runtime."
+    )
+
+    @pydantic.field_validator("source")
+    @classmethod
+    def _validate_source(cls, value: str) -> str:
+        if not value.startswith(_BDN_PREFIX):
+            raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
+        if not value[len(_BDN_PREFIX) :] or value[len(_BDN_PREFIX) :].startswith("/"):
+            raise ValueError(
+                f"Invalid BDN volume source: '{value}'. "
+                "Expected format: bdn://namespace/volume:tag"
+            )
+        return value
+
+    @pydantic.field_validator("mount")
+    @classmethod
+    def _validate_mount(cls, value: str) -> str:
+        if not pathlib.PurePosixPath(value).is_absolute():
+            raise ValueError(
+                f"Volume mount must be an absolute path (start with /), got: {value}"
+            )
+        return value
+
+
+class Volumes(custom_types.ConfigModel):
+    """BDN volume mounts and namespace access grants for a deployment."""
+
+    mounts: list[VolumeMount] = pydantic.Field(
+        default_factory=list,
+        description="Existing BDN volumes to mount when the model starts.",
+    )
+    access: dict[str, VolumeAccessMode] = pydantic.Field(
+        default_factory=dict,
+        description="Namespace names mapped to read or publish access.",
+    )
+
+    @pydantic.field_validator("access")
+    @classmethod
+    def _validate_access_namespaces(
+        cls, value: dict[str, VolumeAccessMode]
+    ) -> dict[str, VolumeAccessMode]:
+        if any(not namespace for namespace in value):
+            raise ValueError("Volume access namespace names cannot be empty.")
+        return value
+
+    @pydantic.model_validator(mode="after")
+    def _validate_unique_mount_paths(self) -> "Volumes":
+        mount_paths: set[str] = set()
+        for volume_mount in self.mounts:
+            if volume_mount.mount in mount_paths:
+                raise ValueError(
+                    f"Duplicate volume mount path '{volume_mount.mount}' - "
+                    "each volume must have a unique mount path."
+                )
+            mount_paths.add(volume_mount.mount)
+        return self
+
+
 class AutoscalingMetric(pydantic.BaseModel):
     name: str
     target: float
@@ -1392,6 +1469,10 @@ class TrussConfig(custom_types.ConfigModel):
     weights: Weights = pydantic.Field(
         default_factory=lambda: Weights([]),
         description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
+    )
+    volumes: Volumes = pydantic.Field(
+        default_factory=Volumes,
+        description="Mount existing BDN volumes and grant namespace access to the deployment.",
     )
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
         default=None,

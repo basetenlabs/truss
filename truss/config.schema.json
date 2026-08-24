@@ -1818,6 +1818,63 @@
       "title": "VersionsOverrides",
       "type": "object"
     },
+    "VolumeAccessMode": {
+      "description": "Permissions granted to a model for a BDN volume namespace.",
+      "enum": [
+        "read",
+        "publish"
+      ],
+      "title": "VolumeAccessMode",
+      "type": "string"
+    },
+    "VolumeMount": {
+      "additionalProperties": true,
+      "description": "A BDN volume mounted into a model container.",
+      "properties": {
+        "source": {
+          "description": "BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "mount": {
+          "description": "Absolute path where the volume will be mounted at runtime.",
+          "minLength": 1,
+          "title": "Mount",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "mount"
+      ],
+      "title": "VolumeMount",
+      "type": "object"
+    },
+    "Volumes": {
+      "additionalProperties": true,
+      "description": "BDN volume mounts and namespace access grants for a deployment.",
+      "properties": {
+        "mounts": {
+          "description": "Existing BDN volumes to mount when the model starts.",
+          "items": {
+            "$ref": "#/$defs/VolumeMount"
+          },
+          "title": "Mounts",
+          "type": "array"
+        },
+        "access": {
+          "additionalProperties": {
+            "$ref": "#/$defs/VolumeAccessMode"
+          },
+          "description": "Namespace names mapped to read or publish access.",
+          "title": "Access",
+          "type": "object"
+        }
+      },
+      "title": "Volumes",
+      "type": "object"
+    },
     "WebsocketOptions": {
       "properties": {
         "kind": {
@@ -2258,6 +2315,10 @@
     "weights": {
       "$ref": "#/$defs/Weights",
       "description": "Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching."
+    },
+    "volumes": {
+      "$ref": "#/$defs/Volumes",
+      "description": "Mount existing BDN volumes and grant namespace access to the deployment."
     },
     "trt_llm": {
       "anyOf": [
