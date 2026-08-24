@@ -587,6 +587,10 @@ class VolumeAccessMode(str, enum.Enum):
 
     PULL = "pull"
     PUSH = "push"
+    TAG = "tag"
+    DELETE = "delete"
+    INSPECT = "inspect"
+    ADMIN = "admin"
 
 
 class VolumeMount(custom_types.ConfigModel):
@@ -631,7 +635,7 @@ class Volumes(custom_types.ConfigModel):
     )
     access: dict[str, VolumeAccessMode] = pydantic.Field(
         default_factory=dict,
-        description="Namespace names mapped to pull or push access.",
+        description="Namespace names mapped to a BDN volume operation scope.",
     )
 
     @pydantic.field_validator("access")

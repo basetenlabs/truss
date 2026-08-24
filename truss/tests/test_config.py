@@ -2086,7 +2086,13 @@ class TestTrussConfigVolumes:
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
             VolumeMount(source="bdn://weights/llama:prod", mount="models/llama")
 
-    def test_volume_access_rejects_unknown_mode(self):
+    @pytest.mark.parametrize("scope", list(VolumeAccessMode))
+    def test_volume_access_accepts_all_bdn_scopes(self, scope):
+        volumes = Volumes(access={"weights": scope.value})
+
+        assert volumes.access == {"weights": scope}
+
+    def test_volume_access_rejects_unknown_scope(self):
         with pytest.raises(pydantic.ValidationError):
             Volumes(access={"weights": "write"})
 

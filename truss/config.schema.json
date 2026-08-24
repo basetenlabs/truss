@@ -1822,7 +1822,11 @@
       "description": "Permissions granted to a model for a BDN volume namespace.",
       "enum": [
         "pull",
-        "push"
+        "push",
+        "tag",
+        "delete",
+        "inspect",
+        "admin"
       ],
       "title": "VolumeAccessMode",
       "type": "string"
@@ -1867,7 +1871,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/VolumeAccessMode"
           },
-          "description": "Namespace names mapped to pull or push access.",
+          "description": "Namespace names mapped to a BDN volume operation scope.",
           "title": "Access",
           "type": "object"
         }
