@@ -322,3 +322,28 @@ def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden
         all_relative_path_strs
         == ignored_relative_paths_strs | unignored_relative_path_strs
     )
+
+
+def test_get_unignored_relative_paths_from_root_prunes_ignored_dirs(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "model.py").touch()
+    (tmp_path / "ignored" / "deep").mkdir(parents=True)
+    (tmp_path / "ignored" / "deep" / "large.bin").touch()
+
+    walked_dirs = []
+    original_walk = path.os.walk
+
+    def tracking_walk(*args, **kwargs):
+        for entry in original_walk(*args, **kwargs):
+            walked_dirs.append(Path(entry[0]).relative_to(tmp_path))
+            yield entry
+
+    monkeypatch.setattr(path.os, "walk", tracking_walk)
+
+    result = path.get_unignored_relative_paths_from_root(tmp_path, ["ignored/"])
+
+    assert result == {Path("keep"), Path("keep/model.py")}
+    assert Path("ignored") not in walked_dirs
+    assert Path("ignored/deep") not in walked_dirs
