@@ -710,8 +710,8 @@ def test_whoami_with_show_oidc():
     assert "oidc.baseten.co" in result.output
 
 
-def test_whoami_with_show_assume_role():
-    """Test whoami --show-assume-role prints the role ARN and external ID."""
+def test_whoami_with_show_aws_assume_role():
+    """Test whoami --show-aws-assume-role prints the role ARN and external ID."""
     runner = CliRunner()
 
     mock_user = RemoteUser("test_workspace", "user@example.com")
@@ -725,7 +725,8 @@ def test_whoami_with_show_assume_role():
         with patch("truss.api.whoami", return_value=mock_user):
             with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
                 result = runner.invoke(
-                    truss_cli, ["whoami", "--remote", "baseten", "--show-assume-role"]
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-assume-role"],
                 )
 
     assert result.exit_code == 0
@@ -737,8 +738,8 @@ def test_whoami_with_show_assume_role():
     assert "AWS External ID: baseten-2fdd8a01c4c34e6bb92a2b96fca29b70" in result.output
 
 
-def test_whoami_show_assume_role_not_enabled():
-    """Test whoami --show-assume-role fails clearly when the method is not
+def test_whoami_show_aws_assume_role_not_enabled():
+    """Test whoami --show-aws-assume-role fails clearly when the method is not
     enabled for the workspace (or the server predates it)."""
     runner = CliRunner()
 
@@ -750,7 +751,8 @@ def test_whoami_show_assume_role_not_enabled():
         with patch("truss.api.whoami", return_value=mock_user):
             with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
                 result = runner.invoke(
-                    truss_cli, ["whoami", "--remote", "baseten", "--show-assume-role"]
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-assume-role"],
                 )
 
     assert result.exit_code != 0

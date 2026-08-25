@@ -250,7 +250,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     help="Show OIDC configuration for workload identity.",
 )
 @click.option(
-    "--show-assume-role",
+    "--show-aws-assume-role",
     is_flag=True,
     default=False,
     help=(
@@ -261,7 +261,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     ),
 )
 @common.common_options()
-def whoami(remote: Optional[str], show_oidc: bool, show_assume_role: bool):
+def whoami(remote: Optional[str], show_oidc: bool, show_aws_assume_role: bool):
     """
     Shows user information and exit.
     """
@@ -285,7 +285,7 @@ def whoami(remote: Optional[str], show_oidc: bool, show_assume_role: bool):
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
         )
 
-    if show_assume_role:
+    if show_aws_assume_role:
         remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
         assume_role_info = remote_provider.get_aws_assume_role_info()
         if assume_role_info is None:
