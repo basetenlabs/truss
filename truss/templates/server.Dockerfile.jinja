@@ -54,7 +54,7 @@ RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ server_requirements_
 
 {%- if external_data_files %}
 {% for url, dst in external_data_files %}
-RUN mkdir -p {{ dst.parent | string | dockerfile_env_value }}; curl -L {{ url | dockerfile_env_value }} -o {{ dst | string | dockerfile_env_value }}
+RUN mkdir -p {{ dst.parent | string | dockerfile_shell_value }}; curl -L {{ url | dockerfile_shell_value }} -o {{ dst | string | dockerfile_shell_value }}
 {% endfor %} {#- endfor external_data_files #}
 {%- endif %} {#- endif external_data_files #}
 

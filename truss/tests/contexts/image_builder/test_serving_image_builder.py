@@ -1,6 +1,7 @@
 import filecmp
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -27,7 +28,7 @@ from truss.contexts.image_builder.serving_image_builder import (
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
-from truss.util.jinja import dockerfile_env_value
+from truss.util.jinja import dockerfile_env_value, dockerfile_shell_value
 
 BASE_DIR = Path(__file__).parent
 
@@ -106,10 +107,99 @@ def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
     assert len(curl_lines) == 1
     curl_line = curl_lines[0]
 
-    expected_url = dockerfile_env_value(malicious_url)
-    expected_dst = dockerfile_env_value(f"/app/data/{local_data_path}")
+    expected_url = dockerfile_shell_value(malicious_url)
+    expected_dst = dockerfile_shell_value(f"/app/data/{local_data_path}")
     assert f"curl -L {expected_url} -o {expected_dst}" in curl_line
     assert "; echo pwned ;" not in curl_line.replace(expected_url, "")
+
+
+@patch("platform.machine", return_value="amd")
+def test_external_data_url_backticks_escaped_in_dockerfile(
+    mock_machine, custom_model_truss_dir
+):
+    """dockerfile_env_value leaves backticks live in RUN; shlex quoting must not."""
+    malicious_url = "http://example.com/`id`"
+    local_data_path = "weights/model.bin"
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=malicious_url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    curl_lines = [
+        line
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
+    ]
+    assert len(curl_lines) == 1
+    curl_line = curl_lines[0]
+
+    expected_url = dockerfile_shell_value(malicious_url)
+    assert f"curl -L {expected_url}" in curl_line
+    assert expected_url == "'http://example.com/`id`'"
+
+
+def _render_external_data_curl_line(truss_dir, url: str, local_data_path: str) -> str:
+    th = TrussHandle(truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+    curl_lines = [
+        line
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
+    ]
+    assert len(curl_lines) == 1
+    return curl_lines[0]
+
+
+@patch("platform.machine", return_value="amd")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/model.bin",
+        'http://example.com/x" ; touch PWNED ; echo "',
+        "http://example.com/`touch PWNED`",
+        "http://example.com/$(touch PWNED)",
+        "http://example.com/$HOME/weights.bin",
+        "http://example.com/it's.bin",
+    ],
+)
+def test_external_data_run_line_is_safe_under_posix_sh(
+    mock_machine, custom_model_truss_dir, url
+):
+    """Execute the generated RUN under /bin/sh (dash here; Docker's default)."""
+    with TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        pwned = tmp_path / "pwned"
+        data_root = tmp_path / "data"
+        argv_file = tmp_path / "argv"
+        resolved_url = url.replace("PWNED", str(pwned))
+        curl_line = _render_external_data_curl_line(
+            custom_model_truss_dir, resolved_url, "weights/model.bin"
+        )
+        run_body = curl_line.strip().removeprefix("RUN ").replace("/app/data", str(data_root))
+        curl = tmp_path / "curl"
+        curl.write_text(f"#!/bin/sh\nprintf '%s\\0' \"$@\" > '{argv_file}'\n")
+        curl.chmod(0o755)
+        env = os.environ.copy()
+        env["PATH"] = f"{tmp_path}:{env['PATH']}"
+        subprocess.run(
+            ["/bin/sh", "-c", run_body], env=env, check=True, capture_output=True
+        )
+        argv = [a.decode() for a in argv_file.read_bytes().split(b"\0") if a]
+        assert argv[1] == resolved_url
+        assert pwned.exists() is False
 
 
 @patch("platform.machine", return_value="amd")
