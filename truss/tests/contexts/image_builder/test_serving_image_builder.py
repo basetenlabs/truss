@@ -2,6 +2,7 @@ import filecmp
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,6 +32,16 @@ from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.jinja import dockerfile_env_value, dockerfile_shell_value
 
 BASE_DIR = Path(__file__).parent
+
+
+def _external_data_curl_lines(dockerfile: str) -> list[str]:
+    # `curl -L ` (space) avoids the uv bootstrap `curl -LsSf`. Dest can be
+    # Windows-resolved (`C:\app\data\...`) so do not require `/app/data/`.
+    return [
+        line
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("RUN") and "curl -L " in line and "model.bin" in line
+    ]
 
 
 @patch("platform.machine", return_value="amd")
@@ -99,16 +110,14 @@ def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
         image_builder.prepare_image_build_dir(tmp_path)
         dockerfile = (tmp_path / "Dockerfile").read_text()
 
-    curl_lines = [
-        line
-        for line in dockerfile.splitlines()
-        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
-    ]
+    curl_lines = _external_data_curl_lines(dockerfile)
     assert len(curl_lines) == 1
     curl_line = curl_lines[0]
 
     expected_url = dockerfile_shell_value(malicious_url)
-    expected_dst = dockerfile_shell_value(f"/app/data/{local_data_path}")
+    expected_dst = dockerfile_shell_value(
+        str((Path("/app/data/") / local_data_path).resolve())
+    )
     assert f"curl -L {expected_url} -o {expected_dst}" in curl_line
     assert "; echo pwned ;" not in curl_line.replace(expected_url, "")
 
@@ -131,11 +140,7 @@ def test_external_data_url_backticks_escaped_in_dockerfile(
         image_builder.prepare_image_build_dir(tmp_path)
         dockerfile = (tmp_path / "Dockerfile").read_text()
 
-    curl_lines = [
-        line
-        for line in dockerfile.splitlines()
-        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
-    ]
+    curl_lines = _external_data_curl_lines(dockerfile)
     assert len(curl_lines) == 1
     curl_line = curl_lines[0]
 
@@ -154,16 +159,13 @@ def _render_external_data_curl_line(truss_dir, url: str, local_data_path: str) -
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
         dockerfile = (tmp_path / "Dockerfile").read_text()
-    curl_lines = [
-        line
-        for line in dockerfile.splitlines()
-        if line.strip().startswith("RUN") and "curl -L" in line and "/app/data/" in line
-    ]
+    curl_lines = _external_data_curl_lines(dockerfile)
     assert len(curl_lines) == 1
     return curl_lines[0]
 
 
 @patch("platform.machine", return_value="amd")
+@pytest.mark.skipif(sys.platform == "win32", reason="/bin/sh is not on Windows CI")
 @pytest.mark.parametrize(
     "url",
     [
@@ -188,7 +190,9 @@ def test_external_data_run_line_is_safe_under_posix_sh(
         curl_line = _render_external_data_curl_line(
             custom_model_truss_dir, resolved_url, "weights/model.bin"
         )
-        run_body = curl_line.strip().removeprefix("RUN ").replace("/app/data", str(data_root))
+        run_body = (
+            curl_line.strip().removeprefix("RUN ").replace("/app/data", str(data_root))
+        )
         curl = tmp_path / "curl"
         curl.write_text(f"#!/bin/sh\nprintf '%s\\0' \"$@\" > '{argv_file}'\n")
         curl.chmod(0o755)

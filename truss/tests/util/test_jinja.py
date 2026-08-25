@@ -1,6 +1,7 @@
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -78,6 +79,7 @@ def test_shell_value_quotes_backticks():
     assert quoted == "'http://example.com/`id`'"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="/bin/sh is not on Windows CI")
 @pytest.mark.parametrize(
     "url",
     [
@@ -98,6 +100,7 @@ def test_shell_value_is_one_posix_sh_word(url):
     assert pwned is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="/bin/sh is not on Windows CI")
 def test_env_filter_still_executes_backticks_in_posix_sh():
     """Cretz's review: ENV quoting leaves backticks live when the value is in RUN."""
     argv, pwned, _resolved = _posix_sh_curl_argv(
