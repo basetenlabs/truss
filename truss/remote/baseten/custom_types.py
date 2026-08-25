@@ -191,7 +191,7 @@ class AwsAssumeRoleInfo(pydantic.BaseModel):
         description="Baseten role ARN to allow in the IAM role's trust policy",
     )
     external_id: str = pydantic.Field(
-        description="sts:ExternalId Baseten presents for this workspace"
+        description="sts:ExternalId Baseten presents for this organization"
     )
 
 

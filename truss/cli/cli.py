@@ -254,10 +254,10 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     is_flag=True,
     default=False,
     help=(
-        "Show the AWS AssumeRole trust-policy inputs for your workspace: the "
+        "Show the AWS AssumeRole trust-policy inputs for your organization: the "
         "Baseten role ARN to allow and the external ID to require via "
         "sts:ExternalId. Available once AWS AssumeRole is enabled for your "
-        "workspace (contact Baseten support)."
+        "organization (contact Baseten support)."
     ),
 )
 @common.common_options()
@@ -285,12 +285,12 @@ def whoami(remote: Optional[str], show_oidc: bool, show_aws_assume_role: bool):
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
         )
 
-    if show_aws_assume_role:
+    elif show_aws_assume_role:
         remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
         assume_role_info = remote_provider.get_aws_assume_role_info()
         if assume_role_info is None:
             raise click.ClickException(
-                "AWS AssumeRole is not enabled for this workspace; "
+                "AWS AssumeRole is not enabled for this organization; "
                 "contact Baseten support to enable it."
             )
 
@@ -298,9 +298,7 @@ def whoami(remote: Optional[str], show_oidc: bool, show_aws_assume_role: bool):
         if assume_role_info.role_arn:
             console.print(f"Baseten Role ARN: {assume_role_info.role_arn}")
         console.print(f"AWS External ID: {assume_role_info.external_id}")
-        console.print(
-            f"Learn more: {common.format_link('https://docs.baseten.co/organization/aws-assume-role')}"
-        )
+        # TODO(danielleef): add docs link here once they're ready
 
 
 @truss_cli.command()

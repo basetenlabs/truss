@@ -252,7 +252,7 @@ class BasetenRemote(TrussRemote):
 
     def get_aws_assume_role_info(self) -> Optional[custom_types.AwsAssumeRoleInfo]:
         """Trust-policy inputs for the AWS AssumeRole auth method, or None when
-        the method is not enabled for this workspace (or the server predates
+        the method is not enabled for this organization (or the server predates
         it)."""
         try:
             info = self._api.get_aws_assume_role_info()

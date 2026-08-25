@@ -279,11 +279,10 @@ class AuthFieldsMixin(custom_types.ConfigModel):
         default=None,
         description="AWS IAM role ARN that Baseten assumes with its own AWS "
         "principal, scoped by the sts:ExternalId Baseten assigns to your "
-        "workspace. No OIDC provider registration is needed in your AWS "
-        "account.",
+        "organization.",
     )
     aws_assume_role_region: Optional[str] = pydantic.Field(
-        default=None, description="AWS region for assume-role authentication."
+        default=None, description="AWS region for AWS AssumeRole authentication."
     )
 
     def _require_fields(self, auth_method: str, *fields: str) -> None:
@@ -401,10 +400,7 @@ class WeightsAuth(AuthFieldsMixin):
         elif self.auth_method == WeightsAuthMethod.AWS_ASSUME_ROLE:
             self._validate_fields(
                 self.auth_method.value,
-                required=[
-                    AWS_ASSUME_ROLE_ARN_PARAM,
-                    AWS_ASSUME_ROLE_REGION_PARAM,
-                ],
+                required=[AWS_ASSUME_ROLE_ARN_PARAM, AWS_ASSUME_ROLE_REGION_PARAM],
                 forbidden=[
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,
@@ -443,12 +439,12 @@ class WeightsSource(custom_types.ConfigModel):
     using the @{rev} suffix: "hf://owner/repo@revision"
 
     Authentication can be specified either:
-    - Using the `auth` section (required for OIDC and assume-role):
+    - Using the `auth` section (required for OIDC and AWS AssumeRole):
         auth:
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
-      or, for native AssumeRole with no OIDC provider registration:
+      or, for native AWS AssumeRole with no OIDC provider registration:
         auth:
           auth_method: AWS_ASSUME_ROLE
           aws_assume_role_arn: <role_arn>
@@ -1171,10 +1167,7 @@ class DockerAuthSettings(AuthFieldsMixin):
         elif self.auth_method == DockerAuthType.AWS_ASSUME_ROLE:
             self._validate_fields(
                 self.auth_method.value,
-                required=[
-                    AWS_ASSUME_ROLE_ARN_PARAM,
-                    AWS_ASSUME_ROLE_REGION_PARAM,
-                ],
+                required=[AWS_ASSUME_ROLE_ARN_PARAM, AWS_ASSUME_ROLE_REGION_PARAM],
                 forbidden=[
                     DOCKER_AUTH_SECRET_NAME_PARAM,
                     AWS_OIDC_ROLE_ARN_PARAM,

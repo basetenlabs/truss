@@ -1270,10 +1270,10 @@ class BasetenApi:
 
     def get_aws_assume_role_info(self) -> dict:
         """
-        Get the AWS AssumeRole trust-policy inputs for this workspace: the
+        Get the AWS AssumeRole trust-policy inputs for this organization: the
         Baseten role ARN to allow and the sts:ExternalId Baseten presents.
         Both fields are null unless AWS AssumeRole is enabled for the
-        workspace.
+        organization.
         """
         query_string = """
         query {
