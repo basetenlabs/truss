@@ -1522,7 +1522,7 @@ class TrussConfig(custom_types.ConfigModel):
     )
     hotload: dict[str, list[HotloadAccessScope]] = pydantic.Field(
         default_factory=dict,
-        description="Specifies which BDN namespaces can be accessed during hot-loading and the access scopes granted for each namespace.",
+        description="Specifies which BDN namespaces can be accessed during hot-loading (by deployment) and the access scopes granted for each namespace.",
     )
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
         default=None,
