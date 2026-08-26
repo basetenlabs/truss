@@ -665,7 +665,7 @@ class VolumeMount(custom_types.ConfigModel):
         return _normalize_bdn_mount_path(value)
 
 
-class HotloadAccessMode(str, enum.Enum):
+class HotloadAccessScope(str, enum.Enum):
     """An operation a model is allowed to perform on a BDN volume namespace.
 
     These are registry permissions, not filesystem mount options: they govern
@@ -1520,7 +1520,7 @@ class TrussConfig(custom_types.ConfigModel):
         default_factory=list,
         description="Existing BDN volumes to mount when the model starts.",
     )
-    hotload: dict[str, list[HotloadAccessMode]] = pydantic.Field(
+    hotload: dict[str, list[HotloadAccessScope]] = pydantic.Field(
         default_factory=dict,
         description="BDN namespaces mapped to operations available through hot load.",
     )
@@ -1721,8 +1721,8 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.field_validator("hotload")
     @classmethod
     def _validate_hotload_namespaces(
-        cls, hotload: dict[str, list[HotloadAccessMode]]
-    ) -> dict[str, list[HotloadAccessMode]]:
+        cls, hotload: dict[str, list[HotloadAccessScope]]
+    ) -> dict[str, list[HotloadAccessScope]]:
         if any(not namespace for namespace in hotload):
             raise ValueError("Hot-load namespace names cannot be empty.")
         return hotload

@@ -23,7 +23,7 @@ from truss.base.truss_config import (
     DockerServer,
     EgressRestrictions,
     FabricRequirement,
-    HotloadAccessMode,
+    HotloadAccessScope,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -2044,11 +2044,11 @@ class TestTrussConfigVolumeMounts:
             VolumeMount(source="bdn://weights/llama-8b:prod", path="/models/llama")
         ]
         assert config.hotload == {
-            "weights": [HotloadAccessMode.PULL, HotloadAccessMode.TAGS],
+            "weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS],
             "checkpoints": [
-                HotloadAccessMode.PUSH,
-                HotloadAccessMode.PULL,
-                HotloadAccessMode.TAGS,
+                HotloadAccessScope.PUSH,
+                HotloadAccessScope.PULL,
+                HotloadAccessScope.TAGS,
             ],
         }
 
@@ -2059,7 +2059,7 @@ class TestTrussConfigVolumeMounts:
                     source="bdn://weights/some-model:mytag", path="/models/some-model"
                 )
             ],
-            hotload={"weights": [HotloadAccessMode.PULL, HotloadAccessMode.TAGS]},
+            hotload={"weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS]},
         )
         config_path = tmp_path / "config.yaml"
         config.write_to_yaml_file(config_path, verbose=False)
@@ -2147,7 +2147,7 @@ class TestTrussConfigVolumeMounts:
         ):
             VolumeMount(source=source, path="/models/external")
 
-    @pytest.mark.parametrize("scope", list(HotloadAccessMode))
+    @pytest.mark.parametrize("scope", list(HotloadAccessScope))
     def test_hotload_accepts_supported_scopes(self, scope):
         config = TrussConfig(hotload={"weights": [scope.value]})
 
