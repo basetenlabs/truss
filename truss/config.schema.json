@@ -297,6 +297,32 @@
           "description": "GCP workload identity provider for OIDC authentication.",
           "title": "Gcp Oidc Workload Id Provider"
         },
+        "aws_assume_role_arn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS IAM role ARN that Baseten assumes with its own AWS principal, scoped by the sts:ExternalId Baseten assigns to your organization.",
+          "title": "Aws Assume Role Arn"
+        },
+        "aws_assume_role_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS region for AWS AssumeRole authentication.",
+          "title": "Aws Assume Role Region"
+        },
         "auth_method": {
           "$ref": "#/$defs/DockerAuthType"
         },
@@ -348,7 +374,8 @@
         "AWS_IAM",
         "AWS_OIDC",
         "GCP_OIDC",
-        "REGISTRY_SECRET"
+        "REGISTRY_SECRET",
+        "AWS_ASSUME_ROLE"
       ],
       "title": "DockerAuthType",
       "type": "string"
@@ -1891,6 +1918,32 @@
           "description": "GCP workload identity provider for OIDC authentication.",
           "title": "Gcp Oidc Workload Id Provider"
         },
+        "aws_assume_role_arn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS IAM role ARN that Baseten assumes with its own AWS principal, scoped by the sts:ExternalId Baseten assigns to your organization.",
+          "title": "Aws Assume Role Arn"
+        },
+        "aws_assume_role_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS region for AWS AssumeRole authentication.",
+          "title": "Aws Assume Role Region"
+        },
         "auth_method": {
           "$ref": "#/$defs/WeightsAuthMethod",
           "description": "Authentication method for downloading weights from the source."
@@ -1920,14 +1973,15 @@
       "enum": [
         "CUSTOM_SECRET",
         "AWS_OIDC",
-        "GCP_OIDC"
+        "GCP_OIDC",
+        "AWS_ASSUME_ROLE"
       ],
       "title": "WeightsAuthMethod",
       "type": "string"
     },
     "WeightsSource": {
       "additionalProperties": true,
-      "description": "Configuration for a weights source in the new weights API.\n\nUses a URI-based `source` field with a required scheme prefix:\n- hf:// -> HuggingFace (e.g., \"hf://meta-llama/Llama-2-7b\" or \"hf://meta-llama/Llama-2-7b@main\")\n- s3:// -> AWS S3 (e.g., \"s3://bucket/path\")\n- gs:// -> Google Cloud Storage (e.g., \"gs://bucket/path\")\n- azure:// -> Azure Blob Storage (e.g., \"azure://account/container/path\")\n- r2:// -> CloudFlare R2 Storage (e.g., \"r2://account_id.bucket/path\")\n- cw:// -> CoreWeave AI Object Storage (e.g., \"cw://bucket/path\")\n- https:// -> Direct URL download (e.g., \"https://example.com/model.bin\")\n\nFor HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)\nusing the @{rev} suffix: \"hf://owner/repo@revision\"\n\nAuthentication can be specified either:\n- Using the `auth` section (required for OIDC):\n    auth:\n      auth_method: AWS_OIDC\n      aws_oidc_role_arn: <role_arn>\n      aws_oidc_region: <region>\n- Using `auth_secret_name` at the top level (or in the `auth` section)",
+      "description": "Configuration for a weights source in the new weights API.\n\nUses a URI-based `source` field with a required scheme prefix:\n- hf:// -> HuggingFace (e.g., \"hf://meta-llama/Llama-2-7b\" or \"hf://meta-llama/Llama-2-7b@main\")\n- s3:// -> AWS S3 (e.g., \"s3://bucket/path\")\n- gs:// -> Google Cloud Storage (e.g., \"gs://bucket/path\")\n- azure:// -> Azure Blob Storage (e.g., \"azure://account/container/path\")\n- r2:// -> CloudFlare R2 Storage (e.g., \"r2://account_id.bucket/path\")\n- cw:// -> CoreWeave AI Object Storage (e.g., \"cw://bucket/path\")\n- https:// -> Direct URL download (e.g., \"https://example.com/model.bin\")\n\nFor HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)\nusing the @{rev} suffix: \"hf://owner/repo@revision\"\n\nAuthentication can be specified either:\n- Using the `auth` section (required for OIDC and AWS AssumeRole):\n    auth:\n      auth_method: AWS_OIDC\n      aws_oidc_role_arn: <role_arn>\n      aws_oidc_region: <region>\n  or, for native AWS AssumeRole:\n    auth:\n      auth_method: AWS_ASSUME_ROLE\n      aws_assume_role_arn: <role_arn>\n      aws_assume_role_region: <region>\n- Using `auth_secret_name` at the top level (or in the `auth` section)",
       "properties": {
         "source": {
           "description": "URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, cw://, or https://. For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",

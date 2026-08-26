@@ -256,7 +256,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
                 if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
                     raise ValueError(
                         f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
-                        "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
+                        "OIDC and assume-role methods (AWS_OIDC, GCP_OIDC, AWS_ASSUME_ROLE) are not supported."
                     )
         return self
 

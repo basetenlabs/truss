@@ -54,7 +54,7 @@ RUN {{ uv_cache_mount }}{{ sys_pip_install_command }} -r {{ server_requirements_
 
 {%- if external_data_files %}
 {% for url, dst in external_data_files %}
-RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
+RUN mkdir -p {{ dst.parent | string | dockerfile_shell_value }}; curl -L {{ url | dockerfile_shell_value }} -o {{ dst | string | dockerfile_shell_value }}
 {% endfor %} {#- endfor external_data_files #}
 {%- endif %} {#- endif external_data_files #}
 
@@ -138,7 +138,7 @@ COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/do
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
 RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
 RUN {{ clean_uv_env }} uv venv /docker_server/.venv --python {{ control_python_version }}
-RUN {{ uv_cache_mount }}{{ clean_uv_env }} uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt{{ py_no_cache_dir }}
+RUN {{ uv_cache_mount }}{{ clean_uv_env }} uv --no-config pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt{{ py_no_cache_dir }}
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_server_url = "http://localhost:8080" %}
