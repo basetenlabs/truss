@@ -1,3 +1,4 @@
+import shlex
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, Template
@@ -17,8 +18,22 @@ def dockerfile_env_value(value: str) -> str:
     return f'"{escaped}"'
 
 
+def dockerfile_shell_value(value: str) -> str:
+    """Quote a string as one POSIX shell word in a Dockerfile RUN.
+
+    `dockerfile_env_value` follows buildkit ENV grammar. RUN still goes
+    through /bin/sh, so backticks and other shell substitutions remain live
+    there. `shlex.quote` uses single quotes, which stops that.
+    """
+    if "\n" in value or "\r" in value:
+        # Deliberately not echoing the value: URLs and paths can embed secrets.
+        raise ValueError("Dockerfile RUN values cannot contain line breaks.")
+    return shlex.quote(value)
+
+
 def read_template_from_fs(base_dir: Path, template_file_name: str) -> Template:
     template_loader = FileSystemLoader(str(base_dir))
     template_env = Environment(loader=template_loader)
     template_env.filters["dockerfile_env_value"] = dockerfile_env_value
+    template_env.filters["dockerfile_shell_value"] = dockerfile_shell_value
     return template_env.get_template(template_file_name)
