@@ -2310,7 +2310,7 @@
         },
         "type": "array"
       },
-      "description": "BDN namespaces mapped to operations available through hot load.",
+      "description": "Specifies which BDN namespaces can be accessed during hot-loading and the access scopes granted for each namespace.",
       "title": "Hotload",
       "type": "object"
     },
