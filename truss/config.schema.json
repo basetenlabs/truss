@@ -682,6 +682,18 @@
       "title": "HealthChecks",
       "type": "object"
     },
+    "HotloadAccessMode": {
+      "description": "An operation a model is allowed to perform on a BDN volume namespace.\n\nThese are registry permissions, not filesystem mount options: they govern\nwhat the deployment may ask the BDN volume service to do through hot load,\nand mirror the scopes carried by the credentials issued to the deployment.\nMounting a volume declared under `mounts` does not require a hot-load entry.\n\n- `pull`: read volume content, resolving a reference and fetching the\n  manifests and objects behind it. Needed to download data.\n- `push`: create volumes and upload new content, and point tags at the\n  versions it uploads.\n- `tags`: create, move, and remove tags, without permission to upload\n  content or delete versions.\n- `delete`: remove tags, versions, and whole volumes.\n- `inspect`: read metadata only, listing namespaces and volumes and\n  reading version, tag, and history metadata, with no access to the\n  content itself.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.",
+      "enum": [
+        "pull",
+        "push",
+        "tags",
+        "delete",
+        "inspect"
+      ],
+      "title": "HotloadAccessMode",
+      "type": "string"
+    },
     "ModelCache": {
       "items": {
         "$ref": "#/$defs/ModelRepo"
@@ -1818,105 +1830,28 @@
       "title": "VersionsOverrides",
       "type": "object"
     },
-    "VolumeAccessMode": {
-      "description": "An operation a model is allowed to perform on a BDN volume namespace.\n\nThese are registry permissions, not filesystem mount options: they govern\nwhat the deployment may ask the BDN volume service to do, and mirror the\nscopes carried by the credentials issued to the deployment. Mounting a\nvolume declared under `volumes.mounts` does not require an entry here.\n\n- `pull`: read volume content, resolving a reference and fetching the\n  manifests and objects behind it. Needed to download data.\n- `push`: create volumes and upload new content, and point tags at the\n  versions it uploads.\n- `tag`: create, move, and remove tags, without permission to upload\n  content or delete versions.\n- `delete`: remove tags, versions, and whole volumes.\n- `inspect`: read metadata only, listing namespaces and volumes and\n  reading version, tag, and history metadata, with no access to the\n  content itself.",
-      "enum": [
-        "pull",
-        "push",
-        "tag",
-        "delete",
-        "inspect"
-      ],
-      "title": "VolumeAccessMode",
-      "type": "string"
-    },
     "VolumeMount": {
       "additionalProperties": true,
-      "description": "A volume mounted into a model container.\n\nA mount takes one of two forms, distinguished by the scheme on `source`:\n\n- *Internal*: `source` is a `bdn://` reference to a volume that already\n  exists in BDN, and is mounted as-is. BDN volumes are read through the\n  deployment's own credentials, so `auth` does not apply.\n- *External*: `source` is a weights-style URI (`hf://`, `s3://`, `gs://`,\n  `azure://`, `r2://`, `cw://`, or `https://`). The content is ingested\n  into the BDN volume named by `dest`, then mounted from there. `dest` is\n  required for this form, and `auth` supplies the credentials for reading\n  the external source.\n\n```\nvolumes:\n  mounts:\n    - source: bdn://weights/llama-8b:prod\n      mount: /models/llama\n    - source: hf://Qwen/Qwen3-Omni-30B-A3B-Instruct\n      dest: bdn://weights/qwen3-omni-30b-a3b-instruct\n      mount: /models/qwen3\n```",
+      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nmounts:\n  - source: bdn://weights/llama-8b:prod\n    path: /models/llama\n```",
       "properties": {
         "source": {
-          "description": "Volume to mount. Either a BDN reference (bdn://weights/llama-8b:prod) or an external URI using hf://, s3://, gs://, azure://, r2://, cw://, or https://.",
+          "description": "BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
           "minLength": 1,
           "title": "Source",
           "type": "string"
         },
-        "dest": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "BDN volume the external source is ingested into, as bdn://namespace/volume[:tag]. Required for external sources, and not permitted when source is already a bdn:// reference.",
-          "title": "Dest"
-        },
-        "mount": {
+        "path": {
           "description": "Absolute path where the volume will be mounted at runtime.",
           "minLength": 1,
-          "title": "Mount",
+          "title": "Path",
           "type": "string"
-        },
-        "auth": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WeightsAuth"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Authentication configuration for reading an external source. Not applicable to bdn:// sources."
-        },
-        "auth_secret_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Baseten secret name containing credentials for an external source. Can also be specified in auth.auth_secret_name.",
-          "title": "Auth Secret Name"
         }
       },
       "required": [
         "source",
-        "mount"
+        "path"
       ],
       "title": "VolumeMount",
-      "type": "object"
-    },
-    "Volumes": {
-      "additionalProperties": true,
-      "description": "Volume mounts and BDN namespace access grants for a deployment.\n\n`mounts` accepts internal volumes, already in BDN, and external volumes\ningested into BDN from elsewhere; see `VolumeMount`. `access` grants the\ndeployment operations on BDN namespaces, and applies only to BDN.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.",
-      "properties": {
-        "mounts": {
-          "description": "Existing BDN volumes to mount when the model starts.",
-          "items": {
-            "$ref": "#/$defs/VolumeMount"
-          },
-          "title": "Mounts",
-          "type": "array"
-        },
-        "access": {
-          "additionalProperties": {
-            "items": {
-              "$ref": "#/$defs/VolumeAccessMode"
-            },
-            "type": "array"
-          },
-          "description": "Namespace names mapped to BDN volume operation scopes.",
-          "title": "Access",
-          "type": "object"
-        }
-      },
-      "title": "Volumes",
       "type": "object"
     },
     "WebsocketOptions": {
@@ -2360,9 +2295,24 @@
       "$ref": "#/$defs/Weights",
       "description": "Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching."
     },
-    "volumes": {
-      "$ref": "#/$defs/Volumes",
-      "description": "Mount existing BDN volumes and grant namespace access to the deployment."
+    "mounts": {
+      "description": "Existing BDN volumes to mount when the model starts.",
+      "items": {
+        "$ref": "#/$defs/VolumeMount"
+      },
+      "title": "Mounts",
+      "type": "array"
+    },
+    "hotload": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/HotloadAccessMode"
+        },
+        "type": "array"
+      },
+      "description": "BDN namespaces mapped to operations available through hot load.",
+      "title": "Hotload",
+      "type": "object"
     },
     "trt_llm": {
       "anyOf": [
