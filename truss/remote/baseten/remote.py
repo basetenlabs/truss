@@ -252,17 +252,18 @@ class BasetenRemote(TrussRemote):
 
     def get_aws_assume_role_info(self) -> Optional[custom_types.AwsAssumeRoleInfo]:
         """Trust-policy inputs for the AWS AssumeRole auth method, or None when
-        the method is not enabled for this organization (or the server predates
-        it)."""
+        the method is not enabled for this organization."""
         try:
             info = self._api.get_aws_assume_role_info()
         except ApiError:
             return None
-        if not info.get("aws_external_id"):
+        role_arn = info["aws_customer_access_role_arn"]
+        external_id = info["aws_external_id"]
+        # The server nulls both fields while the method is not enabled.
+        if role_arn is None or external_id is None:
             return None
         return custom_types.AwsAssumeRoleInfo(
-            role_arn=info.get("aws_customer_access_role_arn"),
-            external_id=info["aws_external_id"],
+            role_arn=role_arn, external_id=external_id
         )
 
     def _validate_bis_llm_push_options(

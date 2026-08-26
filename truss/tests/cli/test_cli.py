@@ -740,7 +740,7 @@ def test_whoami_with_show_aws_assume_role():
 
 def test_whoami_show_aws_assume_role_not_enabled():
     """Test whoami --show-aws-assume-role fails clearly when the method is not
-    enabled for the organization (or the server predates it)."""
+    enabled for the organization."""
     runner = CliRunner()
 
     mock_user = RemoteUser("test_workspace", "user@example.com")

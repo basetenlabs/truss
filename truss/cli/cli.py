@@ -256,8 +256,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     help=(
         "Show the AWS AssumeRole trust-policy inputs for your organization: the "
         "Baseten role ARN to allow and the external ID to require via "
-        "sts:ExternalId. Available once AWS AssumeRole is enabled for your "
-        "organization (contact Baseten support)."
+        "sts:ExternalId."
     ),
 )
 @common.common_options()
@@ -295,8 +294,7 @@ def whoami(remote: Optional[str], show_oidc: bool, show_aws_assume_role: bool):
             )
 
         console.print()
-        if assume_role_info.role_arn:
-            console.print(f"Baseten Role ARN: {assume_role_info.role_arn}")
+        console.print(f"Baseten Role ARN: {assume_role_info.role_arn}")
         console.print(f"AWS External ID: {assume_role_info.external_id}")
         # TODO(danielleef): add docs link here once they're ready
 

@@ -444,7 +444,7 @@ class WeightsSource(custom_types.ConfigModel):
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
-      or, for native AWS AssumeRole with no OIDC provider registration:
+      or, for native AWS AssumeRole:
         auth:
           auth_method: AWS_ASSUME_ROLE
           aws_assume_role_arn: <role_arn>
