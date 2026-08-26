@@ -183,6 +183,17 @@ class OidcTeamInfo(pydantic.BaseModel):
     name: str = pydantic.Field(description="Team display name")
 
 
+class AwsAssumeRoleInfo(pydantic.BaseModel):
+    """Trust-policy inputs for the AWS AssumeRole auth method."""
+
+    role_arn: str = pydantic.Field(
+        description="Baseten role ARN to allow in the IAM role's trust policy"
+    )
+    external_id: str = pydantic.Field(
+        description="sts:ExternalId Baseten presents for this organization"
+    )
+
+
 class OidcInfo(pydantic.BaseModel):
     """OIDC configuration information for workload identity."""
 

@@ -249,8 +249,18 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     default=False,
     help="Show OIDC configuration for workload identity.",
 )
+@click.option(
+    "--show-aws-assume-role",
+    is_flag=True,
+    default=False,
+    help=(
+        "Show the AWS AssumeRole trust-policy inputs for your organization: the "
+        "Baseten role ARN to allow and the external ID to require via "
+        "sts:ExternalId."
+    ),
+)
 @common.common_options()
-def whoami(remote: Optional[str], show_oidc: bool):
+def whoami(remote: Optional[str], show_oidc: bool, show_aws_assume_role: bool):
     """
     Shows user information and exit.
     """
@@ -273,6 +283,20 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print(
             f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
         )
+
+    elif show_aws_assume_role:
+        remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+        assume_role_info = remote_provider.get_aws_assume_role_info()
+        if assume_role_info is None:
+            raise click.ClickException(
+                "AWS AssumeRole is not enabled for this organization; "
+                "contact Baseten support to enable it."
+            )
+
+        console.print()
+        console.print(f"Baseten Role ARN: {assume_role_info.role_arn}")
+        console.print(f"AWS External ID: {assume_role_info.external_id}")
+        # TODO(danielleef): add docs link here once they're ready
 
 
 @truss_cli.command()

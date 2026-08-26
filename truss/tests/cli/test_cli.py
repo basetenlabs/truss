@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from truss.cli.cli import _extract_request_data, truss_cli
 from truss.cli.utils import common
-from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
+from truss.remote.baseten.custom_types import AwsAssumeRoleInfo, OidcInfo, OidcTeamInfo
 from truss.remote.baseten.service import BasetenService
 from truss.remote.truss_remote import RemoteUser
 
@@ -708,6 +708,55 @@ def test_whoami_with_show_oidc():
     assert "abc123 (ML Team)" in result.output
     assert "https://oidc.baseten.co" in result.output
     assert "oidc.baseten.co" in result.output
+
+
+def test_whoami_with_show_aws_assume_role():
+    """Test whoami --show-aws-assume-role prints the role ARN and external ID."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+    mock_remote = MagicMock()
+    mock_remote.get_aws_assume_role_info.return_value = AwsAssumeRoleInfo(
+        role_arn="arn:aws:iam::337139236424:role/baseten-customer-access",
+        external_id="baseten-2fdd8a01c4c34e6bb92a2b96fca29b70",
+    )
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+                result = runner.invoke(
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-assume-role"],
+                )
+
+    assert result.exit_code == 0
+    assert "test_workspace\\user@example.com" in result.output
+    assert (
+        "Baseten Role ARN: arn:aws:iam::337139236424:role/baseten-customer-access"
+        in result.output
+    )
+    assert "AWS External ID: baseten-2fdd8a01c4c34e6bb92a2b96fca29b70" in result.output
+
+
+def test_whoami_show_aws_assume_role_not_enabled():
+    """Test whoami --show-aws-assume-role fails clearly when the method is not
+    enabled for the organization."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+    mock_remote = MagicMock()
+    mock_remote.get_aws_assume_role_info.return_value = None
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+                result = runner.invoke(
+                    truss_cli,
+                    ["whoami", "--remote", "baseten", "--show-aws-assume-role"],
+                )
+
+    assert result.exit_code != 0
+    assert "not enabled for this organization" in result.output
 
 
 def test_push_defaults_to_published(
