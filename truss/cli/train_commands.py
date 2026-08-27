@@ -7,6 +7,7 @@ from typing import Optional, cast
 
 import rich.table
 import rich_click as click
+from rich.markup import escape
 
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
@@ -40,6 +41,7 @@ from truss.cli.train.exec import (
     build_exec_project,
     looks_like_uv_project,
     parse_environment_variables,
+    validate_workspace_root,
     warn_about_missing_secrets,
 )
 from truss.cli.train.workstation import (
@@ -1395,7 +1397,7 @@ def workstation(
 )
 @click.option(
     "--cpu-count",
-    type=int,
+    type=click.IntRange(min=1),
     default=DEFAULT_CPU_COUNT,
     show_default=True,
     help="Number of CPUs to request.",
@@ -1525,6 +1527,9 @@ def exec_training_job(
     environment_variables = parse_environment_variables(env=env, secrets=secrets)
 
     source_dir = Path.cwd()
+    # Validate before any API call: truss_train's own check runs after the training
+    # project has been created, which would leave a stray empty project behind.
+    workspace_dir = validate_workspace_root(source_dir, workspace_root)
     if not project_name:
         # Default to the directory name so repeated runs from the same checkout
         # land in the same project.
@@ -1561,16 +1566,18 @@ def exec_training_job(
     compute_str = (
         f"{gpu_count}x {accelerator}" if accelerator else f"{cpu_count} CPU / {memory}"
     )
-    if not with_uv and looks_like_uv_project(source_dir):
+    if not with_uv and looks_like_uv_project(workspace_dir):
         console.print(
             "Warning: this looks like a uv project, but --with-uv was not "
             "passed, so uv will not be present in the job image.",
             style="yellow",
         )
 
+    # Escaped: a directory named e.g. `myproj[v2]` would otherwise be swallowed as
+    # console markup, reporting a different name than the one being pushed.
     console.print(
-        f"Launching [cyan]{project_name}[/cyan] from [cyan]{source_dir}[/cyan] "
-        f"on [cyan]{compute_str}[/cyan]..."
+        f"Launching [cyan]{escape(project_name)}[/cyan] from "
+        f"[cyan]{escape(str(source_dir))}[/cyan] on [cyan]{escape(compute_str)}[/cyan]..."
     )
 
     job_resp = train_public_api.push(
@@ -1602,3 +1609,11 @@ def exec_training_job(
         watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
         for log in watcher.watch():
             cli_log_utils.output_log(log)
+
+        if watcher.failed:
+            # The command ran remotely, so surface its failure in our own exit code
+            # -- otherwise `truss train exec -- pytest` is green in CI no matter what
+            # the job did. sys.exit, not click's Exit: that subclasses RuntimeError,
+            # so `common_options`' error handler would catch it and print a spurious
+            # "ERROR Exit: 1" first.
+            sys.exit(1)

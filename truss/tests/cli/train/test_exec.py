@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -12,17 +13,22 @@ from truss.cli.cli import truss_cli
 from truss.cli.train.exec import (
     DEFAULT_CPU_COUNT,
     DEFAULT_MEMORY,
+    PYPROJECT_FILE,
     PYTHON_BASE_IMAGE,
     SECRETS_SETTINGS_URL,
     SUPPORTED_EXEC_ACCELERATORS,
     UV_BASE_IMAGE,
+    UV_LOCK_FILE,
     build_exec_project,
     build_start_commands,
     looks_like_uv_project,
     parse_environment_variables,
+    resolve_workspace_root,
+    validate_workspace_root,
     warn_about_missing_secrets,
 )
 from truss.cli.train.workstation import DEFAULT_BASE_IMAGE
+from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
@@ -211,13 +217,6 @@ def test_parse_environment_variables_rejects_duplicate_keys():
 # --- builder: uv detection and start commands --------------------------------
 
 
-@pytest.mark.parametrize("filename", ["uv.lock", "pyproject.toml"])
-def test_looks_like_uv_project(filename, tmp_path):
-    assert not looks_like_uv_project(tmp_path)
-    (tmp_path / filename).write_text("")
-    assert looks_like_uv_project(tmp_path)
-
-
 def test_build_start_commands_runs_the_command_verbatim():
     assert build_start_commands(
         start_command=["python", "my script.py", "--steps", "100"]
@@ -226,8 +225,9 @@ def test_build_start_commands_runs_the_command_verbatim():
 
 def test_build_start_commands_prepends_the_idempotent_uv_install():
     assert build_start_commands(start_command=USER_COMMAND, install_uv=True) == [
-        "/bin/sh -c '{ command -v uv >/dev/null 2>&1 || "
-        "curl -LsSf https://astral.sh/uv/install.sh | sh ; } && "
+        "/bin/sh -c '{ command -v uv >/dev/null 2>&1 || { "
+        "curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh && "
+        "sh /tmp/uv-install.sh ; } ; } && "
         'export PATH="$HOME/.local/bin:$PATH" && '
         f"{USER_COMMAND_STR}'"
     ]
@@ -274,12 +274,110 @@ def test_build_exec_project_without_with_uv_injects_nothing(accelerator):
     assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
+# --- review fixes: uv install failure mode, workspace root, exit code -----------
+
+
+def test_uv_install_step_fails_when_the_download_fails():
+    """`curl | sh` would exit 0 on a failed download, hiding the error until the
+    job died with an opaque `uv: not found`."""
+    command = build_start_commands(start_command=["uv", "--version"], install_uv=True)[
+        0
+    ]
+    script = command[len("/bin/sh -c ") :]
+    # The install group must be its own command list, not a pipeline into sh.
+    assert "install.sh | sh" not in script
+    assert "-o /tmp/uv-install.sh && sh /tmp/uv-install.sh" in script
+
+    # Syntactically valid, and the group reports failure when the download fails.
+    assert subprocess.run(["sh", "-n", "-c", script.strip("'")]).returncode == 0
+    failing_group = (
+        "{ command -v definitely_not_a_real_binary >/dev/null 2>&1 || { "
+        "curl -LsSf https://astral.sh/NOPE-404-xyz/install.sh -o /tmp/uv-probe.sh "
+        "&& sh /tmp/uv-probe.sh ; } ; }"
+    )
+    assert (
+        subprocess.run(["sh", "-c", failing_group], capture_output=True).returncode != 0
+    )
+
+
+@pytest.mark.parametrize("entry", ["FOO=", "FOO"])
+def test_parse_environment_variables_rejects_an_empty_secret_name(entry):
+    with pytest.raises(click.UsageError, match="Invalid --secret value"):
+        parse_environment_variables(secrets=[entry])
+
+
+def test_parse_environment_variables_still_allows_an_empty_env_value():
+    """Unlike a secret name, an empty --env value is legitimate."""
+    assert parse_environment_variables(env=["EMPTY="]) == {"EMPTY": ""}
+
+
+def test_looks_like_uv_project_accepts_a_lockfile(tmp_path):
+    (tmp_path / UV_LOCK_FILE).write_text("")
+    assert looks_like_uv_project(tmp_path)
+
+
+def test_looks_like_uv_project_accepts_a_tool_uv_section(tmp_path):
+    (tmp_path / PYPROJECT_FILE).write_text(
+        "[project]\nname = 'x'\n\n[tool.uv]\ndev-dependencies = []\n"
+    )
+    assert looks_like_uv_project(tmp_path)
+
+
+def test_looks_like_uv_project_rejects_a_poetry_project(tmp_path):
+    """A pyproject.toml alone is not a uv project -- poetry, hatch, PDM and
+    setuptools all ship one, and warning on those is noise."""
+    (tmp_path / PYPROJECT_FILE).write_text(
+        "[tool.poetry]\nname = 'x'\nversion = '0.1.0'\n"
+    )
+    assert not looks_like_uv_project(tmp_path)
+
+
+def test_looks_like_uv_project_rejects_malformed_toml(tmp_path):
+    (tmp_path / PYPROJECT_FILE).write_text("this is [not valid toml")
+    assert not looks_like_uv_project(tmp_path)
+
+
+def test_looks_like_uv_project_rejects_a_plain_directory(tmp_path):
+    assert not looks_like_uv_project(tmp_path)
+
+
+def test_resolve_workspace_root_defaults_to_the_source_dir(tmp_path):
+    assert resolve_workspace_root(tmp_path, None) == tmp_path
+
+
+def test_resolve_workspace_root_handles_relative_and_absolute(tmp_path):
+    child = tmp_path / "child"
+    child.mkdir()
+    assert resolve_workspace_root(child, "..") == tmp_path.resolve()
+    assert resolve_workspace_root(child, str(tmp_path)) == tmp_path.resolve()
+
+
+def test_validate_workspace_root_accepts_a_parent(tmp_path):
+    child = tmp_path / "child"
+    child.mkdir()
+    assert validate_workspace_root(child, "..") == tmp_path.resolve()
+
+
+def test_validate_workspace_root_rejects_a_non_parent(tmp_path):
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    here = tmp_path / "here"
+    here.mkdir()
+    with pytest.raises(click.UsageError, match="does not contain the current"):
+        validate_workspace_root(here, str(sibling))
+
+
+def test_validate_workspace_root_rejects_a_missing_directory(tmp_path):
+    with pytest.raises(click.UsageError, match="not a directory"):
+        validate_workspace_root(tmp_path, "nope-does-not-exist")
+
+
 # --- CLI ---------------------------------------------------------------------
 
 
 def _mock_remote(secrets=("my_api_key",)):
     mock_remote = Mock(spec=BasetenRemote)
-    mock_remote.api = Mock()
+    mock_remote.api = Mock(spec=BasetenApi)
     mock_remote.api.get_teams.return_value = {
         "team-a": TeamType(id="team1", name="team-a", default=True)
     }
@@ -556,14 +654,21 @@ def test_exec_image_flag_overrides_the_base_image(with_uv, tmp_path):
         assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
-@pytest.mark.parametrize("filename", ["uv.lock", "pyproject.toml"])
-def test_exec_warns_about_a_uv_project_without_with_uv(filename, tmp_path):
-    (tmp_path / filename).write_text("")
+def test_exec_warns_about_a_uv_project_without_with_uv(tmp_path):
+    result, _ = _invoke_exec(["--", "python", "my_script.py"], _uv_project(tmp_path))
+
+    assert result.exit_code == 0, result.output
+    assert "--with-uv was not passed" in _message_text(result)
+
+
+def test_exec_does_not_warn_for_a_poetry_project(tmp_path):
+    """The warning is about uv specifically; a bare pyproject.toml is not a signal."""
+    (tmp_path / "pyproject.toml").write_text("[tool.poetry]\nname = 'x'\n")
 
     result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
 
     assert result.exit_code == 0, result.output
-    assert "--with-uv was not passed" in _message_text(result)
+    assert "--with-uv was not passed" not in _message_text(result)
 
 
 def test_exec_does_not_warn_when_with_uv_is_passed(tmp_path):
@@ -584,7 +689,8 @@ def test_exec_does_not_warn_for_a_plain_directory(tmp_path):
 
 
 def _api(secrets_response):
-    api = Mock()
+    # spec'd: renaming get_all_secrets should fail loudly, not silently disable this.
+    api = Mock(spec=BasetenApi)
     api.get_all_secrets.return_value = secrets_response
     return api
 
@@ -614,8 +720,9 @@ def test_warn_about_missing_secrets_warns_when_the_secret_is_absent(capsys):
 
     out = _plain(capsys.readouterr().out)
     assert "Warning:" in out
-    assert "no secret named my_api_key found in this workspace" in out
-    assert "Create it at" in out
+    assert "couldn't find a secret named my_api_key in this workspace" in out
+    assert "may already exist" in out
+    assert "create it at" in out
     assert SECRETS_SETTINGS_URL in out
 
 
@@ -643,7 +750,7 @@ def test_warn_about_missing_secrets_names_every_missing_secret(capsys):
     assert "missing_a" in out and "missing_b" in out
     assert "present" not in out
     # Plural form, since more than one name is listed.
-    assert "no secrets named" in out and "Create them at" in out
+    assert "couldn't find secrets named" in out and "create them at" in out
 
 
 @pytest.mark.parametrize(
@@ -680,7 +787,7 @@ def test_warn_about_missing_secrets_stays_silent_on_an_unreadable_payload(
 
 
 def test_warn_about_missing_secrets_swallows_api_errors(capsys):
-    api = Mock()
+    api = Mock(spec=BasetenApi)
     api.get_all_secrets.side_effect = RuntimeError("403 Forbidden")
 
     warn_about_missing_secrets(api, {"K": SecretReference(name="my_api_key")})
@@ -706,7 +813,7 @@ def test_exec_warns_but_still_pushes_when_a_secret_is_missing(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "no secret named my_api_key found in this workspace" in _message_text(result)
+    assert "couldn't find a secret named my_api_key" in _message_text(result)
     assert SECRETS_SETTINGS_URL in _message_text(result)
     mock_push.assert_called_once()
 
@@ -719,7 +826,7 @@ def test_exec_does_not_warn_when_the_secret_exists(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "no secret named" not in _message_text(result)
+    assert "couldn't find a secret" not in _message_text(result)
     mock_push.assert_called_once()
 
 
@@ -754,10 +861,136 @@ def test_exec_skips_the_secrets_call_without_secret_flags(tmp_path):
 def test_exec_tails_logs_by_default(tmp_path):
     with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
+        mock_watcher.return_value.failed = False
         result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
 
     assert result.exit_code == 0, result.output
     assert mock_watcher.call_args[0][1:] == ("proj123", "job123")
+
+
+def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
+    """Otherwise `truss train exec -- pytest` is green in CI regardless of outcome."""
+    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+        mock_watcher.return_value.watch.return_value = []
+        mock_watcher.return_value.failed = True
+        result, mock_push = _invoke_exec(
+            ["--", "python", "my_script.py"], tmp_path, tail=True
+        )
+
+    assert result.exit_code == 1, result.output
+    mock_push.assert_called_once()
+    # A clean exit, not an error surfaced by the common_options handler.
+    assert "ERROR" not in _message_text(result)
+    assert "Traceback" not in result.output
+
+
+def test_exec_exits_zero_when_the_job_succeeds(tmp_path):
+    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+        mock_watcher.return_value.watch.return_value = []
+        mock_watcher.return_value.failed = False
+        result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
+
+    assert result.exit_code == 0, result.output
+
+
+def test_exec_does_not_check_job_status_with_no_tail(tmp_path):
+    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+        result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
+
+    assert result.exit_code == 0, result.output
+    mock_watcher.assert_not_called()
+
+
+def test_exec_escapes_brackets_in_the_launch_line(tmp_path):
+    """A directory named `myproj[v2]` must not be reported as `myproj`."""
+    work_dir = tmp_path / "myproj[v2]"
+    work_dir.mkdir()
+
+    result, mock_push = _invoke_exec(["--", "python", "my_script.py"], work_dir)
+
+    assert result.exit_code == 0, result.output
+    assert "myproj[v2]" in _message_text(result)
+    assert mock_push.call_args[1]["config"].name == "myproj[v2]"
+
+
+def test_exec_survives_a_closing_tag_in_the_project_name(tmp_path):
+    """`[/cyan]` in interpolated text would otherwise raise a rich MarkupError.
+
+    A directory name can't contain `/`, but --project-name can.
+    """
+    result, mock_push = _invoke_exec(
+        ["--project-name", "weird[/cyan]name", "--", "python", "my_script.py"], tmp_path
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "MarkupError" not in result.output
+    assert mock_push.call_args[1]["config"].name == "weird[/cyan]name"
+
+
+@pytest.mark.parametrize("value", ["0", "-4"])
+def test_exec_rejects_a_nonpositive_cpu_count(value, tmp_path):
+    result, mock_push = _invoke_exec(
+        ["--cpu-count", value, "--", "python", "my_script.py"], tmp_path
+    )
+
+    assert result.exit_code != 0
+    mock_push.assert_not_called()
+
+
+def test_exec_rejects_an_empty_secret_name(tmp_path):
+    result, mock_push = _invoke_exec(
+        ["--secret", "KEY=", "--", "python", "my_script.py"], tmp_path
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid --secret value" in _message_text(result)
+    mock_push.assert_not_called()
+
+
+def test_exec_rejects_a_workspace_root_that_is_not_a_parent(tmp_path):
+    """Client-side, so a bad value can't leave a stray empty training project."""
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    here = tmp_path / "here"
+    here.mkdir()
+
+    result, mock_push = _invoke_exec(
+        ["--workspace-root", str(sibling), "--", "python", "my_script.py"], here
+    )
+
+    assert result.exit_code != 0
+    assert "does not contain the current" in _message_text(result)
+    mock_push.assert_not_called()
+
+
+def test_exec_uv_warning_follows_the_workspace_root(tmp_path):
+    """With --workspace-root the parent is what gets archived and executed, so that
+    is the directory whose uv metadata matters."""
+    (tmp_path / "uv.lock").write_text("")
+    child = tmp_path / "child"
+    child.mkdir()
+
+    result, _ = _invoke_exec(
+        ["--workspace-root", "..", "--", "python", "my_script.py"], child
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--with-uv was not passed" in _message_text(result)
+
+
+def test_exec_uv_warning_ignores_the_cwd_when_workspace_root_is_set(tmp_path):
+    """The mirror of the above: uv metadata in the cwd is irrelevant when the
+    archived root is elsewhere."""
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "uv.lock").write_text("")
+
+    result, _ = _invoke_exec(
+        ["--workspace-root", "..", "--", "python", "my_script.py"], child
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--with-uv was not passed" not in _message_text(result)
 
 
 def test_exec_no_tail_skips_the_log_watcher(tmp_path):

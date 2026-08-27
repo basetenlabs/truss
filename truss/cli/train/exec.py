@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import rich_click as click
+import tomlkit
 from rich.markup import escape
 
 from truss.base import truss_config
@@ -53,9 +54,16 @@ SECRETS_SETTINGS_URL = "https://app.baseten.co/settings/secrets"
 # Used with --with-uv when the base image may not already ship uv. Skips the install
 # when uv is present, so it is safe on an image that has it. The standalone installer
 # needs curl, which the CUDA base image has; a custom --image may not.
+# The download is deliberately kept separate from running it: in `curl ... | sh` the
+# pipeline's status is `sh`'s, so a failed download would feed an empty script to a
+# shell that exits 0, the `&&` chain would not short-circuit, and the job would fail
+# later with an opaque "uv: not found".
+UV_INSTALL_SCRIPT_PATH = "/tmp/uv-install.sh"
 UV_INSTALL_STEPS = [
-    "{ command -v uv >/dev/null 2>&1 || "
-    "curl -LsSf https://astral.sh/uv/install.sh | sh ; }",
+    "{ command -v uv >/dev/null 2>&1 || { "
+    f"curl -LsSf https://astral.sh/uv/install.sh -o {UV_INSTALL_SCRIPT_PATH} && "
+    f"sh {UV_INSTALL_SCRIPT_PATH}"
+    " ; } ; }",
     'export PATH="$HOME/.local/bin:$PATH"',
 ]
 
@@ -66,10 +74,13 @@ def default_base_image(accelerator: Optional[str], with_uv: bool = False) -> str
     return UV_BASE_IMAGE if with_uv else PYTHON_BASE_IMAGE
 
 
-def _parse_key_value_flag(flag: str, expected: str, entry: str) -> Tuple[str, str]:
+def _parse_key_value_flag(
+    flag: str, expected: str, entry: str, require_value: bool = False
+) -> Tuple[str, str]:
     # Split on the first `=` only, so values that contain `=` survive intact.
     key, separator, value = entry.partition("=")
-    if not separator or not key:
+    # An empty --env value is legitimate; an empty secret *name* is not.
+    if not separator or not key or (require_value and not value):
         raise click.UsageError(f"Invalid {flag} value '{entry}'. Expected {expected}.")
     return key, value
 
@@ -84,7 +95,9 @@ def parse_environment_variables(
         key, value = _parse_key_value_flag("--env", "KEY=VALUE", entry)
         entries.append((key, value))
     for entry in secrets:
-        key, secret_name = _parse_key_value_flag("--secret", "KEY=SECRET_NAME", entry)
+        key, secret_name = _parse_key_value_flag(
+            "--secret", "KEY=SECRET_NAME", entry, require_value=True
+        )
         entries.append((key, SecretReference(name=secret_name)))
 
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
@@ -150,11 +163,14 @@ def warn_about_missing_secrets(
         return
 
     try:
-        known = _known_secret_names(api.get_all_secrets())
+        response = api.get_all_secrets()
     except Exception:
         logger.debug("Could not list workspace secrets; skipping check.", exc_info=True)
         return
 
+    # Outside the try: a bug in the parser should surface, not be mistaken for an
+    # unreachable API.
+    known = _known_secret_names(response)
     if known is None:
         logger.debug("Unrecognized v1/secrets payload; skipping check.")
         return
@@ -167,20 +183,69 @@ def warn_about_missing_secrets(
     # rich, where a stray "[" would otherwise be read as console markup.
     plural = len(missing) > 1
     console.print(
-        f"[bold yellow]⚠ Warning:[/bold yellow] "
-        f"no {'secrets' if plural else 'secret'} named "
-        f"{escape(', '.join(missing))} found in this workspace. "
-        f"Create {'them' if plural else 'it'} at {SECRETS_SETTINGS_URL}, "
-        f"or the job may fail to start."
+        f"[bold yellow]⚠ Warning:[/bold yellow] couldn't find "
+        f"{'secrets' if plural else 'a secret'} named "
+        f"{escape(', '.join(missing))} in this workspace. This listing may not cover "
+        f"the team the job runs in, so {'they' if plural else 'it'} may already "
+        f"exist -- otherwise create {'them' if plural else 'it'} at "
+        f"{SECRETS_SETTINGS_URL}."
     )
 
 
 def looks_like_uv_project(source_dir: Path) -> bool:
-    """Whether `source_dir` carries uv project metadata, i.e. its command probably
-    needs uv present in the job image."""
-    return (source_dir / UV_LOCK_FILE).exists() or (
-        source_dir / PYPROJECT_FILE
-    ).exists()
+    """Whether `source_dir` carries *uv* project metadata, i.e. its command probably
+    needs uv present in the job image.
+
+    A `pyproject.toml` on its own is not enough -- poetry, hatch, PDM and setuptools
+    all ship one -- so require a uv lockfile or an explicit `[tool.uv]` section.
+    """
+    if (source_dir / UV_LOCK_FILE).exists():
+        return True
+
+    pyproject = source_dir / PYPROJECT_FILE
+    if not pyproject.is_file():
+        return False
+    try:
+        return "uv" in (tomlkit.parse(pyproject.read_text()).get("tool") or {})
+    except Exception:
+        logger.debug("Could not read %s for uv detection.", pyproject, exc_info=True)
+        return False
+
+
+def resolve_workspace_root(source_dir: Path, workspace_root: Optional[str]) -> Path:
+    """The directory that actually gets archived and becomes the job's root."""
+    if not workspace_root:
+        return source_dir
+    root = Path(workspace_root)
+    if not root.is_absolute():
+        root = source_dir / root
+    return root.resolve()
+
+
+def validate_workspace_root(source_dir: Path, workspace_root: Optional[str]) -> Path:
+    """Resolve and check `--workspace-root`, returning the effective job root.
+
+    `truss_train` runs the same containment check inside `push`, but only after the
+    training project has been created, so a bad value there leaves a stray empty
+    project behind. Checking here keeps that from happening.
+    """
+    root = resolve_workspace_root(source_dir, workspace_root)
+    if not workspace_root:
+        return root
+
+    if not root.is_dir():
+        raise click.UsageError(
+            f"--workspace-root '{workspace_root}' resolves to {root}, "
+            "which is not a directory."
+        )
+    try:
+        source_dir.resolve().relative_to(root)
+    except ValueError:
+        raise click.UsageError(
+            f"--workspace-root '{workspace_root}' resolves to {root}, which does not "
+            f"contain the current directory ({source_dir}); it must be a parent of it."
+        )
+    return root
 
 
 def build_start_commands(
