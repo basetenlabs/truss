@@ -31,7 +31,7 @@ def get_displayable_status(status: str) -> str:
     """
     TODO: Remove this method once Chains is supported in the REST API
 
-    This is used by the `truss chains deploy` command right now to
+    This is used by the `truss chains push` command right now to
     print the right status. Once Chains are supported by the REST API, the
     Baseten REST API will return status strings matching the ones here, so we don't
     need to do any mapping.
