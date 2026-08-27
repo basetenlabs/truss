@@ -706,8 +706,6 @@ class ServingImageBuilder(ImageBuilder):
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
 
-        data_dir = build_dir / config.data_dir  # type: ignore[operator]
-
         truss_ignore_patterns = []
         if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
             truss_ignore_patterns = load_trussignore_patterns(
