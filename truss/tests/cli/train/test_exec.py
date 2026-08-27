@@ -255,6 +255,22 @@ def test_build_exec_project_without_with_uv_injects_nothing(accelerator):
 # --- CLI ---------------------------------------------------------------------
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_BOX_DRAWING_RE = re.compile(r"[\u2500-\u257f]")
+
+
+def _message_text(result) -> str:
+    """The CLI output as plain, single-line text.
+
+    rich renders errors and warnings as colorized, width-wrapped panels, and turns
+    color on under GITHUB_ACTIONS -- which splits `--flag` tokens with ANSI codes.
+    Strip those and the panel borders, and collapse whitespace, so assertions match
+    the message regardless of terminal width or color support.
+    """
+    plain = _BOX_DRAWING_RE.sub(" ", _ANSI_RE.sub("", result.output))
+    return " ".join(plain.split())
+
+
 def _mock_remote():
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = Mock()
@@ -373,7 +389,7 @@ def test_exec_requires_a_start_command(tmp_path):
     result, mock_push = _invoke_exec([], tmp_path)
 
     assert result.exit_code != 0
-    assert "No start command given" in result.output
+    assert "No start command given" in _message_text(result)
     mock_push.assert_not_called()
 
 
@@ -383,7 +399,7 @@ def test_exec_gpu_count_requires_accelerator(tmp_path):
     )
 
     assert result.exit_code != 0
-    assert "--gpu-count requires --accelerator" in result.output
+    assert "--gpu-count requires --accelerator" in _message_text(result)
     mock_push.assert_not_called()
 
 
@@ -470,7 +486,7 @@ def test_exec_rejects_env_without_equals(tmp_path):
     )
 
     assert result.exit_code != 0
-    assert "Invalid --env value" in result.output
+    assert "Invalid --env value" in _message_text(result)
     mock_push.assert_not_called()
 
 
@@ -489,7 +505,7 @@ def test_exec_rejects_key_set_by_both_env_and_secret(tmp_path):
     )
 
     assert result.exit_code != 0
-    assert "set more than once" in result.output
+    assert "set more than once" in _message_text(result)
     mock_push.assert_not_called()
 
 
@@ -539,21 +555,21 @@ def test_exec_warns_about_a_uv_project_without_with_uv(filename, tmp_path):
     result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
 
     assert result.exit_code == 0, result.output
-    assert "--with-uv was not passed" in result.output
+    assert "--with-uv was not passed" in _message_text(result)
 
 
 def test_exec_does_not_warn_when_with_uv_is_passed(tmp_path):
     result, _ = _invoke_exec(["--with-uv", "--"] + USER_COMMAND, _uv_project(tmp_path))
 
     assert result.exit_code == 0, result.output
-    assert "--with-uv was not passed" not in result.output
+    assert "--with-uv was not passed" not in _message_text(result)
 
 
 def test_exec_does_not_warn_for_a_plain_directory(tmp_path):
     result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
 
     assert result.exit_code == 0, result.output
-    assert "--with-uv was not passed" not in result.output
+    assert "--with-uv was not passed" not in _message_text(result)
 
 
 def test_exec_tails_logs_by_default(tmp_path):
