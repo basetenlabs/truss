@@ -13,12 +13,14 @@ from truss.cli.train.exec import (
     DEFAULT_CPU_COUNT,
     DEFAULT_MEMORY,
     PYTHON_BASE_IMAGE,
+    SECRETS_SETTINGS_URL,
     SUPPORTED_EXEC_ACCELERATORS,
     UV_BASE_IMAGE,
     build_exec_project,
     build_start_commands,
     looks_like_uv_project,
     parse_environment_variables,
+    warn_about_missing_secrets,
 )
 from truss.cli.train.workstation import DEFAULT_BASE_IMAGE
 from truss.remote.baseten.custom_types import TeamType
@@ -31,6 +33,26 @@ from truss_train.definitions import (
 
 USER_COMMAND = ["uv", "run", "python", "my_script.py"]
 USER_COMMAND_STR = "uv run python my_script.py"
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_BOX_DRAWING_RE = re.compile(r"[\u2500-\u257f]")
+
+
+def _plain(text: str) -> str:
+    """`text` as plain, single-line text.
+
+    rich renders errors and warnings as colorized, width-wrapped panels, and turns
+    color on under GITHUB_ACTIONS (and FORCE_COLOR) -- which splits tokens like
+    `--flag` with ANSI codes. Strip those and the panel borders, and collapse
+    whitespace, so assertions match the message regardless of terminal width or
+    color support.
+    """
+    return " ".join(_BOX_DRAWING_RE.sub(" ", _ANSI_RE.sub("", text)).split())
+
+
+def _message_text(result) -> str:
+    """The CLI result's output as plain, single-line text."""
+    return _plain(result.output)
 
 
 def _uv_project(tmp_path: Path, lock: bool = True) -> Path:
@@ -255,29 +277,16 @@ def test_build_exec_project_without_with_uv_injects_nothing(accelerator):
 # --- CLI ---------------------------------------------------------------------
 
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-_BOX_DRAWING_RE = re.compile(r"[\u2500-\u257f]")
-
-
-def _message_text(result) -> str:
-    """The CLI output as plain, single-line text.
-
-    rich renders errors and warnings as colorized, width-wrapped panels, and turns
-    color on under GITHUB_ACTIONS -- which splits `--flag` tokens with ANSI codes.
-    Strip those and the panel borders, and collapse whitespace, so assertions match
-    the message regardless of terminal width or color support.
-    """
-    plain = _BOX_DRAWING_RE.sub(" ", _ANSI_RE.sub("", result.output))
-    return " ".join(plain.split())
-
-
-def _mock_remote():
+def _mock_remote(secrets=("my_api_key",)):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = Mock()
     mock_remote.api.get_teams.return_value = {
         "team-a": TeamType(id="team1", name="team-a", default=True)
     }
     mock_remote.api.list_training_projects.return_value = []
+    mock_remote.api.get_all_secrets.return_value = {
+        "secrets": [{"name": name} for name in secrets]
+    }
     return mock_remote
 
 
@@ -291,11 +300,12 @@ def _chdir(directory: Path):
         os.chdir(original_cwd)
 
 
-def _invoke_exec(args, cwd: Path, tail: bool = False):
+def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
     """Invoke `truss train exec` from `cwd`, returning (result, mock_push)."""
     base_args = ["train", "exec", "--remote", "test_remote"]
     if not tail:
         base_args.append("--no-tail")
+    remote = remote if remote is not None else _mock_remote()
 
     with (
         _chdir(cwd),
@@ -303,9 +313,7 @@ def _invoke_exec(args, cwd: Path, tail: bool = False):
         patch(
             "truss.cli.train_commands.RemoteFactory.get_remote_team", return_value=None
         ),
-        patch(
-            "truss.cli.train_commands.RemoteFactory.create", return_value=_mock_remote()
-        ),
+        patch("truss.cli.train_commands.RemoteFactory.create", return_value=remote),
     ):
         mock_push.return_value = {
             "id": "job123",
@@ -570,6 +578,177 @@ def test_exec_does_not_warn_for_a_plain_directory(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "--with-uv was not passed" not in _message_text(result)
+
+
+# --- secret existence warning ---------------------------------------------------
+
+
+def _api(secrets_response):
+    api = Mock()
+    api.get_all_secrets.return_value = secrets_response
+    return api
+
+
+def test_warn_about_missing_secrets_skips_the_call_without_any_secret_refs(capsys):
+    api = _api({"secrets": []})
+
+    warn_about_missing_secrets(api, {"PLAIN": "literal"})
+
+    api.get_all_secrets.assert_not_called()
+    assert _plain(capsys.readouterr().out) == ""
+
+
+def test_warn_about_missing_secrets_is_quiet_when_the_secret_exists(capsys):
+    api = _api({"secrets": [{"name": "my_api_key"}]})
+
+    warn_about_missing_secrets(api, {"K": SecretReference(name="my_api_key")})
+
+    api.get_all_secrets.assert_called_once_with()
+    assert _plain(capsys.readouterr().out) == ""
+
+
+def test_warn_about_missing_secrets_warns_when_the_secret_is_absent(capsys):
+    api = _api({"secrets": [{"name": "other"}]})
+
+    warn_about_missing_secrets(api, {"K": SecretReference(name="my_api_key")})
+
+    out = _plain(capsys.readouterr().out)
+    assert "Warning:" in out
+    assert "no secret named my_api_key found in this workspace" in out
+    assert "Create it at" in out
+    assert SECRETS_SETTINGS_URL in out
+
+
+def test_warn_about_missing_secrets_warns_for_an_empty_workspace(capsys):
+    """An empty listing is a real answer, unlike an unreadable one."""
+    warn_about_missing_secrets(
+        _api({"secrets": []}), {"K": SecretReference(name="my_api_key")}
+    )
+
+    assert "my_api_key" in _plain(capsys.readouterr().out)
+
+
+def test_warn_about_missing_secrets_names_every_missing_secret(capsys):
+    warn_about_missing_secrets(
+        _api({"secrets": [{"name": "present"}]}),
+        {
+            "A": SecretReference(name="missing_a"),
+            "B": SecretReference(name="present"),
+            "C": SecretReference(name="missing_b"),
+            "D": "literal",
+        },
+    )
+
+    out = _plain(capsys.readouterr().out)
+    assert "missing_a" in out and "missing_b" in out
+    assert "present" not in out
+    # Plural form, since more than one name is listed.
+    assert "no secrets named" in out and "Create them at" in out
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        ["my_api_key"],
+        [{"name": "my_api_key"}],
+        {"secrets": ["my_api_key"]},
+        {"secrets": [{"name": "my_api_key"}]},
+    ],
+)
+def test_warn_about_missing_secrets_accepts_the_plausible_payload_shapes(
+    response, capsys
+):
+    warn_about_missing_secrets(
+        _api(response), {"K": SecretReference(name="my_api_key")}
+    )
+
+    assert _plain(capsys.readouterr().out) == ""
+
+
+@pytest.mark.parametrize(
+    "response", ["a string", 42, None, {"data": []}, {"secrets": "nope"}, [123]]
+)
+def test_warn_about_missing_secrets_stays_silent_on_an_unreadable_payload(
+    response, capsys
+):
+    """Rather than guess a shape and warn about a secret that is really there."""
+    warn_about_missing_secrets(
+        _api(response), {"K": SecretReference(name="my_api_key")}
+    )
+
+    assert _plain(capsys.readouterr().out) == ""
+
+
+def test_warn_about_missing_secrets_swallows_api_errors(capsys):
+    api = Mock()
+    api.get_all_secrets.side_effect = RuntimeError("403 Forbidden")
+
+    warn_about_missing_secrets(api, {"K": SecretReference(name="my_api_key")})
+
+    assert _plain(capsys.readouterr().out) == ""
+
+
+def test_warn_about_missing_secrets_escapes_console_markup(capsys):
+    warn_about_missing_secrets(
+        _api({"secrets": []}), {"K": SecretReference(name="[bold]weird")}
+    )
+
+    assert "[bold]weird" in _plain(capsys.readouterr().out)
+
+
+def test_exec_warns_but_still_pushes_when_a_secret_is_missing(tmp_path):
+    remote = _mock_remote(secrets=("some_other_secret",))
+
+    result, mock_push = _invoke_exec(
+        ["--secret", "BASETEN_API_KEY=my_api_key", "--", "python", "my_script.py"],
+        tmp_path,
+        remote=remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "no secret named my_api_key found in this workspace" in _message_text(result)
+    assert SECRETS_SETTINGS_URL in _message_text(result)
+    mock_push.assert_called_once()
+
+
+def test_exec_does_not_warn_when_the_secret_exists(tmp_path):
+    result, mock_push = _invoke_exec(
+        ["--secret", "BASETEN_API_KEY=my_api_key", "--", "python", "my_script.py"],
+        tmp_path,
+        remote=_mock_remote(secrets=("my_api_key",)),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "no secret named" not in _message_text(result)
+    mock_push.assert_called_once()
+
+
+def test_exec_still_pushes_when_listing_secrets_fails(tmp_path):
+    remote = _mock_remote()
+    remote.api.get_all_secrets.side_effect = RuntimeError("403 Forbidden")
+
+    result, mock_push = _invoke_exec(
+        ["--secret", "BASETEN_API_KEY=my_api_key", "--", "python", "my_script.py"],
+        tmp_path,
+        remote=remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Traceback" not in result.output
+    assert "403 Forbidden" not in result.output
+    mock_push.assert_called_once()
+
+
+def test_exec_skips_the_secrets_call_without_secret_flags(tmp_path):
+    remote = _mock_remote()
+
+    result, mock_push = _invoke_exec(
+        ["--env", "PLAIN=1", "--", "python", "my_script.py"], tmp_path, remote=remote
+    )
+
+    assert result.exit_code == 0, result.output
+    remote.api.get_all_secrets.assert_not_called()
+    mock_push.assert_called_once()
 
 
 def test_exec_tails_logs_by_default(tmp_path):

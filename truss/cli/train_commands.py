@@ -40,6 +40,7 @@ from truss.cli.train.exec import (
     build_exec_project,
     looks_like_uv_project,
     parse_environment_variables,
+    warn_about_missing_secrets,
 )
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
@@ -1452,7 +1453,8 @@ def workstation(
     multiple=True,
     help=(
         "Environment variable sourced from a Baseten workspace secret, as "
-        "KEY=SECRET_NAME. Repeatable."
+        "KEY=SECRET_NAME. Create secrets at https://app.baseten.co/settings/secrets. "
+        "Repeatable."
     ),
 )
 @click.option(
@@ -1539,6 +1541,7 @@ def exec_training_job(
     _, team_id = _resolve_team_name(
         remote_provider, effective_team_name, existing_project_name=project_name
     )
+    warn_about_missing_secrets(remote_provider.api, environment_variables)
 
     training_project = build_exec_project(
         start_command=start_command,

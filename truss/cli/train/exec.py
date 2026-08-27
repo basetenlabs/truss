@@ -1,11 +1,15 @@
+import logging
 import shlex
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import rich_click as click
+from rich.markup import escape
 
 from truss.base import truss_config
 from truss.cli.train import workstation
+from truss.cli.utils.output import console
+from truss.remote.baseten.api import BasetenApi
 from truss_train.definitions import (
     Compute,
     Image,
@@ -18,6 +22,8 @@ from truss_train.definitions import (
     TrainingProject,
     Workspace,
 )
+
+logger = logging.getLogger(__name__)
 
 # A CPU-only job doesn't need a CUDA image, so default to a slim Python. With
 # --with-uv we use the official uv image instead, which is the same slim Python with
@@ -39,6 +45,10 @@ DEFAULT_MEMORY: str = Compute.model_fields["memory"].default
 
 UV_LOCK_FILE = "uv.lock"
 PYPROJECT_FILE = "pyproject.toml"
+
+# There is no CLI command to create a workspace secret, so the settings page is the
+# only actionable next step we can point at.
+SECRETS_SETTINGS_URL = "https://app.baseten.co/settings/secrets"
 
 # Used with --with-uv when the base image may not already ship uv. Skips the install
 # when uv is present, so it is safe on an image that has it. The standalone installer
@@ -86,6 +96,83 @@ def parse_environment_variables(
             )
         environment_variables[key] = value
     return environment_variables
+
+
+def _known_secret_names(response: Any) -> Optional[Set[str]]:
+    """Secret names from a `GET v1/secrets` payload, or None if it is unrecognized.
+
+    `get_all_secrets` had no callers before this, and the response shape is not
+    pinned down by any test or doc in this repo, so accept the plausible shapes and
+    give up rather than guess -- returning None means "don't check", which is very
+    different from returning an empty set.
+    """
+    if isinstance(response, dict):
+        entries = response.get("secrets")
+    elif isinstance(response, list):
+        entries = response
+    else:
+        return None
+    if not isinstance(entries, list):
+        return None
+
+    names: Set[str] = set()
+    for entry in entries:
+        if isinstance(entry, str):
+            names.add(entry)
+        elif isinstance(entry, dict) and isinstance(entry.get("name"), str):
+            names.add(entry["name"])
+        else:
+            # An unfamiliar entry shape would mean guessing; a wrong guess produces
+            # a false warning about a secret that is really there.
+            return None
+    return names
+
+
+def warn_about_missing_secrets(
+    api: BasetenApi, environment_variables: Mapping[str, Union[str, SecretReference]]
+) -> None:
+    """Warn when a `--secret` names a secret that isn't in the workspace listing.
+
+    Warn-only and fail-open by design. `GET v1/secrets` takes no team scoping while
+    training projects are team-scoped, so a name absent from the listing is not proof
+    it is absent for the job the push creates -- and a convenience check must never
+    block a valid run. Any error, or a payload we can't read, skips the check.
+    """
+    referenced = sorted(
+        {
+            value.name
+            for value in environment_variables.values()
+            if isinstance(value, SecretReference)
+        }
+    )
+    if not referenced:
+        # No --secret flags, so don't spend a round trip on the common path.
+        return
+
+    try:
+        known = _known_secret_names(api.get_all_secrets())
+    except Exception:
+        logger.debug("Could not list workspace secrets; skipping check.", exc_info=True)
+        return
+
+    if known is None:
+        logger.debug("Unrecognized v1/secrets payload; skipping check.")
+        return
+
+    missing = [name for name in referenced if name not in known]
+    if not missing:
+        return
+
+    # Secret names come from the command line, so escape them before they reach
+    # rich, where a stray "[" would otherwise be read as console markup.
+    plural = len(missing) > 1
+    console.print(
+        f"[bold yellow]⚠ Warning:[/bold yellow] "
+        f"no {'secrets' if plural else 'secret'} named "
+        f"{escape(', '.join(missing))} found in this workspace. "
+        f"Create {'them' if plural else 'it'} at {SECRETS_SETTINGS_URL}, "
+        f"or the job may fail to start."
+    )
 
 
 def looks_like_uv_project(source_dir: Path) -> bool:
