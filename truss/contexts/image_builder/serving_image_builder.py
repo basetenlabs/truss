@@ -760,11 +760,11 @@ class ServingImageBuilder(ImageBuilder):
         external_data_files: list = []
         # Container path. PurePosixPath so a Windows host does not turn
         # /app/data into C:\app\data via Path.resolve().
-        data_dir = PurePosixPath("/app/data")
+        container_data_dir = PurePosixPath("/app/data")
         if self._spec.external_data is not None:
             for ext_file in self._spec.external_data.items:
                 external_data_files.append(
-                    (ext_file.url, data_dir / ext_file.local_data_path)
+                    (ext_file.url, container_data_dir / ext_file.local_data_path)
                 )
 
         # No model cache provided, initialize empty
