@@ -156,7 +156,8 @@ def build_exec_project(
     )
 
     # SSH available on demand, rather than a session live from job startup: the
-    # session timeout applies once the job ends, so on-demand avoids imposing one.
+    # session timeout applies once the job ends, so it is not a concern for a
+    # long-running job. No timeout is set here; the model default still applies.
     interactive_session = InteractiveSession(
         trigger=InteractiveSessionTrigger.ON_DEMAND,
         session_provider=InteractiveSessionProvider.SSH,
