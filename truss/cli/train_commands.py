@@ -32,6 +32,15 @@ from truss.cli.train.cache import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.exec import (
+    DEFAULT_CPU_COUNT,
+    DEFAULT_EXEC_PROJECT_NAME,
+    DEFAULT_MEMORY,
+    SUPPORTED_EXEC_ACCELERATORS,
+    build_exec_project,
+    looks_like_uv_project,
+    parse_environment_variables,
+)
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
@@ -45,6 +54,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
 from truss_train import TrainingJob
+from truss_train import public_api as train_public_api
 
 
 @click.group()
@@ -1358,6 +1368,229 @@ def workstation(
         f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
         f"\n"
         f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+    if tail:
+        project_resp_id = job_resp["training_project"]["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+
+
+@train.command(name="exec", context_settings={"ignore_unknown_options": True})
+@click.argument("start_command", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--accelerator",
+    type=click.Choice(SUPPORTED_EXEC_ACCELERATORS, case_sensitive=False),
+    default=None,
+    help="GPU accelerator type. Omit for a CPU-only job (the default).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Requires --accelerator.",
+)
+@click.option(
+    "--cpu-count",
+    type=int,
+    default=DEFAULT_CPU_COUNT,
+    show_default=True,
+    help="Number of CPUs to request.",
+)
+@click.option(
+    "--memory",
+    type=str,
+    default=DEFAULT_MEMORY,
+    show_default=True,
+    help="Memory to request (e.g. 8Gi).",
+)
+@click.option(
+    "--project-name",
+    type=str,
+    required=False,
+    help="Training project name (default: the name of the current directory).",
+)
+@click.option("--image", type=str, required=False, help="Custom Docker base image.")
+@click.option(
+    "--workspace-root",
+    type=str,
+    required=False,
+    help=(
+        "Directory to upload instead of just the current directory. Must be a "
+        "parent of the current directory."
+    ),
+)
+@click.option(
+    "--exclude-dir",
+    "exclude_dirs",
+    type=str,
+    multiple=True,
+    help=(
+        "Top-level directory of the workspace root to leave out of the upload. "
+        "Repeatable."
+    ),
+)
+@click.option(
+    "--external-dir",
+    "external_dirs",
+    type=str,
+    multiple=True,
+    help="Directory outside the workspace root to include in the upload. Repeatable.",
+)
+@click.option(
+    "--env",
+    type=str,
+    multiple=True,
+    help="Environment variable for the job as KEY=VALUE. Repeatable.",
+)
+@click.option(
+    "--secret",
+    "secrets",
+    type=str,
+    multiple=True,
+    help=(
+        "Environment variable sourced from a Baseten workspace secret, as "
+        "KEY=SECRET_NAME. Repeatable."
+    ),
+)
+@click.option(
+    "--with-uv",
+    is_flag=True,
+    default=False,
+    help=(
+        "Make uv available in the job image. Your command should invoke uv itself, "
+        "e.g. `truss train exec --with-uv -- uv run python my_script.py`."
+    ),
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
+@click.option(
+    "--tail/--no-tail",
+    default=True,
+    show_default=True,
+    help="Tail for status + logs after push.",
+)
+@common.common_options()
+def exec_training_job(
+    start_command: tuple[str, ...],
+    accelerator: Optional[str],
+    gpu_count: Optional[int],
+    cpu_count: int,
+    memory: str,
+    project_name: Optional[str],
+    image: Optional[str],
+    workspace_root: Optional[str],
+    exclude_dirs: tuple[str, ...],
+    external_dirs: tuple[str, ...],
+    env: tuple[str, ...],
+    secrets: tuple[str, ...],
+    with_uv: bool,
+    remote: Optional[str],
+    provided_team_name: Optional[str],
+    tail: bool,
+):
+    """Run a command from the current directory as a training job.
+
+    Archives the directory the command is invoked from, ships it to a training job,
+    and runs START_COMMAND there. Pass the command after `--`:
+
+        truss train exec -- python my_script.py --steps 100
+
+    START_COMMAND always runs last and verbatim. Pass --with-uv to get uv in the
+    job image, then invoke `uv run` yourself. SSH into the job is available on
+    demand. The job gets no persistent storage and no checkpointing.
+    """
+    if not start_command:
+        raise click.UsageError(
+            "No start command given. Pass the command to run after `--`, "
+            "e.g. `truss train exec -- python my_script.py`."
+        )
+    if gpu_count is not None and accelerator is None:
+        raise click.UsageError("--gpu-count requires --accelerator.")
+
+    if accelerator:
+        accelerator = accelerator.upper()
+    gpu_count = gpu_count or 1
+
+    environment_variables = parse_environment_variables(env=env, secrets=secrets)
+
+    source_dir = Path.cwd()
+    if not project_name:
+        # Default to the directory name so repeated runs from the same checkout
+        # land in the same project.
+        project_name = source_dir.name or DEFAULT_EXEC_PROJECT_NAME
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+    _, team_id = _resolve_team_name(
+        remote_provider, effective_team_name, existing_project_name=project_name
+    )
+
+    training_project = build_exec_project(
+        start_command=start_command,
+        project_name=project_name,
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        cpu_count=cpu_count,
+        memory=memory,
+        base_image=image,
+        with_uv=with_uv,
+        workspace_root=workspace_root,
+        exclude_dirs=exclude_dirs,
+        external_dirs=external_dirs,
+        environment_variables=environment_variables,
+    )
+
+    compute_str = (
+        f"{gpu_count}x {accelerator}" if accelerator else f"{cpu_count} CPU / {memory}"
+    )
+    if not with_uv and looks_like_uv_project(source_dir):
+        console.print(
+            "Warning: this looks like a uv project, but --with-uv was not "
+            "passed, so uv will not be present in the job image.",
+            style="yellow",
+        )
+
+    console.print(
+        f"Launching [cyan]{project_name}[/cyan] from [cyan]{source_dir}[/cyan] "
+        f"on [cyan]{compute_str}[/cyan]..."
+    )
+
+    job_resp = train_public_api.push(
+        config=training_project, remote=remote, source_dir=source_dir, team_id=team_id
+    )
+
+    job_id = job_resp["id"]
+    console.print(
+        f"\n[green]Job created![/green]\n"
+        f"\n"
+        f"SSH is available on demand. Check the interactive session with:\n"
+        f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
+        f"\n"
+        f"Then SSH in with:\n"
+        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the job:\n"
         f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
     )
 
