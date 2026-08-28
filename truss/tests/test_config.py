@@ -16,6 +16,7 @@ from truss.base.truss_config import (
     AcceleratorSpec,
     BaseImage,
     BDNConfig,
+    BDNVolumeMount,
     Build,
     CacheInternal,
     CheckpointList,
@@ -33,7 +34,6 @@ from truss.base.truss_config import (
     TrainingArtifactReference,
     TransportKind,
     TrussConfig,
-    VolumeMount,
     WebsocketOptions,
     Weights,
     WeightsAuth,
@@ -2039,7 +2039,7 @@ class TestTrussConfigVolumeMounts:
         config = TrussConfig.from_yaml(config_path)
 
         assert config.bdn.mounts == [
-            VolumeMount(
+            BDNVolumeMount(
                 source="bdn://weights/some-model:mytag", path="/models/some-model"
             )
         ]
@@ -2048,7 +2048,7 @@ class TestTrussConfigVolumeMounts:
         config = TrussConfig(
             bdn=BDNConfig(
                 mounts=[
-                    VolumeMount(
+                    BDNVolumeMount(
                         source="bdn://weights/some-model:mytag",
                         path="/models/some-model",
                     )
@@ -2087,7 +2087,7 @@ class TestTrussConfigVolumeMounts:
     )
     def test_volume_source_rejects_invalid_reference(self, source):
         with pytest.raises(pydantic.ValidationError):
-            VolumeMount(source=source, path="/models/llama")
+            BDNVolumeMount(source=source, path="/models/llama")
 
     @pytest.mark.parametrize(
         "source",
@@ -2099,16 +2099,16 @@ class TestTrussConfigVolumeMounts:
         ],
     )
     def test_volume_source_accepts_supported_references(self, source):
-        volume_mount = VolumeMount(source=source, path="/models/llama")
+        volume_mount = BDNVolumeMount(source=source, path="/models/llama")
 
         assert volume_mount.source == source
 
     def test_volume_mount_requires_absolute_path(self):
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
-            VolumeMount(source="bdn://weights/llama:prod", path="models/llama")
+            BDNVolumeMount(source="bdn://weights/llama:prod", path="models/llama")
 
     def test_volume_mount_normalizes_path(self):
-        volume_mount = VolumeMount(
+        volume_mount = BDNVolumeMount(
             source="bdn://weights/llama:prod", path="/models/./llama/"
         )
 
@@ -2120,8 +2120,10 @@ class TestTrussConfigVolumeMounts:
         ):
             BDNConfig(
                 mounts=[
-                    VolumeMount(source="bdn://weights/llama:prod", path="/models"),
-                    VolumeMount(source="bdn://weights/mistral:prod", path="/models/"),
+                    BDNVolumeMount(source="bdn://weights/llama:prod", path="/models"),
+                    BDNVolumeMount(
+                        source="bdn://weights/mistral:prod", path="/models/"
+                    ),
                 ]
             )
 
@@ -2142,7 +2144,7 @@ class TestTrussConfigVolumeMounts:
         with pytest.raises(
             pydantic.ValidationError, match="must use the bdn:// scheme"
         ):
-            VolumeMount(source=source, path="/models/external")
+            BDNVolumeMount(source=source, path="/models/external")
 
 
 class TestCheckpointListNoMixing:

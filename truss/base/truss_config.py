@@ -610,7 +610,7 @@ def _normalize_bdn_mount_path(value: str) -> str:
     return str(mount_path)
 
 
-class VolumeMount(custom_types.ConfigModel):
+class BDNVolumeMount(custom_types.ConfigModel):
     """An existing BDN volume mounted into a model container.
 
     BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
@@ -669,7 +669,7 @@ class VolumeMount(custom_types.ConfigModel):
 class BDNConfig(custom_types.ConfigModel):
     """Configuration for mounting BDN volumes."""
 
-    mounts: list[VolumeMount] = pydantic.Field(
+    mounts: list[BDNVolumeMount] = pydantic.Field(
         default_factory=list,
         description="Existing BDN volumes to mount when the model starts.",
     )
@@ -677,8 +677,8 @@ class BDNConfig(custom_types.ConfigModel):
     @pydantic.field_validator("mounts")
     @classmethod
     def _validate_unique_mount_paths(
-        cls, mounts: list[VolumeMount]
-    ) -> list[VolumeMount]:
+        cls, mounts: list[BDNVolumeMount]
+    ) -> list[BDNVolumeMount]:
         mount_paths: set[str] = set()
         for volume_mount in mounts:
             if volume_mount.path in mount_paths:
