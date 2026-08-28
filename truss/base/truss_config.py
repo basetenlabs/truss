@@ -702,12 +702,9 @@ class HotloadAccessScope(str, enum.Enum):
       manifests and objects behind it. Needed to download data.
     - `push`: create volumes and upload new content, and point tags at the
       versions it uploads.
-    - `tags`: create, move, and remove tags, without permission to upload
+    - `tag`: create, move, and remove tags, without permission to upload
       content or delete versions.
     - `delete`: remove tags, versions, and whole volumes.
-    - `inspect`: read metadata only, listing namespaces and volumes and
-      reading version, tag, and history metadata, with no access to the
-      content itself.
 
     BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
 
@@ -722,9 +719,8 @@ class HotloadAccessScope(str, enum.Enum):
 
     PULL = "pull"
     PUSH = "push"
-    TAGS = "tags"
+    TAG = "tag"
     DELETE = "delete"
-    INSPECT = "inspect"
 
 
 class AutoscalingMetric(pydantic.BaseModel):

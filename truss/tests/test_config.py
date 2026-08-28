@@ -2034,8 +2034,8 @@ class TestTrussConfigVolumeMounts:
             - source: bdn://weights/some-model:mytag
               mount: /models/some-model
         hotload:
-          weights: [pull, tags]
-          checkpoints: [push, pull, tags]
+          weights: [pull, tag]
+          checkpoints: [push, pull, tag]
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
@@ -2048,11 +2048,11 @@ class TestTrussConfigVolumeMounts:
             )
         ]
         assert config.hotload == {
-            "weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS],
+            "weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAG],
             "checkpoints": [
                 HotloadAccessScope.PUSH,
                 HotloadAccessScope.PULL,
-                HotloadAccessScope.TAGS,
+                HotloadAccessScope.TAG,
             ],
         }
 
@@ -2066,7 +2066,7 @@ class TestTrussConfigVolumeMounts:
                     )
                 ]
             ),
-            hotload={"weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS]},
+            hotload={"weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAG]},
         )
         config_path = tmp_path / "config.yaml"
         config.write_to_yaml_file(config_path, verbose=False)
@@ -2080,7 +2080,7 @@ class TestTrussConfigVolumeMounts:
                 }
             ]
         }
-        assert serialized["hotload"] == {"weights": ["pull", "tags"]}
+        assert serialized["hotload"] == {"weights": ["pull", "tag"]}
         parsed_config = TrussConfig.from_yaml(config_path)
         assert parsed_config.bdn == config.bdn
         assert parsed_config.hotload == config.hotload
@@ -2165,9 +2165,10 @@ class TestTrussConfigVolumeMounts:
 
         assert config.hotload == {"weights": [scope]}
 
-    def test_hotload_rejects_unknown_scope(self):
+    @pytest.mark.parametrize("scope", ["admin", "inspect", "tags", "write"])
+    def test_hotload_rejects_unknown_scope(self, scope):
         with pytest.raises(pydantic.ValidationError):
-            TrussConfig(hotload={"weights": ["write"]})
+            TrussConfig(hotload={"weights": [scope]})
 
     def test_hotload_rejects_empty_namespace(self):
         with pytest.raises(pydantic.ValidationError, match="cannot be empty"):
