@@ -1836,7 +1836,7 @@
     },
     "VolumeMount": {
       "additionalProperties": true,
-      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nbdn:\n  mounts:\n    - source: bdn://weights/llama-8b:prod\n      mount: /models/llama\n```",
+      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nbdn:\n  mounts:\n    - source: bdn://weights/llama-8b:prod\n      path: /models/llama\n```",
       "properties": {
         "source": {
           "description": "BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
@@ -1844,16 +1844,16 @@
           "title": "Source",
           "type": "string"
         },
-        "mount": {
+        "path": {
           "description": "Absolute path where the volume will be mounted at runtime.",
           "minLength": 1,
-          "title": "Mount",
+          "title": "Path",
           "type": "string"
         }
       },
       "required": [
         "source",
-        "mount"
+        "path"
       ],
       "title": "VolumeMount",
       "type": "object"

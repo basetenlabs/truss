@@ -629,7 +629,7 @@ class VolumeMount(custom_types.ConfigModel):
     bdn:
       mounts:
         - source: bdn://weights/llama-8b:prod
-          mount: /models/llama
+          path: /models/llama
     ```
     """
 
@@ -637,7 +637,7 @@ class VolumeMount(custom_types.ConfigModel):
         ...,
         description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
     )
-    mount: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+    path: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ..., description="Absolute path where the volume will be mounted at runtime."
     )
 
@@ -660,9 +660,9 @@ class VolumeMount(custom_types.ConfigModel):
             _validate_bdn_identifier("tag", tag)
         return value
 
-    @pydantic.field_validator("mount")
+    @pydantic.field_validator("path")
     @classmethod
-    def _validate_mount(cls, value: str) -> str:
+    def _validate_path(cls, value: str) -> str:
         return _normalize_bdn_mount_path(value)
 
 
@@ -681,12 +681,12 @@ class BDNConfig(custom_types.ConfigModel):
     ) -> list[VolumeMount]:
         mount_paths: set[str] = set()
         for volume_mount in mounts:
-            if volume_mount.mount in mount_paths:
+            if volume_mount.path in mount_paths:
                 raise ValueError(
-                    f"Duplicate volume mount path '{volume_mount.mount}' - "
+                    f"Duplicate volume mount path '{volume_mount.path}' - "
                     "each volume must have a unique mount path."
                 )
-            mount_paths.add(volume_mount.mount)
+            mount_paths.add(volume_mount.path)
         return mounts
 
 
