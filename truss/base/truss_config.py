@@ -690,39 +690,6 @@ class BDNConfig(custom_types.ConfigModel):
         return mounts
 
 
-class HotloadAccessScope(str, enum.Enum):
-    """An operation a model is allowed to perform on a BDN volume namespace.
-
-    These are registry permissions, not filesystem mount options: they govern
-    what the deployment may ask the BDN volume service to do through hot load,
-    and mirror the scopes carried by the credentials issued to the deployment.
-    Mounting a volume declared under `bdn.mounts` does not require a hot-load entry.
-
-    - `pull`: read volume content, resolving a reference and fetching the
-      manifests and objects behind it. Needed to download data.
-    - `push`: create volumes and upload new content, and point tags at the
-      versions it uploads.
-    - `tag`: create, move, and remove tags, without permission to upload
-      content or delete versions.
-    - `delete`: remove tags, versions, and whole volumes.
-
-    BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
-
-    - A *namespace* (`weights`) groups volumes within your organization, and is
-      the unit that access grants and storage are scoped to.
-    - A *volume* (`llama-8b`) is one versioned collection of files. Every
-      published version is immutable and identified by its content digest.
-    - A *tag* (`prod`) is a mutable, case-sensitive name pointing at one
-      version, repointed as newer versions are published. A reference carrying
-      neither tag nor digest resolves to the volume's head, its latest version.
-    """
-
-    PULL = "pull"
-    PUSH = "push"
-    TAG = "tag"
-    DELETE = "delete"
-
-
 class AutoscalingMetric(pydantic.BaseModel):
     name: str
     target: float
@@ -1540,10 +1507,6 @@ class TrussConfig(custom_types.ConfigModel):
     bdn: BDNConfig = pydantic.Field(
         default_factory=BDNConfig, description="Configure BDN volume mounts."
     )
-    hotload: dict[str, list[HotloadAccessScope]] = pydantic.Field(
-        default_factory=dict,
-        description="Specifies which BDN namespaces can be accessed during hot-loading (by deployment) and the access scopes granted for each namespace.",
-    )
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
@@ -1722,15 +1685,6 @@ class TrussConfig(custom_types.ConfigModel):
                 stacklevel=2,
             )
         return v
-
-    @pydantic.field_validator("hotload")
-    @classmethod
-    def _validate_hotload_namespaces(
-        cls, hotload: dict[str, list[HotloadAccessScope]]
-    ) -> dict[str, list[HotloadAccessScope]]:
-        if any(not namespace for namespace in hotload):
-            raise ValueError("Hot-load namespace names cannot be empty.")
-        return hotload
 
     @pydantic.model_validator(mode="after")
     def _validate_remote_ssh(self) -> "TrussConfig":

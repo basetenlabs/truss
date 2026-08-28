@@ -698,17 +698,6 @@
       "title": "HealthChecks",
       "type": "object"
     },
-    "HotloadAccessScope": {
-      "description": "An operation a model is allowed to perform on a BDN volume namespace.\n\nThese are registry permissions, not filesystem mount options: they govern\nwhat the deployment may ask the BDN volume service to do through hot load,\nand mirror the scopes carried by the credentials issued to the deployment.\nMounting a volume declared under `bdn.mounts` does not require a hot-load entry.\n\n- `pull`: read volume content, resolving a reference and fetching the\n  manifests and objects behind it. Needed to download data.\n- `push`: create volumes and upload new content, and point tags at the\n  versions it uploads.\n- `tag`: create, move, and remove tags, without permission to upload\n  content or delete versions.\n- `delete`: remove tags, versions, and whole volumes.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.",
-      "enum": [
-        "pull",
-        "push",
-        "tag",
-        "delete"
-      ],
-      "title": "HotloadAccessScope",
-      "type": "string"
-    },
     "ModelCache": {
       "items": {
         "$ref": "#/$defs/ModelRepo"
@@ -2313,17 +2302,6 @@
     "bdn": {
       "$ref": "#/$defs/BDNConfig",
       "description": "Configure BDN volume mounts."
-    },
-    "hotload": {
-      "additionalProperties": {
-        "items": {
-          "$ref": "#/$defs/HotloadAccessScope"
-        },
-        "type": "array"
-      },
-      "description": "Specifies which BDN namespaces can be accessed during hot-loading (by deployment) and the access scopes granted for each namespace.",
-      "title": "Hotload",
-      "type": "object"
     },
     "trt_llm": {
       "anyOf": [

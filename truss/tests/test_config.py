@@ -24,7 +24,6 @@ from truss.base.truss_config import (
     DockerServer,
     EgressRestrictions,
     FabricRequirement,
-    HotloadAccessScope,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -2027,15 +2026,12 @@ class TestTrussConfigWeights:
 
 
 class TestTrussConfigVolumeMounts:
-    def test_bdn_mounts_and_hotload_from_yaml(self, tmp_path):
+    def test_bdn_mounts_from_yaml(self, tmp_path):
         yaml_content = """
         bdn:
           mounts:
             - source: bdn://weights/some-model:mytag
               mount: /models/some-model
-        hotload:
-          weights: [pull, tag]
-          checkpoints: [push, pull, tag]
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
@@ -2047,16 +2043,8 @@ class TestTrussConfigVolumeMounts:
                 source="bdn://weights/some-model:mytag", mount="/models/some-model"
             )
         ]
-        assert config.hotload == {
-            "weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAG],
-            "checkpoints": [
-                HotloadAccessScope.PUSH,
-                HotloadAccessScope.PULL,
-                HotloadAccessScope.TAG,
-            ],
-        }
 
-    def test_bdn_mounts_and_hotload_serialization_roundtrip(self, tmp_path):
+    def test_bdn_mounts_serialization_roundtrip(self, tmp_path):
         config = TrussConfig(
             bdn=BDNConfig(
                 mounts=[
@@ -2065,8 +2053,7 @@ class TestTrussConfigVolumeMounts:
                         mount="/models/some-model",
                     )
                 ]
-            ),
-            hotload={"weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAG]},
+            )
         )
         config_path = tmp_path / "config.yaml"
         config.write_to_yaml_file(config_path, verbose=False)
@@ -2080,10 +2067,8 @@ class TestTrussConfigVolumeMounts:
                 }
             ]
         }
-        assert serialized["hotload"] == {"weights": ["pull", "tag"]}
         parsed_config = TrussConfig.from_yaml(config_path)
         assert parsed_config.bdn == config.bdn
-        assert parsed_config.hotload == config.hotload
 
     @pytest.mark.parametrize(
         "source",
@@ -2158,21 +2143,6 @@ class TestTrussConfigVolumeMounts:
             pydantic.ValidationError, match="must use the bdn:// scheme"
         ):
             VolumeMount(source=source, mount="/models/external")
-
-    @pytest.mark.parametrize("scope", list(HotloadAccessScope))
-    def test_hotload_accepts_supported_scopes(self, scope):
-        config = TrussConfig(hotload={"weights": [scope.value]})
-
-        assert config.hotload == {"weights": [scope]}
-
-    @pytest.mark.parametrize("scope", ["admin", "inspect", "tags", "write"])
-    def test_hotload_rejects_unknown_scope(self, scope):
-        with pytest.raises(pydantic.ValidationError):
-            TrussConfig(hotload={"weights": [scope]})
-
-    def test_hotload_rejects_empty_namespace(self):
-        with pytest.raises(pydantic.ValidationError, match="cannot be empty"):
-            TrussConfig(hotload={"": ["pull"]})
 
 
 class TestCheckpointListNoMixing:
