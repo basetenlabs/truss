@@ -401,8 +401,8 @@ def _chdir(directory: Path):
 def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
     """Invoke `truss train exec` from `cwd`, returning (result, mock_push)."""
     base_args = ["train", "exec", "--remote", "test_remote"]
-    if not tail:
-        base_args.append("--no-tail")
+    if tail:
+        base_args.append("--tail")
     remote = remote if remote is not None else _mock_remote()
 
     with (
@@ -858,7 +858,18 @@ def test_exec_skips_the_secrets_call_without_secret_flags(tmp_path):
     mock_push.assert_called_once()
 
 
-def test_exec_tails_logs_by_default(tmp_path):
+def test_exec_does_not_tail_by_default(tmp_path):
+    """The motivating use case is a client running for hours, so blocking the
+    terminal is the wrong default; matches `push` and `workstation`."""
+    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+        result, mock_push = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
+
+    assert result.exit_code == 0, result.output
+    mock_push.assert_called_once()
+    mock_watcher.assert_not_called()
+
+
+def test_exec_tails_when_asked(tmp_path):
     with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = False
@@ -869,7 +880,9 @@ def test_exec_tails_logs_by_default(tmp_path):
 
 
 def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
-    """Otherwise `truss train exec -- pytest` is green in CI regardless of outcome."""
+    """Otherwise `truss train exec --tail -- pytest` is green in CI regardless of
+    outcome. --tail is passed explicitly: it is opt-in, so this cannot rely on a
+    default."""
     with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = True
@@ -891,14 +904,6 @@ def test_exec_exits_zero_when_the_job_succeeds(tmp_path):
         result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
 
     assert result.exit_code == 0, result.output
-
-
-def test_exec_does_not_check_job_status_with_no_tail(tmp_path):
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
-        result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
-
-    assert result.exit_code == 0, result.output
-    mock_watcher.assert_not_called()
 
 
 def test_exec_escapes_brackets_in_the_launch_line(tmp_path):
@@ -993,9 +998,12 @@ def test_exec_uv_warning_ignores_the_cwd_when_workspace_root_is_set(tmp_path):
     assert "--with-uv was not passed" not in _message_text(result)
 
 
-def test_exec_no_tail_skips_the_log_watcher(tmp_path):
+def test_exec_no_tail_flag_is_still_accepted(tmp_path):
+    """Now the same as the default, but the paired form must keep working."""
     with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
-        result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
+        result, _ = _invoke_exec(
+            ["--no-tail", "--", "python", "my_script.py"], tmp_path
+        )
 
     assert result.exit_code == 0, result.output
     mock_watcher.assert_not_called()

@@ -1478,9 +1478,12 @@ def workstation(
 )
 @click.option(
     "--tail/--no-tail",
-    default=True,
+    default=False,
     show_default=True,
-    help="Tail for status + logs after push.",
+    help=(
+        "Stream status + logs after push instead of returning immediately. With "
+        "--tail, exec exits non-zero if the job fails."
+    ),
 )
 @common.common_options()
 def exec_training_job(
