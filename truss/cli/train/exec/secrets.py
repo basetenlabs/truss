@@ -42,13 +42,13 @@ def parse_environment_variables(
         entries.append((key, SecretReference(name=secret_name)))
 
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
-    for key, value in entries:
+    for key, resolved in entries:
         if key in environment_variables:
             raise click.UsageError(
                 f"Environment variable '{key}' is set more than once by "
                 "--env / --secret."
             )
-        environment_variables[key] = value
+        environment_variables[key] = resolved
     return environment_variables
 
 
