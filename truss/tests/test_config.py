@@ -2082,6 +2082,10 @@ class TestTrussConfigVolumeMounts:
             "bdn://weights/models/llama:prod",
             "bdn://weights/llama:prod:extra",
             "bdn://weights/llama@not-a-digest",
+            "bdn://weights/llama@abcdef01234",
+            "bdn://weights/llama@b3:abcdef01234",
+            f"bdn://weights/llama@{'a' * 65}",
+            f"bdn://weights/llama@b3:{'a' * 65}",
             "bdn://weights/llama@b3:",
         ],
     )
@@ -2094,8 +2098,9 @@ class TestTrussConfigVolumeMounts:
         [
             "bdn://weights/llama",
             "bdn://weights/llama:prod",
-            "bdn://weights/llama@abcdef",
-            "bdn://weights/llama@b3:abcdef",
+            "bdn://weights/llama@abcdef012345",
+            "bdn://weights/llama@b3:ABCDEF012345",
+            f"bdn://weights/llama@{'a' * 64}",
         ],
     )
     def test_volume_source_accepts_supported_references(self, source):

@@ -584,6 +584,8 @@ _BDN_VOLUME_SOURCE_REGEX = re.compile(
     r"bdn://(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
     r"(?::(?P<tag>[^/:@\x00]+)|@(?:b3:)?(?P<digest>[0-9a-fA-F]+))?"
 )
+_MIN_BDN_DIGEST_PREFIX_LENGTH = 12
+_MAX_BDN_DIGEST_LENGTH = 64
 
 
 def _validate_bdn_identifier(kind: str, value: str) -> None:
@@ -658,6 +660,17 @@ class BDNVolumeMount(custom_types.ConfigModel):
         _validate_bdn_identifier("volume", match.group("volume"))
         if tag := match.group("tag"):
             _validate_bdn_identifier("tag", tag)
+        if digest := match.group("digest"):
+            if (
+                not _MIN_BDN_DIGEST_PREFIX_LENGTH
+                <= len(digest)
+                <= _MAX_BDN_DIGEST_LENGTH
+            ):
+                raise ValueError(
+                    "BDN digest must contain between "
+                    f"{_MIN_BDN_DIGEST_PREFIX_LENGTH} and "
+                    f"{_MAX_BDN_DIGEST_LENGTH} hexadecimal characters"
+                )
         return value
 
     @pydantic.field_validator("path")
