@@ -38,11 +38,12 @@ from truss.cli.train.exec import (
     DEFAULT_EXEC_PROJECT_NAME,
     DEFAULT_MEMORY,
     SUPPORTED_EXEC_ACCELERATORS,
+    UvProject,
     build_exec_project,
-    looks_like_uv_project,
+    get_project_type,
     parse_environment_variables,
+    validate_secret_references,
     validate_workspace_root,
-    warn_about_missing_secrets,
 )
 from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
@@ -1534,8 +1535,7 @@ def exec_training_job(
     # project has been created, which would leave a stray empty project behind.
     workspace_dir = validate_workspace_root(source_dir, workspace_root)
     if not project_name:
-        # Default to the directory name so repeated runs from the same checkout
-        # land in the same project.
+        # Repeated runs from the same checkout should group into one project.
         project_name = source_dir.name or DEFAULT_EXEC_PROJECT_NAME
 
     if not remote:
@@ -1544,13 +1544,15 @@ def exec_training_job(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    # Use config team as fallback if --team not provided
     effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
     _, team_id = _resolve_team_name(
         remote_provider, effective_team_name, existing_project_name=project_name
     )
-    warn_about_missing_secrets(remote_provider.api, environment_variables)
+    validate_secret_references(remote_provider.api, environment_variables)
 
+    # --with-uv names uv explicitly, so it selects UvProject directly. Detection only
+    # drives the warning below, and is the hook a future --project-type would use.
+    detected_project = get_project_type(workspace_dir)
     training_project = build_exec_project(
         start_command=start_command,
         project_name=project_name,
@@ -1559,7 +1561,7 @@ def exec_training_job(
         cpu_count=cpu_count,
         memory=memory,
         base_image=image,
-        with_uv=with_uv,
+        project=UvProject() if with_uv else None,
         workspace_root=workspace_root,
         exclude_dirs=exclude_dirs,
         external_dirs=external_dirs,
@@ -1569,15 +1571,15 @@ def exec_training_job(
     compute_str = (
         f"{gpu_count}x {accelerator}" if accelerator else f"{cpu_count} CPU / {memory}"
     )
-    if not with_uv and looks_like_uv_project(workspace_dir):
+    if not with_uv and detected_project is not None:
         console.print(
-            "Warning: this looks like a uv project, but --with-uv was not "
-            "passed, so uv will not be present in the job image.",
+            f"Warning: this looks like a {detected_project.label} project, but "
+            "--with-uv was not passed, so uv will not be present in the job image.",
             style="yellow",
         )
 
-    # Escaped: a directory named e.g. `myproj[v2]` would otherwise be swallowed as
-    # console markup, reporting a different name than the one being pushed.
+    # Escaped: `myproj[v2]` would otherwise be read as console markup, reporting a
+    # different name than the one being pushed.
     console.print(
         f"Launching [cyan]{escape(project_name)}[/cyan] from "
         f"[cyan]{escape(str(source_dir))}[/cyan] on [cyan]{escape(compute_str)}[/cyan]..."
@@ -1614,9 +1616,8 @@ def exec_training_job(
             cli_log_utils.output_log(log)
 
         if watcher.failed:
-            # The command ran remotely, so surface its failure in our own exit code
-            # -- otherwise `truss train exec -- pytest` is green in CI no matter what
-            # the job did. sys.exit, not click's Exit: that subclasses RuntimeError,
-            # so `common_options`' error handler would catch it and print a spurious
-            # "ERROR Exit: 1" first.
+            # Without this, `truss train exec --tail -- pytest` is green in CI no
+            # matter what the job did. sys.exit rather than click's Exit, which
+            # subclasses RuntimeError and would be caught by `common_options`' error
+            # handler and reported as "ERROR Exit: 1".
             sys.exit(1)
