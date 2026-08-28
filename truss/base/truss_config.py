@@ -626,9 +626,10 @@ class VolumeMount(custom_types.ConfigModel):
       neither tag nor digest resolves to the volume's head, its latest version.
 
     ```
-    mounts:
-      - source: bdn://weights/llama-8b:prod
-        path: /models/llama
+    bdn:
+      mounts:
+        - source: bdn://weights/llama-8b:prod
+          mount: /models/llama
     ```
     """
 
@@ -636,7 +637,7 @@ class VolumeMount(custom_types.ConfigModel):
         ...,
         description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
     )
-    path: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+    mount: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ..., description="Absolute path where the volume will be mounted at runtime."
     )
 
@@ -659,10 +660,34 @@ class VolumeMount(custom_types.ConfigModel):
             _validate_bdn_identifier("tag", tag)
         return value
 
-    @pydantic.field_validator("path")
+    @pydantic.field_validator("mount")
     @classmethod
-    def _validate_path(cls, value: str) -> str:
+    def _validate_mount(cls, value: str) -> str:
         return _normalize_bdn_mount_path(value)
+
+
+class BDNConfig(custom_types.ConfigModel):
+    """Configuration for mounting BDN volumes."""
+
+    mounts: list[VolumeMount] = pydantic.Field(
+        default_factory=list,
+        description="Existing BDN volumes to mount when the model starts.",
+    )
+
+    @pydantic.field_validator("mounts")
+    @classmethod
+    def _validate_unique_mount_paths(
+        cls, mounts: list[VolumeMount]
+    ) -> list[VolumeMount]:
+        mount_paths: set[str] = set()
+        for volume_mount in mounts:
+            if volume_mount.mount in mount_paths:
+                raise ValueError(
+                    f"Duplicate volume mount path '{volume_mount.mount}' - "
+                    "each volume must have a unique mount path."
+                )
+            mount_paths.add(volume_mount.mount)
+        return mounts
 
 
 class HotloadAccessScope(str, enum.Enum):
@@ -671,7 +696,7 @@ class HotloadAccessScope(str, enum.Enum):
     These are registry permissions, not filesystem mount options: they govern
     what the deployment may ask the BDN volume service to do through hot load,
     and mirror the scopes carried by the credentials issued to the deployment.
-    Mounting a volume declared under `mounts` does not require a hot-load entry.
+    Mounting a volume declared under `bdn.mounts` does not require a hot-load entry.
 
     - `pull`: read volume content, resolving a reference and fetching the
       manifests and objects behind it. Needed to download data.
@@ -1516,9 +1541,8 @@ class TrussConfig(custom_types.ConfigModel):
         default_factory=lambda: Weights([]),
         description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
     )
-    mounts: list[VolumeMount] = pydantic.Field(
-        default_factory=list,
-        description="Existing BDN volumes to mount when the model starts.",
+    bdn: BDNConfig = pydantic.Field(
+        default_factory=BDNConfig, description="Configure BDN volume mounts."
     )
     hotload: dict[str, list[HotloadAccessScope]] = pydantic.Field(
         default_factory=dict,
@@ -1702,21 +1726,6 @@ class TrussConfig(custom_types.ConfigModel):
                 stacklevel=2,
             )
         return v
-
-    @pydantic.field_validator("mounts")
-    @classmethod
-    def _validate_unique_mount_paths(
-        cls, mounts: list[VolumeMount]
-    ) -> list[VolumeMount]:
-        mount_paths: set[str] = set()
-        for volume_mount in mounts:
-            if volume_mount.path in mount_paths:
-                raise ValueError(
-                    f"Duplicate volume mount path '{volume_mount.path}' - "
-                    "each volume must have a unique mount path."
-                )
-            mount_paths.add(volume_mount.path)
-        return mounts
 
     @pydantic.field_validator("hotload")
     @classmethod

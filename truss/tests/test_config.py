@@ -15,6 +15,7 @@ from truss.base.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    BDNConfig,
     Build,
     CacheInternal,
     CheckpointList,
@@ -2026,11 +2027,12 @@ class TestTrussConfigWeights:
 
 
 class TestTrussConfigVolumeMounts:
-    def test_mounts_and_hotload_from_yaml(self, tmp_path):
+    def test_bdn_mounts_and_hotload_from_yaml(self, tmp_path):
         yaml_content = """
-        mounts:
-          - source: bdn://weights/llama-8b:prod
-            path: /models/llama
+        bdn:
+          mounts:
+            - source: bdn://weights/some-model:mytag
+              mount: /models/some-model
         hotload:
           weights: [pull, tags]
           checkpoints: [push, pull, tags]
@@ -2040,8 +2042,10 @@ class TestTrussConfigVolumeMounts:
 
         config = TrussConfig.from_yaml(config_path)
 
-        assert config.mounts == [
-            VolumeMount(source="bdn://weights/llama-8b:prod", path="/models/llama")
+        assert config.bdn.mounts == [
+            VolumeMount(
+                source="bdn://weights/some-model:mytag", mount="/models/some-model"
+            )
         ]
         assert config.hotload == {
             "weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS],
@@ -2052,25 +2056,33 @@ class TestTrussConfigVolumeMounts:
             ],
         }
 
-    def test_mounts_and_hotload_serialization_roundtrip(self, tmp_path):
+    def test_bdn_mounts_and_hotload_serialization_roundtrip(self, tmp_path):
         config = TrussConfig(
-            mounts=[
-                VolumeMount(
-                    source="bdn://weights/some-model:mytag", path="/models/some-model"
-                )
-            ],
+            bdn=BDNConfig(
+                mounts=[
+                    VolumeMount(
+                        source="bdn://weights/some-model:mytag",
+                        mount="/models/some-model",
+                    )
+                ]
+            ),
             hotload={"weights": [HotloadAccessScope.PULL, HotloadAccessScope.TAGS]},
         )
         config_path = tmp_path / "config.yaml"
         config.write_to_yaml_file(config_path, verbose=False)
 
         serialized = yaml.safe_load(config_path.read_text())
-        assert serialized["mounts"] == [
-            {"source": "bdn://weights/some-model:mytag", "path": "/models/some-model"}
-        ]
+        assert serialized["bdn"] == {
+            "mounts": [
+                {
+                    "source": "bdn://weights/some-model:mytag",
+                    "mount": "/models/some-model",
+                }
+            ]
+        }
         assert serialized["hotload"] == {"weights": ["pull", "tags"]}
         parsed_config = TrussConfig.from_yaml(config_path)
-        assert parsed_config.mounts == config.mounts
+        assert parsed_config.bdn == config.bdn
         assert parsed_config.hotload == config.hotload
 
     @pytest.mark.parametrize(
@@ -2090,7 +2102,7 @@ class TestTrussConfigVolumeMounts:
     )
     def test_volume_source_rejects_invalid_reference(self, source):
         with pytest.raises(pydantic.ValidationError):
-            VolumeMount(source=source, path="/models/llama")
+            VolumeMount(source=source, mount="/models/llama")
 
     @pytest.mark.parametrize(
         "source",
@@ -2102,29 +2114,29 @@ class TestTrussConfigVolumeMounts:
         ],
     )
     def test_volume_source_accepts_supported_references(self, source):
-        volume_mount = VolumeMount(source=source, path="/models/llama")
+        volume_mount = VolumeMount(source=source, mount="/models/llama")
 
         assert volume_mount.source == source
 
     def test_volume_mount_requires_absolute_path(self):
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
-            VolumeMount(source="bdn://weights/llama:prod", path="models/llama")
+            VolumeMount(source="bdn://weights/llama:prod", mount="models/llama")
 
     def test_volume_mount_normalizes_path(self):
         volume_mount = VolumeMount(
-            source="bdn://weights/llama:prod", path="/models/./llama/"
+            source="bdn://weights/llama:prod", mount="/models/./llama/"
         )
 
-        assert volume_mount.path == "/models/llama"
+        assert volume_mount.mount == "/models/llama"
 
     def test_volume_mount_paths_must_be_unique(self):
         with pytest.raises(
             pydantic.ValidationError, match="Duplicate volume mount path"
         ):
-            TrussConfig(
+            BDNConfig(
                 mounts=[
-                    VolumeMount(source="bdn://weights/llama:prod", path="/models"),
-                    VolumeMount(source="bdn://weights/mistral:prod", path="/models/"),
+                    VolumeMount(source="bdn://weights/llama:prod", mount="/models"),
+                    VolumeMount(source="bdn://weights/mistral:prod", mount="/models/"),
                 ]
             )
 
@@ -2145,7 +2157,7 @@ class TestTrussConfigVolumeMounts:
         with pytest.raises(
             pydantic.ValidationError, match="must use the bdn:// scheme"
         ):
-            VolumeMount(source=source, path="/models/external")
+            VolumeMount(source=source, mount="/models/external")
 
     @pytest.mark.parametrize("scope", list(HotloadAccessScope))
     def test_hotload_accepts_supported_scopes(self, scope):

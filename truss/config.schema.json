@@ -46,6 +46,22 @@
       "title": "AutoscalingMetric",
       "type": "object"
     },
+    "BDNConfig": {
+      "additionalProperties": true,
+      "description": "Configuration for mounting BDN volumes.",
+      "properties": {
+        "mounts": {
+          "description": "Existing BDN volumes to mount when the model starts.",
+          "items": {
+            "$ref": "#/$defs/VolumeMount"
+          },
+          "title": "Mounts",
+          "type": "array"
+        }
+      },
+      "title": "BDNConfig",
+      "type": "object"
+    },
     "BISLLM": {
       "additionalProperties": true,
       "description": "Configuration options for BIS LLM deployments.",
@@ -683,7 +699,7 @@
       "type": "object"
     },
     "HotloadAccessScope": {
-      "description": "An operation a model is allowed to perform on a BDN volume namespace.\n\nThese are registry permissions, not filesystem mount options: they govern\nwhat the deployment may ask the BDN volume service to do through hot load,\nand mirror the scopes carried by the credentials issued to the deployment.\nMounting a volume declared under `mounts` does not require a hot-load entry.\n\n- `pull`: read volume content, resolving a reference and fetching the\n  manifests and objects behind it. Needed to download data.\n- `push`: create volumes and upload new content, and point tags at the\n  versions it uploads.\n- `tags`: create, move, and remove tags, without permission to upload\n  content or delete versions.\n- `delete`: remove tags, versions, and whole volumes.\n- `inspect`: read metadata only, listing namespaces and volumes and\n  reading version, tag, and history metadata, with no access to the\n  content itself.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.",
+      "description": "An operation a model is allowed to perform on a BDN volume namespace.\n\nThese are registry permissions, not filesystem mount options: they govern\nwhat the deployment may ask the BDN volume service to do through hot load,\nand mirror the scopes carried by the credentials issued to the deployment.\nMounting a volume declared under `bdn.mounts` does not require a hot-load entry.\n\n- `pull`: read volume content, resolving a reference and fetching the\n  manifests and objects behind it. Needed to download data.\n- `push`: create volumes and upload new content, and point tags at the\n  versions it uploads.\n- `tags`: create, move, and remove tags, without permission to upload\n  content or delete versions.\n- `delete`: remove tags, versions, and whole volumes.\n- `inspect`: read metadata only, listing namespaces and volumes and\n  reading version, tag, and history metadata, with no access to the\n  content itself.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.",
       "enum": [
         "pull",
         "push",
@@ -1832,7 +1848,7 @@
     },
     "VolumeMount": {
       "additionalProperties": true,
-      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nmounts:\n  - source: bdn://weights/llama-8b:prod\n    path: /models/llama\n```",
+      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nbdn:\n  mounts:\n    - source: bdn://weights/llama-8b:prod\n      mount: /models/llama\n```",
       "properties": {
         "source": {
           "description": "BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
@@ -1840,16 +1856,16 @@
           "title": "Source",
           "type": "string"
         },
-        "path": {
+        "mount": {
           "description": "Absolute path where the volume will be mounted at runtime.",
           "minLength": 1,
-          "title": "Path",
+          "title": "Mount",
           "type": "string"
         }
       },
       "required": [
         "source",
-        "path"
+        "mount"
       ],
       "title": "VolumeMount",
       "type": "object"
@@ -2295,13 +2311,9 @@
       "$ref": "#/$defs/Weights",
       "description": "Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching."
     },
-    "mounts": {
-      "description": "Existing BDN volumes to mount when the model starts.",
-      "items": {
-        "$ref": "#/$defs/VolumeMount"
-      },
-      "title": "Mounts",
-      "type": "array"
+    "bdn": {
+      "$ref": "#/$defs/BDNConfig",
+      "description": "Configure BDN volume mounts."
     },
     "hotload": {
       "additionalProperties": {
