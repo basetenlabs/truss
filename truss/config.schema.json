@@ -1968,7 +1968,7 @@
             }
           ],
           "default": null,
-          "description": "AWS IAM role ARN that Baseten assumes with its own AWS principal, scoped by the sts:ExternalId Baseten assigns to your organization.",
+          "description": "AWS IAM role ARN for AssumeRole authentication.",
           "title": "Aws Assume Role Arn"
         },
         "aws_assume_role_region": {
@@ -1981,7 +1981,7 @@
             }
           ],
           "default": null,
-          "description": "AWS region for AWS AssumeRole authentication.",
+          "description": "AWS region for AssumeRole authentication.",
           "title": "Aws Assume Role Region"
         },
         "auth_method": {

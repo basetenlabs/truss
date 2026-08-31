@@ -249,14 +249,19 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     enable_baseten_workdir: bool = True
 
     @model_validator(mode="after")
-    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
-        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+    def _validate_weights_auth_method(self) -> "TrainingJob":
+        """Validate that weight authentication is supported for training jobs."""
+        supported_auth_methods = {
+            truss_config.WeightsAuthMethod.CUSTOM_SECRET,
+            truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
+        }
         for w in self.weights:
             if w.auth is not None:
-                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
+                if w.auth.auth_method not in supported_auth_methods:
                     raise ValueError(
-                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
-                        "OIDC and assume-role methods (AWS_OIDC, GCP_OIDC, AWS_ASSUME_ROLE) are not supported."
+                        f"weight {w.source}: auth_method {w.auth.auth_method.value} is not "
+                        "supported for training jobs. Supported auth methods: AWS_ASSUME_ROLE, "
+                        "CUSTOM_SECRET."
                     )
         return self
 
