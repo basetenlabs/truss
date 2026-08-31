@@ -254,6 +254,8 @@ class TrainingJob(custom_types.SafeModelNoExtra):
         supported_auth_methods = {
             truss_config.WeightsAuthMethod.CUSTOM_SECRET,
             truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
+            truss_config.WeightsAuthMethod.AWS_OIDC,
+            truss_config.WeightsAuthMethod.GCP_OIDC,
         }
         for w in self.weights:
             if w.auth is not None:
@@ -261,7 +263,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
                     raise ValueError(
                         f"weight {w.source}: auth_method {w.auth.auth_method.value} is not "
                         "supported for training jobs. Supported auth methods: AWS_ASSUME_ROLE, "
-                        "CUSTOM_SECRET."
+                        "AWS_OIDC, CUSTOM_SECRET, GCP_OIDC."
                     )
         return self
 
