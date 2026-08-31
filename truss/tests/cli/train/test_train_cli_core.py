@@ -14,11 +14,9 @@ from truss.cli.train.core import (
     display_training_capacity,
     display_training_jobs,
     update_team_training_gpu_capacity,
-    update_training_job,
     view_training_job_metrics,
 )
 from truss.remote.baseten.custom_types import FileSummary, TeamType
-from truss_train.definitions import AvailabilityModel
 
 
 @patch("truss.cli.train.metrics_watcher.time.sleep")
@@ -645,56 +643,6 @@ def test_update_team_training_gpu_capacity_unknown_team_raises():
         )
 
     mock_api.update_team_training_gpu_capacity.assert_not_called()
-
-
-def _mock_remote_for_job_update():
-    mock_api = Mock()
-    mock_api.search_training_jobs.return_value = [
-        {"id": "job_id", "training_project": {"id": "project_id"}}
-    ]
-    mock_api.update_training_job.return_value = {"id": "job_id"}
-    mock_remote = Mock()
-    mock_remote.api = mock_api
-    return mock_remote, mock_api
-
-
-def test_update_training_job_availability_model():
-    """The availability model is passed to the API as its wire value."""
-    mock_remote, mock_api = _mock_remote_for_job_update()
-
-    update_training_job(
-        mock_remote, "job_id", availability_model=AvailabilityModel.SPOT
-    )
-
-    mock_api.update_training_job.assert_called_once_with(
-        "project_id", "job_id", priority=None, availability_model="spot"
-    )
-
-
-def test_update_training_job_priority_and_availability_model():
-    """Both fields are forwarded together when both are provided."""
-    mock_remote, mock_api = _mock_remote_for_job_update()
-
-    update_training_job(
-        mock_remote,
-        "job_id",
-        priority=7,
-        availability_model=AvailabilityModel.DEDICATED,
-    )
-
-    mock_api.update_training_job.assert_called_once_with(
-        "project_id", "job_id", priority=7, availability_model="dedicated"
-    )
-
-
-def test_update_training_job_no_fields_raises():
-    """Updating with no fields raises before any API call is made."""
-    mock_remote, mock_api = _mock_remote_for_job_update()
-
-    with pytest.raises(ValueError, match="At least one field"):
-        update_training_job(mock_remote, "job_id")
-
-    mock_api.update_training_job.assert_not_called()
 
 
 def test_format_capacity_type():
