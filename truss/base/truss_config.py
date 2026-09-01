@@ -579,6 +579,130 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+_BDN_PREFIX = "bdn://"
+_BDN_VOLUME_SOURCE_REGEX = re.compile(
+    r"bdn://(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
+    r"(?::(?P<tag>[^/:@\x00]+)|@(?:b3:)?(?P<digest>[0-9a-fA-F]+))?"
+)
+_MIN_BDN_DIGEST_PREFIX_LENGTH = 12
+_MAX_BDN_DIGEST_LENGTH = 64
+
+
+def _validate_bdn_identifier(kind: str, value: str) -> None:
+    if not value:
+        raise ValueError(f"BDN {kind} must not be empty")
+    if len(value) > 256:
+        raise ValueError(f"BDN {kind} must be at most 256 characters")
+    if "/" in value or ".." in value or "\0" in value:
+        raise ValueError(f"Invalid BDN {kind}: {value!r}")
+
+
+def _normalize_bdn_mount_path(value: str) -> str:
+    if "\0" in value:
+        raise ValueError("Volume mount must not contain null bytes")
+    mount_path = pathlib.PurePosixPath(value)
+    if not mount_path.is_absolute():
+        raise ValueError(
+            f"Volume mount must be an absolute path (start with /), got: {value}"
+        )
+    if mount_path == pathlib.PurePosixPath("/"):
+        raise ValueError("Volume mount must not be the filesystem root")
+    if ".." in mount_path.parts:
+        raise ValueError(f"Volume mount must not contain parent traversal: {value}")
+    return str(mount_path)
+
+
+class BDNVolumeMount(custom_types.ConfigModel):
+    """An existing BDN volume mounted into a model container.
+
+    BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
+
+    - A *namespace* (`weights`) groups volumes within your organization, and is
+      the unit that access grants and storage are scoped to. Names are
+      lowercase alphanumeric plus hyphens, at least two characters, and may not
+      begin with a digit; `namespaces` and `resolve` are reserved.
+    - A *volume* (`llama-8b`) is one versioned collection of files. Every
+      published version is immutable and identified by its content digest.
+    - A *tag* (`prod`) is a mutable, case-sensitive name pointing at one
+      version, repointed as newer versions are published. A reference carrying
+      neither tag nor digest resolves to the volume's head, its latest version.
+
+    ```
+    bdn:
+      mounts:
+        - source: bdn://weights/llama-8b:prod
+          path: /models/llama
+    ```
+    """
+
+    source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+    )
+    path: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ..., description="Absolute path where the volume will be mounted at runtime."
+    )
+
+    @pydantic.field_validator("source")
+    @classmethod
+    def _validate_source(cls, value: str) -> str:
+        if not value.startswith(_BDN_PREFIX):
+            raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
+
+        match = _BDN_VOLUME_SOURCE_REGEX.fullmatch(value)
+        if match is None:
+            raise ValueError(
+                f"Invalid BDN volume source: '{value}'. "
+                "Expected format: bdn://namespace/volume[:tag|@digest]"
+            )
+
+        _validate_bdn_identifier("namespace", match.group("namespace"))
+        _validate_bdn_identifier("volume", match.group("volume"))
+        if tag := match.group("tag"):
+            _validate_bdn_identifier("tag", tag)
+        if digest := match.group("digest"):
+            if (
+                not _MIN_BDN_DIGEST_PREFIX_LENGTH
+                <= len(digest)
+                <= _MAX_BDN_DIGEST_LENGTH
+            ):
+                raise ValueError(
+                    "BDN digest must contain between "
+                    f"{_MIN_BDN_DIGEST_PREFIX_LENGTH} and "
+                    f"{_MAX_BDN_DIGEST_LENGTH} hexadecimal characters"
+                )
+        return value
+
+    @pydantic.field_validator("path")
+    @classmethod
+    def _validate_path(cls, value: str) -> str:
+        return _normalize_bdn_mount_path(value)
+
+
+class BDNConfig(custom_types.ConfigModel):
+    """Configuration for mounting BDN volumes."""
+
+    mounts: list[BDNVolumeMount] = pydantic.Field(
+        default_factory=list,
+        description="Existing BDN volumes to mount when the model starts.",
+    )
+
+    @pydantic.field_validator("mounts")
+    @classmethod
+    def _validate_unique_mount_paths(
+        cls, mounts: list[BDNVolumeMount]
+    ) -> list[BDNVolumeMount]:
+        mount_paths: set[str] = set()
+        for volume_mount in mounts:
+            if volume_mount.path in mount_paths:
+                raise ValueError(
+                    f"Duplicate volume mount path '{volume_mount.path}' - "
+                    "each volume must have a unique mount path."
+                )
+            mount_paths.add(volume_mount.path)
+        return mounts
+
+
 class AutoscalingMetric(pydantic.BaseModel):
     name: str
     target: float
@@ -1392,6 +1516,9 @@ class TrussConfig(custom_types.ConfigModel):
     weights: Weights = pydantic.Field(
         default_factory=lambda: Weights([]),
         description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
+    )
+    bdn: BDNConfig = pydantic.Field(
+        default_factory=BDNConfig, description="Configure BDN volume mounts."
     )
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
         default=None,

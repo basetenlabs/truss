@@ -8,7 +8,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
@@ -706,8 +706,6 @@ class ServingImageBuilder(ImageBuilder):
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
 
-        data_dir = build_dir / config.data_dir  # type: ignore[operator]
-
         truss_ignore_patterns = []
         if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
             truss_ignore_patterns = load_trussignore_patterns(
@@ -758,11 +756,13 @@ class ServingImageBuilder(ImageBuilder):
             yaml.dump(config.to_dict(verbose=True), config_file)
 
         external_data_files: list = []
-        data_dir = Path("/app/data/")
+        # Container path. PurePosixPath so a Windows host does not turn
+        # /app/data into C:\app\data via Path.resolve().
+        container_data_dir = PurePosixPath("/app/data")
         if self._spec.external_data is not None:
             for ext_file in self._spec.external_data.items:
                 external_data_files.append(
-                    (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
+                    (ext_file.url, container_data_dir / ext_file.local_data_path)
                 )
 
         # No model cache provided, initialize empty
