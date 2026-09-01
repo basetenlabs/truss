@@ -37,7 +37,7 @@ from truss.cli.train.workstation import (
     build_workstation_project,
     copy_workstation_templates,
 )
-from truss.cli.utils import common
+from truss.cli.utils import common, invoking_cli
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.custom_types import TeamType
@@ -73,13 +73,13 @@ def _print_training_job_success_message(
     if should_print_cache_summary:
         cache_summary_snippet = (
             f"📁 View cache summary via "
-            f"[cyan]'truss train cache summarize \"{project_name}\"'[/cyan]\n"
+            f"[cyan]'{invoking_cli.train_cache_summarize(project_name)}'[/cyan]\n"
         )
     console.print(
         f"🪵 View logs for your job via "
-        f"[cyan]'truss train logs --job-id {job_id} --tail'[/cyan]\n"
+        f"[cyan]'{invoking_cli.train_logs(job_id)}'[/cyan]\n"
         f"🔍 View metrics for your job via "
-        f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+        f"[cyan]'{invoking_cli.train_metrics(job_id)}'[/cyan]\n"
         f"{cache_summary_snippet}"
         f"🌐 View job in the UI: {common.format_link(core.status_page_url(remote_provider.remote_url, project_id, job_id))}"
     )
@@ -94,12 +94,12 @@ def _handle_post_create_logic(
     if job_resp.get("current_status") == "TRAINING_JOB_PENDING":
         console.print(
             f"🟡 Training job is pending — waiting for GPU capacity. "
-            f"Check status: 'truss train view --job-id={job_id}'.",
+            f"Check status: '{invoking_cli.train_view(job_id)}'.",
             style="yellow",
         )
     elif job_resp.get("current_status") == "TRAINING_JOB_QUEUED":
         console.print(
-            f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
+            f"🟢 Training job is queued. You can check the status of your job by running '{invoking_cli.train_view(job_id)}'.",
             style="green",
         )
     else:
@@ -1351,14 +1351,14 @@ def workstation(
         f"{ssh_lines}\n"
         f"\n"
         f"If you haven't set up SSH yet, run:\n"
-        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"  [cyan]{invoking_cli.ssh_setup()}[/cyan]\n"
         f"{multi_node_hint}"
         f"\n"
         f"View logs:\n"
-        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"  [cyan]{invoking_cli.train_logs(job_id)}[/cyan]\n"
         f"\n"
         f"Stop the workstation:\n"
-        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+        f"  [cyan]{invoking_cli.train_stop(job_id)}[/cyan]"
     )
 
     if tail:
