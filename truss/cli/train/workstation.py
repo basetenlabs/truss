@@ -20,8 +20,7 @@ from truss_train.definitions import (
     TrainingProject,
 )
 
-DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
-B200_BASE_IMAGE = "nvidia/cuda:12.9.1-devel-ubuntu24.04"
+DEFAULT_BASE_IMAGE = "nvidia/cuda:12.9.1-devel-ubuntu24.04"
 B300_BASE_IMAGE = "nvidia/cuda:13.0.3-devel-ubuntu24.04"
 SUPPORTED_WORKSTATION_ACCELERATORS = [
     acc.value for acc in Accelerator if acc.value != Accelerator._B10.value
@@ -29,8 +28,6 @@ SUPPORTED_WORKSTATION_ACCELERATORS = [
 
 
 def default_base_image(accelerator: str) -> str:
-    if accelerator == Accelerator.B200.value:
-        return B200_BASE_IMAGE
     if accelerator in (Accelerator.B300.value, Accelerator.GB300.value):
         return B300_BASE_IMAGE
     return DEFAULT_BASE_IMAGE

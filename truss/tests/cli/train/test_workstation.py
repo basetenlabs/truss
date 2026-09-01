@@ -32,7 +32,7 @@ EXPECTED_TEMPLATE_FILES = [
 @pytest.mark.parametrize(
     ("accelerator", "expected_image"),
     [
-        ("H100", "nvidia/cuda:12.8.1-devel-ubuntu24.04"),
+        ("H100", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
         ("B200", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
         ("B300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
         ("GB300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
