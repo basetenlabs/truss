@@ -12,6 +12,7 @@ from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
+    default_base_image,
 )
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
@@ -26,6 +27,19 @@ EXPECTED_TEMPLATE_FILES = [
     "setup_controller.sh",
     "setup_worker.sh",
 ]
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "expected_image"),
+    [
+        ("H100", "nvidia/cuda:12.8.1-devel-ubuntu24.04"),
+        ("B200", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
+        ("B300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+        ("GB300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+    ],
+)
+def test_default_base_image(accelerator, expected_image):
+    assert default_base_image(accelerator) == expected_image
 
 
 def test_build_workstation_project_defaults():
