@@ -849,6 +849,15 @@ def trt_llm_common_validation(config: "TrussConfig"):
     from truss.base import truss_config
 
     assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
+    default_python_version = truss_config.TrussConfig.model_fields[
+        "python_version"
+    ].default
+    if config.python_version != default_python_version:
+        logger.warning(
+            f"`python_version: {config.python_version}` has no effect on TRT-LLM models: "
+            "the TRT-LLM base image ships its own fixed Python interpreter, independent of "
+            "this setting."
+        )
     trt_llm_config: TRTLLMConfigurationV1 | TRTLLMConfigurationV2 = config.trt_llm.root
     base_model = (
         trt_llm_config.build.base_model

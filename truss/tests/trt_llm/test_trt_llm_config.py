@@ -12,6 +12,7 @@ from truss.base.trt_llm_config import (
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
+from truss.base.truss_config import TrussConfig
 
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
@@ -246,3 +247,30 @@ def test_trt_llm_config_additional_fields(trtllm_config_v2):
 
     assert config.inference_stack == "v2"
     assert isinstance(config.build, TrussTRTLLMBuildConfiguration)
+
+
+def test_trt_llm_non_default_python_version_warns(trtllm_config, caplog):
+    """python_version has no effect on TRT-LLM models: the TRT-LLM base image ships
+    its own fixed Python interpreter. Setting a non-default value should warn."""
+    trtllm_config["python_version"] = "py311"
+
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_dict(trtllm_config)
+
+    assert "has no effect on TRT-LLM models" in caplog.text
+
+
+def test_trt_llm_default_python_version_no_warning(trtllm_config, caplog):
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_dict(trtllm_config)
+
+    assert "has no effect on TRT-LLM models" not in caplog.text
+
+
+def test_trt_llm_v2_non_default_python_version_warns(trtllm_config_v2, caplog):
+    trtllm_config_v2["python_version"] = "py311"
+
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_dict(trtllm_config_v2)
+
+    assert "has no effect on TRT-LLM models" in caplog.text
