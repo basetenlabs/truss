@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -12,6 +13,8 @@ from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
+    default_base_image,
+    workstation_ssh_hostnames,
 )
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
@@ -26,6 +29,19 @@ EXPECTED_TEMPLATE_FILES = [
     "setup_controller.sh",
     "setup_worker.sh",
 ]
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "expected_image"),
+    [
+        ("H100", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
+        ("B200", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
+        ("B300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+        ("GB300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+    ],
+)
+def test_default_base_image(accelerator, expected_image):
+    assert default_base_image(accelerator) == expected_image
 
 
 def test_build_workstation_project_defaults():
@@ -87,6 +103,29 @@ def test_workstation_template_dir_exists():
     assert WORKSTATION_TEMPLATE_DIR.exists()
     for name in EXPECTED_TEMPLATE_FILES:
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
+
+
+@pytest.mark.parametrize("remote", [None, "baseten"])
+def test_workstation_ssh_hostnames_omits_default_remote(remote):
+    assert workstation_ssh_hostnames("job123", 1, remote=remote) == [
+        "training-job-job123-0.ssh.baseten.co"
+    ]
+
+
+def test_workstation_ssh_hostnames_includes_non_default_remote():
+    # Needed so the proxy command resolves the right ~/.trussrc entry when the
+    # user has several remotes configured.
+    assert workstation_ssh_hostnames("job123", 1, remote="dev") == [
+        "training-job-job123-0.dev.ssh.baseten.co"
+    ]
+
+
+def test_workstation_ssh_hostnames_one_per_node_in_rank_order():
+    assert workstation_ssh_hostnames("job123", 3) == [
+        "training-job-job123-0.ssh.baseten.co",
+        "training-job-job123-1.ssh.baseten.co",
+        "training-job-job123-2.ssh.baseten.co",
+    ]
 
 
 class TestWorkstationTeamResolution:
@@ -164,3 +203,152 @@ class TestWorkstationTeamResolution:
         assert result.exit_code == 1
         assert "does not exist" in result.output
         mock_push.assert_not_called()
+
+
+class TestWorkstationJsonOutput:
+    PUSH_RESPONSE = {
+        "id": "job123",
+        "training_project": {"id": "proj123", "name": "workstation-H100"},
+    }
+
+    @staticmethod
+    def _setup_mock_remote():
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = {
+            "team-a": TeamType(id="team1", name="team-a", default=True)
+        }
+        mock_api.list_training_projects.return_value = []
+        return mock_remote
+
+    @staticmethod
+    def _invoke(runner, *extra_args):
+        return runner.invoke(
+            truss_cli,
+            [
+                "train",
+                "workstation",
+                "--remote",
+                "test_remote",
+                "--output-format",
+                "json",
+                *extra_args,
+            ],
+        )
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_output_carries_node_addresses(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(CliRunner())
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload["job_id"] == "job123"
+        assert payload["project"] == {"id": "proj123", "name": "workstation-H100"}
+        assert payload["accelerator"] == "H100"
+        assert payload["gpu_count"] == 1
+        assert payload["node_count"] == 1
+        assert payload["orchestrator"] is None
+        assert payload["nodes"] == [
+            {
+                "rank": 0,
+                "hostname": "training-job-job123-0.test_remote.ssh.baseten.co",
+                "is_leader": True,
+            }
+        ]
+        assert payload["job"] == self.PUSH_RESPONSE
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_output_multi_node(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(CliRunner(), "--node-count", "2")
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload["node_count"] == 2
+        assert payload["gpu_count"] == 8
+        assert payload["orchestrator"] == "slurm"
+        assert [node["rank"] for node in payload["nodes"]] == [0, 1]
+        assert [node["is_leader"] for node in payload["nodes"]] == [True, False]
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_keeps_progress_output_off_stdout(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(CliRunner())
+
+        assert result.exit_code == 0, result.output
+        # stdout parses as a single JSON document, nothing else interleaved.
+        json.loads(result.stdout)
+        assert "Launching workstation" in result.stderr
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_suppresses_rest_client_error_print(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote = self._setup_mock_remote()
+        mock_remote_factory.return_value = mock_remote
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(CliRunner())
+
+        assert result.exit_code == 0, result.output
+        # Otherwise 4xx messages land on stdout and corrupt the JSON stream.
+        assert mock_remote.api.suppress_error_print is True
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_reports_failures_as_structured_error(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.side_effect = RuntimeError("no capacity")
+
+        result = self._invoke(CliRunner())
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {"error": {"message": "no capacity"}}
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_text_mode_is_unchanged_by_default(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = CliRunner().invoke(
+            truss_cli, ["train", "workstation", "--remote", "test_remote"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Workstation created!" in result.output
+        assert "ssh training-job-job123-0.test_remote.ssh.baseten.co" in result.output

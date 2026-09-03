@@ -20,7 +20,7 @@ from truss_train.definitions import (
     TrainingProject,
 )
 
-DEFAULT_BASE_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
+DEFAULT_BASE_IMAGE = "nvidia/cuda:12.9.1-devel-ubuntu24.04"
 B300_BASE_IMAGE = "nvidia/cuda:13.0.3-devel-ubuntu24.04"
 SUPPORTED_WORKSTATION_ACCELERATORS = [
     acc.value for acc in Accelerator if acc.value != Accelerator._B10.value
@@ -43,6 +43,26 @@ def copy_workstation_templates(target_dir: Path) -> None:
 
 
 ORCHESTRATOR_START_COMMANDS = {"slurm": "bash /b10/workspace/setup_slurm.sh"}
+
+SSH_HOSTNAME_SUFFIX = "ssh.baseten.co"
+# Remote name that `truss` (and therefore ~/.trussrc) uses by default.
+DEFAULT_SSH_REMOTE = "baseten"
+
+
+def workstation_ssh_hostnames(
+    job_id: str, node_count: int, remote: Optional[str] = None
+) -> list[str]:
+    """SSH hostnames for a workstation's nodes, ordered by node rank.
+
+    The remote segment is optional in the hostname grammar that
+    `truss.cli.proxy_command` parses. It is only needed to disambiguate when
+    ~/.trussrc holds several remotes, so it is omitted for the default remote to
+    keep the common case short.
+    """
+    host_suffix = SSH_HOSTNAME_SUFFIX
+    if remote and remote != DEFAULT_SSH_REMOTE:
+        host_suffix = f"{remote}.{SSH_HOSTNAME_SUFFIX}"
+    return [f"training-job-{job_id}-{rank}.{host_suffix}" for rank in range(node_count)]
 
 
 def build_workstation_project(
