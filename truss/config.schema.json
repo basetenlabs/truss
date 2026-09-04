@@ -1149,6 +1149,10 @@
           "default": {
             "kv_cache_free_gpu_mem_fraction": 0.9,
             "kv_cache_host_memory_bytes": null,
+            "lora_cache_max_adapter_size": null,
+            "lora_cache_optimal_adapter_size": null,
+            "lora_cache_gpu_memory_fraction": null,
+            "lora_cache_host_memory_bytes": null,
             "enable_chunked_context": true,
             "batch_scheduler_policy": "guaranteed_no_evict",
             "request_default_max_tokens": null,
@@ -1360,6 +1364,10 @@
           "default": {
             "kv_cache_free_gpu_mem_fraction": 0.9,
             "kv_cache_host_memory_bytes": null,
+            "lora_cache_max_adapter_size": null,
+            "lora_cache_optimal_adapter_size": null,
+            "lora_cache_gpu_memory_fraction": null,
+            "lora_cache_host_memory_bytes": null,
             "enable_chunked_context": true,
             "batch_scheduler_policy": "guaranteed_no_evict",
             "request_default_max_tokens": null,
@@ -1706,6 +1714,59 @@
           ],
           "default": null,
           "title": "Kv Cache Host Memory Bytes"
+        },
+        "lora_cache_max_adapter_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Max Adapter Size"
+        },
+        "lora_cache_optimal_adapter_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Optimal Adapter Size"
+        },
+        "lora_cache_gpu_memory_fraction": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Gpu Memory Fraction"
+        },
+        "lora_cache_host_memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Host Memory Bytes"
         },
         "enable_chunked_context": {
           "default": true,

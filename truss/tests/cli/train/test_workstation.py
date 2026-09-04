@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 import tempfile
@@ -223,8 +224,12 @@ class TestWorkstationJsonOutput:
         return mock_remote
 
     @staticmethod
-    def _invoke(runner, *extra_args):
-        return runner.invoke(
+    def _invoke(*extra_args):
+        runner_kwargs = {}
+        if "mix_stderr" in inspect.signature(CliRunner.__init__).parameters:
+            runner_kwargs["mix_stderr"] = False
+
+        return CliRunner(**runner_kwargs).invoke(
             truss_cli,
             [
                 "train",
@@ -247,7 +252,7 @@ class TestWorkstationJsonOutput:
         mock_get_remote_team.return_value = None
         mock_push.return_value = self.PUSH_RESPONSE
 
-        result = self._invoke(CliRunner())
+        result = self._invoke()
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.stdout)
@@ -276,7 +281,7 @@ class TestWorkstationJsonOutput:
         mock_get_remote_team.return_value = None
         mock_push.return_value = self.PUSH_RESPONSE
 
-        result = self._invoke(CliRunner(), "--node-count", "2")
+        result = self._invoke("--node-count", "2")
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.stdout)
@@ -296,7 +301,7 @@ class TestWorkstationJsonOutput:
         mock_get_remote_team.return_value = None
         mock_push.return_value = self.PUSH_RESPONSE
 
-        result = self._invoke(CliRunner())
+        result = self._invoke()
 
         assert result.exit_code == 0, result.output
         # stdout parses as a single JSON document, nothing else interleaved.
@@ -314,7 +319,7 @@ class TestWorkstationJsonOutput:
         mock_get_remote_team.return_value = None
         mock_push.return_value = self.PUSH_RESPONSE
 
-        result = self._invoke(CliRunner())
+        result = self._invoke()
 
         assert result.exit_code == 0, result.output
         # Otherwise 4xx messages land on stdout and corrupt the JSON stream.
@@ -330,7 +335,7 @@ class TestWorkstationJsonOutput:
         mock_get_remote_team.return_value = None
         mock_push.side_effect = RuntimeError("no capacity")
 
-        result = self._invoke(CliRunner())
+        result = self._invoke()
 
         assert result.exit_code == 1
         assert json.loads(result.stdout) == {"error": {"message": "no capacity"}}
