@@ -1,3 +1,22 @@
+"""Client for the pod-local BDN Hot Load API.
+
+Hot Load gives an opted-in model pod a read-only front door at ``/bdn``: the
+Unix socket ``/bdn/hotload.sock`` and the directory ``/bdn/mounts``. A request
+names a BDN volume source and a target directory name; the node attaches the
+resolved, immutable volume view at ``/bdn/mounts/<target>`` before it answers,
+so a successful attach is readable as soon as it returns.
+
+The wire contract is HTTP+JSON over the socket:
+
+* ``POST /v1/hotload/volumes`` with ``{"source", "target", "include"?,
+  "exclude"?}`` and a required ``Idempotency-Key`` header returns ``202`` and
+  the volume attachment. Replaying the same key with the same body returns the
+  same attachment; the same key with a different body is ``409``.
+* ``GET /v1/hotload/volumes`` returns ``{"volumes": [...]}``.
+* ``GET``/``DELETE /v1/hotload/volumes/{id}`` read or detach one attachment.
+* Errors carry ``{"code", "message", "retryable"}`` in the body.
+"""
+
 from __future__ import annotations
 
 import http.client
@@ -8,49 +27,31 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 
-DEFAULT_SOCKET_PATH = Path("/run/bdn/hotload.sock")
-_MOUNT_COLLECTION_PATH = "/v1/hotload"
-_INSPECTION_PATH = f"{_MOUNT_COLLECTION_PATH}/inspect"
+DEFAULT_SOCKET_PATH = Path("/bdn/hotload.sock")
+MOUNT_ROOT = Path("/bdn/mounts")
+_VOLUMES_PATH = "/v1/hotload/volumes"
 
 
-class MountState(str, Enum):
-    ACCEPTED = "ACCEPTED"
-    RESOLVING = "RESOLVING"
-    MOUNTING = "MOUNTING"
+class AttachmentState(str, Enum):
     READY = "READY"
     FAILED = "FAILED"
-    UNMOUNTING = "UNMOUNTING"
 
 
 @dataclass(frozen=True)
-class MountFailure:
-    code: str
-    message: str
-    retryable: bool
+class VolumeAttachment:
+    """One attached volume view, as the node reports it."""
 
-
-@dataclass(frozen=True)
-class Mount:
     id: str
     revision: int
     source: str
     target: str
-    include: tuple[str, ...]
-    exclude: tuple[str, ...]
     path: str
-    pinned_source: Optional[str]
-    state: MountState
-    error: Optional[MountFailure]
-
-
-@dataclass(frozen=True)
-class SourceInspection:
-    source: str
     pinned_source: str
-    file_count: int
-    total_size: int
+    state: AttachmentState
+    include: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
 
 
 class HotLoadError(Exception):
@@ -66,6 +67,8 @@ class HotLoadProtocolError(HotLoadError):
 
 
 class HotLoadAPIError(HotLoadError):
+    """The server rejected a request; ``code`` is the stable error identifier."""
+
     def __init__(
         self, status_code: int, code: str, message: str, retryable: bool
     ) -> None:
@@ -78,31 +81,15 @@ class HotLoadAPIError(HotLoadError):
         self.retryable = retryable
 
 
-class HotLoadMountError(HotLoadError):
-    def __init__(self, mount: Mount) -> None:
-        failure = mount.error or MountFailure(
-            code="MOUNT_FAILED",
-            message="mount failed without an error body",
-            retryable=False,
-        )
-        super().__init__(
-            f"Hot Load mount {mount.id} failed ({failure.code}): {failure.message}"
-        )
-        self.mount = mount
-        self.code = failure.code
-        self.message = failure.message
-        self.retryable = failure.retryable
+class HotLoadAttachError(HotLoadError):
+    """The server accepted the request but reports the attachment as failed."""
 
-
-class HotLoadTimeoutError(HotLoadError):
-    def __init__(self, mount_id: str, timeout_sec: float, last_mount: Mount) -> None:
+    def __init__(self, attachment: VolumeAttachment) -> None:
         super().__init__(
-            f"Hot Load mount {mount_id} did not become ready within "
-            f"{timeout_sec:g} seconds; last state was {last_mount.state.value}"
+            f"Hot Load attachment {attachment.id} for {attachment.source} at "
+            f"{attachment.path} is {attachment.state.value}"
         )
-        self.mount_id = mount_id
-        self.timeout_sec = timeout_sec
-        self.last_mount = last_mount
+        self.attachment = attachment
 
 
 class _UnixHTTPConnection(http.client.HTTPConnection):
@@ -128,181 +115,74 @@ class HotLoadClient:
         self,
         socket_path: Union[str, Path] = DEFAULT_SOCKET_PATH,
         *,
-        request_timeout_sec: float = 10.0,
-        poll_interval_sec: float = 0.1,
+        request_timeout_sec: float = 600.0,
+        retry_interval_sec: float = 0.1,
         max_retries: int = 2,
     ) -> None:
+        # An attach resolves the source, acquires the shared view, and binds it
+        # before answering, so the request timeout bounds a whole cold attach,
+        # not a round trip.
         if request_timeout_sec <= 0:
             raise ValueError("request_timeout_sec must be positive")
-        if poll_interval_sec < 0:
-            raise ValueError("poll_interval_sec must not be negative")
+        if retry_interval_sec < 0:
+            raise ValueError("retry_interval_sec must not be negative")
         if max_retries < 0:
             raise ValueError("max_retries must not be negative")
         self.socket_path = Path(socket_path)
         self.request_timeout_sec = request_timeout_sec
-        self.poll_interval_sec = poll_interval_sec
+        self.retry_interval_sec = retry_interval_sec
         self.max_retries = max_retries
 
-    def mount(
+    def attach(
         self,
         source: str,
         target: str,
         *,
-        wait: bool = True,
-        idempotency_key: Optional[str] = None,
-        wait_timeout_sec: float = 300.0,
         include: Sequence[str] = (),
         exclude: Sequence[str] = (),
-    ) -> Mount:
-        mount = self.create_mount(
-            source,
-            target,
-            idempotency_key=idempotency_key,
-            include=include,
-            exclude=exclude,
-        )
-        if not wait:
-            return mount
-        return self.wait_until_ready(
-            mount.id, timeout_sec=wait_timeout_sec, initial_mount=mount
-        )
+        idempotency_key: Optional[str] = None,
+    ) -> VolumeAttachment:
+        """Attach ``source`` at ``/bdn/mounts/<target>`` and return it once readable.
 
-    def create_mount(
-        self,
-        source: str,
-        target: str,
-        *,
-        idempotency_key: Optional[str] = None,
-        include: Sequence[str] = (),
-        exclude: Sequence[str] = (),
-    ) -> Mount:
+        ``idempotency_key`` defaults to a fresh key that is reused across the
+        client's own transport retries, so a retried request cannot attach the
+        same volume twice. Pass a stable key to make the call safe to repeat
+        from the caller's side too.
+        """
         key = idempotency_key or uuid.uuid4().hex
         body: dict[str, Any] = {"source": source, "target": target}
         if include:
             body["include"] = list(include)
         if exclude:
             body["exclude"] = list(exclude)
-        payload = self._request(
-            "POST",
-            _MOUNT_COLLECTION_PATH,
-            body=body,
-            headers={"Idempotency-Key": key},
-            retry_transport=True,
+        attachment = _parse_attachment(
+            self._request(
+                "POST",
+                _VOLUMES_PATH,
+                body=body,
+                headers={"Idempotency-Key": key},
+                retry_transport=True,
+            )
         )
-        return _parse_mount(payload)
+        if attachment.state is not AttachmentState.READY:
+            raise HotLoadAttachError(attachment)
+        return attachment
 
-    def inspect_source(self, source: str) -> SourceInspection:
-        payload = self._request("POST", _INSPECTION_PATH, body={"source": source})
-        return _parse_source_inspection(payload)
-
-    def list_mounts(self) -> list[Mount]:
-        payload = _expect_mapping(
-            self._request("GET", _MOUNT_COLLECTION_PATH), "mount list"
-        )
-        raw_mounts = payload.get("mounts")
-        if not isinstance(raw_mounts, list):
+    def list_volumes(self) -> list[VolumeAttachment]:
+        payload = _expect_mapping(self._request("GET", _VOLUMES_PATH), "volume list")
+        volumes = payload.get("volumes")
+        if not isinstance(volumes, list):
             raise HotLoadProtocolError(
-                "mount list response must contain a mounts array"
+                "volume list response must contain a volumes array"
             )
-        return [_parse_mount(raw_mount) for raw_mount in raw_mounts]
+        return [_parse_attachment(volume) for volume in volumes]
 
-    def get_mount(self, mount_id: str) -> Mount:
-        return _parse_mount(self._request("GET", _mount_path(mount_id)))
+    def get_volume(self, attachment_id: str) -> VolumeAttachment:
+        return _parse_attachment(self._request("GET", _volume_path(attachment_id)))
 
-    def delete_mount(self, mount_id: str) -> None:
-        self._request("DELETE", _mount_path(mount_id))
-
-    def watch_mount(
-        self, mount_id: str, *, after_revision: int, timeout_sec: float = 30.0
-    ) -> Optional[Mount]:
-        if after_revision < 0:
-            raise ValueError("after_revision must not be negative")
-        if not 0 < timeout_sec <= 30:
-            raise ValueError("timeout_sec must be between 0 and 30 seconds")
-        timeout_ms = max(1, int(timeout_sec * 1000))
-        payload = self._request(
-            "GET",
-            f"{_mount_path(mount_id)}/watch?after={after_revision}&timeout_ms={timeout_ms}",
-            request_timeout_sec=max(self.request_timeout_sec, timeout_sec + 1),
-        )
-        return None if payload is None else _parse_mount(payload)
-
-    def watch(
-        self,
-        mount_id: str,
-        *,
-        timeout_sec: float = 300.0,
-        initial_mount: Optional[Mount] = None,
-    ) -> Iterator[Mount]:
-        if timeout_sec <= 0:
-            raise ValueError("timeout_sec must be positive")
-        deadline = time.monotonic() + timeout_sec
-        mount = initial_mount or self.get_mount(mount_id)
-        yield mount
-        while mount.state not in {
-            MountState.READY,
-            MountState.FAILED,
-            MountState.UNMOUNTING,
-        }:
-            remaining_sec = deadline - time.monotonic()
-            if remaining_sec <= 0:
-                raise HotLoadTimeoutError(mount_id, timeout_sec, mount)
-            changed = self.watch_mount(
-                mount_id,
-                after_revision=mount.revision,
-                timeout_sec=min(30.0, remaining_sec),
-            )
-            if changed is not None:
-                mount = changed
-                yield mount
-
-    def wait_until_ready(
-        self,
-        mount_id: str,
-        *,
-        timeout_sec: float = 300.0,
-        initial_mount: Optional[Mount] = None,
-    ) -> Mount:
-        if timeout_sec <= 0:
-            raise ValueError("timeout_sec must be positive")
-        mount = initial_mount
-        for mount in self.watch(
-            mount_id, timeout_sec=timeout_sec, initial_mount=initial_mount
-        ):
-            if mount.state == MountState.READY:
-                return mount
-            if mount.state == MountState.FAILED:
-                raise HotLoadMountError(mount)
-            if mount.state == MountState.UNMOUNTING:
-                raise HotLoadProtocolError(
-                    f"Hot Load mount {mount_id} began unmounting before it became ready"
-                )
-        raise HotLoadProtocolError(f"Hot Load watch for {mount_id} ended unexpectedly")
-
-    def unmount(self, mount_id: str, *, wait_timeout_sec: float = 300.0) -> None:
-        self.cancel_mount(mount_id, wait_timeout_sec=wait_timeout_sec)
-
-    def cancel_mount(self, mount_id: str, *, wait_timeout_sec: float = 300.0) -> None:
-        self.delete_mount(mount_id)
-        self.wait_until_gone(mount_id, timeout_sec=wait_timeout_sec)
-
-    def wait_until_gone(self, mount_id: str, *, timeout_sec: float = 300.0) -> None:
-        if timeout_sec <= 0:
-            raise ValueError("timeout_sec must be positive")
-        deadline = time.monotonic() + timeout_sec
-        while True:
-            try:
-                self.get_mount(mount_id)
-            except HotLoadAPIError as error:
-                if error.status_code == 404:
-                    return
-                raise
-            remaining_sec = deadline - time.monotonic()
-            if remaining_sec <= 0:
-                raise HotLoadError(
-                    f"Hot Load mount {mount_id} was not removed within {timeout_sec:g} seconds"
-                )
-            time.sleep(min(self.poll_interval_sec, remaining_sec))
+    def detach(self, attachment_id: str) -> None:
+        """Detach one attachment. The server answers once the mount is gone."""
+        self._request("DELETE", _volume_path(attachment_id))
 
     def _request(
         self,
@@ -312,7 +192,6 @@ class HotLoadClient:
         body: Optional[Mapping[str, Any]] = None,
         headers: Optional[Mapping[str, str]] = None,
         retry_transport: bool = False,
-        request_timeout_sec: Optional[float] = None,
     ) -> Any:
         request_headers = {"Accept": "application/json", **(headers or {})}
         encoded_body = None
@@ -323,9 +202,7 @@ class HotLoadClient:
         retry_request = retry_transport or method == "GET"
         attempts = self.max_retries + 1 if retry_request else 1
         for attempt in range(attempts):
-            connection = _UnixHTTPConnection(
-                self.socket_path, request_timeout_sec or self.request_timeout_sec
-            )
+            connection = _UnixHTTPConnection(self.socket_path, self.request_timeout_sec)
             try:
                 connection.request(
                     method, path, body=encoded_body, headers=request_headers
@@ -337,7 +214,7 @@ class HotLoadClient:
                     raise HotLoadConnectionError(
                         f"could not call Hot Load through {self.socket_path}: {error}"
                     ) from error
-                time.sleep(self.poll_interval_sec)
+                time.sleep(self.retry_interval_sec)
                 continue
             finally:
                 connection.close()
@@ -348,14 +225,14 @@ class HotLoadClient:
             api_error = _parse_api_error(response.status, payload)
             if not (retry_request and api_error.retryable and attempt + 1 < attempts):
                 raise api_error
-            time.sleep(self.poll_interval_sec)
+            time.sleep(self.retry_interval_sec)
         raise RuntimeError("unreachable Hot Load request retry state")
 
 
-def _mount_path(mount_id: str) -> str:
-    if not mount_id or "/" in mount_id:
-        raise ValueError("mount_id must be a non-empty path segment")
-    return f"{_MOUNT_COLLECTION_PATH}/{mount_id}"
+def _volume_path(attachment_id: str) -> str:
+    if not attachment_id or "/" in attachment_id:
+        raise ValueError("attachment_id must be a non-empty path segment")
+    return f"{_VOLUMES_PATH}/{attachment_id}"
 
 
 def _decode_json(body: bytes) -> Any:
@@ -366,8 +243,7 @@ def _decode_json(body: bytes) -> Any:
 
 
 def _parse_api_error(status_code: int, payload: Any) -> HotLoadAPIError:
-    envelope = _expect_mapping(payload, "error response")
-    error = _expect_mapping(envelope.get("error"), "error response body")
+    error = _expect_mapping(payload, "error response")
     return HotLoadAPIError(
         status_code=status_code,
         code=_expect_str(error, "code"),
@@ -376,52 +252,25 @@ def _parse_api_error(status_code: int, payload: Any) -> HotLoadAPIError:
     )
 
 
-def _parse_mount(payload: Any) -> Mount:
-    raw = _expect_mapping(payload, "mount response")
+def _parse_attachment(payload: Any) -> VolumeAttachment:
+    raw = _expect_mapping(payload, "volume attachment")
     raw_state = _expect_str(raw, "state")
     try:
-        state = MountState(raw_state)
+        state = AttachmentState(raw_state)
     except ValueError as error:
         raise HotLoadProtocolError(
-            f"mount response has unknown state {raw_state!r}"
+            f"volume attachment has unknown state {raw_state!r}"
         ) from error
-
-    raw_error = raw.get("error")
-    failure = None
-    if raw_error is not None:
-        error_body = _expect_mapping(raw_error, "mount error")
-        failure = MountFailure(
-            code=_expect_str(error_body, "code"),
-            message=_expect_str(error_body, "message"),
-            retryable=_expect_bool(error_body, "retryable"),
-        )
-
-    pinned_source = raw.get("pinned_source")
-    if pinned_source is not None and not isinstance(pinned_source, str):
-        raise HotLoadProtocolError(
-            "mount response field 'pinned_source' must be a string or null"
-        )
-    return Mount(
+    return VolumeAttachment(
         id=_expect_str(raw, "id"),
         revision=_expect_int(raw, "revision"),
         source=_expect_str(raw, "source"),
         target=_expect_str(raw, "target"),
+        path=_expect_str(raw, "path"),
+        pinned_source=_expect_str(raw, "pinned_source"),
+        state=state,
         include=_expect_string_tuple(raw, "include"),
         exclude=_expect_string_tuple(raw, "exclude"),
-        path=_expect_str(raw, "path"),
-        pinned_source=pinned_source,
-        state=state,
-        error=failure,
-    )
-
-
-def _parse_source_inspection(payload: Any) -> SourceInspection:
-    raw = _expect_mapping(payload, "source inspection response")
-    return SourceInspection(
-        source=_expect_str(raw, "source"),
-        pinned_source=_expect_str(raw, "pinned_source"),
-        file_count=_expect_int(raw, "file_count"),
-        total_size=_expect_int(raw, "total_size"),
     )
 
 
