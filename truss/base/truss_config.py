@@ -57,6 +57,8 @@ WEIGHTS_AUTH_SECRET_NAME_PARAM = "auth_secret_name"
 DOCKER_AUTH_SECRET_NAME_PARAM = "secret_name"
 AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
 AWS_OIDC_REGION_PARAM = "aws_oidc_region"
+AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
+AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
@@ -349,6 +351,12 @@ class WeightsAuth(AuthFieldsMixin):
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
+    aws_assume_role_arn: Optional[str] = pydantic.Field(
+        default=None, description="AWS IAM role ARN for AssumeRole authentication."
+    )
+    aws_assume_role_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for AssumeRole authentication."
+    )
 
     @pydantic.field_validator("auth_method", mode="before")
     @classmethod
@@ -364,6 +372,8 @@ class WeightsAuth(AuthFieldsMixin):
                 forbidden=[
                     AWS_OIDC_ROLE_ARN_PARAM,
                     AWS_OIDC_REGION_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
@@ -376,6 +386,8 @@ class WeightsAuth(AuthFieldsMixin):
                 required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
                 forbidden=[
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                     AWS_ASSUME_ROLE_ARN_PARAM,
