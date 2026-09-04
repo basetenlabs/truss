@@ -45,6 +45,7 @@ model_metadata:
         if trt_llm_config.build.base_model in [
             TrussTRTLLMModel.ENCODER,
             TrussTRTLLMModel.ENCODER_BERT,
+            TrussTRTLLMModel.ENCODER_TORCH,
         ]:
             return ("", False)
         # only briton requires openai-compatible tag, all others don't care about the openai tag
