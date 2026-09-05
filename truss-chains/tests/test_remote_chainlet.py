@@ -1,12 +1,121 @@
 import asyncio
+import contextlib
 import logging
 import re
 import threading
 import time
 
 import pytest
+from aiohttp import web
 
 import truss_chains as chains
+
+
+async def _endless_stream(request):
+    """A dependency chainlet mid-generation: it never completes on its own."""
+    response = web.StreamResponse()
+    await response.prepare(request)
+    try:
+        while True:
+            await response.write(b"chunk")
+            await asyncio.sleep(0.01)
+    except (OSError, asyncio.CancelledError):
+        pass
+    return response
+
+
+@contextlib.asynccontextmanager
+async def _serve_stub(handler, concurrency_limit: int):
+    """Runs `handler` on loopback and yields a stub pointed at it."""
+    app = web.Application()
+    app.router.add_post("/", handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    stub = chains.StubBase(
+        service_descriptor=chains.DeployedServiceDescriptor(
+            name="TestChainlet",
+            internal_url=None,
+            predict_url=f"http://127.0.0.1:{runner.addresses[0][1]}/",
+            options=chains.RPCOptions(concurrency_limit=concurrency_limit),
+            display_name="TestChainlet",
+        ),
+        api_key="dummy-API-key",
+    )
+    try:
+        yield stub
+    finally:
+        # Drop client-side sockets first, so streaming handlers observe the
+        # disconnect and return instead of holding shutdown open.
+        if stub._cached_async_client:
+            await stub._cached_async_client[0].close()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(runner.cleanup(), timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_predict_async_stream_holds_semaphore_while_streaming():
+    """The concurrency slot must stay held until the caller is done reading, not
+    released as soon as the response headers arrive."""
+    async with _serve_stub(_endless_stream, concurrency_limit=2) as stub:
+        stream = await stub.predict_async_stream({})
+        await stream.__anext__()
+
+        assert stub._async_semaphore_wrapper.ongoing_requests == 1
+
+        await stream.aclose()
+        assert stub._async_semaphore_wrapper.ongoing_requests == 0
+
+
+@pytest.mark.asyncio
+async def test_predict_async_stream_releases_slot_when_consumer_is_cancelled():
+    """Cancelling the consumer mid-stream (what a client disconnect does) must
+    release the slot, and only then."""
+    async with _serve_stub(_endless_stream, concurrency_limit=2) as stub:
+        started = asyncio.Event()
+
+        async def consume():
+            stream = await stub.predict_async_stream({})
+            async for _ in stream:
+                started.set()
+
+        task = asyncio.create_task(consume())
+        await asyncio.wait_for(started.wait(), timeout=5)
+
+        assert stub._async_semaphore_wrapper.ongoing_requests == 1
+
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert stub._async_semaphore_wrapper.ongoing_requests == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_stream_does_not_wedge_the_stub():
+    """The user-visible symptom: after `concurrency_limit` cancellations the stub
+    could no longer reach its dependency at all."""
+    limit = 2
+    async with _serve_stub(_endless_stream, concurrency_limit=limit) as stub:
+        for _ in range(limit):
+            started = asyncio.Event()
+
+            async def consume():
+                stream = await stub.predict_async_stream({})
+                async for _ in stream:
+                    started.set()
+
+            task = asyncio.create_task(consume())
+            await asyncio.wait_for(started.wait(), timeout=5)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        stream = await asyncio.wait_for(stub.predict_async_stream({}), timeout=5)
+        try:
+            assert await stream.__anext__() == b"chunk"
+        finally:
+            await stream.aclose()
 
 
 @pytest.fixture
