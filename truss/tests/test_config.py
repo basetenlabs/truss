@@ -2030,7 +2030,7 @@ class TestTrussConfigVolumeMounts:
         yaml_content = """
         bdn:
           mounts:
-            - source: bdn://weights/some-model:mytag
+            - source: bdn:weights/some-model:mytag
               path: /models/some-model
         """
         config_path = tmp_path / "config.yaml"
@@ -2040,7 +2040,7 @@ class TestTrussConfigVolumeMounts:
 
         assert config.bdn.mounts == [
             BDNVolumeMount(
-                source="bdn://weights/some-model:mytag", path="/models/some-model"
+                source="bdn:weights/some-model:mytag", path="/models/some-model"
             )
         ]
 
@@ -2049,8 +2049,7 @@ class TestTrussConfigVolumeMounts:
             bdn=BDNConfig(
                 mounts=[
                     BDNVolumeMount(
-                        source="bdn://weights/some-model:mytag",
-                        path="/models/some-model",
+                        source="bdn:weights/some-model:mytag", path="/models/some-model"
                     )
                 ]
             )
@@ -2061,10 +2060,7 @@ class TestTrussConfigVolumeMounts:
         serialized = yaml.safe_load(config_path.read_text())
         assert serialized["bdn"] == {
             "mounts": [
-                {
-                    "source": "bdn://weights/some-model:mytag",
-                    "path": "/models/some-model",
-                }
+                {"source": "bdn:weights/some-model:mytag", "path": "/models/some-model"}
             ]
         }
         parsed_config = TrussConfig.from_yaml(config_path)
@@ -2075,18 +2071,20 @@ class TestTrussConfigVolumeMounts:
         [
             "weights/llama:prod",
             "ftp://weights/llama",
-            "bdn://foo",
-            "bdn:///llama:prod",
-            "bdn://weights/:prod",
-            "bdn://weights/llama:",
-            "bdn://weights/models/llama:prod",
-            "bdn://weights/llama:prod:extra",
-            "bdn://weights/llama@not-a-digest",
-            "bdn://weights/llama@abcdef01234",
-            "bdn://weights/llama@b3:abcdef01234",
-            f"bdn://weights/llama@{'a' * 65}",
-            f"bdn://weights/llama@b3:{'a' * 65}",
-            "bdn://weights/llama@b3:",
+            "bdn://weights/llama:prod",
+            "bdn:foo",
+            "bdn:/llama:prod",
+            "bdn:weights/:prod",
+            "bdn:weights/llama:",
+            "bdn:weights/models/llama:prod",
+            "bdn:weights/llama:prod:extra",
+            "bdn:weights/llama@not-a-digest",
+            "bdn:weights/llama@abcdef01234",
+            "bdn:weights/llama@b3:abcdef01234",
+            f"bdn:weights/llama@{'a' * 65}",
+            f"bdn:weights/llama@b3:{'a' * 65}",
+            "bdn:weights/llama@b3:",
+            "bdn:weights/llama@abcdef012345:prod",
         ],
     )
     def test_volume_source_rejects_invalid_reference(self, source):
@@ -2096,11 +2094,11 @@ class TestTrussConfigVolumeMounts:
     @pytest.mark.parametrize(
         "source",
         [
-            "bdn://weights/llama",
-            "bdn://weights/llama:prod",
-            "bdn://weights/llama@abcdef012345",
-            "bdn://weights/llama@b3:ABCDEF012345",
-            f"bdn://weights/llama@{'a' * 64}",
+            "bdn:weights/llama",
+            "bdn:weights/llama:prod",
+            "bdn:weights/llama@abcdef012345",
+            "bdn:weights/llama@b3:ABCDEF012345",
+            f"bdn:weights/llama@{'a' * 64}",
         ],
     )
     def test_volume_source_accepts_supported_references(self, source):
@@ -2110,11 +2108,11 @@ class TestTrussConfigVolumeMounts:
 
     def test_volume_mount_requires_absolute_path(self):
         with pytest.raises(pydantic.ValidationError, match="absolute path"):
-            BDNVolumeMount(source="bdn://weights/llama:prod", path="models/llama")
+            BDNVolumeMount(source="bdn:weights/llama:prod", path="models/llama")
 
     def test_volume_mount_normalizes_path(self):
         volume_mount = BDNVolumeMount(
-            source="bdn://weights/llama:prod", path="/models/./llama/"
+            source="bdn:weights/llama:prod", path="/models/./llama/"
         )
 
         assert volume_mount.path == "/models/llama"
@@ -2125,10 +2123,8 @@ class TestTrussConfigVolumeMounts:
         ):
             BDNConfig(
                 mounts=[
-                    BDNVolumeMount(source="bdn://weights/llama:prod", path="/models"),
-                    BDNVolumeMount(
-                        source="bdn://weights/mistral:prod", path="/models/"
-                    ),
+                    BDNVolumeMount(source="bdn:weights/llama:prod", path="/models"),
+                    BDNVolumeMount(source="bdn:weights/mistral:prod", path="/models/"),
                 ]
             )
 
@@ -2146,9 +2142,7 @@ class TestTrussConfigVolumeMounts:
         ],
     )
     def test_volume_mount_rejects_external_source(self, source):
-        with pytest.raises(
-            pydantic.ValidationError, match="must use the bdn:// scheme"
-        ):
+        with pytest.raises(pydantic.ValidationError, match="must use the bdn: scheme"):
             BDNVolumeMount(source=source, path="/models/external")
 
 
