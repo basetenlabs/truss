@@ -1179,7 +1179,12 @@ python main.py --gpus $PARALLEL
         assert cfg.has_section("eventlistener:quit_on_failure")
 
 
-def test_nginx_config_disables_disk_writes(tmp_path):
+@pytest.mark.parametrize(
+    "max_payload_size,expected_max_payload_size", [(None, "64M"), ("128M", "128M")]
+)
+def test_nginx_config_disables_disk_writes(
+    tmp_path, max_payload_size, expected_max_payload_size
+):
     """Test that nginx configuration disables all disk writes."""
 
     class MockDockerServer:
@@ -1187,6 +1192,9 @@ def test_nginx_config_disables_disk_writes(tmp_path):
         readiness_endpoint = "/readiness"
         liveness_endpoint = "/health"
         server_port = 8090
+        max_payload_size = None
+
+    MockDockerServer.max_payload_size = max_payload_size
 
     class MockTransport:
         kind = "http"
@@ -1206,6 +1214,7 @@ def test_nginx_config_disables_disk_writes(tmp_path):
     # Verify logging is disabled
     assert "access_log off;" in nginx_config
     assert "error_log /dev/null;" in nginx_config
+    assert f"client_max_body_size {expected_max_payload_size};" in nginx_config
 
     # Verify temp paths use /dev/shm (in-memory filesystem)
     assert "client_body_temp_path /dev/shm/nginx_client_temp;" in nginx_config

@@ -1513,6 +1513,20 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
         assert docker_server.run_as_user_id == expected
 
 
+def test_docker_server_invalid_max_payload_size():
+    with pytest.raises(
+        pydantic.ValidationError, match="Invalid max_payload_size '64MB'"
+    ):
+        DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            max_payload_size="64MB",
+        )
+
+
 # =============================================================================
 # Weights Configuration Tests
 # =============================================================================

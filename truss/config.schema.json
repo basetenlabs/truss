@@ -482,6 +482,19 @@
           "default": null,
           "description": "Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
           "title": "No Build"
+        },
+        "max_payload_size": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The maximum inbound request body size for the container's reverse proxy. Accepts nginx size syntax, such as 64M, 128M, or 1G. Defaults to 64M.",
+          "title": "Max Payload Size"
         }
       },
       "required": [
