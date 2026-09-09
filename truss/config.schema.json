@@ -46,9 +46,47 @@
       "title": "AutoscalingMetric",
       "type": "object"
     },
+    "BDNAccess": {
+      "additionalProperties": true,
+      "description": "Access grants for a BDN namespace.",
+      "properties": {
+        "namespace": {
+          "description": "BDN namespace to grant access to.",
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "grants": {
+          "description": "Operations granted in this namespace.",
+          "items": {
+            "$ref": "#/$defs/BDNAccessGrant"
+          },
+          "minItems": 1,
+          "title": "Grants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "namespace",
+        "grants"
+      ],
+      "title": "BDNAccess",
+      "type": "object"
+    },
+    "BDNAccessGrant": {
+      "description": "An operation a deployment may perform in a BDN namespace.",
+      "enum": [
+        "pull",
+        "push",
+        "tag",
+        "inspect"
+      ],
+      "title": "BDNAccessGrant",
+      "type": "string"
+    },
     "BDNConfig": {
       "additionalProperties": true,
-      "description": "Configuration for mounting BDN volumes.",
+      "description": "Configuration for BDN mounts, access grants, and hot-loading.",
       "properties": {
         "mounts": {
           "description": "Existing BDN volumes to mount when the model starts.",
@@ -57,9 +95,35 @@
           },
           "title": "Mounts",
           "type": "array"
+        },
+        "access": {
+          "description": "Namespace-level BDN access grants for the deployment.",
+          "items": {
+            "$ref": "#/$defs/BDNAccess"
+          },
+          "title": "Access",
+          "type": "array"
+        },
+        "hotload": {
+          "$ref": "#/$defs/BDNHotload",
+          "description": "Configure loading BDN data while the deployment is running."
         }
       },
       "title": "BDNConfig",
+      "type": "object"
+    },
+    "BDNHotload": {
+      "additionalProperties": true,
+      "description": "Configuration for loading BDN data while a deployment is running.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "If true, enables BDN hot-loading.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "BDNHotload",
       "type": "object"
     },
     "BDNVolumeMount": {
@@ -2362,7 +2426,7 @@
     },
     "bdn": {
       "$ref": "#/$defs/BDNConfig",
-      "description": "Configure BDN volume mounts."
+      "description": "Configure BDN volume mounts, access grants, and hot-loading."
     },
     "trt_llm": {
       "anyOf": [
