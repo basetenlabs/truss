@@ -579,9 +579,9 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
-_BDN_PREFIX = "bdn://"
+_BDN_PREFIX = "bdn:"
 _BDN_VOLUME_SOURCE_REGEX = re.compile(
-    r"bdn://(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
+    r"bdn:(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
     r"(?::(?P<tag>[^/:@\x00]+)|@(?:b3:)?(?P<digest>[0-9a-fA-F]+))?"
 )
 _MIN_BDN_DIGEST_PREFIX_LENGTH = 12
@@ -615,7 +615,7 @@ def _normalize_bdn_mount_path(value: str) -> str:
 class BDNVolumeMount(custom_types.ConfigModel):
     """An existing BDN volume mounted into a model container.
 
-    BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
+    BDN vocabulary, read off a reference like `bdn:weights/llama-8b:prod`:
 
     - A *namespace* (`weights`) groups volumes within your organization, and is
       the unit that access grants and storage are scoped to. Names are
@@ -630,14 +630,14 @@ class BDNVolumeMount(custom_types.ConfigModel):
     ```
     bdn:
       mounts:
-        - source: bdn://weights/llama-8b:prod
+        - source: bdn:weights/llama-8b:prod
           path: /models/llama
     ```
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+        description="BDN volume reference to mount (for example, bdn:weights/llama-8b:prod).",
     )
     path: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ..., description="Absolute path where the volume will be mounted at runtime."
@@ -647,13 +647,13 @@ class BDNVolumeMount(custom_types.ConfigModel):
     @classmethod
     def _validate_source(cls, value: str) -> str:
         if not value.startswith(_BDN_PREFIX):
-            raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
+            raise ValueError(f"Volume source must use the bdn: scheme, got: {value}")
 
         match = _BDN_VOLUME_SOURCE_REGEX.fullmatch(value)
         if match is None:
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
-                "Expected format: bdn://namespace/volume[:tag|@digest]"
+                "Expected format: bdn:namespace/volume[:tag|@digest]"
             )
 
         _validate_bdn_identifier("namespace", match.group("namespace"))
