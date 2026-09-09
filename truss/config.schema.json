@@ -79,7 +79,8 @@
         "pull",
         "push",
         "tag",
-        "inspect"
+        "inspect",
+        "delete"
       ],
       "title": "BDNAccessGrant",
       "type": "string"

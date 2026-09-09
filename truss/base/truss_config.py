@@ -686,6 +686,7 @@ class BDNAccessGrant(str, enum.Enum):
     PUSH = "push"
     TAG = "tag"
     INSPECT = "inspect"
+    DELETE = "delete"
 
 
 class BDNAccess(custom_types.ConfigModel):

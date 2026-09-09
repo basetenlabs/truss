@@ -2039,7 +2039,7 @@ class TestTrussConfigVolumeMounts:
             - namespace: weights
               grants: [pull]
             - namespace: checkpoints
-              grants: [pull, push, tag, inspect]
+              grants: [pull, push, tag, inspect, delete]
           hotload:
             enabled: true
         """
@@ -2062,6 +2062,7 @@ class TestTrussConfigVolumeMounts:
                     BDNAccessGrant.PUSH,
                     BDNAccessGrant.TAG,
                     BDNAccessGrant.INSPECT,
+                    BDNAccessGrant.DELETE,
                 ],
             ),
         ]
@@ -2166,7 +2167,7 @@ class TestTrussConfigVolumeMounts:
 
         assert access.grants == [grant]
 
-    @pytest.mark.parametrize("grant", ["admin", "delete", "tags", "write"])
+    @pytest.mark.parametrize("grant", ["admin", "tags", "write"])
     def test_bdn_access_rejects_unknown_grants(self, grant):
         with pytest.raises(pydantic.ValidationError):
             BDNAccess(namespace="weights", grants=[grant])
