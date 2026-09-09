@@ -28,7 +28,8 @@ ctor = { workspace = true }
 nonempty = { workspace = true }
 
 [features]
-default = ["rustls"]
+default = ["rustls", "auto-init-tracing"]
+auto-init-tracing = []
 native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
 rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
 
