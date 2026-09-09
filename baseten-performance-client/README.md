@@ -26,6 +26,11 @@ cargo add baseten_performance_client_core
 ```
 
 
+The Rust core enables `auto-init-tracing` by default. Applications that install
+their own tracing subscriber should use `default-features = false` and enable
+`rustls` (or `native-tls`) explicitly. This disables automatic subscriber setup
+and logging environment-variable changes; client tracing events remain enabled.
+
 ## Usage
 
 ### Python
