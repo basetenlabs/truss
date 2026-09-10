@@ -15,7 +15,10 @@ from truss.base.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    BDNAccess,
+    BDNAccessGrant,
     BDNConfig,
+    BDNHotload,
     BDNVolumeMount,
     Build,
     CacheInternal,
@@ -2026,12 +2029,19 @@ class TestTrussConfigWeights:
 
 
 class TestTrussConfigVolumeMounts:
-    def test_bdn_mounts_from_yaml(self, tmp_path):
+    def test_bdn_from_yaml(self, tmp_path):
         yaml_content = """
         bdn:
           mounts:
             - source: bdn:weights/some-model:mytag
               path: /models/some-model
+          access:
+            - namespace: weights
+              grants: [pull]
+            - namespace: checkpoints
+              grants: [pull, push, tag, inspect, delete]
+          hotload:
+            enabled: true
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
@@ -2043,15 +2053,36 @@ class TestTrussConfigVolumeMounts:
                 source="bdn:weights/some-model:mytag", path="/models/some-model"
             )
         ]
+        assert config.bdn.access == [
+            BDNAccess(namespace="weights", grants=[BDNAccessGrant.PULL]),
+            BDNAccess(
+                namespace="checkpoints",
+                grants=[
+                    BDNAccessGrant.PULL,
+                    BDNAccessGrant.PUSH,
+                    BDNAccessGrant.TAG,
+                    BDNAccessGrant.INSPECT,
+                    BDNAccessGrant.DELETE,
+                ],
+            ),
+        ]
+        assert config.bdn.hotload == BDNHotload(enabled=True)
 
-    def test_bdn_mounts_serialization_roundtrip(self, tmp_path):
+    def test_bdn_serialization_roundtrip(self, tmp_path):
         config = TrussConfig(
             bdn=BDNConfig(
                 mounts=[
                     BDNVolumeMount(
                         source="bdn:weights/some-model:mytag", path="/models/some-model"
                     )
-                ]
+                ],
+                access=[
+                    BDNAccess(
+                        namespace="checkpoints",
+                        grants=[BDNAccessGrant.PULL, BDNAccessGrant.PUSH],
+                    )
+                ],
+                hotload=BDNHotload(enabled=True),
             )
         )
         config_path = tmp_path / "config.yaml"
@@ -2061,7 +2092,9 @@ class TestTrussConfigVolumeMounts:
         assert serialized["bdn"] == {
             "mounts": [
                 {"source": "bdn:weights/some-model:mytag", "path": "/models/some-model"}
-            ]
+            ],
+            "access": [{"namespace": "checkpoints", "grants": ["pull", "push"]}],
+            "hotload": {"enabled": True},
         }
         parsed_config = TrussConfig.from_yaml(config_path)
         assert parsed_config.bdn == config.bdn
@@ -2127,6 +2160,37 @@ class TestTrussConfigVolumeMounts:
                     BDNVolumeMount(source="bdn:weights/mistral:prod", path="/models/"),
                 ]
             )
+
+    @pytest.mark.parametrize("grant", list(BDNAccessGrant))
+    def test_bdn_access_accepts_supported_grants(self, grant):
+        access = BDNAccess(namespace="weights", grants=[grant.value])
+
+        assert access.grants == [grant]
+
+    @pytest.mark.parametrize("grant", ["admin", "tags", "write"])
+    def test_bdn_access_rejects_unknown_grants(self, grant):
+        with pytest.raises(pydantic.ValidationError):
+            BDNAccess(namespace="weights", grants=[grant])
+
+    def test_bdn_access_requires_grants(self):
+        with pytest.raises(pydantic.ValidationError):
+            BDNAccess(namespace="weights", grants=[])
+
+    def test_bdn_access_grants_must_be_unique(self):
+        with pytest.raises(pydantic.ValidationError, match="grants must be unique"):
+            BDNAccess(namespace="weights", grants=["pull", "pull"])
+
+    def test_bdn_access_namespaces_must_be_unique(self):
+        with pytest.raises(pydantic.ValidationError, match="namespaces must be unique"):
+            BDNConfig(
+                access=[
+                    BDNAccess(namespace="weights", grants=["pull"]),
+                    BDNAccess(namespace="weights", grants=["inspect"]),
+                ]
+            )
+
+    def test_bdn_hotload_defaults_to_disabled(self):
+        assert BDNConfig().hotload.enabled is False
 
     @pytest.mark.parametrize(
         "source",
