@@ -598,6 +598,25 @@ def test_update_training_job(mock_patch, baseten_api):
     assert mock_patch.call_args[1]["json"] == {"priority": 42}
 
 
+@mock.patch("requests.patch", return_value=mock_update_training_job_response())
+def test_update_training_job_availability_model(mock_patch, baseten_api):
+    baseten_api.update_training_job("project_id", "job_id", availability_model="spot")
+
+    assert mock_patch.call_args[1]["json"] == {"availability_model": "spot"}
+
+
+@mock.patch("requests.patch", return_value=mock_update_training_job_response())
+def test_update_training_job_priority_and_availability_model(mock_patch, baseten_api):
+    baseten_api.update_training_job(
+        "project_id", "job_id", priority=42, availability_model="dedicated"
+    )
+
+    assert mock_patch.call_args[1]["json"] == {
+        "priority": 42,
+        "availability_model": "dedicated",
+    }
+
+
 # Mock responses for training job logs pagination tests
 def mock_training_job_logs_response(logs, has_more=True):
     """Helper function to create mock training job logs response"""
