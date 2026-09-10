@@ -33,10 +33,7 @@ def _truss_msgpack_encoder(
     chain: Optional[Callable] = None,
 ) -> dict:
     if isinstance(obj, datetime):
-        r = obj.isoformat()
-        if r.endswith("+00:00"):
-            r = r[:-6] + "Z"
-        return {b"__dt_datetime_iso__": True, b"data": r}
+        return {b"__dt_datetime_iso__": True, b"data": obj.isoformat()}
     elif isinstance(obj, date):
         r = obj.isoformat()
         return {b"__dt_date_iso__": True, b"data": r}
@@ -61,7 +58,9 @@ def _truss_msgpack_encoder(
 def _truss_msgpack_decoder(obj: Any, chain=None):
     try:
         if b"__dt_datetime_iso__" in obj:
-            return datetime.fromisoformat(obj[b"data"])
+            # Older servers spell UTC as "Z", which `fromisoformat` only
+            # accepts from Python 3.11 on.
+            return datetime.fromisoformat(obj[b"data"].replace("Z", "+00:00"))
         elif b"__dt_date_iso__" in obj:
             return date.fromisoformat(obj[b"data"])
         elif b"__dt_time_iso__" in obj:
