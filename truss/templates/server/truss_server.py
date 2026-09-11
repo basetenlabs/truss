@@ -587,6 +587,8 @@ class TrussServer:
             .get("ping_timeout_seconds")
         ):
             extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
+        if keepalive_env := os.environ.get("TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS"):
+            extra_kwargs["timeout_keep_alive"] = int(keepalive_env)
 
         cfg = uvicorn.Config(
             self.create_application(),
