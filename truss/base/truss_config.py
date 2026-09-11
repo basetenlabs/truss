@@ -579,9 +579,9 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
-_BDN_PREFIX = "bdn://"
+_BDN_PREFIX = "bdn:"
 _BDN_VOLUME_SOURCE_REGEX = re.compile(
-    r"bdn://(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
+    r"bdn:(?P<namespace>[^/:@\x00]+)/(?P<volume>[^/:@\x00]+)"
     r"(?::(?P<tag>[^/:@\x00]+)|@(?:b3:)?(?P<digest>[0-9a-fA-F]+))?"
 )
 _MIN_BDN_DIGEST_PREFIX_LENGTH = 12
@@ -615,7 +615,7 @@ def _normalize_bdn_mount_path(value: str) -> str:
 class BDNVolumeMount(custom_types.ConfigModel):
     """An existing BDN volume mounted into a model container.
 
-    BDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:
+    BDN vocabulary, read off a reference like `bdn:weights/llama-8b:prod`:
 
     - A *namespace* (`weights`) groups volumes within your organization, and is
       the unit that access grants and storage are scoped to. Names are
@@ -630,14 +630,14 @@ class BDNVolumeMount(custom_types.ConfigModel):
     ```
     bdn:
       mounts:
-        - source: bdn://weights/llama-8b:prod
+        - source: bdn:weights/llama-8b:prod
           path: /models/llama
     ```
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+        description="BDN volume reference to mount (for example, bdn:weights/llama-8b:prod).",
     )
     path: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ..., description="Absolute path where the volume will be mounted at runtime."
@@ -647,13 +647,13 @@ class BDNVolumeMount(custom_types.ConfigModel):
     @classmethod
     def _validate_source(cls, value: str) -> str:
         if not value.startswith(_BDN_PREFIX):
-            raise ValueError(f"Volume source must use the bdn:// scheme, got: {value}")
+            raise ValueError(f"Volume source must use the bdn: scheme, got: {value}")
 
         match = _BDN_VOLUME_SOURCE_REGEX.fullmatch(value)
         if match is None:
             raise ValueError(
                 f"Invalid BDN volume source: '{value}'. "
-                "Expected format: bdn://namespace/volume[:tag|@digest]"
+                "Expected format: bdn:namespace/volume[:tag|@digest]"
             )
 
         _validate_bdn_identifier("namespace", match.group("namespace"))
@@ -679,12 +679,64 @@ class BDNVolumeMount(custom_types.ConfigModel):
         return _normalize_bdn_mount_path(value)
 
 
+class BDNAccessGrant(str, enum.Enum):
+    """An operation a deployment may perform in a BDN namespace."""
+
+    PULL = "pull"
+    PUSH = "push"
+    TAG = "tag"
+    INSPECT = "inspect"
+    DELETE = "delete"
+
+
+class BDNAccess(custom_types.ConfigModel):
+    """Access grants for a BDN namespace."""
+
+    namespace: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
+        pydantic.Field(..., description="BDN namespace to grant access to.")
+    )
+    grants: list[BDNAccessGrant] = pydantic.Field(
+        ..., min_length=1, description="Operations granted in this namespace."
+    )
+
+    @pydantic.field_validator("namespace")
+    @classmethod
+    def _validate_namespace(cls, namespace: str) -> str:
+        _validate_bdn_identifier("namespace", namespace)
+        return namespace
+
+    @pydantic.field_validator("grants")
+    @classmethod
+    def _validate_unique_grants(
+        cls, grants: list[BDNAccessGrant]
+    ) -> list[BDNAccessGrant]:
+        if len(grants) != len(set(grants)):
+            raise ValueError("BDN access grants must be unique within a namespace")
+        return grants
+
+
+class BDNHotload(custom_types.ConfigModel):
+    """Configuration for loading BDN data while a deployment is running."""
+
+    enabled: bool = pydantic.Field(
+        default=False, description="If true, enables BDN hot-loading."
+    )
+
+
 class BDNConfig(custom_types.ConfigModel):
-    """Configuration for mounting BDN volumes."""
+    """Configuration for BDN mounts, access grants, and hot-loading."""
 
     mounts: list[BDNVolumeMount] = pydantic.Field(
         default_factory=list,
         description="Existing BDN volumes to mount when the model starts.",
+    )
+    access: list[BDNAccess] = pydantic.Field(
+        default_factory=list,
+        description="Namespace-level BDN access grants for the deployment.",
+    )
+    hotload: BDNHotload = pydantic.Field(
+        default_factory=BDNHotload,
+        description="Configure loading BDN data while the deployment is running.",
     )
 
     @pydantic.field_validator("mounts")
@@ -701,6 +753,16 @@ class BDNConfig(custom_types.ConfigModel):
                 )
             mount_paths.add(volume_mount.path)
         return mounts
+
+    @pydantic.field_validator("access")
+    @classmethod
+    def _validate_unique_access_namespaces(
+        cls, access: list[BDNAccess]
+    ) -> list[BDNAccess]:
+        namespaces = [entry.namespace for entry in access]
+        if len(namespaces) != len(set(namespaces)):
+            raise ValueError("BDN access namespaces must be unique")
+        return access
 
 
 class AutoscalingMetric(pydantic.BaseModel):
@@ -1518,7 +1580,8 @@ class TrussConfig(custom_types.ConfigModel):
         description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
     )
     bdn: BDNConfig = pydantic.Field(
-        default_factory=BDNConfig, description="Configure BDN volume mounts."
+        default_factory=BDNConfig,
+        description="Configure BDN volume mounts, access grants, and hot-loading.",
     )
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
         default=None,

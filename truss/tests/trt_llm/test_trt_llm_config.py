@@ -96,6 +96,55 @@ def test_trt_llm_config_init_with_lora(trtllm_config):
         print(build_config2.lora_adapters)
 
 
+def test_trt_llm_lora_cache_runtime_configuration():
+    runtime_config = TrussTRTLLMRuntimeConfiguration(
+        lora_cache_max_adapter_size=128,
+        lora_cache_optimal_adapter_size=16,
+        lora_cache_gpu_memory_fraction=0.2,
+        lora_cache_host_memory_bytes=20 * 1024**3,
+    )
+
+    assert runtime_config.model_dump(exclude_unset=True) == {
+        "lora_cache_max_adapter_size": 128,
+        "lora_cache_optimal_adapter_size": 16,
+        "lora_cache_gpu_memory_fraction": 0.2,
+        "lora_cache_host_memory_bytes": 20 * 1024**3,
+    }
+
+
+@pytest.mark.parametrize(
+    "runtime_config",
+    [
+        {"lora_cache_max_adapter_size": 0},
+        {"lora_cache_optimal_adapter_size": 0},
+        {"lora_cache_gpu_memory_fraction": 0},
+        {"lora_cache_gpu_memory_fraction": 1.1},
+        {"lora_cache_host_memory_bytes": 0},
+        {"lora_cache_max_adapter_size": 8, "lora_cache_optimal_adapter_size": 16},
+    ],
+)
+def test_trt_llm_lora_cache_runtime_configuration_validation(runtime_config):
+    with pytest.raises(pydantic.ValidationError):
+        TrussTRTLLMRuntimeConfiguration(**runtime_config)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "lora_cache_max_adapter_size",
+        "lora_cache_optimal_adapter_size",
+        "lora_cache_gpu_memory_fraction",
+        "lora_cache_host_memory_bytes",
+    ],
+)
+def test_trt_llm_lora_cache_configuration_rejects_build_fields(field):
+    with pytest.raises(
+        pydantic.ValidationError,
+        match=f"{field} must be configured under trt_llm.runtime",
+    ):
+        TrussTRTLLMBuildConfiguration(**{field: 1})
+
+
 def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     deprecated_trtllm_config,
 ):

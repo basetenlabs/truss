@@ -203,6 +203,22 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
     )
+    # maximum LoRA rank supported by the cache
+    lora_cache_max_adapter_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
+    # LoRA rank used to size cache pages
+    lora_cache_optimal_adapter_size: Optional[
+        Annotated[int, Field(strict=True, ge=1)]
+    ] = None
+    # fraction of GPU memory available after engine load reserved for the LoRA cache
+    lora_cache_gpu_memory_fraction: Optional[
+        Annotated[float, Field(strict=True, gt=0, le=1)]
+    ] = None
+    # host memory reserved for the LoRA cache (in bytes)
+    lora_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
     # wheter to
     enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
@@ -220,6 +236,19 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict", "/predict_tokens"]
     ] = None
+
+    @model_validator(mode="after")
+    def validate_lora_cache_adapter_sizes(self):
+        if (
+            self.lora_cache_max_adapter_size is not None
+            and self.lora_cache_optimal_adapter_size is not None
+            and self.lora_cache_optimal_adapter_size > self.lora_cache_max_adapter_size
+        ):
+            raise ValueError(
+                "lora_cache_optimal_adapter_size cannot be greater than "
+                "lora_cache_max_adapter_size"
+            )
+        return self
 
 
 class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
@@ -313,6 +342,26 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     # for v2, skip the build step and use a engine that you e.g. provider otherwise
     # e.g. via model_cache.
     skip_build_result: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_runtime_lora_cache_fields(cls, data):
+        if isinstance(data, dict):
+            misplaced_fields = sorted(
+                {
+                    "lora_cache_max_adapter_size",
+                    "lora_cache_optimal_adapter_size",
+                    "lora_cache_gpu_memory_fraction",
+                    "lora_cache_host_memory_bytes",
+                }
+                & data.keys()
+            )
+            if misplaced_fields:
+                raise ValueError(
+                    f"{', '.join(misplaced_fields)} must be configured under "
+                    "trt_llm.runtime, not trt_llm.build"
+                )
+        return data
 
     def __init__(self, **data):
         super().__init__(**data)

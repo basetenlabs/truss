@@ -46,9 +46,48 @@
       "title": "AutoscalingMetric",
       "type": "object"
     },
+    "BDNAccess": {
+      "additionalProperties": true,
+      "description": "Access grants for a BDN namespace.",
+      "properties": {
+        "namespace": {
+          "description": "BDN namespace to grant access to.",
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "grants": {
+          "description": "Operations granted in this namespace.",
+          "items": {
+            "$ref": "#/$defs/BDNAccessGrant"
+          },
+          "minItems": 1,
+          "title": "Grants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "namespace",
+        "grants"
+      ],
+      "title": "BDNAccess",
+      "type": "object"
+    },
+    "BDNAccessGrant": {
+      "description": "An operation a deployment may perform in a BDN namespace.",
+      "enum": [
+        "pull",
+        "push",
+        "tag",
+        "inspect",
+        "delete"
+      ],
+      "title": "BDNAccessGrant",
+      "type": "string"
+    },
     "BDNConfig": {
       "additionalProperties": true,
-      "description": "Configuration for mounting BDN volumes.",
+      "description": "Configuration for BDN mounts, access grants, and hot-loading.",
       "properties": {
         "mounts": {
           "description": "Existing BDN volumes to mount when the model starts.",
@@ -57,17 +96,43 @@
           },
           "title": "Mounts",
           "type": "array"
+        },
+        "access": {
+          "description": "Namespace-level BDN access grants for the deployment.",
+          "items": {
+            "$ref": "#/$defs/BDNAccess"
+          },
+          "title": "Access",
+          "type": "array"
+        },
+        "hotload": {
+          "$ref": "#/$defs/BDNHotload",
+          "description": "Configure loading BDN data while the deployment is running."
         }
       },
       "title": "BDNConfig",
       "type": "object"
     },
+    "BDNHotload": {
+      "additionalProperties": true,
+      "description": "Configuration for loading BDN data while a deployment is running.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "If true, enables BDN hot-loading.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "BDNHotload",
+      "type": "object"
+    },
     "BDNVolumeMount": {
       "additionalProperties": true,
-      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn://weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nbdn:\n  mounts:\n    - source: bdn://weights/llama-8b:prod\n      path: /models/llama\n```",
+      "description": "An existing BDN volume mounted into a model container.\n\nBDN vocabulary, read off a reference like `bdn:weights/llama-8b:prod`:\n\n- A *namespace* (`weights`) groups volumes within your organization, and is\n  the unit that access grants and storage are scoped to. Names are\n  lowercase alphanumeric plus hyphens, at least two characters, and may not\n  begin with a digit; `namespaces` and `resolve` are reserved.\n- A *volume* (`llama-8b`) is one versioned collection of files. Every\n  published version is immutable and identified by its content digest.\n- A *tag* (`prod`) is a mutable, case-sensitive name pointing at one\n  version, repointed as newer versions are published. A reference carrying\n  neither tag nor digest resolves to the volume's head, its latest version.\n\n```\nbdn:\n  mounts:\n    - source: bdn:weights/llama-8b:prod\n      path: /models/llama\n```",
       "properties": {
         "source": {
-          "description": "BDN volume reference to mount (for example, bdn://weights/llama-8b:prod).",
+          "description": "BDN volume reference to mount (for example, bdn:weights/llama-8b:prod).",
           "minLength": 1,
           "title": "Source",
           "type": "string"
@@ -1149,6 +1214,10 @@
           "default": {
             "kv_cache_free_gpu_mem_fraction": 0.9,
             "kv_cache_host_memory_bytes": null,
+            "lora_cache_max_adapter_size": null,
+            "lora_cache_optimal_adapter_size": null,
+            "lora_cache_gpu_memory_fraction": null,
+            "lora_cache_host_memory_bytes": null,
             "enable_chunked_context": true,
             "batch_scheduler_policy": "guaranteed_no_evict",
             "request_default_max_tokens": null,
@@ -1360,6 +1429,10 @@
           "default": {
             "kv_cache_free_gpu_mem_fraction": 0.9,
             "kv_cache_host_memory_bytes": null,
+            "lora_cache_max_adapter_size": null,
+            "lora_cache_optimal_adapter_size": null,
+            "lora_cache_gpu_memory_fraction": null,
+            "lora_cache_host_memory_bytes": null,
             "enable_chunked_context": true,
             "batch_scheduler_policy": "guaranteed_no_evict",
             "request_default_max_tokens": null,
@@ -1706,6 +1779,59 @@
           ],
           "default": null,
           "title": "Kv Cache Host Memory Bytes"
+        },
+        "lora_cache_max_adapter_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Max Adapter Size"
+        },
+        "lora_cache_optimal_adapter_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Optimal Adapter Size"
+        },
+        "lora_cache_gpu_memory_fraction": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Gpu Memory Fraction"
+        },
+        "lora_cache_host_memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Cache Host Memory Bytes"
         },
         "enable_chunked_context": {
           "default": true,
@@ -2301,7 +2427,7 @@
     },
     "bdn": {
       "$ref": "#/$defs/BDNConfig",
-      "description": "Configure BDN volume mounts."
+      "description": "Configure BDN volume mounts, access grants, and hot-loading."
     },
     "trt_llm": {
       "anyOf": [
