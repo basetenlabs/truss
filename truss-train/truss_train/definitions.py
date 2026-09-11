@@ -1,6 +1,6 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional, Union
 
 import pydantic
 from pydantic import ValidationError, model_validator
@@ -208,18 +208,18 @@ class AWSIAMDockerAuth(custom_types.SafeModelNoExtra):
 
 
 class AWSOIDCDockerAuth(custom_types.SafeModelNoExtra):
-    role_arn: str
-    region: str
+    role_arn: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    region: Annotated[str, pydantic.StringConstraints(min_length=1)]
 
 
 class AWSAssumeRoleDockerAuth(custom_types.SafeModelNoExtra):
-    role_arn: str
-    region: str
+    role_arn: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    region: Annotated[str, pydantic.StringConstraints(min_length=1)]
 
 
 class GCPOIDCDockerAuth(custom_types.SafeModelNoExtra):
-    service_account: str
-    workload_identity_provider: str
+    service_account: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    workload_identity_provider: Annotated[str, pydantic.StringConstraints(min_length=1)]
 
 
 class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
@@ -246,15 +246,20 @@ class DockerAuth(custom_types.SafeModelNoExtra):
     @model_validator(mode="after")
     def validate_auth_fields(self) -> "DockerAuth":
         auth_fields = {
+            truss_config.DockerAuthType.AWS_IAM: "aws_iam_docker_auth",
             truss_config.DockerAuthType.AWS_OIDC: "aws_oidc_docker_auth",
             truss_config.DockerAuthType.AWS_ASSUME_ROLE: (
                 "aws_assume_role_docker_auth"
             ),
             truss_config.DockerAuthType.GCP_OIDC: "gcp_oidc_docker_auth",
+            truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON: (
+                "gcp_service_account_json_docker_auth"
+            ),
+            truss_config.DockerAuthType.REGISTRY_SECRET: (
+                "registry_secret_docker_auth"
+            ),
         }
-        required_field = auth_fields.get(self.auth_method)
-        if required_field is None:
-            return self
+        required_field = auth_fields[self.auth_method]
 
         if getattr(self, required_field) is None:
             raise ValueError(
@@ -311,10 +316,12 @@ class TrainingJob(custom_types.SafeModelNoExtra):
         for w in self.weights:
             if w.auth is not None:
                 if w.auth.auth_method not in supported_auth_methods:
+                    supported = ", ".join(
+                        sorted(method.value for method in supported_auth_methods)
+                    )
                     raise ValueError(
                         f"weight {w.source}: auth_method {w.auth.auth_method.value} is not "
-                        "supported for training jobs. Supported auth methods: AWS_ASSUME_ROLE, "
-                        "AWS_OIDC, CUSTOM_SECRET, GCP_OIDC."
+                        f"supported for training jobs. Supported auth methods: {supported}."
                     )
         return self
 

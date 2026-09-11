@@ -5,6 +5,7 @@ from truss.base import truss_config
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
+    AWSIAMDockerAuth,
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
     CheckpointList,
@@ -16,7 +17,9 @@ from truss_train.definitions import (
     LoopsCheckpoint,
     LoRACheckpoint,
     ModelWeightsFormat,
+    RegistrySecretDockerAuth,
     Runtime,
+    SecretReference,
     TrainingJob,
 )
 
@@ -157,16 +160,53 @@ def test_gcp_oidc_docker_auth_serializes_in_training_image():
 @pytest.mark.parametrize(
     ("auth_method", "expected_field"),
     [
+        (truss_config.DockerAuthType.AWS_IAM, "aws_iam_docker_auth"),
         (truss_config.DockerAuthType.AWS_OIDC, "aws_oidc_docker_auth"),
         (truss_config.DockerAuthType.AWS_ASSUME_ROLE, "aws_assume_role_docker_auth"),
         (truss_config.DockerAuthType.GCP_OIDC, "gcp_oidc_docker_auth"),
+        (
+            truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
+            "gcp_service_account_json_docker_auth",
+        ),
+        (truss_config.DockerAuthType.REGISTRY_SECRET, "registry_secret_docker_auth"),
     ],
 )
-def test_oidc_and_assume_role_docker_auth_require_matching_config(
-    auth_method, expected_field
-):
+def test_docker_auth_requires_matching_config(auth_method, expected_field):
     with pytest.raises(ValidationError, match=f"{expected_field} must be provided"):
         DockerAuth(auth_method=auth_method, registry="registry.example.com")
+
+
+@pytest.mark.parametrize(
+    ("auth_config_type", "kwargs"),
+    [
+        (AWSOIDCDockerAuth, {"role_arn": "", "region": "us-west-2"}),
+        (
+            AWSOIDCDockerAuth,
+            {"role_arn": "arn:aws:iam::123456789012:role/image-pull", "region": ""},
+        ),
+        (AWSAssumeRoleDockerAuth, {"role_arn": "", "region": "us-west-2"}),
+        (
+            AWSAssumeRoleDockerAuth,
+            {"role_arn": "arn:aws:iam::123456789012:role/image-pull", "region": ""},
+        ),
+        (
+            GCPOIDCDockerAuth,
+            {"service_account": "", "workload_identity_provider": "provider"},
+        ),
+        (
+            GCPOIDCDockerAuth,
+            {
+                "service_account": "image-pull@example.iam.gserviceaccount.com",
+                "workload_identity_provider": "",
+            },
+        ),
+    ],
+)
+def test_docker_auth_config_rejects_empty_required_fields(auth_config_type, kwargs):
+    with pytest.raises(
+        ValidationError, match="String should have at least 1 character"
+    ):
+        auth_config_type(**kwargs)
 
 
 def test_oidc_docker_auth_rejects_conflicting_config():
@@ -185,6 +225,41 @@ def test_oidc_docker_auth_rejects_conflicting_config():
                 workload_identity_provider=(
                     "projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
                 ),
+            ),
+        )
+
+
+def test_oidc_docker_auth_rejects_legacy_config():
+    with pytest.raises(
+        ValidationError, match="registry_secret_docker_auth cannot be specified"
+    ):
+        DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_OIDC,
+            registry="registry.example.com",
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+            registry_secret_docker_auth=RegistrySecretDockerAuth(
+                secret_ref=SecretReference(name="registry-secret")
+            ),
+        )
+
+
+def test_legacy_docker_auth_rejects_oidc_config():
+    with pytest.raises(
+        ValidationError, match="aws_oidc_docker_auth cannot be specified"
+    ):
+        DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_IAM,
+            registry="registry.example.com",
+            aws_iam_docker_auth=AWSIAMDockerAuth(
+                access_key_secret_ref=SecretReference(name="aws-access-key"),
+                secret_access_key_secret_ref=SecretReference(name="aws-secret-key"),
+            ),
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
             ),
         )
 
