@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Callable, Optional, Union
 import pydantic
 import uvicorn
 import yaml
-from uvicorn.protocols.http import h11_impl
 from _truss_common import errors, tracing
 from _truss_common.schema import TrussSchema
 from _truss_shared import log_config, serialization
@@ -46,6 +45,7 @@ from prometheus_client import (
 from pydantic import BaseModel
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
+from uvicorn.protocols.http import h11_impl
 
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
@@ -68,7 +68,8 @@ def _patch_uvicorn_keepalive_logging() -> None:
         logger.info("keepalive_close peer=%s", peer)
         return original(self)
 
-    h11_impl.H11Protocol.timeout_keep_alive_handler = wrapper
+    h11_impl.H11Protocol.timeout_keep_alive_handler = wrapper  # type: ignore[method-assign]
+
 
 if TYPE_CHECKING:
     from model_wrapper import InputType, OutputType
