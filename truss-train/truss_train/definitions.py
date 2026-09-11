@@ -1,6 +1,6 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional, Union
 
 import pydantic
 from pydantic import ValidationError, model_validator
@@ -207,6 +207,21 @@ class AWSIAMDockerAuth(custom_types.SafeModelNoExtra):
     secret_access_key_secret_ref: SecretReference
 
 
+class AWSOIDCDockerAuth(custom_types.SafeModelNoExtra):
+    role_arn: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    region: Annotated[str, pydantic.StringConstraints(min_length=1)]
+
+
+class AWSAssumeRoleDockerAuth(custom_types.SafeModelNoExtra):
+    role_arn: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    region: Annotated[str, pydantic.StringConstraints(min_length=1)]
+
+
+class GCPOIDCDockerAuth(custom_types.SafeModelNoExtra):
+    service_account: Annotated[str, pydantic.StringConstraints(min_length=1)]
+    workload_identity_provider: Annotated[str, pydantic.StringConstraints(min_length=1)]
+
+
 class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
     service_account_json_secret_ref: SecretReference
 
@@ -219,10 +234,51 @@ class DockerAuth(custom_types.SafeModelNoExtra):
     auth_method: truss_config.DockerAuthType
     registry: str
     aws_iam_docker_auth: Optional[AWSIAMDockerAuth] = None
+    aws_oidc_docker_auth: Optional[AWSOIDCDockerAuth] = None
+    aws_assume_role_docker_auth: Optional[AWSAssumeRoleDockerAuth] = None
+    gcp_oidc_docker_auth: Optional[GCPOIDCDockerAuth] = None
     gcp_service_account_json_docker_auth: Optional[GCPServiceAccountJSONDockerAuth] = (
         None
     )
     registry_secret_docker_auth: Optional[RegistrySecretDockerAuth] = None
+
+    # model validator enforces the relationship between auth discriminator and its extra nested configuration
+    @model_validator(mode="after")
+    def validate_auth_fields(self) -> "DockerAuth":
+        auth_fields = {
+            truss_config.DockerAuthType.AWS_IAM: "aws_iam_docker_auth",
+            truss_config.DockerAuthType.AWS_OIDC: "aws_oidc_docker_auth",
+            truss_config.DockerAuthType.AWS_ASSUME_ROLE: (
+                "aws_assume_role_docker_auth"
+            ),
+            truss_config.DockerAuthType.GCP_OIDC: "gcp_oidc_docker_auth",
+            truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON: (
+                "gcp_service_account_json_docker_auth"
+            ),
+            truss_config.DockerAuthType.REGISTRY_SECRET: (
+                "registry_secret_docker_auth"
+            ),
+        }
+        required_field = auth_fields[self.auth_method]
+
+        if getattr(self, required_field) is None:
+            raise ValueError(
+                f"{required_field} must be provided when auth_method is "
+                f"{self.auth_method.value}"
+            )
+
+        conflicting_fields = [
+            field
+            for field in auth_fields.values()
+            if field != required_field and getattr(self, field) is not None
+        ]
+        if conflicting_fields:
+            raise ValueError(
+                f"{', '.join(conflicting_fields)} cannot be specified when "
+                f"auth_method is {self.auth_method.value}"
+            )
+
+        return self
 
 
 class Image(custom_types.SafeModelNoExtra):
@@ -249,14 +305,23 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     enable_baseten_workdir: bool = True
 
     @model_validator(mode="after")
-    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
-        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+    def _validate_weights_auth_method(self) -> "TrainingJob":
+        """Validate that weight authentication is supported for training jobs."""
+        supported_auth_methods = {
+            truss_config.WeightsAuthMethod.CUSTOM_SECRET,
+            truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
+            truss_config.WeightsAuthMethod.AWS_OIDC,
+            truss_config.WeightsAuthMethod.GCP_OIDC,
+        }
         for w in self.weights:
             if w.auth is not None:
-                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
+                if w.auth.auth_method not in supported_auth_methods:
+                    supported = ", ".join(
+                        sorted(method.value for method in supported_auth_methods)
+                    )
                     raise ValueError(
-                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
-                        "OIDC and assume-role methods (AWS_OIDC, GCP_OIDC, AWS_ASSUME_ROLE) are not supported."
+                        f"weight {w.source}: auth_method {w.auth.auth_method.value} is not "
+                        f"supported for training jobs. Supported auth methods: {supported}."
                     )
         return self
 

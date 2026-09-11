@@ -4,15 +4,22 @@ from pydantic import ValidationError
 from truss.base import truss_config
 from truss_train.definitions import (
     AvailabilityModel,
+    AWSAssumeRoleDockerAuth,
+    AWSIAMDockerAuth,
+    AWSOIDCDockerAuth,
     BasetenCheckpoint,
     CheckpointList,
     Compute,
+    DockerAuth,
+    GCPOIDCDockerAuth,
     Image,
     LoadCheckpointConfig,
     LoopsCheckpoint,
     LoRACheckpoint,
     ModelWeightsFormat,
+    RegistrySecretDockerAuth,
     Runtime,
+    SecretReference,
     TrainingJob,
 )
 
@@ -83,6 +90,180 @@ class TestComputeAvailabilityModel:
             Compute(availability_model="on_demand")
 
 
+def test_aws_oidc_docker_auth_serializes_in_training_image():
+    image = Image(
+        base_image="123456789012.dkr.ecr.us-west-2.amazonaws.com/training:latest",
+        docker_auth=DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_OIDC,
+            registry="123456789012.dkr.ecr.us-west-2.amazonaws.com",
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+        ),
+    )
+
+    dumped = image.model_dump()
+
+    assert dumped["docker_auth"]["auth_method"] == "AWS_OIDC"
+    assert dumped["docker_auth"]["aws_oidc_docker_auth"] == {
+        "role_arn": "arn:aws:iam::123456789012:role/training-image-pull",
+        "region": "us-west-2",
+    }
+
+
+def test_aws_assume_role_docker_auth_serializes_in_training_image():
+    image = Image(
+        base_image="123456789012.dkr.ecr.us-west-2.amazonaws.com/training:latest",
+        docker_auth=DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_ASSUME_ROLE,
+            registry="123456789012.dkr.ecr.us-west-2.amazonaws.com",
+            aws_assume_role_docker_auth=AWSAssumeRoleDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+        ),
+    )
+
+    dumped = image.model_dump()
+
+    assert dumped["docker_auth"]["auth_method"] == "AWS_ASSUME_ROLE"
+    assert dumped["docker_auth"]["aws_assume_role_docker_auth"] == {
+        "role_arn": "arn:aws:iam::123456789012:role/training-image-pull",
+        "region": "us-west-2",
+    }
+
+
+def test_gcp_oidc_docker_auth_serializes_in_training_image():
+    image = Image(
+        base_image="us-west1-docker.pkg.dev/project/repository/training:latest",
+        docker_auth=DockerAuth(
+            auth_method=truss_config.DockerAuthType.GCP_OIDC,
+            registry="us-west1-docker.pkg.dev",
+            gcp_oidc_docker_auth=GCPOIDCDockerAuth(
+                service_account="image-pull@example.iam.gserviceaccount.com",
+                workload_identity_provider=(
+                    "projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
+                ),
+            ),
+        ),
+    )
+
+    dumped = image.model_dump()
+
+    assert dumped["docker_auth"]["auth_method"] == "GCP_OIDC"
+    assert dumped["docker_auth"]["gcp_oidc_docker_auth"]["service_account"] == (
+        "image-pull@example.iam.gserviceaccount.com"
+    )
+
+
+@pytest.mark.parametrize(
+    ("auth_method", "expected_field"),
+    [
+        (truss_config.DockerAuthType.AWS_IAM, "aws_iam_docker_auth"),
+        (truss_config.DockerAuthType.AWS_OIDC, "aws_oidc_docker_auth"),
+        (truss_config.DockerAuthType.AWS_ASSUME_ROLE, "aws_assume_role_docker_auth"),
+        (truss_config.DockerAuthType.GCP_OIDC, "gcp_oidc_docker_auth"),
+        (
+            truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
+            "gcp_service_account_json_docker_auth",
+        ),
+        (truss_config.DockerAuthType.REGISTRY_SECRET, "registry_secret_docker_auth"),
+    ],
+)
+def test_docker_auth_requires_matching_config(auth_method, expected_field):
+    with pytest.raises(ValidationError, match=f"{expected_field} must be provided"):
+        DockerAuth(auth_method=auth_method, registry="registry.example.com")
+
+
+@pytest.mark.parametrize(
+    ("auth_config_type", "kwargs"),
+    [
+        (AWSOIDCDockerAuth, {"role_arn": "", "region": "us-west-2"}),
+        (
+            AWSOIDCDockerAuth,
+            {"role_arn": "arn:aws:iam::123456789012:role/image-pull", "region": ""},
+        ),
+        (AWSAssumeRoleDockerAuth, {"role_arn": "", "region": "us-west-2"}),
+        (
+            AWSAssumeRoleDockerAuth,
+            {"role_arn": "arn:aws:iam::123456789012:role/image-pull", "region": ""},
+        ),
+        (
+            GCPOIDCDockerAuth,
+            {"service_account": "", "workload_identity_provider": "provider"},
+        ),
+        (
+            GCPOIDCDockerAuth,
+            {
+                "service_account": "image-pull@example.iam.gserviceaccount.com",
+                "workload_identity_provider": "",
+            },
+        ),
+    ],
+)
+def test_docker_auth_config_rejects_empty_required_fields(auth_config_type, kwargs):
+    with pytest.raises(
+        ValidationError, match="String should have at least 1 character"
+    ):
+        auth_config_type(**kwargs)
+
+
+def test_oidc_docker_auth_rejects_conflicting_config():
+    with pytest.raises(
+        ValidationError, match="gcp_oidc_docker_auth cannot be specified"
+    ):
+        DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_OIDC,
+            registry="registry.example.com",
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+            gcp_oidc_docker_auth=GCPOIDCDockerAuth(
+                service_account="image-pull@example.iam.gserviceaccount.com",
+                workload_identity_provider=(
+                    "projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
+                ),
+            ),
+        )
+
+
+def test_oidc_docker_auth_rejects_legacy_config():
+    with pytest.raises(
+        ValidationError, match="registry_secret_docker_auth cannot be specified"
+    ):
+        DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_OIDC,
+            registry="registry.example.com",
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+            registry_secret_docker_auth=RegistrySecretDockerAuth(
+                secret_ref=SecretReference(name="registry-secret")
+            ),
+        )
+
+
+def test_legacy_docker_auth_rejects_oidc_config():
+    with pytest.raises(
+        ValidationError, match="aws_oidc_docker_auth cannot be specified"
+    ):
+        DockerAuth(
+            auth_method=truss_config.DockerAuthType.AWS_IAM,
+            registry="registry.example.com",
+            aws_iam_docker_auth=AWSIAMDockerAuth(
+                access_key_secret_ref=SecretReference(name="aws-access-key"),
+                secret_access_key_secret_ref=SecretReference(name="aws-secret-key"),
+            ),
+            aws_oidc_docker_auth=AWSOIDCDockerAuth(
+                role_arn="arn:aws:iam::123456789012:role/training-image-pull",
+                region="us-west-2",
+            ),
+        )
+
+
 def _minimal_job(**kwargs):
     return TrainingJob(
         image=Image(base_image="hello-world"),
@@ -93,62 +274,58 @@ def _minimal_job(**kwargs):
 
 
 class TestTrainingJobWeightsAuthValidation:
-    """Training jobs only allow CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+    """Training jobs allow the weight auth methods supported by the training API."""
 
-    def test_weights_with_aws_oidc_raises(self):
-        with pytest.raises(
-            ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"
-        ):
-            _minimal_job(
-                weights=[
-                    truss_config.WeightsSource(
-                        source="s3://bucket/path",
-                        mount_location="/weights",
-                        auth=truss_config.WeightsAuth(
-                            auth_method=truss_config.WeightsAuthMethod.AWS_OIDC,
-                            aws_oidc_role_arn="arn:aws:iam::123:role/foo",
-                            aws_oidc_region="us-west-2",
-                        ),
-                    )
-                ]
-            )
+    def test_weights_with_aws_oidc_are_accepted(self):
+        job = _minimal_job(
+            weights=[
+                truss_config.WeightsSource(
+                    source="s3://bucket/path",
+                    mount_location="/weights",
+                    auth=truss_config.WeightsAuth(
+                        auth_method=truss_config.WeightsAuthMethod.AWS_OIDC,
+                        aws_oidc_role_arn="arn:aws:iam::123:role/foo",
+                        aws_oidc_region="us-west-2",
+                    ),
+                )
+            ]
+        )
+        assert job.model_dump()["weights"][0]["auth"]["auth_method"] == "AWS_OIDC"
 
-    def test_weights_with_gcp_oidc_raises(self):
-        with pytest.raises(
-            ValidationError, match="weight gs://bucket/path.*CUSTOM_SECRET"
-        ):
-            _minimal_job(
-                weights=[
-                    truss_config.WeightsSource(
-                        source="gs://bucket/path",
-                        mount_location="/weights",
-                        auth=truss_config.WeightsAuth(
-                            auth_method=truss_config.WeightsAuthMethod.GCP_OIDC,
-                            gcp_oidc_service_account="my-sa@project.iam.gserviceaccount.com",
-                            gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
-                        ),
-                    )
-                ]
-            )
+    def test_weights_with_gcp_oidc_are_accepted(self):
+        job = _minimal_job(
+            weights=[
+                truss_config.WeightsSource(
+                    source="gs://bucket/path",
+                    mount_location="/weights",
+                    auth=truss_config.WeightsAuth(
+                        auth_method=truss_config.WeightsAuthMethod.GCP_OIDC,
+                        gcp_oidc_service_account="my-sa@project.iam.gserviceaccount.com",
+                        gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+                    ),
+                )
+            ]
+        )
+        assert job.model_dump()["weights"][0]["auth"]["auth_method"] == "GCP_OIDC"
 
-    def test_weights_with_aws_assume_role_raises(self):
-        with pytest.raises(
-            ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"
-        ):
-            _minimal_job(
-                weights=[
-                    truss_config.WeightsSource(
-                        source="s3://bucket/path",
-                        mount_location="/weights",
-                        auth=truss_config.WeightsAuth(
-                            auth_method=truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
-                            aws_assume_role_arn="arn:aws:iam::123:role/foo",
-                            aws_assume_role_region="us-west-2",
-                            aws_assume_role_external_id_secret_name="my_external_id",
-                        ),
-                    )
-                ]
-            )
+    def test_weights_with_aws_assume_role_are_accepted(self):
+        job = _minimal_job(
+            weights=[
+                truss_config.WeightsSource(
+                    source="s3://bucket/path",
+                    mount_location="/weights",
+                    auth=truss_config.WeightsAuth(
+                        auth_method=truss_config.WeightsAuthMethod.AWS_ASSUME_ROLE,
+                        aws_assume_role_arn="arn:aws:iam::123:role/foo",
+                        aws_assume_role_region="us-west-2",
+                    ),
+                )
+            ]
+        )
+        dumped_auth = job.model_dump()["weights"][0]["auth"]
+        assert dumped_auth["auth_method"] == "AWS_ASSUME_ROLE"
+        assert dumped_auth["aws_assume_role_arn"] == "arn:aws:iam::123:role/foo"
+        assert dumped_auth["aws_assume_role_region"] == "us-west-2"
 
     def test_weights_with_custom_secret_auth_accepted(self):
         job = _minimal_job(
