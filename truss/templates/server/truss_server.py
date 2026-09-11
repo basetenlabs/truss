@@ -45,6 +45,7 @@ from prometheus_client import (
 from pydantic import BaseModel
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
+from uvicorn.protocols.http import h11_impl
 
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
@@ -56,6 +57,19 @@ INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser
 # TODO(bryanzhang) Align this with other websocket components so it's not so
 # difficult to change.
 WS_MAX_MSG_SZ_BYTES = 100 * (1 << 20)
+
+
+def _patch_uvicorn_keepalive_logging() -> None:
+    original = h11_impl.H11Protocol.timeout_keep_alive_handler
+    logger = logging.getLogger("uvicorn.error")
+
+    def wrapper(self: h11_impl.H11Protocol) -> None:
+        peer = self.transport.get_extra_info("peername") if self.transport else None
+        logger.info("keepalive_close peer=%s", peer)
+        return original(self)
+
+    h11_impl.H11Protocol.timeout_keep_alive_handler = wrapper  # type: ignore[method-assign]
+
 
 if TYPE_CHECKING:
     from model_wrapper import InputType, OutputType
@@ -587,6 +601,10 @@ class TrussServer:
             .get("ping_timeout_seconds")
         ):
             extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
+        if keepalive_env := os.environ.get("TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS"):
+            extra_kwargs["timeout_keep_alive"] = int(keepalive_env)
+        if os.environ.get("TRUSS_UVICORN_KEEPALIVE_TRACE"):
+            _patch_uvicorn_keepalive_logging()
 
         cfg = uvicorn.Config(
             self.create_application(),
