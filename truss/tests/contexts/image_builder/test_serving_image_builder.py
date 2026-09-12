@@ -906,6 +906,22 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         )
 
 
+def test_trt_llm_encoder_uses_configured_max_num_tokens(custom_model_trt_llm):
+    config_path = custom_model_trt_llm / "config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["trt_llm"]["build"]["base_model"] = "encoder"
+    config["trt_llm"]["build"]["max_num_tokens"] = 4096
+    config_path.write_text(yaml.safe_dump(config))
+
+    image_builder = ServingImageBuilderContext.run(custom_model_trt_llm)
+    with TemporaryDirectory() as tmp_dir:
+        image_builder.prepare_image_build_dir(Path(tmp_dir))
+
+    assert "--max-batch-tokens 4096" in (
+        image_builder._spec.config.docker_server.start_command
+    )
+
+
 def test_trt_llm_stackv2_build_dir(custom_model_trt_llm_stack_v2):
     th = TrussHandle(custom_model_trt_llm_stack_v2)
     builder_context = ServingImageBuilderContext

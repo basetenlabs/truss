@@ -33,6 +33,12 @@ ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
 try:
+    from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
+except ImportError:
+    # fallback for briton
+    BEI_REQUIRED_MAX_NUM_TOKENS = 16384
+
+try:
     from truss.base import custom_types
 
     PydanticTrTBaseModel = custom_types.ConfigModel
@@ -422,18 +428,8 @@ pip install truss==0.10.8
                     "and only respected for SequenceClassification models. "
                     "Automatically inferred from the model repo config.json -> `max_position_embeddings`"
                 )
-            # delayed import, as it is not available in all environments [Briton]
-            from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
-
-            if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                if self.max_num_tokens != 8192:
-                    # only warn if it is not the default value
-                    logger.warning(
-                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
-                    )
-                self = self.model_copy(
-                    update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
-                )
+            if "max_num_tokens" not in self.model_fields_set:
+                self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
             # set page_kv_cache and use_paged_context_fmha to false for encoder
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False

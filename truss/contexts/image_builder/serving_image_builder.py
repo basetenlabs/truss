@@ -26,7 +26,6 @@ from truss.base import constants, truss_config
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
-    BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONSTRAINTS_TXT_FILENAME,
@@ -577,10 +576,7 @@ class ServingImageBuilder(ImageBuilder):
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 32)
-        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
-        runtime_max_batch_tokens = max(
-            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
-        )
+        runtime_max_batch_tokens = trt_llm_config.build.max_num_tokens
         port = 7997
         start_command = " ".join(
             [
