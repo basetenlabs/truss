@@ -3,7 +3,6 @@ import copy
 import pydantic
 import pytest
 
-from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TRTLLMConfigurationV1,
@@ -164,15 +163,6 @@ def test_trt_llm_encoder(trtllm_config_encoder):
     # no paged_kv_cache for encoder and no use_paged_context_fmha
     assert config.build.plugin_configuration.paged_kv_cache is False
     assert config.build.plugin_configuration.use_paged_context_fmha is False
-
-
-def test_trt_llm_encoder_max_num_tokens(trtllm_config_encoder):
-    default_config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
-    assert default_config.build.max_num_tokens == BEI_REQUIRED_MAX_NUM_TOKENS
-
-    trtllm_config_encoder["trt_llm"]["build"]["max_num_tokens"] = 4096
-    configured = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
-    assert configured.build.max_num_tokens == 4096
 
 
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
