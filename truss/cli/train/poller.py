@@ -18,6 +18,7 @@ JOB_STARTING_STATES = [
 ]
 JOB_LOGGING_STATES = ["TRAINING_JOB_DEPLOYING", "TRAINING_JOB_RUNNING"]
 STATES_WITH_ERROR_MESSAGES = ["TRAINING_JOB_DEPLOY_FAILED"]
+JOB_FAILED_STATES = ["TRAINING_JOB_FAILED", "TRAINING_JOB_DEPLOY_FAILED"]
 
 
 @dataclass
@@ -91,6 +92,15 @@ class TrainingPollerMixin:
             console.print("Training job stopped by user.", style="yellow")
         elif self._current_status.status == "TRAINING_JOB_DEPLOY_FAILED":
             console.print("Training job failed during deployment.", style="red")
+
+    @property
+    def failed(self) -> bool:
+        """Whether the last status seen while polling was a failure.
+
+        Lets a caller pick an exit code once `watch()` returns, instead of reaching
+        for the private status.
+        """
+        return self._current_status.status in JOB_FAILED_STATES
 
     def _update_from_current_status(self) -> None:
         current_job = self.api.get_training_job(self.project_id, self.job_id)
