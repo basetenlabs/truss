@@ -22,6 +22,8 @@ from pydantic import (
     model_validator,
 )
 
+from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
+
 if TYPE_CHECKING:
     from truss.base.truss_config import TrussConfig
 
@@ -32,12 +34,6 @@ warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
-try:
-    from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
-except ImportError:
-    # fallback for briton
-    BEI_REQUIRED_MAX_NUM_TOKENS = 16384
-
 try:
     from truss.base import custom_types
 
