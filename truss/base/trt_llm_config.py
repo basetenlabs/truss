@@ -50,6 +50,11 @@ class TrussTRTLLMModel(str, Enum):
     # the encoder_bert setting will specfically optimize for thoughput and cold-start latency of small models (<4B parameters)
     # supports also splade and colbert style models or ModernBert.
     ENCODER_BERT = "encoder_bert"
+    # BEI torch backend (text-embeddings-router + vLLM). Serves embedding, reranker, and
+    # classification models whose architecture the TRT-LLM `encoder` path cannot compile
+    # (e.g. LlamaBidirectional / Ministral3-Embed, Gemma2Embedding, jina-v3). No engine
+    # build step; the checkpoint is served directly by the torch backend.
+    ENCODER_TORCH = "encoder_torch"
     # Decoder will launch the backend that is optimized for decoder only models such as LLama3ForCausalLM, Qwen3MoeForCausalLM etc.
     DECODER = "decoder"
     # a ERROR will be raised if you push one of the below models. Don't use
@@ -414,7 +419,31 @@ pip install truss==0.10.8
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
-        if self.base_model == TrussTRTLLMModel.ENCODER:
+        if self.base_model == TrussTRTLLMModel.ENCODER_TORCH:
+            # BEI-torch has no engine build, so build-time quantization is not applicable.
+            # Users wanting quantized weights must point checkpoint_repository at a
+            # pre-quantized HF checkpoint.
+            if self.quantization_type != TrussTRTLLMQuantizationType.NO_QUANT:
+                raise ValueError(
+                    f"base_model=encoder_torch does not support build-time quantization; "
+                    f"you set build.quantization_type={self.quantization_type.value}. "
+                    "Point checkpoint_repository at a pre-quantized HF checkpoint instead."
+                )
+            # Speculative decoding is a decoder concept; embedding/reranker serving via
+            # BEI-torch has no draft/target loop.
+            if self.speculator is not None:
+                raise ValueError(
+                    "base_model=encoder_torch does not support speculative decoding; "
+                    "remove trt_llm.build.speculator."
+                )
+            # LoRA adapters are a TRT-LLM build-time concept; vLLM serves the
+            # checkpoint as-is, so adapters would be silently ignored.
+            if self.lora_adapters is not None:
+                raise ValueError(
+                    "base_model=encoder_torch does not support lora_adapters; "
+                    "remove trt_llm.build.lora_adapters."
+                )
+        elif self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
             if self.max_seq_len:
                 logger.info(
@@ -621,6 +650,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
     bei_bert_version: Optional[str] = None
+    bei_torch_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
 
     @model_validator(mode="before")
@@ -630,6 +660,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
             "briton_version",
             "bei_version",
             "bei_bert_version",
+            "bei_torch_version",
         ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
@@ -645,6 +676,10 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str
+    # Base image for the BEI torch backend (text-embeddings-router + vLLM). Backend
+    # inserts a resolved image reference; the default here is a placeholder so
+    # local unit tests can construct ImageVersions without wiring core-product.
+    bei_torch_image: str = "baseten/bei:torch-dev-placeholder"
     briton_image: str
     v2_llm_image: str
 
@@ -667,7 +702,11 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             self.runtime.enable_chunked_context
             and (
                 self.build.base_model
-                not in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
+                not in (
+                    TrussTRTLLMModel.ENCODER,
+                    TrussTRTLLMModel.ENCODER_BERT,
+                    TrussTRTLLMModel.ENCODER_TORCH,
+                )
             )
             and not (
                 self.build.plugin_configuration.use_paged_context_fmha
@@ -685,7 +724,11 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
         if (
             self.runtime.webserver_default_route is None
             and self.build.base_model
-            in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
+            in (
+                TrussTRTLLMModel.ENCODER,
+                TrussTRTLLMModel.ENCODER_BERT,
+                TrussTRTLLMModel.ENCODER_TORCH,
+            )
             and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
         ):
             if hf_cfg is not None:
@@ -721,9 +764,9 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                         f"but you set `trt_llm.build.base_model` to `decoder`. "
                         f"Please set it to `encoder_bert`."
                     )
-            if (
-                "ForCausalLM" in arch
-                and self.build.base_model != TrussTRTLLMModel.DECODER
+            if "ForCausalLM" in arch and self.build.base_model not in (
+                TrussTRTLLMModel.DECODER,
+                TrussTRTLLMModel.ENCODER_TORCH,
             ):
                 logger.warning(
                     f"Your model architecture {arch} indicates a CausalLM based model. "
@@ -938,7 +981,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
             pass
         else:
             raise ValueError(
-                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
+                "TRT-LLM and BEI-torch are not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
                 "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
             )
     elif trt_llm_config.build.quantization_type in [
@@ -996,6 +1039,7 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
     if trt_llm_config_v1.build.base_model not in [
         TrussTRTLLMModel.ENCODER,
         TrussTRTLLMModel.ENCODER_BERT,
+        TrussTRTLLMModel.ENCODER_TORCH,
     ]:
         current_tags = config.model_metadata.get("tags", [])
         if (
