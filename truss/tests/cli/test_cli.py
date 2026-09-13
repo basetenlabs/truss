@@ -1086,6 +1086,81 @@ def test_push_watch_with_tail_starts_background_tail(
     )
 
 
+def _invoke_push_watch(truss_dir, remote, statuses):
+    runner = CliRunner()
+
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = True
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": status} for status in statuses]
+    )
+    remote.push = Mock(return_value=mock_service)
+
+    mock_resolve = Mock(
+        return_value=(
+            {
+                "id": "model_id",
+                "name": "model_name",
+                "hostname": "https://model.api.baseten.co",
+            },
+            [{"id": "version_id", "is_draft": True}],
+        )
+    )
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli.resolve_model_for_watch", mock_resolve):
+                with patch("truss.cli.cli._start_watch_mode"):
+                    with patch("truss.cli.utils.common.start_keepalive"):
+                        return runner.invoke(
+                            truss_cli,
+                            [
+                                "push",
+                                str(truss_dir),
+                                "--remote",
+                                "baseten",
+                                "--model-name",
+                                "model_name",
+                                "--watch",
+                            ],
+                        )
+
+
+def test_push_watch_enters_watch_mode_early_on_loading_model(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    result = _invoke_push_watch(
+        custom_model_truss_dir_with_pre_and_post, remote, ["LOADING_MODEL", "ACTIVE"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Entering watch mode early" in result.output
+
+
+def test_push_watch_ignores_status_that_is_substring_of_loading_model(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    result = _invoke_push_watch(
+        custom_model_truss_dir_with_pre_and_post, remote, ["LOADING", "ACTIVE"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Entering watch mode early" not in result.output
+    assert "Deployment succeeded." in result.output
+
+
 def test_push_watch_with_publish_fails():
     """Test that --watch with --publish fails."""
     mock_truss = Mock()
@@ -1489,6 +1564,52 @@ def test_push_json_output_wait_success(
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["model_id"] == "model_id"
+    assert data["deployment"] == deployment_response
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
+def test_push_json_output_wait_scaled_to_zero(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    deployment_response = {"status": "SCALED_TO_ZERO", "id": "deploy_id", "replicas": 0}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "BUILDING"}, deployment_response]
+    )
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["deployment"] == deployment_response
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
+def test_push_json_output_wait_unknown_status_keeps_polling(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    deployment_response = {"status": "ACTIVE", "id": "deploy_id", "replicas": 1}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "SOME_NEW_BACKEND_STATUS"}, deployment_response]
+    )
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
     assert data["deployment"] == deployment_response
 
 
