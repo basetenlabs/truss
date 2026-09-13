@@ -1,0 +1,19 @@
+# Inference server config template for deploying a vLLM sampling server.
+#
+# This is a stub — the inference deployment path is not yet implemented
+# in the trainers SDK. It will be used by SamplingClient once implemented.
+#
+# For now, inference is co-located with the training worker (dp_worker
+# runs both training and inference on separate GPU sets).
+
+model_name: trainers-inference-server
+
+base_image:
+  image: nvcr.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+  python_executable_path: /usr/bin/python3
+
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+  accelerator: H200
