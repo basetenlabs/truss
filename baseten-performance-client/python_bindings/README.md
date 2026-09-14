@@ -308,8 +308,8 @@ from baseten_performance_client import RequestProcessingPreference
 
 # Create a preference with custom settings
 preference = RequestProcessingPreference(
-    max_concurrent_requests=64,        # Parallel requests (default: 128)
-    batch_size=32,                     # Items per batch (default: 128)
+    max_concurrent_requests=64,        # Parallel requests (default: 256)
+    batch_size=32,                     # Items per batch (default: 8)
     timeout_s=30.0,                   # Per-request timeout (default: 3600.0)
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)

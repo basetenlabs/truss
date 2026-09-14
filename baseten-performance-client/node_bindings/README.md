@@ -249,10 +249,10 @@ const { RequestProcessingPreference } = require('@basetenlabs/performance-client
 
 // Create a preference with custom settings
 const preference = new RequestProcessingPreference(
-    64,        // maxConcurrentRequests (default: 128)
-    32,        // batchSize (default: 128)
+    64,        // maxConcurrentRequests (default: 256)
+    32,        // batchSize (default: 8)
     30.0,      // timeoutS (default: 3600.0)
-    undefined, // maxCharsPerRequest
+    undefined, // maxCharsPerRequest (default: 8000)
     undefined, // pinInitialEndpointOnce
     0.5,       // hedgeDelay
     undefined, // totalTimeoutS
@@ -458,10 +458,10 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?)
 ```
 
-- `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 128)
-- `batchSize` (number, optional): Number of items per batch (default: 128)
+- `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 256)
+- `batchSize` (number, optional): Number of items per batch (default: 8)
 - `timeoutS` (number, optional): Per-request timeout in seconds (default: 3600.0)
-- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: undefined)
+- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: 8000)
 - `pinInitialEndpointOnce` (boolean, optional): Route all initial requests in one operation to one selected endpoint (default: false)
 - `hedgeDelay` (number, optional): Request hedging delay in seconds (default: undefined)
 - `totalTimeoutS` (number, optional): Total timeout for the entire operation in seconds (default: undefined)
