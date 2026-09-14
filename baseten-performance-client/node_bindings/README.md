@@ -461,7 +461,7 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, m
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 256)
 - `batchSize` (number, optional): Number of items per batch (default: 8)
 - `timeoutS` (number, optional): Per-request timeout in seconds (default: 3600.0)
-- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: 8000)
+- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: 8000; range: 50-1,048,576)
 - `pinInitialEndpointOnce` (boolean, optional): Route all initial requests in one operation to one selected endpoint (default: false)
 - `hedgeDelay` (number, optional): Request hedging delay in seconds (default: undefined)
 - `totalTimeoutS` (number, optional): Total timeout for the entire operation in seconds (default: undefined)

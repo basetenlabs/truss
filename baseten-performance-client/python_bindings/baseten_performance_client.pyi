@@ -219,7 +219,7 @@ class RequestProcessingPreference:
     Attributes:
         max_concurrent_requests: Maximum number of parallel requests (default: 256).
         batch_size: Number of items per batch (default: 8).
-        max_chars_per_request: Optional character-based batching limit (default: 8000).
+        max_chars_per_request: Optional character-based batching limit (default: 8000; range: 50-1,048,576).
         pin_initial_endpoint_once: If True, select one endpoint for all initial requests in a top-level operation.
         timeout_s: Per-request timeout in seconds (default: 3600.0).
         hedge_delay: Optional request hedging delay in seconds.
@@ -286,7 +286,7 @@ class RequestProcessingPreference:
         Args:
             max_concurrent_requests: Maximum parallel requests (default: 256).
             batch_size: Number of items per batch (default: 8).
-            max_chars_per_request: Optional character-based batching limit (default: 8000).
+            max_chars_per_request: Optional character-based batching limit (default: 8000; range: 50-1,048,576).
             pin_initial_endpoint_once: If True, send all initial requests in one operation to a single selected endpoint.
             timeout_s: Per-request timeout in seconds (default: 3600.0).
             hedge_delay: Optional request hedging delay in seconds.

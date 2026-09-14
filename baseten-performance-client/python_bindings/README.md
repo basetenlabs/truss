@@ -303,6 +303,8 @@ async def async_classify():
 
 The `RequestProcessingPreference` class provides a unified way to configure all request processing parameters. This is the recommended approach for advanced configuration as it provides better type safety and clearer intent.
 
+The framework defaults are 256 concurrent requests, a batch size of 8, and 8,000 characters per request. `max_chars_per_request` accepts values from 50 through 1,048,576.
+
 ```python
 from baseten_performance_client import RequestProcessingPreference
 

@@ -10,7 +10,7 @@ pub(crate) const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 pub const DEFAULT_CONCURRENCY: usize = 256;
 pub const DEFAULT_MAX_CHARS_PER_REQUEST: usize = 8000;
 pub(crate) const MIN_CHARACTERS_PER_REQUEST: usize = 50;
-pub(crate) const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
+pub(crate) const MAX_CHARACTERS_PER_REQUEST: usize = 1_048_576;
 
 // hedging settings:
 pub(crate) const MIN_HEDGE_DELAY_S: f64 = 0.045;
