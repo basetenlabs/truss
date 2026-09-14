@@ -87,6 +87,8 @@ class TrussTRTLLMQuantizationType(str, Enum):
     # FP8 + fp8 kv cache quantization (faster attention when used with fp8 context fmha, required for fp8 ctx fmha)!
     # not usable for asymmetric model with bias=True e.g. qwen2.5 models
     FP8_KV = "fp8_kv"
+    # fp8, but only mlp layers are in fp8, rest is 16 bit, also 16 bit kv cache
+    FP8_MLP_ONLY = "fp8_mlp_only"
     # fp4 with 16 bit kv cache
     FP4 = "fp4"
     # fp4 with fp8 kv cache quantization
@@ -937,6 +939,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
     elif trt_llm_config.build.quantization_type in [
         TrussTRTLLMQuantizationType.FP8,
         TrussTRTLLMQuantizationType.FP8_KV,
+        TrussTRTLLMQuantizationType.FP8_MLP_ONLY,
         TrussTRTLLMQuantizationType.FP4,
         TrussTRTLLMQuantizationType.FP4_KV,
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
