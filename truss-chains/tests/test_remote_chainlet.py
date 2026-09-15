@@ -3,10 +3,13 @@ import logging
 import re
 import threading
 import time
+from collections.abc import AsyncIterator
 
 import pytest
 
 import truss_chains as chains
+from truss_chains import framework
+from truss_chains.deployment import code_gen
 
 
 @pytest.fixture
@@ -160,3 +163,64 @@ async def test_no_waiting_logging_async(stub_session, caplog):
     logs = [r.message for r in caplog.records]
 
     assert any("No queueing" in m for m in logs), logs
+
+
+def _generated_stub_cls(chainlet_cls: type) -> type:
+    """Builds the stub class that codegen emits for callers of `chainlet_cls`."""
+    framework.raise_validation_errors()
+    source = code_gen._gen_stub_src(framework.get_descriptor(chainlet_cls))
+    namespace: dict = {}
+    exec("\n".join(sorted(source.imports)) + "\n" + source.src, namespace)
+    return namespace[chainlet_cls.__name__]
+
+
+def _make_stub(stub_cls: type, wire_chunks: list[bytes]) -> chains.StubBase:
+    stub = stub_cls(
+        service_descriptor=chains.DeployedServiceDescriptor(
+            name=stub_cls.__name__,
+            display_name=stub_cls.__name__,
+            predict_url="dummy-URL",
+            options=chains.RPCOptions(),
+        ),
+        api_key="dummy-API-key",
+    )
+
+    async def fake_stream(*_args, **_kwargs):
+        async def chunks():
+            for chunk in wire_chunks:
+                yield chunk
+
+        return chunks()
+
+    stub.predict_async_stream = fake_stream
+    return stub
+
+
+@pytest.mark.asyncio
+async def test_str_stream_stub_decodes_utf8_split_across_chunks():
+    class _Utf8StreamChainlet(chains.ChainletBase):
+        async def run_remote(self) -> AsyncIterator[str]:
+            yield "héllo 🌍"
+
+    payload = "héllo 🌍".encode()
+    # Cut inside the 4-byte emoji, as TCP segmentation might.
+    wire_chunks = [payload[:-2], payload[-2:]]
+    stub = _make_stub(_generated_stub_cls(_Utf8StreamChainlet), wire_chunks)
+
+    received = [text async for text in stub.run_remote()]
+
+    assert "".join(received) == "héllo 🌍"
+    assert "" not in received
+
+
+@pytest.mark.asyncio
+async def test_str_stream_stub_raises_on_truncated_utf8():
+    class _TruncatedUtf8StreamChainlet(chains.ChainletBase):
+        async def run_remote(self) -> AsyncIterator[str]:
+            yield "🌍"
+
+    wire_chunks = ["🌍".encode()[:-1]]
+    stub = _make_stub(_generated_stub_cls(_TruncatedUtf8StreamChainlet), wire_chunks)
+
+    with pytest.raises(UnicodeDecodeError):
+        [text async for text in stub.run_remote()]
