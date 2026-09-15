@@ -8,6 +8,9 @@ class _SafeLoaderWarnDuplicateKeys(yaml.SafeLoader):
     def construct_mapping(self, node, deep=False):
         keys = set()
         for key_node, _ in node.value:
+            # SafeLoader expands merge keys when constructing the mapping.
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
             key = self.construct_object(key_node, deep=deep)
             # TODO around ~7/2026: Change this to an error once we've given users time to fix their configs.
             if key in keys:
