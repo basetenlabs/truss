@@ -1,11 +1,29 @@
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_handle.patch.hash import str_hash_str
 from truss.truss_handle.truss_handle import TrussHandle
-from truss.util.path import copy_file_path, copy_tree_path, remove_tree_path
+from truss.util.path import (
+    TRUSS_IGNORE_FILENAME,
+    copy_file_path,
+    copy_tree_path,
+    remove_tree_path,
+)
+
+
+def _read_truss_ignore(truss_path: Path) -> Optional[bytes]:
+    ignore_path = truss_path / TRUSS_IGNORE_FILENAME
+    # Match the ignore loader's treatment of missing files and broken symlinks.
+    if not ignore_path.exists():
+        return None
+    try:
+        return ignore_path.read_bytes()
+    except FileNotFoundError:
+        # A missing file uses default rules; an empty file does not.
+        return None
 
 
 def gather(truss_path: Path) -> Path:
@@ -22,7 +40,10 @@ def gather(truss_path: Path) -> Path:
         with shadow_truss_metdata_file_path.open() as fp:
             metadata = yaml.safe_load(fp)
         max_mod_time = metadata["max_mod_time"]
-        if max_mod_time == handle.max_modified_time:
+        # The modification-time scan skips dotfiles, including .truss_ignore.
+        if max_mod_time == handle.max_modified_time and _read_truss_ignore(
+            truss_path
+        ) == _read_truss_ignore(shadow_truss_path):
             return shadow_truss_path
 
         # Shadow truss is out of sync, clear it
