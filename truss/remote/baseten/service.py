@@ -1,3 +1,4 @@
+import codecs
 import enum
 import logging
 import time
@@ -127,19 +128,19 @@ class BasetenService(TrussService):
         )
 
         if response.headers.get("transfer-encoding") == "chunked":
-            # Case of streaming response, the backend does not set an encoding, so
-            # manually decode to the contents to utf-8 here.
+
             def decode_content():
-                for chunk in response.iter_content(
-                    chunk_size=8192, decode_unicode=True
-                ):
-                    # Depending on the content-type of the response,
-                    # iter_content will either emit a byte stream, or a stream
-                    # of strings. Only decode in the bytes case.
-                    if isinstance(chunk, bytes):
-                        yield chunk.decode(response.encoding or DEFAULT_STREAM_ENCODING)
-                    else:
-                        yield chunk
+                if response.encoding is None:
+                    # UTF-8 characters can span chunks when no encoding is declared.
+                    yield from codecs.iterdecode(
+                        response.iter_content(chunk_size=8192),
+                        DEFAULT_STREAM_ENCODING,
+                        errors="strict",
+                    )
+                else:
+                    yield from response.iter_content(
+                        chunk_size=8192, decode_unicode=True
+                    )
 
             return decode_content()
 
