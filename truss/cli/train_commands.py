@@ -34,12 +34,14 @@ from truss.cli.train.cache import (
     SORT_ORDER_DESC,
 )
 from truss.cli.train.exec import (
+    BASETEN_API_KEY_ENV_VAR,
     DEFAULT_CPU_COUNT,
     DEFAULT_EXEC_PROJECT_NAME,
     DEFAULT_MEMORY,
     SUPPORTED_EXEC_ACCELERATORS,
     UvProject,
     build_exec_project,
+    ensure_team_api_key_secret,
     get_project_type,
     parse_environment_variables,
     validate_secret_references,
@@ -1548,7 +1550,29 @@ def exec_training_job(
     _, team_id = _resolve_team_name(
         remote_provider, effective_team_name, existing_project_name=project_name
     )
-    validate_secret_references(remote_provider.api, environment_variables)
+    validate_secret_references(
+        remote_provider.api, environment_variables, team_id=team_id
+    )
+
+    # A training job is given no Baseten credential, so anything calling the Baseten
+    # API needs one supplied. Only provision when the user hasn't named the variable
+    # themselves, so an explicit --secret or --env always wins.
+    if team_id and BASETEN_API_KEY_ENV_VAR not in environment_variables:
+        api_key_secret = ensure_team_api_key_secret(remote_provider.api, team_id)
+        if api_key_secret:
+            environment_variables[BASETEN_API_KEY_ENV_VAR] = api_key_secret
+            console.print(
+                f"Using [cyan]{escape(BASETEN_API_KEY_ENV_VAR)}[/cyan] from the team "
+                f"secret [cyan]{escape(api_key_secret.name)}[/cyan]."
+            )
+        else:
+            console.print(
+                f"Warning: could not provision a team Baseten API key, so "
+                f"{BASETEN_API_KEY_ENV_VAR} will not be set in the job. Pass "
+                f"`--secret {BASETEN_API_KEY_ENV_VAR}=<secret-name>` if the command "
+                "calls the Baseten API.",
+                style="yellow",
+            )
 
     # --with-uv names uv explicitly, so it selects UvProject directly. Detection only
     # drives the warning below, and is the hook a future --project-type would use.

@@ -32,9 +32,11 @@ DEFAULT_EXEC_PROJECT_NAME = "truss-train-exec"
 
 SUPPORTED_EXEC_ACCELERATORS = workstation.SUPPORTED_WORKSTATION_ACCELERATORS
 
-# Read from the model so the CLI defaults cannot drift from it.
-DEFAULT_CPU_COUNT: int = Compute.model_fields["cpu_count"].default
-DEFAULT_MEMORY: str = Compute.model_fields["memory"].default
+# Deliberately above `Compute`'s own 1 CPU / 2Gi: the commands this runs are
+# orchestration clients, which tokenize locally and hold large connection pools, so
+# the model's defaults are too thin to succeed on a first try.
+DEFAULT_CPU_COUNT = 4
+DEFAULT_MEMORY = "16Gi"
 
 
 def default_base_image(accelerator: Optional[str], project: Optional[Project]) -> str:

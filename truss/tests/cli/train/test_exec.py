@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
 from truss.cli.train.exec import (
+    BASETEN_API_KEY_ENV_VAR,
     DEFAULT_CPU_COUNT,
     DEFAULT_MEMORY,
     PYTHON_BASE_IMAGE,
@@ -20,9 +21,11 @@ from truss.cli.train.exec import (
     build_exec_project,
     build_start_commands,
     default_base_image,
+    ensure_team_api_key_secret,
     get_project_type,
     parse_environment_variables,
     resolve_workspace_root,
+    team_api_key_secret_name,
     validate_secret_references,
     validate_workspace_root,
 )
@@ -35,7 +38,7 @@ from truss.cli.train.exec.uv import (
 )
 from truss.cli.train.workstation import DEFAULT_BASE_IMAGE
 from truss.remote.baseten.api import BasetenApi
-from truss.remote.baseten.custom_types import TeamType
+from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     InteractiveSessionProvider,
@@ -304,7 +307,8 @@ def test_build_start_commands_prepends_the_idempotent_uv_install():
     assert build_start_commands(
         start_command=USER_COMMAND, setup_steps=UV_INSTALL_STEPS
     ) == [
-        "/bin/sh -c '{ command -v uv >/dev/null 2>&1 || { "
+        "/bin/sh -c '{ command -v uv >/dev/null 2>&1 || "
+        "pip install --quiet uv || { "
         "curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh && "
         "sh /tmp/uv-install.sh ; } ; } && "
         'export PATH="$HOME/.local/bin:$PATH" && '
@@ -356,7 +360,7 @@ def test_build_exec_project_without_with_uv_injects_nothing(accelerator):
 # --- uv install failure mode, secret/env edge cases, workspace root ----------
 
 
-def test_uv_install_step_fails_when_the_download_fails():
+def test_uv_install_step_does_not_pipe_curl_into_sh():
     """`curl | sh` would exit 0 on a failed download, hiding the error until the
     job died with an opaque `uv: not found`."""
     command = build_start_commands(
@@ -366,17 +370,22 @@ def test_uv_install_step_fails_when_the_download_fails():
     # The install group must be its own command list, not a pipeline into sh.
     assert "install.sh | sh" not in script
     assert "-o /tmp/uv-install.sh && sh /tmp/uv-install.sh" in script
-
-    # Syntactically valid, and the group reports failure when the download fails.
-    assert subprocess.run(["sh", "-n", "-c", script.strip("'")]).returncode == 0
-    failing_group = (
-        "{ command -v definitely_not_a_real_binary >/dev/null 2>&1 || { "
-        "curl -LsSf https://astral.sh/NOPE-404-xyz/install.sh -o /tmp/uv-probe.sh "
-        "&& sh /tmp/uv-probe.sh ; } ; }"
-    )
     assert (
-        subprocess.run(["sh", "-c", failing_group], capture_output=True).returncode != 0
+        subprocess.run(
+            ["sh", "-n", "-c", script.strip("'")], capture_output=True
+        ).returncode
+        == 0
     )
+
+
+def test_uv_install_step_reports_failure_when_every_route_fails():
+    """The group must exit non-zero, not fall through to an opaque `uv: not found`."""
+    script = UV_INSTALL_STEPS[0].replace(
+        "uv >/dev/null", "definitely_not_a_binary >/dev/null"
+    )
+    # No network and no installer: substitute both routes with a guaranteed failure.
+    script = script.replace("pip install --quiet uv", "false").replace("curl", "false")
+    assert subprocess.run(["sh", "-c", script], capture_output=True).returncode != 0
 
 
 @pytest.mark.parametrize("entry", ["FOO=", "FOO"])
@@ -461,7 +470,7 @@ def _mock_remote(secrets=("my_api_key",)):
         "team-a": TeamType(id="team1", name="team-a", default=True)
     }
     mock_remote.api.list_training_projects.return_value = []
-    mock_remote.api.get_all_secrets.return_value = {
+    mock_remote.api.get_team_secrets.return_value = {
         "secrets": [{"name": name} for name in secrets]
     }
     return mock_remote
@@ -602,14 +611,15 @@ def test_exec_accelerator_is_normalized(tmp_path):
 
 def test_exec_cpu_and_memory_flags(tmp_path):
     result, mock_push = _invoke_exec(
-        ["--cpu-count", "8", "--memory", "16Gi", "--", "python", "my_script.py"],
+        ["--cpu-count", "8", "--memory", "32Gi", "--", "python", "my_script.py"],
         tmp_path,
     )
 
     assert result.exit_code == 0, result.output
     compute = mock_push.call_args[1]["config"].job.compute
+    # Both differ from the defaults, so this cannot pass by accident.
     assert compute.cpu_count == 8
-    assert compute.memory == "16Gi"
+    assert compute.memory == "32Gi"
 
 
 def test_exec_directory_flags_build_a_workspace(tmp_path):
@@ -767,55 +777,86 @@ def test_exec_does_not_warn_for_a_plain_directory(tmp_path):
 # --- secret existence validation ---------------------------------------------
 
 
+TEAM_ID = "team1"
+
+
 def _api(secrets_response):
-    # spec'd: renaming get_all_secrets should fail loudly, not silently disable this.
+    # spec'd: renaming the listing method should fail loudly, not silently disable
+    # this check.
     api = Mock(spec=BasetenApi)
+    api.get_team_secrets.return_value = secrets_response
     api.get_all_secrets.return_value = secrets_response
     return api
 
 
-def test_validate_secret_references_skips_the_call_without_any_secret_refs(capsys):
+def _validate(api, environment_variables, team_id=TEAM_ID):
+    validate_secret_references(api, environment_variables, team_id=team_id)
+
+
+def test_validate_secret_references_skips_the_call_without_any_secret_refs():
     api = _api({"secrets": []})
 
-    validate_secret_references(api, {"PLAIN": "literal"})
+    _validate(api, {"PLAIN": "literal"})
 
+    api.get_team_secrets.assert_not_called()
     api.get_all_secrets.assert_not_called()
-    assert _plain(capsys.readouterr().out) == ""
 
 
-def test_validate_secret_references_is_quiet_when_the_secret_exists(capsys):
+def test_validate_secret_references_checks_the_job_team_not_the_whole_workspace():
+    """The server resolves a SecretReference against the project's team, so a
+    workspace-wide listing would pass names the push then rejects."""
     api = _api({"secrets": [{"name": "my_api_key"}]})
 
-    validate_secret_references(api, {"K": SecretReference(name="my_api_key")})
+    _validate(api, {"K": SecretReference(name="my_api_key")})
+
+    api.get_team_secrets.assert_called_once_with(TEAM_ID)
+    api.get_all_secrets.assert_not_called()
+
+
+def test_validate_secret_references_falls_back_to_the_workspace_without_a_team():
+    """No team means the organization's default team, which the team-scoped endpoint
+    cannot address; the caller-wide listing is a superset, so it can only miss a
+    failure, never invent one."""
+    api = _api({"secrets": [{"name": "my_api_key"}]})
+
+    _validate(api, {"K": SecretReference(name="my_api_key")}, team_id=None)
 
     api.get_all_secrets.assert_called_once_with()
-    assert _plain(capsys.readouterr().out) == ""
+    api.get_team_secrets.assert_not_called()
 
 
 def test_validate_secret_references_errors_when_the_secret_is_absent():
     api = _api({"secrets": [{"name": "other"}]})
 
     with pytest.raises(click.UsageError) as excinfo:
-        validate_secret_references(api, {"K": SecretReference(name="my_api_key")})
+        _validate(api, {"K": SecretReference(name="my_api_key")})
 
     message = str(excinfo.value)
-    assert "Secret my_api_key was not found in this workspace's secrets" in message
+    assert "Secret my_api_key was not found in this team's secrets" in message
     assert "Create it at" in message
     assert SECRETS_SETTINGS_URL in message
-    assert "not team-scoped" in message
 
 
-def test_validate_secret_references_errors_for_an_empty_workspace():
+def test_validate_secret_references_names_the_workspace_scope_in_the_error():
+    with pytest.raises(click.UsageError) as excinfo:
+        _validate(
+            _api({"secrets": []}),
+            {"K": SecretReference(name="my_api_key")},
+            team_id=None,
+        )
+
+    assert "this workspace's secrets" in str(excinfo.value)
+
+
+def test_validate_secret_references_errors_for_an_empty_team():
     """An empty listing is a real answer, unlike an unreadable one."""
     with pytest.raises(click.UsageError, match="my_api_key"):
-        validate_secret_references(
-            _api({"secrets": []}), {"K": SecretReference(name="my_api_key")}
-        )
+        _validate(_api({"secrets": []}), {"K": SecretReference(name="my_api_key")})
 
 
 def test_validate_secret_references_names_every_missing_secret():
     with pytest.raises(click.UsageError) as excinfo:
-        validate_secret_references(
+        _validate(
             _api({"secrets": [{"name": "present"}]}),
             {
                 "A": SecretReference(name="missing_a"),
@@ -832,46 +873,39 @@ def test_validate_secret_references_names_every_missing_secret():
     assert "Create them at" in message
 
 
+def test_validate_secret_references_accepts_the_documented_payload_shape():
+    _validate(
+        _api({"secrets": [{"id": "abc", "name": "my_api_key", "team_name": "t"}]}),
+        {"K": SecretReference(name="my_api_key")},
+    )
+
+
 @pytest.mark.parametrize(
     "response",
     [
+        "a string",
+        42,
+        None,
+        {"data": []},
+        {"secrets": "nope"},
+        [123],
+        # Shapes the endpoint does not return; treating them as authoritative would
+        # report a present secret as missing.
         ["my_api_key"],
         [{"name": "my_api_key"}],
         {"secrets": ["my_api_key"]},
-        {"secrets": [{"name": "my_api_key"}]},
     ],
 )
-def test_validate_secret_references_accepts_the_plausible_payload_shapes(
-    response, capsys
-):
-    validate_secret_references(
-        _api(response), {"K": SecretReference(name="my_api_key")}
-    )
-
-    assert _plain(capsys.readouterr().out) == ""
+def test_validate_secret_references_stays_silent_on_an_unreadable_payload(response):
+    """Rather than guess a shape and fail over a secret that is really there."""
+    _validate(_api(response), {"K": SecretReference(name="my_api_key")})
 
 
-@pytest.mark.parametrize(
-    "response", ["a string", 42, None, {"data": []}, {"secrets": "nope"}, [123]]
-)
-def test_validate_secret_references_stays_silent_on_an_unreadable_payload(
-    response, capsys
-):
-    """Rather than guess a shape and warn about a secret that is really there."""
-    validate_secret_references(
-        _api(response), {"K": SecretReference(name="my_api_key")}
-    )
-
-    assert _plain(capsys.readouterr().out) == ""
-
-
-def test_validate_secret_references_swallows_api_errors(capsys):
+def test_validate_secret_references_swallows_api_errors():
     api = Mock(spec=BasetenApi)
-    api.get_all_secrets.side_effect = RuntimeError("403 Forbidden")
+    api.get_team_secrets.side_effect = RuntimeError("403 Forbidden")
 
-    validate_secret_references(api, {"K": SecretReference(name="my_api_key")})
-
-    assert _plain(capsys.readouterr().out) == ""
+    _validate(api, {"K": SecretReference(name="my_api_key")})
 
 
 def test_validate_secret_references_reports_the_name_verbatim():
@@ -887,6 +921,80 @@ def test_validate_secret_references_reports_the_name_verbatim():
     assert "\\" not in message
 
 
+# --- api key provisioning ----------------------------------------------------
+
+
+def test_team_api_key_secret_name_is_stable_per_team():
+    """One name per team, so a second run reuses the first run's key."""
+    assert team_api_key_secret_name("team1") == "truss-team-team1-exec-api-key"
+    assert team_api_key_secret_name("team2") != team_api_key_secret_name("team1")
+
+
+def test_ensure_team_api_key_secret_reuses_an_existing_secret():
+    name = team_api_key_secret_name(TEAM_ID)
+    api = _api({"secrets": [{"name": name}]})
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) == SecretReference(name=name)
+
+    # Nothing minted: the stored key is still valid and its value is unreadable.
+    api.create_api_key.assert_not_called()
+    api.upsert_team_secret.assert_not_called()
+
+
+def test_ensure_team_api_key_secret_mints_and_stores_when_absent():
+    api = _api({"secrets": [{"name": "unrelated"}]})
+    api.create_api_key.return_value = {"api_key": "sk-abc"}
+    name = team_api_key_secret_name(TEAM_ID)
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) == SecretReference(name=name)
+
+    api.create_api_key.assert_called_once_with(
+        APIKeyCategory.WORKSPACE_MANAGE_ALL, name, team_id=TEAM_ID
+    )
+    api.upsert_team_secret.assert_called_once_with(TEAM_ID, name, "sk-abc")
+
+
+@pytest.mark.parametrize(
+    "response", [{"unexpected": "shape"}, {"secrets": "nope"}, None]
+)
+def test_ensure_team_api_key_secret_does_not_mint_on_an_unreadable_listing(response):
+    """Minting against a listing we can't read risks replacing a working key."""
+    api = _api(response)
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) is None
+
+    api.create_api_key.assert_not_called()
+    api.upsert_team_secret.assert_not_called()
+
+
+def test_ensure_team_api_key_secret_gives_up_when_minting_fails():
+    api = _api({"secrets": []})
+    api.create_api_key.side_effect = RuntimeError("403 Forbidden")
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) is None
+
+    api.upsert_team_secret.assert_not_called()
+
+
+def test_ensure_team_api_key_secret_gives_up_when_the_key_value_is_missing():
+    api = _api({"secrets": []})
+    api.create_api_key.return_value = {"prefix": "sk-abc"}
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) is None
+
+    # A secret holding no key would fail at runtime, not at push time.
+    api.upsert_team_secret.assert_not_called()
+
+
+def test_ensure_team_api_key_secret_swallows_a_failed_listing():
+    api = Mock(spec=BasetenApi)
+    api.get_team_secrets.side_effect = RuntimeError("403 Forbidden")
+
+    assert ensure_team_api_key_secret(api, TEAM_ID) is None
+
+    api.create_api_key.assert_not_called()
+
+
 def test_exec_errors_and_does_not_push_when_a_secret_is_missing(tmp_path):
     """Absent from a listing we could read means the job would fail to start."""
     remote = _mock_remote(secrets=("some_other_secret",))
@@ -898,7 +1006,7 @@ def test_exec_errors_and_does_not_push_when_a_secret_is_missing(tmp_path):
     )
 
     assert result.exit_code != 0
-    assert "my_api_key was not found in this workspace" in _message_text(result)
+    assert "my_api_key was not found in this team" in _message_text(result)
     assert SECRETS_SETTINGS_URL in _message_text(result)
     mock_push.assert_not_called()
 
@@ -911,13 +1019,13 @@ def test_exec_pushes_when_the_secret_exists(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "was not found in this workspace" not in _message_text(result)
+    assert "was not found in this team" not in _message_text(result)
     mock_push.assert_called_once()
 
 
 def test_exec_still_pushes_when_listing_secrets_fails(tmp_path):
     remote = _mock_remote()
-    remote.api.get_all_secrets.side_effect = RuntimeError("403 Forbidden")
+    remote.api.get_team_secrets.side_effect = RuntimeError("403 Forbidden")
 
     result, mock_push = _invoke_exec(
         ["--secret", "BASETEN_API_KEY=my_api_key", "--", "python", "my_script.py"],
@@ -934,7 +1042,7 @@ def test_exec_still_pushes_when_listing_secrets_fails(tmp_path):
 def test_exec_still_pushes_when_the_secrets_payload_is_unreadable(tmp_path):
     """An unparseable listing is an API problem, not proof the secret is missing."""
     remote = _mock_remote()
-    remote.api.get_all_secrets.return_value = {"unexpected": "shape"}
+    remote.api.get_team_secrets.return_value = {"unexpected": "shape"}
 
     result, mock_push = _invoke_exec(
         ["--secret", "BASETEN_API_KEY=my_api_key", "--", "python", "my_script.py"],
@@ -943,7 +1051,7 @@ def test_exec_still_pushes_when_the_secrets_payload_is_unreadable(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    assert "was not found in this workspace" not in _message_text(result)
+    assert "was not found in this team" not in _message_text(result)
     mock_push.assert_called_once()
 
 
@@ -958,16 +1066,70 @@ def test_exec_with_uv_uses_the_uv_image_even_without_uv_metadata(tmp_path):
     assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
-def test_exec_skips_the_secrets_call_without_secret_flags(tmp_path):
-    remote = _mock_remote()
+def test_exec_provisions_the_api_key_secret_without_secret_flags(tmp_path):
+    """Nothing to validate, but the job still needs a Baseten credential."""
+    secret_name = team_api_key_secret_name("team1")
+    remote = _mock_remote(secrets=(secret_name,))
 
     result, mock_push = _invoke_exec(
         ["--env", "PLAIN=1", "--", "python", "my_script.py"], tmp_path, remote=remote
     )
 
     assert result.exit_code == 0, result.output
-    remote.api.get_all_secrets.assert_not_called()
-    mock_push.assert_called_once()
+    environment_variables = mock_push.call_args[1][
+        "config"
+    ].job.runtime.environment_variables
+    assert environment_variables[BASETEN_API_KEY_ENV_VAR] == SecretReference(
+        name=secret_name
+    )
+    assert environment_variables["PLAIN"] == "1"
+    remote.api.create_api_key.assert_not_called()
+    assert secret_name in _message_text(result)
+
+
+def test_exec_does_not_override_an_explicit_baseten_api_key(tmp_path):
+    """An explicit --secret is the user's decision and must win."""
+    remote = _mock_remote(secrets=("my_own_key",))
+
+    result, mock_push = _invoke_exec(
+        [
+            "--secret",
+            f"{BASETEN_API_KEY_ENV_VAR}=my_own_key",
+            "--",
+            "python",
+            "my_script.py",
+        ],
+        tmp_path,
+        remote=remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    environment_variables = mock_push.call_args[1][
+        "config"
+    ].job.runtime.environment_variables
+    assert environment_variables[BASETEN_API_KEY_ENV_VAR] == SecretReference(
+        name="my_own_key"
+    )
+    remote.api.create_api_key.assert_not_called()
+
+
+def test_exec_still_pushes_when_the_api_key_cannot_be_provisioned(tmp_path):
+    """A command that never calls the Baseten API needs no credential."""
+    remote = _mock_remote(secrets=())
+    remote.api.create_api_key.side_effect = RuntimeError("403 Forbidden")
+
+    result, mock_push = _invoke_exec(
+        ["--", "python", "my_script.py"], tmp_path, remote=remote
+    )
+
+    assert result.exit_code == 0, result.output
+    message = _message_text(result)
+    assert "could not provision a team Baseten API key" in message
+    assert "403 Forbidden" not in message
+    environment_variables = mock_push.call_args[1][
+        "config"
+    ].job.runtime.environment_variables
+    assert BASETEN_API_KEY_ENV_VAR not in environment_variables
 
 
 def test_exec_does_not_tail_by_default(tmp_path):

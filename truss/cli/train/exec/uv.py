@@ -20,8 +20,9 @@ UV_BASE_IMAGE = "ghcr.io/astral-sh/uv:0.12.6-python3.12-trixie-slim"
 UV_LOCK_FILE = "uv.lock"
 PYPROJECT_FILE = "pyproject.toml"
 
-# Skip-if-present, so this is safe on an image that already has uv. Needs curl,
-# which the CUDA base image has but a custom --image may not.
+# Skip-if-present, so this is safe on an image that already has uv. Neither install
+# route works everywhere: `python:*-slim` has pip but no curl, while the CUDA images
+# have curl but no Python at all, so try pip first and fall back to the installer.
 #
 # The download is separate from running it because in `curl ... | sh` the pipeline's
 # status is `sh`'s: a failed download would feed an empty script to a shell that
@@ -29,7 +30,8 @@ PYPROJECT_FILE = "pyproject.toml"
 # opaque "uv: not found".
 UV_INSTALL_SCRIPT_PATH = "/tmp/uv-install.sh"
 UV_INSTALL_STEPS = [
-    "{ command -v uv >/dev/null 2>&1 || { "
+    "{ command -v uv >/dev/null 2>&1 || "
+    "pip install --quiet uv || { "
     f"curl -LsSf https://astral.sh/uv/install.sh -o {UV_INSTALL_SCRIPT_PATH} && "
     f"sh {UV_INSTALL_SCRIPT_PATH}"
     " ; } ; }",
