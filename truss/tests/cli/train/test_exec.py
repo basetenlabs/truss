@@ -11,12 +11,14 @@ from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
 from truss.cli.train.exec import (
+    API_KEYS_SETTINGS_URL,
     BASETEN_API_KEY_ENV_VAR,
-    DEFAULT_CPU_COUNT,
-    DEFAULT_MEMORY,
+    DEFAULT_EXEC_CPU_COUNT,
+    DEFAULT_EXEC_MEMORY,
     PYTHON_BASE_IMAGE,
     SECRETS_SETTINGS_URL,
     SUPPORTED_EXEC_ACCELERATORS,
+    OrphanedApiKeyError,
     UvProject,
     build_exec_project,
     build_start_commands,
@@ -32,8 +34,11 @@ from truss.cli.train.exec import (
 from truss.cli.train.exec.uv import (
     PYPROJECT_FILE,
     UV_BASE_IMAGE,
+    UV_CURL_INSTALL,
     UV_INSTALL_STEPS,
     UV_LOCK_FILE,
+    UV_PIP_INSTALL,
+    UV_PRESENT_PROBE,
     is_uv_project,
 )
 from truss.cli.train.workstation import DEFAULT_BASE_IMAGE
@@ -87,8 +92,8 @@ def _build(**overrides):
         project_name="my-project",
         accelerator=None,
         gpu_count=1,
-        cpu_count=DEFAULT_CPU_COUNT,
-        memory=DEFAULT_MEMORY,
+        cpu_count=DEFAULT_EXEC_CPU_COUNT,
+        memory=DEFAULT_EXEC_MEMORY,
         base_image=None,
         project=None,
         workspace_root=None,
@@ -159,8 +164,8 @@ def test_build_exec_project_cpu_defaults(tmp_path):
 
     job = project.job
     assert job.compute.accelerator is None
-    assert job.compute.cpu_count == DEFAULT_CPU_COUNT
-    assert job.compute.memory == DEFAULT_MEMORY
+    assert job.compute.cpu_count == DEFAULT_EXEC_CPU_COUNT
+    assert job.compute.memory == DEFAULT_EXEC_MEMORY
     assert job.compute.node_count == 1
     assert job.image.base_image == PYTHON_BASE_IMAGE
     assert job.workspace is None
@@ -380,11 +385,14 @@ def test_uv_install_step_does_not_pipe_curl_into_sh():
 
 def test_uv_install_step_reports_failure_when_every_route_fails():
     """The group must exit non-zero, not fall through to an opaque `uv: not found`."""
-    script = UV_INSTALL_STEPS[0].replace(
-        "uv >/dev/null", "definitely_not_a_binary >/dev/null"
+    script = (
+        UV_INSTALL_STEPS[0]
+        .replace(UV_PRESENT_PROBE, "false")
+        .replace(UV_PIP_INSTALL, "false")
+        .replace(UV_CURL_INSTALL, "false")
     )
-    # No network and no installer: substitute both routes with a guaranteed failure.
-    script = script.replace("pip install --quiet uv", "false").replace("curl", "false")
+    # Every route replaced by identity, so nothing here reaches the network.
+    assert "curl" not in script and "pip" not in script
     assert subprocess.run(["sh", "-c", script], capture_output=True).returncode != 0
 
 
@@ -463,15 +471,26 @@ def test_validate_workspace_root_rejects_a_missing_directory(tmp_path):
 # --- CLI ---------------------------------------------------------------------
 
 
-def _mock_remote(secrets=("my_api_key",)):
+TEAM_ID = "team1"
+
+
+def _mock_remote(secrets=("my_api_key",), provisioned=True):
+    """A remote whose team already holds `secrets`.
+
+    `provisioned` includes the per-team API-key secret, which is the steady state
+    after any earlier run, so a test only opts out to exercise first-use minting.
+    """
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = Mock(spec=BasetenApi)
     mock_remote.api.get_teams.return_value = {
-        "team-a": TeamType(id="team1", name="team-a", default=True)
+        "team-a": TeamType(id=TEAM_ID, name="team-a", default=True)
     }
     mock_remote.api.list_training_projects.return_value = []
+    names = list(secrets)
+    if provisioned:
+        names.append(team_api_key_secret_name(TEAM_ID))
     mock_remote.api.get_team_secrets.return_value = {
-        "secrets": [{"name": name} for name in secrets]
+        "secrets": [{"name": name} for name in names]
     }
     return mock_remote
 
@@ -549,8 +568,8 @@ def test_exec_defaults_to_cpu_only_job(tmp_path):
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
     assert job.compute.accelerator is None
-    assert job.compute.cpu_count == DEFAULT_CPU_COUNT
-    assert job.compute.memory == DEFAULT_MEMORY
+    assert job.compute.cpu_count == DEFAULT_EXEC_CPU_COUNT
+    assert job.compute.memory == DEFAULT_EXEC_MEMORY
 
 
 def test_exec_pushes_current_directory_as_source_dir(tmp_path):
@@ -777,9 +796,6 @@ def test_exec_does_not_warn_for_a_plain_directory(tmp_path):
 # --- secret existence validation ---------------------------------------------
 
 
-TEAM_ID = "team1"
-
-
 def _api(secrets_response):
     # spec'd: renaming the listing method should fail loudly, not silently disable
     # this check.
@@ -913,7 +929,9 @@ def test_validate_secret_references_reports_the_name_verbatim():
     a backslash into the name the user sees."""
     with pytest.raises(click.UsageError) as excinfo:
         validate_secret_references(
-            _api({"secrets": []}), {"K": SecretReference(name="[bold]weird")}
+            _api({"secrets": []}),
+            {"K": SecretReference(name="[bold]weird")},
+            team_id=None,
         )
 
     message = str(excinfo.value)
@@ -976,14 +994,31 @@ def test_ensure_team_api_key_secret_gives_up_when_minting_fails():
     api.upsert_team_secret.assert_not_called()
 
 
-def test_ensure_team_api_key_secret_gives_up_when_the_key_value_is_missing():
+def test_ensure_team_api_key_secret_reports_a_response_without_a_key_value():
+    """The key may exist server-side even though its value never reached us."""
     api = _api({"secrets": []})
     api.create_api_key.return_value = {"prefix": "sk-abc"}
 
-    assert ensure_team_api_key_secret(api, TEAM_ID) is None
+    with pytest.raises(OrphanedApiKeyError, match=team_api_key_secret_name(TEAM_ID)):
+        ensure_team_api_key_secret(api, TEAM_ID)
 
     # A secret holding no key would fail at runtime, not at push time.
     api.upsert_team_secret.assert_not_called()
+
+
+def test_ensure_team_api_key_secret_reports_a_key_it_could_not_store():
+    """The key is live, unreferenced and unrevocable through this client, so
+    swallowing this would accumulate credentials silently."""
+    api = _api({"secrets": []})
+    api.create_api_key.return_value = {"api_key": "sk-abc"}
+    api.upsert_team_secret.side_effect = RuntimeError("503")
+
+    with pytest.raises(OrphanedApiKeyError) as excinfo:
+        ensure_team_api_key_secret(api, TEAM_ID)
+
+    message = str(excinfo.value)
+    assert API_KEYS_SETTINGS_URL in message
+    assert "sk-abc" not in message
 
 
 def test_ensure_team_api_key_secret_swallows_a_failed_listing():
@@ -1113,9 +1148,26 @@ def test_exec_does_not_override_an_explicit_baseten_api_key(tmp_path):
     remote.api.create_api_key.assert_not_called()
 
 
+def test_exec_no_api_key_skips_provisioning_entirely(tmp_path):
+    """A job that should carry no credential must not even mint one."""
+    remote = _mock_remote(secrets=(), provisioned=False)
+
+    result, mock_push = _invoke_exec(
+        ["--no-api-key", "--", "python", "my_script.py"], tmp_path, remote=remote
+    )
+
+    assert result.exit_code == 0, result.output
+    remote.api.create_api_key.assert_not_called()
+    remote.api.upsert_team_secret.assert_not_called()
+    environment_variables = mock_push.call_args[1][
+        "config"
+    ].job.runtime.environment_variables
+    assert BASETEN_API_KEY_ENV_VAR not in environment_variables
+
+
 def test_exec_still_pushes_when_the_api_key_cannot_be_provisioned(tmp_path):
     """A command that never calls the Baseten API needs no credential."""
-    remote = _mock_remote(secrets=())
+    remote = _mock_remote(secrets=(), provisioned=False)
     remote.api.create_api_key.side_effect = RuntimeError("403 Forbidden")
 
     result, mock_push = _invoke_exec(

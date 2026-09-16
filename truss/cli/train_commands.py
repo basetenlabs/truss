@@ -35,9 +35,9 @@ from truss.cli.train.cache import (
 )
 from truss.cli.train.exec import (
     BASETEN_API_KEY_ENV_VAR,
-    DEFAULT_CPU_COUNT,
+    DEFAULT_EXEC_CPU_COUNT,
+    DEFAULT_EXEC_MEMORY,
     DEFAULT_EXEC_PROJECT_NAME,
-    DEFAULT_MEMORY,
     SUPPORTED_EXEC_ACCELERATORS,
     UvProject,
     build_exec_project,
@@ -1401,14 +1401,14 @@ def workstation(
 @click.option(
     "--cpu-count",
     type=click.IntRange(min=1),
-    default=DEFAULT_CPU_COUNT,
+    default=DEFAULT_EXEC_CPU_COUNT,
     show_default=True,
     help="Number of CPUs to request.",
 )
 @click.option(
     "--memory",
     type=str,
-    default=DEFAULT_MEMORY,
+    default=DEFAULT_EXEC_MEMORY,
     show_default=True,
     help="Memory to request (e.g. 8Gi).",
 )
@@ -1463,6 +1463,15 @@ def workstation(
     ),
 )
 @click.option(
+    "--api-key/--no-api-key",
+    "api_key",
+    default=True,
+    help=(
+        "Set BASETEN_API_KEY in the job from a per-team secret, creating the key on "
+        "first use. Pass --no-api-key for a job that should carry no credential."
+    ),
+)
+@click.option(
     "--with-uv",
     is_flag=True,
     default=False,
@@ -1502,6 +1511,7 @@ def exec_training_job(
     external_dirs: tuple[str, ...],
     env: tuple[str, ...],
     secrets: tuple[str, ...],
+    api_key: bool,
     with_uv: bool,
     remote: Optional[str],
     provided_team_name: Optional[str],
@@ -1557,7 +1567,9 @@ def exec_training_job(
     # A training job is given no Baseten credential, so anything calling the Baseten
     # API needs one supplied. Only provision when the user hasn't named the variable
     # themselves, so an explicit --secret or --env always wins.
-    if team_id and BASETEN_API_KEY_ENV_VAR not in environment_variables:
+    if api_key and team_id and BASETEN_API_KEY_ENV_VAR not in environment_variables:
+        # Deliberately not caught: an orphaned key needs the user's attention, and
+        # continuing would hide it behind a successful push.
         api_key_secret = ensure_team_api_key_secret(remote_provider.api, team_id)
         if api_key_secret:
             environment_variables[BASETEN_API_KEY_ENV_VAR] = api_key_secret

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 # There is no CLI command to create a workspace secret, so the settings page is the
 # only actionable next step we can point at.
 SECRETS_SETTINGS_URL = "https://app.baseten.co/settings/secrets"
+API_KEYS_SETTINGS_URL = "https://app.baseten.co/settings/api_keys"
 
 # The variable the Baseten SDKs read their credential from.
 BASETEN_API_KEY_ENV_VAR = "BASETEN_API_KEY"
@@ -24,6 +25,21 @@ BASETEN_API_KEY_ENV_VAR = "BASETEN_API_KEY"
 # permissions are object-level on that one team, so it cannot reach another team's
 # resources.
 _PROVISIONED_KEY_CATEGORY = APIKeyCategory.WORKSPACE_MANAGE_ALL
+
+
+class OrphanedApiKeyError(Exception):
+    """An API key was created but could not be stored in a secret.
+
+    Raised rather than swallowed because the key is live, unreferenced, and cannot be
+    revoked through this client, so only the user can clean it up.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            f"Created the Baseten API key '{name}' but could not store it as a "
+            f"secret, so it is unused. Revoke it at {API_KEYS_SETTINGS_URL}."
+        )
+        self.name = name
 
 
 def _parse_key_value_flag(
@@ -63,6 +79,27 @@ def parse_environment_variables(
     return environment_variables
 
 
+def secret_names(api: BasetenApi, team_id: Optional[str]) -> Optional[Set[str]]:
+    """Names of the secrets a job in `team_id` can reference, or None if unknown.
+
+    None means "we don't know", which is very different from an empty set: callers
+    must not read it as "no secrets exist". Without a `team_id` this falls back to
+    the caller-wide listing, which spans every team the caller belongs to.
+    """
+    scope = "team" if team_id else "workspace"
+    try:
+        response = api.get_team_secrets(team_id) if team_id else api.get_all_secrets()
+    except Exception:
+        logger.debug("Could not list %s secrets.", scope, exc_info=True)
+        return None
+    # Outside the try: a bug in the parser should surface, not be mistaken for an
+    # unreachable API.
+    names = _known_secret_names(response)
+    if names is None:
+        logger.debug("Unrecognized %s secrets payload.", scope)
+    return names
+
+
 def _known_secret_names(response: Any) -> Optional[Set[str]]:
     """Secret names from a secrets listing, or None if the payload is unrecognized.
 
@@ -86,7 +123,7 @@ def _known_secret_names(response: Any) -> Optional[Set[str]]:
 def validate_secret_references(
     api: BasetenApi,
     environment_variables: Mapping[str, Union[str, SecretReference]],
-    team_id: Optional[str] = None,
+    team_id: Optional[str],
 ) -> None:
     """Fail before pushing if a `--secret` names a secret the job's team doesn't have.
 
@@ -115,18 +152,8 @@ def validate_secret_references(
         # No --secret flags, so don't spend a round trip on the common path.
         return
 
-    scope = "team" if team_id else "workspace"
-    try:
-        response = api.get_team_secrets(team_id) if team_id else api.get_all_secrets()
-    except Exception:
-        logger.debug("Could not list %s secrets; skipping check.", scope, exc_info=True)
-        return
-
-    # Outside the try: a bug in the parser should surface, not be mistaken for an
-    # unreachable API.
-    known = _known_secret_names(response)
+    known = secret_names(api, team_id)
     if known is None:
-        logger.debug("Unrecognized %s secrets payload; skipping check.", scope)
         return
 
     missing = [name for name in referenced if name not in known]
@@ -134,6 +161,7 @@ def validate_secret_references(
         return
 
     plural = len(missing) > 1
+    scope = "team" if team_id else "workspace"
     raise click.UsageError(
         f"{'Secrets' if plural else 'Secret'} {', '.join(missing)} "
         f"{'were' if plural else 'was'} not found in this {scope}'s secrets. "
@@ -163,26 +191,32 @@ def ensure_team_api_key_secret(
     reused as-is rather than refreshed: there is nothing to compare it against.
     """
     name = team_api_key_secret_name(team_id)
-    try:
-        known = _known_secret_names(api.get_team_secrets(team_id))
-    except Exception:
-        logger.debug("Could not list team secrets.", exc_info=True)
-        return None
+    known = secret_names(api, team_id)
     if known is None:
-        # Minting against an unreadable listing risks replacing a working key.
-        logger.debug("Unrecognized team secrets payload.")
+        # Minting against a listing we could not read would replace a working key
+        # with one whose predecessor's value is gone for good.
         return None
     if name in known:
         return SecretReference(name=name)
 
     try:
         response = api.create_api_key(_PROVISIONED_KEY_CATEGORY, name, team_id=team_id)
-        value = response.get("api_key") if isinstance(response, dict) else None
-        if not value:
-            logger.debug("No api_key in the create response.")
-            return None
+    except Exception:
+        logger.debug("Could not create the team api key.", exc_info=True)
+        return None
+
+    value = response.get("api_key") if isinstance(response, dict) else None
+    if not value:
+        # The key may exist server-side even though we cannot read its value, so
+        # report it the same way as a failed store.
+        raise OrphanedApiKeyError(name)
+
+    try:
         api.upsert_team_secret(team_id, name, value)
     except Exception:
-        logger.debug("Could not provision the team api key.", exc_info=True)
-        return None
+        # The key now exists and nothing references it. There is no revoke endpoint
+        # in this client and its value is unrecoverable, so the only thing that keeps
+        # this from accumulating silently is telling the user it happened.
+        logger.debug("Could not store the team api key.", exc_info=True)
+        raise OrphanedApiKeyError(name)
     return SecretReference(name=name)

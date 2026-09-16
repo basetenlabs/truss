@@ -804,11 +804,14 @@ class BasetenApi:
         return self._rest_api_client.get("v1/secrets")
 
     def get_team_secrets(self, team_id: str) -> Any:
-        """Secrets belonging to one team.
+        """Every secret belonging to one team.
 
         `get_all_secrets` spans every team the caller belongs to, so it cannot answer
         whether a given team has a secret -- which is the scope the server validates
         a `SecretReference` against.
+
+        The response is complete rather than paged, which callers rely on to read an
+        absent name as "does not exist".
         """
         return self._rest_api_client.get(f"v1/teams/{team_id}/secrets")
 

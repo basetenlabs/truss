@@ -1,9 +1,9 @@
 """`truss train exec`: run a local directory as a Baseten training job."""
 
 from .builder import (
-    DEFAULT_CPU_COUNT,
+    DEFAULT_EXEC_CPU_COUNT,
+    DEFAULT_EXEC_MEMORY,
     DEFAULT_EXEC_PROJECT_NAME,
-    DEFAULT_MEMORY,
     PYTHON_BASE_IMAGE,
     SUPPORTED_EXEC_ACCELERATORS,
     build_exec_project,
@@ -14,8 +14,10 @@ from .builder import (
 )
 from .project import Project, get_project_type
 from .secrets import (
+    API_KEYS_SETTINGS_URL,
     BASETEN_API_KEY_ENV_VAR,
     SECRETS_SETTINGS_URL,
+    OrphanedApiKeyError,
     ensure_team_api_key_secret,
     parse_environment_variables,
     team_api_key_secret_name,
@@ -24,13 +26,15 @@ from .secrets import (
 from .uv import UvProject
 
 __all__ = [
+    "API_KEYS_SETTINGS_URL",
     "BASETEN_API_KEY_ENV_VAR",
-    "DEFAULT_CPU_COUNT",
+    "DEFAULT_EXEC_CPU_COUNT",
     "DEFAULT_EXEC_PROJECT_NAME",
-    "DEFAULT_MEMORY",
+    "DEFAULT_EXEC_MEMORY",
     "PYTHON_BASE_IMAGE",
     "SECRETS_SETTINGS_URL",
     "SUPPORTED_EXEC_ACCELERATORS",
+    "OrphanedApiKeyError",
     "Project",
     "UvProject",
     "build_exec_project",

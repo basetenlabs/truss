@@ -29,12 +29,18 @@ PYPROJECT_FILE = "pyproject.toml"
 # exits 0, so the `&&` chain would continue and the job would fail later with an
 # opaque "uv: not found".
 UV_INSTALL_SCRIPT_PATH = "/tmp/uv-install.sh"
-UV_INSTALL_STEPS = [
-    "{ command -v uv >/dev/null 2>&1 || "
-    "pip install --quiet uv || { "
+
+# Named so a test can substitute a route by identity rather than by matching its
+# text, which would silently stop substituting if either command grew a flag.
+UV_PRESENT_PROBE = "command -v uv >/dev/null 2>&1"
+UV_PIP_INSTALL = "pip install --quiet uv"
+UV_CURL_INSTALL = (
     f"curl -LsSf https://astral.sh/uv/install.sh -o {UV_INSTALL_SCRIPT_PATH} && "
     f"sh {UV_INSTALL_SCRIPT_PATH}"
-    " ; } ; }",
+)
+
+UV_INSTALL_STEPS = [
+    f"{{ {UV_PRESENT_PROBE} || {UV_PIP_INSTALL} || {{ {UV_CURL_INSTALL} ; }} ; }}",
     'export PATH="$HOME/.local/bin:$PATH"',
 ]
 
