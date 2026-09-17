@@ -9,6 +9,7 @@ import rich_click as click
 from truss.base import truss_config
 from truss.cli.train import workstation
 from truss_train.definitions import (
+    CacheConfig,
     Compute,
     Image,
     InteractiveSession,
@@ -88,20 +89,35 @@ def validate_workspace_root(source_dir: Path, workspace_root: Optional[str]) -> 
     return root
 
 
+# The working directory and the uv cache have to share a filesystem. uv hardlinks
+# wheels out of its cache into the venv and silently falls back to full copies when
+# the two are on different mounts, which stores the whole dependency set twice --
+# enough on its own to exceed a job's ephemeral-storage limit. uv's default cache
+# (`$HOME/.cache/uv`) sits on the container filesystem while the working directory
+# is its own mount, so they always differ unless the cache is moved.
+#
+# It stays on the working directory rather than the project cache volume, which is
+# network-backed: a package cache is latency-bound, and the volume is the right place
+# for datasets and weights instead.
+UV_CACHE_SUBDIR = ".uv-cache"
+
+_LOCAL_UV_CACHE_STEP = f'export UV_CACHE_DIR="$PWD/{UV_CACHE_SUBDIR}"'
+
+
 def build_start_commands(
     start_command: Sequence[str], setup_steps: Sequence[str] = ()
 ) -> List[str]:
     """Build `Runtime.start_commands` for `start_command`.
 
-    The user's command always runs last and verbatim. `setup_steps` (from the
-    detected project type) run first, chained into a single `/bin/sh -c` entry to
-    match the pattern in `truss/templates/train/config.py`, because whether the
-    platform runs more than the first entry can't be established from this repo.
+    The user's command always runs last and verbatim. Steps that prepare the
+    environment run first -- co-locating the uv cache with the working directory,
+    then `setup_steps` from the detected project type -- chained into a single
+    `/bin/sh -c` entry to match the pattern in `truss/templates/train/config.py`, so
+    that an `export` is still in effect when the command runs.
     """
     command = shlex.join(start_command)
-    if not setup_steps:
-        return [command]
-    return [f"/bin/sh -c {shlex.quote(' && '.join([*setup_steps, command]))}"]
+    steps = [_LOCAL_UV_CACHE_STEP, *setup_steps]
+    return [f"/bin/sh -c {shlex.quote(' && '.join([*steps, command]))}"]
 
 
 def build_exec_project(
@@ -118,6 +134,7 @@ def build_exec_project(
     exclude_dirs: Sequence[str],
     external_dirs: Sequence[str],
     environment_variables: Mapping[str, Union[str, SecretReference]],
+    use_data_cache: bool,
 ) -> TrainingProject:
     """Build the training project for `truss train exec`.
 
@@ -138,14 +155,18 @@ def build_exec_project(
 
     resolved_base_image = base_image or default_base_image(accelerator, project)
 
-    # A one-off command needs no persistent storage, hence no cache or
-    # checkpointing config.
+    # Checkpointing stays off: a one-off command has no checkpoints to write. The
+    # cache volume is for data a rerun should not re-download -- datasets, weights --
+    # so it is requested independently of the command.
     runtime = Runtime(
         start_commands=build_start_commands(
             start_command=start_command,
             setup_steps=project.setup(resolved_base_image) if project else (),
         ),
         environment_variables=dict(environment_variables),
+        cache_config=CacheConfig(enabled=True, require_cache_affinity=False)
+        if use_data_cache
+        else None,
     )
 
     # SSH available on demand, rather than a session live from job startup: the

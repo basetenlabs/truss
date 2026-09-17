@@ -1463,6 +1463,16 @@ def workstation(
     ),
 )
 @click.option(
+    "--data-cache/--no-data-cache",
+    "use_data_cache",
+    default=True,
+    help=(
+        "Mount the project cache volume, so datasets and weights a rerun would "
+        "otherwise re-download survive between runs. The command itself always runs "
+        "on local disk."
+    ),
+)
+@click.option(
     "--api-key/--no-api-key",
     "api_key",
     default=True,
@@ -1511,6 +1521,7 @@ def exec_training_job(
     external_dirs: tuple[str, ...],
     env: tuple[str, ...],
     secrets: tuple[str, ...],
+    use_data_cache: bool,
     api_key: bool,
     with_uv: bool,
     remote: Optional[str],
@@ -1602,6 +1613,7 @@ def exec_training_job(
         exclude_dirs=exclude_dirs,
         external_dirs=external_dirs,
         environment_variables=environment_variables,
+        use_data_cache=use_data_cache,
     )
 
     compute_str = (
