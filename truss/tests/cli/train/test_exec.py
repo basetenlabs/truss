@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 import re
@@ -67,6 +68,19 @@ _BOX_DRAWING_RE = re.compile(r"[\u2500-\u257f]")
 def _strip_ansi(text: str) -> str:
     """`text` with terminal escapes removed but its structure intact."""
     return _ANSI_RE.sub("", text)
+
+
+def _split_streams_runner() -> CliRunner:
+    """A runner whose `result.stdout` carries stdout and nothing else.
+
+    click below 8.2 folds stderr into stdout unless told otherwise; 8.2 and later
+    always keep the two apart and dropped the argument. Tests that assert stdout
+    holds only the JSON payload need the split on both, and the declared floor
+    (click>=8.0.3) is exercised by the lowest-direct CI job.
+    """
+    if "mix_stderr" in inspect.signature(CliRunner.__init__).parameters:
+        return CliRunner(mix_stderr=False)
+    return CliRunner()
 
 
 def _plain(text: str) -> str:
@@ -566,7 +580,7 @@ def _chdir(directory: Path):
         os.chdir(original_cwd)
 
 
-def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
+def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None, runner=None):
     """Invoke `truss loops exec` from `cwd`, returning (result, mock_push)."""
     base_args = ["loops", "exec", "--remote", "test_remote"]
     if tail:
@@ -585,7 +599,7 @@ def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
             "id": "job123",
             "training_project": {"id": "proj123", "name": cwd.name},
         }
-        result = CliRunner().invoke(truss_cli, base_args + list(args))
+        result = (runner or CliRunner()).invoke(truss_cli, base_args + list(args))
 
     return result, mock_push
 
@@ -1268,7 +1282,9 @@ def test_exec_still_pushes_when_the_api_key_cannot_be_provisioned(tmp_path):
 
 def test_exec_json_output_is_the_only_thing_on_stdout(tmp_path):
     """So `truss loops exec -o json | jq` works: progress goes to stderr."""
-    result, mock_push = _invoke_exec(["-o", "json", "--"] + USER_COMMAND, tmp_path)
+    result, mock_push = _invoke_exec(
+        ["-o", "json", "--"] + USER_COMMAND, tmp_path, runner=_split_streams_runner()
+    )
 
     assert result.exit_code == 0, result.output
     payload = json.loads(_strip_ansi(result.stdout))
@@ -1291,7 +1307,9 @@ def test_exec_json_output_is_the_only_thing_on_stdout(tmp_path):
 def test_exec_json_output_reports_the_environment_the_job_gets():
     """Names only -- an --env value can be as sensitive as a secret."""
     result, mock_push = _invoke_exec(
-        ["-o", "json", "--env", "TOKEN=hunter2", "--"] + USER_COMMAND, Path("/tmp")
+        ["-o", "json", "--env", "TOKEN=hunter2", "--"] + USER_COMMAND,
+        Path("/tmp"),
+        runner=_split_streams_runner(),
     )
 
     assert result.exit_code == 0, result.output
