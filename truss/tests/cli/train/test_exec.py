@@ -561,7 +561,7 @@ def _chdir(directory: Path):
 
 
 def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
-    """Invoke `truss train exec` from `cwd`, returning (result, mock_push)."""
+    """Invoke `truss loops exec` from `cwd`, returning (result, mock_push)."""
     base_args = ["loops", "exec", "--remote", "test_remote"]
     if tail:
         base_args.append("--tail")
@@ -1279,7 +1279,7 @@ def test_exec_tails_when_asked(tmp_path):
 
 
 def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
-    """Otherwise `truss train exec --tail -- pytest` is green in CI regardless of
+    """Otherwise `truss loops exec --tail -- pytest` is green in CI regardless of
     outcome. --tail is passed explicitly: it is opt-in, so this cannot rely on a
     default."""
     with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
