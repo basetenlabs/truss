@@ -8,7 +8,7 @@ import re
 import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
@@ -26,7 +26,6 @@ from truss.base import constants, truss_config
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
-    BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONSTRAINTS_TXT_FILENAME,
@@ -577,14 +576,11 @@ class ServingImageBuilder(ImageBuilder):
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 32)
-        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
-        runtime_max_batch_tokens = max(
-            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
-        )
+        runtime_max_batch_tokens = trt_llm_config.build.max_num_tokens
         port = 7997
         start_command = " ".join(
             [
-                "truss-transfer-cli && text-embeddings-router",
+                "text-embeddings-router",
                 f"--port {port}",
                 # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
@@ -631,7 +627,7 @@ class ServingImageBuilder(ImageBuilder):
         port = 7997
         start_command = " ".join(
             [
-                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
+                "text-embeddings-router --model-id /tmp/bei-model",
                 f"--port {port}",
                 # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
@@ -706,8 +702,6 @@ class ServingImageBuilder(ImageBuilder):
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
 
-        data_dir = build_dir / config.data_dir  # type: ignore[operator]
-
         truss_ignore_patterns = []
         if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
             truss_ignore_patterns = load_trussignore_patterns(
@@ -758,11 +752,13 @@ class ServingImageBuilder(ImageBuilder):
             yaml.dump(config.to_dict(verbose=True), config_file)
 
         external_data_files: list = []
-        data_dir = Path("/app/data/")
+        # Container path. PurePosixPath so a Windows host does not turn
+        # /app/data into C:\app\data via Path.resolve().
+        container_data_dir = PurePosixPath("/app/data")
         if self._spec.external_data is not None:
             for ext_file in self._spec.external_data.items:
                 external_data_files.append(
-                    (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
+                    (ext_file.url, container_data_dir / ext_file.local_data_path)
                 )
 
         # No model cache provided, initialize empty

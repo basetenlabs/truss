@@ -31,7 +31,7 @@ pip install --upgrade truss
 
 Deploying a model to Baseten via Truss turns a Hugging Face model into a production-ready API endpoint. You write a `config.yaml` that specifies the model, the hardware, and the engine, then `uvx truss push` builds a TensorRT-optimized container and deploys it. No Python code, no Dockerfile, no container management.
 
-This guide walks through deploying [Qwen 2.5 3B Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct), a small but capable LLM, from a config file to a production API. You'll set up Truss, write a config, deploy to Baseten, call the model's OpenAI-compatible endpoint, and promote to production.
+This guide walks through deploying [Qwen 2.5 3B Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct), a small but capable LLM, from a config file to a production API. You'll set up Truss, write a config, deploy to Baseten, and call the model's OpenAI-compatible endpoint.
 
 ## Set up your environment
 
@@ -42,23 +42,30 @@ Before you begin:
 
 ### Authenticate with Baseten
 
-Generate an API key from [Settings > API keys](https://app.baseten.co/settings/account/api_keys), then log in:
+Log in:
 
 ```sh
 uvx truss login
 ```
 
-Paste your API key when prompted:
+The CLI asks how you want to authenticate. Generate an API key from [Settings > API keys](https://app.baseten.co/settings/account/api_keys) if you pick the paste path:
 
 ```output
 💻 Let's add a Baseten remote!
+How would you like to authenticate?
+  Paste an API key
+  Log in via browser (OAuth)
 🤫 Quietly paste your API_KEY:
 ```
 
-You can skip the interactive prompt by setting `BASETEN_API_KEY` as an environment variable:
-```bash
-export BASETEN_API_KEY="paste-your-api-key-here"
+Skip the picker with `--browser` or `--api-key`:
+
+```sh
+uvx truss login --browser
+uvx truss login --api-key "paste-your-api-key-here"
 ```
+
+`BASETEN_API_KEY` is what the OpenAI client uses later to call the model. It does not skip `truss login`.
 
 ## Create a Truss project
 
@@ -75,13 +82,16 @@ When prompted, name the model `Qwen 2.5 3B`.
 Truss Qwen 2.5 3B was created in ~/qwen-2.5-3b
 ```
 
-This creates a directory with a `config.yaml`, a `model/` directory, and supporting files. For engine-based deployments like this one, you only need `config.yaml`. The `model/` directory is for [custom Python code](/examples/customize-a-model) when you need custom preprocessing, postprocessing, or unsupported model architectures.
+This creates a directory with a `config.yaml`, a `model/` directory, and supporting files. For engine-based deployments like this one, you only need `config.yaml`. The `model/` directory is for [custom Python code](https://docs.baseten.co/examples/customize-a-model) when you need custom preprocessing, postprocessing, or unsupported model architectures.
 
 ## Write the config
 
 Replace the contents of `config.yaml` with:
 
 ```yaml config.yaml
+model_metadata:
+  tags:
+    - openai-compatible
 model_name: Qwen-2.5-3B
 resources:
   accelerator: L4
@@ -95,40 +105,40 @@ trt_llm:
     max_seq_len: 8192
     quantization_type: fp8
     tensor_parallel_count: 1
+    num_builder_gpus: 2
 ```
 
 That's the entire deployment specification.
 
 - `model_name` identifies the model in your Baseten dashboard.
 - `resources` selects an L4 GPU (24 GB VRAM), which is plenty for a 3B parameter model.
-- `trt_llm` tells Baseten to use [Engine-Builder-LLM](/engines/engine-builder-llm/overview), which compiles the model with TensorRT-LLM for optimized inference.
+- `trt_llm` tells Baseten to use [Engine-Builder-LLM](https://docs.baseten.co/engines/engine-builder-llm/overview), which compiles the model with TensorRT-LLM for optimized inference.
 - `checkpoint_repository` points to the model weights on Hugging Face. Qwen 2.5 3B Instruct is ungated, so no access token is needed.
 - `quantization_type: fp8` compresses weights to 8-bit floating point, cutting memory usage roughly in half with negligible quality loss.
 - `max_seq_len: 8192` sets the maximum context length for requests.
+- `num_builder_gpus: 2` uses two GPUs during the build phase. FP8 quantization needs more GPU memory at compile time than at inference. The [first-model guide](https://docs.baseten.co/examples/deploy-your-first-model) says a single L4 can run out of memory during compilation without this.
 
 ---
 
 ## Deploy
 
-Push the model to Baseten:
-
-We'll start by deploying in development mode so we can iterate quickly:
+Push the model to Baseten. A default push is a published deployment. `--watch` (development mode with live reload) is not supported for TRT-LLM. For custom Python models, see [Customize a model](https://docs.baseten.co/examples/customize-a-model).
 
 ```sh
-uvx truss push --watch
+uvx truss push
 ```
 
 You should see:
 
 ```output
+Deploying as a published deployment. Use --watch for a development deployment.
+
 ✨ Model Qwen 2.5 3B was successfully pushed ✨
 
    Model ID:      abc1d2ef
    Deployment ID: xyz123
    Endpoint:      https://model-abc1d2ef.api.baseten.co
    Logs:          https://app.baseten.co/models/abc1d2ef/logs/xyz123
-
-👀 Watching for changes to truss...
 ```
 
 You'll need the model ID to call the model's API. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
@@ -139,10 +149,11 @@ Baseten now downloads the model weights from Hugging Face, compiles them with Te
 
 Engine-based deployments serve an OpenAI-compatible API. Once the deployment shows "Active" in the dashboard, call it using the OpenAI SDK or cURL. Replace `{model_id}` with your model ID from the deployment output.
 
-Install the OpenAI SDK if you don't have it:
+Install the OpenAI SDK if you don't have it, and export the API key the client will send:
 
 ```sh
 uv pip install openai
+export BASETEN_API_KEY="paste-your-api-key-here"
 ```
 
 Create a chat completion:
@@ -153,7 +164,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key=os.environ["BASETEN_API_KEY"],
-    base_url="https://model-{model_id}.api.baseten.co/environments/development/sync/v1",
+    base_url="https://model-{model_id}.api.baseten.co/environments/production/sync/v1",
 )
 
 response = client.chat.completions.create(
@@ -175,43 +186,6 @@ programmed for each task...
 ```
 
 Any code that works with the OpenAI SDK works with your deployment. Just point the `base_url` at your model's endpoint.
-
-## Iterate with live reload
-
-When you change your `config.yaml` and want to test quickly, use live reload:
-
-```sh
-uvx truss watch
-```
-
-You should see:
-
-```output
-   Model ID:      <model_id>
-   Deployment ID: <deployment_id>
-   Endpoint:      https://model-<model_id>.api.baseten.co
-   Logs:          https://app.baseten.co/models/<model_id>/logs/<deployment_id>
-🚰 Attempting to sync truss with remote
-No changes observed, skipping patching.
-👀 Watching for changes to truss...
-```
-
-When you save changes, Truss automatically syncs them with the deployed model. This saves time by patching without a full rebuild.
-
-If you stopped the watch session, you can re-attach with:
-
-```sh
-uvx truss watch
-```
-
-This creates a production deployment with its own endpoint. The API URL changes from `/environments/development/` to `/environments/production/`:
-
-```python
-client = OpenAI(
-    api_key=os.environ["BASETEN_API_KEY"],
-    base_url="https://model-{model_id}.api.baseten.co/environments/production/sync/v1",
-)
-```
 
 Your model ID is the string after `/models/` in the logs URL from `uvx truss push`. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
 

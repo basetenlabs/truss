@@ -16,6 +16,24 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.truss_remote import RemoteUser
 
 
+@pytest.mark.parametrize(
+    "args,interactive",
+    [
+        (["--non-interactive", "upgrade"], False),
+        (["upgrade", "--non-interactive"], False),
+        (["--non-interactive", "upgrade", "--non-interactive"], False),
+        (["upgrade"], True),
+    ],
+)
+def test_upgrade_respects_non_interactive_flag(args, interactive, monkeypatch):
+    monkeypatch.setenv("TRUSS_NO_UPDATE_CHECK", "1")
+    with patch("truss.cli.cli.self_upgrade.run_upgrade") as mock_upgrade:
+        result = CliRunner().invoke(truss_cli, args)
+
+    assert result.exit_code == 0, result.output
+    mock_upgrade.assert_called_once_with(None, interactive=interactive)
+
+
 def test_push_with_grpc_transport_fails_for_development_deployment():
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "grpc"

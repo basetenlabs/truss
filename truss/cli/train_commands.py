@@ -36,9 +36,10 @@ from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
+    workstation_ssh_hostnames,
 )
 from truss.cli.utils import common
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
@@ -1182,6 +1183,74 @@ def update_capacity(
     )
 
 
+def _print_workstation_text(job_id: str, hostnames: list[str], node_count: int) -> None:
+    ssh_lines = "\n".join(
+        f"  [cyan]ssh {hostname}[/cyan]"
+        + (" (leader)" if node_count > 1 and rank == 0 else "")
+        for rank, hostname in enumerate(hostnames)
+    )
+
+    multi_node_hint = ""
+    if node_count > 1:
+        multi_node_hint = (
+            "\n"
+            "Multi-node env vars available on each node:\n"
+            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+        )
+
+    console.print(
+        f"\n[green]Workstation created![/green]\n"
+        f"\n"
+        f"Once the job is running, SSH in with:\n"
+        f"{ssh_lines}\n"
+        f"\n"
+        f"If you haven't set up SSH yet, run:\n"
+        f"  [cyan]truss ssh setup[/cyan]\n"
+        f"{multi_node_hint}"
+        f"\n"
+        f"View logs:\n"
+        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+        f"\n"
+        f"Stop the workstation:\n"
+        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+    )
+
+
+def _print_workstation_json(
+    *,
+    job_resp: dict,
+    hostnames: list[str],
+    accelerator: str,
+    gpu_count: int,
+    node_count: int,
+    orchestrator: str,
+) -> None:
+    """Emit the workstation's node addresses as JSON on stdout.
+
+    Note that the nodes are not reachable yet when this is printed: the job is
+    queued, not running. Callers should poll the job's status (e.g.
+    `truss train view --job-id <id>`) before connecting.
+    """
+    project = job_resp.get("training_project") or {}
+    output = {
+        "job_id": job_resp["id"],
+        "project": {"id": project.get("id"), "name": project.get("name")},
+        "accelerator": accelerator,
+        "gpu_count": gpu_count,
+        "node_count": node_count,
+        # Only meaningful for multi-node; single-node workstations just sleep.
+        "orchestrator": orchestrator if node_count > 1 else None,
+        "nodes": [
+            {"rank": rank, "hostname": hostname, "is_leader": rank == 0}
+            for rank, hostname in enumerate(hostnames)
+        ],
+        "job": job_resp,
+    }
+    # Flushed explicitly: with --tail the process keeps streaming logs after
+    # this, and a block-buffered pipe would otherwise withhold the payload.
+    print(json.dumps(output, indent=2), flush=True)
+
+
 @train.command(name="workstation")
 @click.option(
     "--accelerator",
@@ -1248,7 +1317,19 @@ def update_capacity(
     help="Team name for the workstation project",
 )
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@click.option(
+    "-o",
+    "--output-format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and all other "
+        "output (progress, logs) to stderr."
+    ),
+)
 @common.common_options()
+@json_command
 def workstation(
     accelerator: str,
     gpu_count: Optional[int],
@@ -1263,6 +1344,7 @@ def workstation(
     remote: Optional[str],
     provided_team_name: Optional[str],
     tail: bool,
+    output_format: str,
 ):
     """Spin up an SSH workstation on Baseten training infrastructure."""
     import tempfile
@@ -1290,6 +1372,12 @@ def workstation(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    if output_format == "json":
+        # The REST client prints 4xx messages straight to stdout, which would
+        # corrupt the JSON stream. Let them surface as exceptions instead, so
+        # json_command can render them as a structured error.
+        remote_provider.api.suppress_error_print = True
+
     # Use config team as fallback if --team not provided
     effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
     _, team_id = _resolve_team_name(
@@ -1328,38 +1416,19 @@ def workstation(
         )
 
     job_id = job_resp["id"]
-    ssh_lines = f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]"
-    if node_count > 1:
-        ssh_lines += " (leader)"
-        for i in range(1, node_count):
-            ssh_lines += (
-                f"\n  [cyan]ssh training-job-{job_id}-{i}.ssh.baseten.co[/cyan]"
-            )
+    hostnames = workstation_ssh_hostnames(job_id, node_count, remote=remote)
 
-    multi_node_hint = ""
-    if node_count > 1:
-        multi_node_hint = (
-            "\n"
-            "Multi-node env vars available on each node:\n"
-            "  BT_LEADER_ADDR, BT_NODE_RANK, BT_GROUP_SIZE\n"
+    if output_format == "json":
+        _print_workstation_json(
+            job_resp=job_resp,
+            hostnames=hostnames,
+            accelerator=accelerator,
+            gpu_count=gpu_count,
+            node_count=node_count,
+            orchestrator=orchestrator,
         )
-
-    console.print(
-        f"\n[green]Workstation created![/green]\n"
-        f"\n"
-        f"Once the job is running, SSH in with:\n"
-        f"{ssh_lines}\n"
-        f"\n"
-        f"If you haven't set up SSH yet, run:\n"
-        f"  [cyan]truss ssh setup[/cyan]\n"
-        f"{multi_node_hint}"
-        f"\n"
-        f"View logs:\n"
-        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
-        f"\n"
-        f"Stop the workstation:\n"
-        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
-    )
+    else:
+        _print_workstation_text(job_id, hostnames, node_count)
 
     if tail:
         project_resp_id = job_resp["training_project"]["id"]

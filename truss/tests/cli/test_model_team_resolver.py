@@ -306,6 +306,18 @@ class TestModelTeamResolver:
         else:
             mock_remote.api.get_teams.assert_not_called()
 
+    def test_no_teams_resolves_to_no_team(self):
+        # With no teams there is nothing to prompt with, so push proceeds without a
+        # team and lets the backend report why the API key has none.
+        mock_remote = self._setup_mock_remote({})
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote, provided_team_name=None
+        )
+
+        assert team_name is None
+        assert team_id is None
+
     @pytest.mark.parametrize(
         "existing_model_name,should_call_models_api",
         [(None, False), ("some-model", True)],

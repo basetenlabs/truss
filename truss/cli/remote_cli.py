@@ -120,7 +120,9 @@ def inquire_team(
     existing_teams: Optional[dict[str, TeamType]] = None,
     prompt: str = "👥 Which team do you want to push to?",
 ) -> Optional[str]:
-    if existing_teams is not None:
+    # Teams can be None (not fetched) or empty (fetched, but the account/API key
+    # has none). Neither gives us anything to prompt with, so disallow either.
+    if existing_teams:
         if not check_is_interactive():
             available_teams_str = format_available_teams(existing_teams)
             raise click.UsageError(

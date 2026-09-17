@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -35,12 +35,13 @@ BASE_DIR = Path(__file__).parent
 
 
 def _external_data_curl_lines(dockerfile: str) -> list[str]:
-    # `curl -L ` (space) avoids the uv bootstrap `curl -LsSf`. Dest can be
-    # Windows-resolved (`C:\app\data\...`) so do not require `/app/data/`.
+    # `curl -L ` (space) avoids the uv bootstrap `curl -LsSf`.
     return [
         line
         for line in dockerfile.splitlines()
-        if line.strip().startswith("RUN") and "curl -L " in line and "model.bin" in line
+        if line.strip().startswith("RUN")
+        and "curl -L " in line
+        and "/app/data/" in line
     ]
 
 
@@ -116,7 +117,7 @@ def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
 
     expected_url = dockerfile_shell_value(malicious_url)
     expected_dst = dockerfile_shell_value(
-        str((Path("/app/data/") / local_data_path).resolve())
+        str(PurePosixPath("/app/data") / local_data_path)
     )
     assert f"curl -L {expected_url} -o {expected_dst}" in curl_line
     assert "; echo pwned ;" not in curl_line.replace(expected_url, "")
@@ -147,6 +148,25 @@ def test_external_data_url_backticks_escaped_in_dockerfile(
     expected_url = dockerfile_shell_value(malicious_url)
     assert f"curl -L {expected_url}" in curl_line
     assert expected_url == "'http://example.com/`id`'"
+
+
+@patch("platform.machine", return_value="amd")
+def test_external_data_dest_is_posix_container_path(
+    mock_machine, custom_model_truss_dir
+):
+    """Dest must stay /app/data/... on every host OS. Path.resolve() on Windows
+    turns that into C:\\app\\data\\... and curl writes to the wrong place."""
+    local_data_path = "weights/model.bin"
+    curl_line = _render_external_data_curl_line(
+        custom_model_truss_dir, "http://example.com/model.bin", local_data_path
+    )
+    expected_dst = dockerfile_shell_value(
+        str(PurePosixPath("/app/data") / local_data_path)
+    )
+    assert f"-o {expected_dst}" in curl_line
+    assert "/app/data/weights" in curl_line
+    assert ":\\app\\data" not in curl_line
+    assert ":/app/data" not in curl_line
 
 
 def _render_external_data_curl_line(truss_dir, url: str, local_data_path: str) -> str:

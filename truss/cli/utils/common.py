@@ -112,6 +112,14 @@ def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str
     ctx.ensure_object(dict)[param.name] = value
 
 
+def _store_non_interactive_callback(
+    ctx: click.Context, param: click.Parameter, value: bool
+) -> None:
+    obj = ctx.ensure_object(dict)
+    # Child commands share this object; their defaults must preserve an enabled flag.
+    obj[param.name] = value or obj.get(param.name, False)
+
+
 def get_required_option(ctx: click.Context, name: str) -> object:
     value = ctx.find_root().obj.get(name)
     if value is None:
@@ -140,7 +148,7 @@ def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
         default=False,
         help="Disables interactive prompts, use in CI / automated execution contexts.",
         expose_value=False,
-        callback=_store_param_callback,
+        callback=_store_non_interactive_callback,
     )(f)
 
 

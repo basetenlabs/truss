@@ -25,6 +25,7 @@ pub use utils::*;
 
 /// Initialize tracing with default WARN level
 /// This is called automatically when the library is loaded
+#[cfg(feature = "auto-init-tracing")]
 #[ctor::ctor]
 fn init_tracing() {
     // Check for PERFORMANCE_CLIENT_LOG_LEVEL first (highest priority)

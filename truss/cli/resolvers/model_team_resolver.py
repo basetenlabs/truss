@@ -200,6 +200,11 @@ def resolve_model_team_name(
         return (single_team_name, _get_team_id(single_team_name))
 
     if not allow_interactive:
+        if not existing_teams:
+            raise ValueError(
+                "No teams are available for this account. The API key in use may not "
+                "have permission to deploy models."
+            )
         available_teams_str = remote_cli.format_available_teams(existing_teams)
         raise ValueError(
             "Multiple teams available. Please specify a team name via the "
