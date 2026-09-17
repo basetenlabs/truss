@@ -30,14 +30,9 @@ PYTHON_BASE_IMAGE = "python:3.12-slim"
 
 # An empty project name fails server-side validation, which the filesystem root
 # would otherwise produce.
-DEFAULT_EXEC_PROJECT_NAME = "truss-train-exec"
+DEFAULT_EXEC_PROJECT_NAME = "loops-runner"
 
 SUPPORTED_EXEC_ACCELERATORS = workstation.SUPPORTED_WORKSTATION_ACCELERATORS
-
-# Read from the model so a caller that wants the platform default has one. Named
-# for exec because `truss_config` exports a `DEFAULT_MEMORY` with a different value.
-DEFAULT_EXEC_CPU_COUNT: int = Compute.model_fields["cpu_count"].default
-DEFAULT_EXEC_MEMORY: str = Compute.model_fields["memory"].default
 
 
 def default_base_image(accelerator: Optional[str], project: Optional[Project]) -> str:
