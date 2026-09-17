@@ -115,7 +115,6 @@ def _build(**overrides):
         exclude_dirs=(),
         external_dirs=(),
         environment_variables={},
-        use_data_cache=False,
     )
     kwargs.update(overrides)
     return build_exec_project(**kwargs)
@@ -228,11 +227,12 @@ def test_build_exec_project_enables_ssh_on_demand(tmp_path):
     assert job.interactive_session.session_provider == InteractiveSessionProvider.SSH
 
 
-def test_build_exec_project_leaves_storage_disabled(tmp_path):
+def test_build_exec_project_leaves_checkpointing_disabled(tmp_path):
+    """A one-off command has no checkpoints to write or resume from; the cache
+    volume it does get is covered separately."""
     runtime = _build(
         start_command=["python", "my_script.py"], project_name="my-project"
     ).job.runtime
-    assert runtime.cache_config is None
     assert runtime.load_checkpoint_config is None
     assert runtime.checkpointing_config.enabled is False
     assert runtime.checkpointing_config.checkpoint_path is None
@@ -374,8 +374,9 @@ def test_uv_cache_is_exported_before_the_project_setup():
     assert script.index("UV_CACHE_DIR") < script.index(UV_PIP_INSTALL)
 
 
-def test_build_exec_project_requests_the_data_cache_volume():
-    runtime = _build(use_data_cache=True).job.runtime
+def test_build_exec_project_always_mounts_the_cache_volume():
+    """Datasets and weights a rerun would otherwise re-download survive on it."""
+    runtime = _build().job.runtime
     assert runtime.cache_config is not None
     assert runtime.cache_config.enabled is True
     # Pinning to one node would make a long-running command unschedulable.
@@ -384,22 +385,11 @@ def test_build_exec_project_requests_the_data_cache_volume():
     assert runtime.checkpointing_config.enabled is False
 
 
-def test_build_exec_project_omits_the_data_cache_when_not_asked():
-    assert _build(use_data_cache=False).job.runtime.cache_config is None
-
-
-def test_exec_requests_the_data_cache_by_default(tmp_path):
+def test_exec_mounts_the_cache_volume(tmp_path):
     result, mock_push = _invoke_exec(["--"] + USER_COMMAND, tmp_path)
 
     assert result.exit_code == 0, result.output
     assert mock_push.call_args[1]["config"].job.runtime.cache_config.enabled is True
-
-
-def test_exec_no_data_cache_omits_the_volume(tmp_path):
-    result, mock_push = _invoke_exec(["--no-data-cache", "--"] + USER_COMMAND, tmp_path)
-
-    assert result.exit_code == 0, result.output
-    assert mock_push.call_args[1]["config"].job.runtime.cache_config is None
 
 
 def test_build_exec_project_with_uv_selects_the_uv_image_on_cpu():

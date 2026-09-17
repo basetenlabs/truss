@@ -134,7 +134,6 @@ def build_exec_project(
     exclude_dirs: Sequence[str],
     external_dirs: Sequence[str],
     environment_variables: Mapping[str, Union[str, SecretReference]],
-    use_data_cache: bool,
 ) -> TrainingProject:
     """Build the training project for `truss train exec`.
 
@@ -156,17 +155,15 @@ def build_exec_project(
     resolved_base_image = base_image or default_base_image(accelerator, project)
 
     # Checkpointing stays off: a one-off command has no checkpoints to write. The
-    # cache volume is for data a rerun should not re-download -- datasets, weights --
-    # so it is requested independently of the command.
+    # cache volume is always mounted, so datasets and weights a rerun would otherwise
+    # re-download survive; the command itself still runs on local disk.
     runtime = Runtime(
         start_commands=build_start_commands(
             start_command=start_command,
             setup_steps=project.setup(resolved_base_image) if project else (),
         ),
         environment_variables=dict(environment_variables),
-        cache_config=CacheConfig(enabled=True, require_cache_affinity=False)
-        if use_data_cache
-        else None,
+        cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
     )
 
     # SSH available on demand, rather than a session live from job startup: the
