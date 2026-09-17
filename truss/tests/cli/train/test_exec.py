@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -61,6 +62,11 @@ USER_COMMAND_STR = "uv run python my_script.py"
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _BOX_DRAWING_RE = re.compile(r"[\u2500-\u257f]")
+
+
+def _strip_ansi(text: str) -> str:
+    """`text` with terminal escapes removed but its structure intact."""
+    return _ANSI_RE.sub("", text)
 
 
 def _plain(text: str) -> str:
@@ -1255,6 +1261,53 @@ def test_exec_still_pushes_when_the_api_key_cannot_be_provisioned(tmp_path):
         "config"
     ].job.runtime.environment_variables
     assert BASETEN_API_KEY_ENV_VAR not in environment_variables
+
+
+# --- json output -------------------------------------------------------------
+
+
+def test_exec_json_output_is_the_only_thing_on_stdout(tmp_path):
+    """So `truss loops exec -o json | jq` works: progress goes to stderr."""
+    result, mock_push = _invoke_exec(["-o", "json", "--"] + USER_COMMAND, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_strip_ansi(result.stdout))
+    assert payload["job_id"] == "job123"
+    assert payload["project"]["id"] == "proj123"
+    assert payload["project"]["name"] == tmp_path.name
+    assert payload["ssh_hostname"] == "training-job-job123-0.ssh.baseten.co"
+    assert payload["start_command"] == USER_COMMAND_STR
+    assert payload["compute"] == {
+        "cpu_count": LOOPS_EXEC_CPU_COUNT,
+        "memory": LOOPS_EXEC_MEMORY,
+        "accelerator": None,
+        "gpu_count": None,
+    }
+    # The prose the default format prints is absent from stdout entirely.
+    assert "Job created" not in result.stdout
+    assert "Launching" not in result.stdout
+
+
+def test_exec_json_output_reports_the_environment_the_job_gets():
+    """Names only -- an --env value can be as sensitive as a secret."""
+    result, mock_push = _invoke_exec(
+        ["-o", "json", "--env", "TOKEN=hunter2", "--"] + USER_COMMAND, Path("/tmp")
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_strip_ansi(result.stdout))
+    assert "TOKEN" in payload["environment_variables"]
+    assert UV_CACHE_DIR_ENV_VAR in payload["environment_variables"]
+    assert "hunter2" not in result.stdout
+
+
+def test_exec_default_format_prints_prose_not_json(tmp_path):
+    result, _ = _invoke_exec(["--"] + USER_COMMAND, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    assert "Job created" in _plain(result.stdout)
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(_strip_ansi(result.stdout))
 
 
 def test_exec_does_not_tail_by_default(tmp_path):

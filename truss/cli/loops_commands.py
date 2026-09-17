@@ -1,4 +1,5 @@
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -37,7 +38,7 @@ from truss.cli.train.exec import (
     validate_workspace_root,
 )
 from truss.cli.utils import common
-from truss.cli.utils.output import console
+from truss.cli.utils.output import console, json_command
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss_train import public_api as train_public_api
@@ -1257,6 +1258,44 @@ def view_loops_logs(
     )
 
 
+def _print_exec_json(
+    *,
+    job_resp: dict,
+    ssh_hostname: str,
+    start_command: str,
+    environment_variables: dict,
+    cpu_count: int,
+    memory: str,
+    accelerator: Optional[str],
+    gpu_count: int,
+) -> None:
+    """Emit the job's identity and shape as JSON on stdout.
+
+    The job is not running yet when this is printed. Callers should poll
+    `truss train view --job-id <id>` before connecting or expecting logs.
+    """
+    project = job_resp.get("training_project") or {}
+    output = {
+        "job_id": job_resp["id"],
+        "project": {"id": project.get("id"), "name": project.get("name")},
+        "ssh_hostname": ssh_hostname,
+        "start_command": start_command,
+        # Names only: an --env value can be as sensitive as a secret. Taken from the
+        # built job rather than the flags, since the builder contributes its own.
+        "environment_variables": sorted(environment_variables),
+        "compute": {
+            "cpu_count": cpu_count,
+            "memory": memory,
+            "accelerator": accelerator,
+            "gpu_count": gpu_count if accelerator else None,
+        },
+        "job": job_resp,
+    }
+    # Flushed explicitly: with --tail the process keeps streaming logs after this,
+    # and a block-buffered pipe would otherwise withhold the payload.
+    print(json.dumps(output, indent=2), flush=True)
+
+
 @loops.command(name="exec", context_settings={"ignore_unknown_options": True})
 @click.argument("start_command", nargs=-1, type=click.UNPROCESSED)
 @click.option(
@@ -1336,6 +1375,17 @@ def view_loops_logs(
     ),
 )
 @click.option(
+    "-o",
+    "--output-format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and all other "
+        "output (progress, logs) to stderr."
+    ),
+)
+@click.option(
     "--api-key/--no-api-key",
     "api_key",
     default=True,
@@ -1371,6 +1421,7 @@ def view_loops_logs(
     ),
 )
 @common.common_options()
+@json_command
 def exec_loops_command(
     start_command: tuple[str, ...],
     accelerator: Optional[str],
@@ -1384,6 +1435,7 @@ def exec_loops_command(
     external_dirs: tuple[str, ...],
     env: tuple[str, ...],
     secrets: tuple[str, ...],
+    output_format: str,
     api_key: bool,
     with_uv: bool,
     remote: Optional[str],
@@ -1402,6 +1454,8 @@ def exec_loops_command(
     per-team secret unless you set it yourself; pass --with-uv to get uv in the job
     image. SSH into the job is available on demand.
     """
+    as_json = output_format == "json"
+
     if not start_command:
         raise click.UsageError(
             "No start command given. Pass the command to run after `--`, "
@@ -1430,6 +1484,12 @@ def exec_loops_command(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    if as_json:
+        # The REST client prints 4xx messages straight to stdout, which would
+        # corrupt the JSON stream. Let them surface as exceptions instead, so
+        # json_command can render them as a structured error.
+        remote_provider.api.suppress_error_print = True
+
     effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
     _, team_id = train_commands._resolve_team_name(
         remote_provider, effective_team_name, existing_project_name=project_name
@@ -1501,28 +1561,42 @@ def exec_loops_command(
     )
 
     job_id = job_resp["id"]
-    console.print(
-        f"\n[green]Job created![/green]\n"
-        f"\n"
-        f"SSH is available on demand. Check the interactive session with:\n"
-        f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
-        f"\n"
-        f"Then SSH in with:\n"
-        f"  [cyan]ssh training-job-{job_id}-0.ssh.baseten.co[/cyan]\n"
-        f"\n"
-        f"If you haven't set up SSH yet, run:\n"
-        f"  [cyan]truss ssh setup[/cyan]\n"
-        f"\n"
-        f"View logs:\n"
-        f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
-        f"\n"
-        f"Stop the job:\n"
-        f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
-    )
+    project_id = job_resp["training_project"]["id"]
+    ssh_hostname = f"training-job-{job_id}-0.ssh.baseten.co"
+
+    if as_json:
+        _print_exec_json(
+            job_resp=job_resp,
+            ssh_hostname=ssh_hostname,
+            start_command=shlex.join(start_command),
+            environment_variables=training_project.job.runtime.environment_variables,
+            cpu_count=cpu_count,
+            memory=memory,
+            accelerator=accelerator,
+            gpu_count=gpu_count,
+        )
+    else:
+        console.print(
+            f"\n[green]Job created![/green]\n"
+            f"\n"
+            f"SSH is available on demand. Check the interactive session with:\n"
+            f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
+            f"\n"
+            f"Then SSH in with:\n"
+            f"  [cyan]ssh {ssh_hostname}[/cyan]\n"
+            f"\n"
+            f"If you haven't set up SSH yet, run:\n"
+            f"  [cyan]truss ssh setup[/cyan]\n"
+            f"\n"
+            f"View logs:\n"
+            f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+            f"\n"
+            f"Stop the job:\n"
+            f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+        )
 
     if tail:
-        project_resp_id = job_resp["training_project"]["id"]
-        watcher = TrainingLogWatcher(remote_provider.api, project_resp_id, job_id)
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
         for log in watcher.watch():
             cli_log_utils.output_log(log)
 
