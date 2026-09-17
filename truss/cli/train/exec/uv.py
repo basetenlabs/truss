@@ -1,4 +1,4 @@
-"""uv-specific pieces of `truss train exec`.
+"""uv-specific pieces of an exec job.
 
 Everything that knows what uv is lives here, so adding another project type (pip,
 poetry, ...) means adding a sibling module rather than editing the exec builder.

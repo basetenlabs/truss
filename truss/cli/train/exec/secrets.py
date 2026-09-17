@@ -1,4 +1,4 @@
-"""`--env` / `--secret` handling for `truss train exec`."""
+"""`--env` / `--secret` handling, and the per-team API key an exec job runs with."""
 
 import logging
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
@@ -178,6 +178,26 @@ def team_api_key_secret_name(team_id: str) -> str:
     return f"truss-team-{team_id}-exec-api-key"
 
 
+def _store_team_api_key(
+    api: BasetenApi, team_id: str, name: str, response: Any
+) -> bool:
+    """Store the key carried by `response`, reporting whether it landed.
+
+    The plaintext is popped out of `response` and confined to this frame, which
+    swallows its own failures: the CLI renders frame locals when an exception
+    escapes at debug log levels, so a key on a traceback is a key on a terminal.
+    """
+    value = response.pop("api_key", None) if isinstance(response, dict) else None
+    if not value:
+        return False
+    try:
+        api.upsert_team_secret(team_id, name, value)
+    except Exception:
+        logger.debug("Could not store the team api key.", exc_info=True)
+        return False
+    return True
+
+
 def ensure_team_api_key_secret(
     api: BasetenApi, team_id: str
 ) -> Optional[SecretReference]:
@@ -189,6 +209,8 @@ def ensure_team_api_key_secret(
 
     A key's plaintext is returned only when it is created, so an existing secret is
     reused as-is rather than refreshed: there is nothing to compare it against.
+
+    Raises `OrphanedApiKeyError` when a key was created but could not be stored.
     """
     name = team_api_key_secret_name(team_id)
     known = secret_names(api, team_id)
@@ -205,18 +227,9 @@ def ensure_team_api_key_secret(
         logger.debug("Could not create the team api key.", exc_info=True)
         return None
 
-    value = response.get("api_key") if isinstance(response, dict) else None
-    if not value:
-        # The key may exist server-side even though we cannot read its value, so
-        # report it the same way as a failed store.
-        raise OrphanedApiKeyError(name)
-
-    try:
-        api.upsert_team_secret(team_id, name, value)
-    except Exception:
-        # The key now exists and nothing references it. There is no revoke endpoint
-        # in this client and its value is unrecoverable, so the only thing that keeps
-        # this from accumulating silently is telling the user it happened.
-        logger.debug("Could not store the team api key.", exc_info=True)
-        raise OrphanedApiKeyError(name)
+    if not _store_team_api_key(api, team_id, name, response):
+        # The key may exist server-side with its value unrecoverable, so say so
+        # rather than leave it. `from None` keeps the failure that caused this out
+        # of the chained traceback, where it would carry the key in its locals.
+        raise OrphanedApiKeyError(name) from None
     return SecretReference(name=name)

@@ -1,4 +1,4 @@
-"""Project-type detection for `truss train exec`.
+"""Project-type detection for an exec job.
 
 A project type answers two questions about the directory being pushed: which base
 image suits it, and what has to happen in the job before the user's command runs.
@@ -13,7 +13,7 @@ from . import uv
 
 
 class Project(Protocol):
-    """A recognised project type in the directory `truss train exec` pushes."""
+    """A recognised project type in the directory an exec job pushes."""
 
     #: Short label used in CLI messages, e.g. "uv".
     label: str

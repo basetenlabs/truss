@@ -1,4 +1,4 @@
-"""Assembles a `TrainingProject` from `truss train exec` CLI input."""
+"""Assembles a `TrainingProject` for a directory-and-command exec job."""
 
 import shlex
 from pathlib import Path
@@ -33,10 +33,10 @@ DEFAULT_EXEC_PROJECT_NAME = "truss-train-exec"
 
 SUPPORTED_EXEC_ACCELERATORS = workstation.SUPPORTED_WORKSTATION_ACCELERATORS
 
-# Deliberately above the `Compute` model's own defaults: the commands this runs are
-# orchestration clients, which tokenize locally and hold large connection pools.
-DEFAULT_EXEC_CPU_COUNT = 4
-DEFAULT_EXEC_MEMORY = "16Gi"
+# Read from the model so a caller that wants the platform default has one. Named
+# for exec because `truss_config` exports a `DEFAULT_MEMORY` with a different value.
+DEFAULT_EXEC_CPU_COUNT: int = Compute.model_fields["cpu_count"].default
+DEFAULT_EXEC_MEMORY: str = Compute.model_fields["memory"].default
 
 
 def default_base_image(accelerator: Optional[str], project: Optional[Project]) -> str:
@@ -93,8 +93,9 @@ def validate_workspace_root(source_dir: Path, workspace_root: Optional[str]) -> 
 # wheels out of its cache into the venv and silently falls back to full copies when
 # the two are on different mounts, which stores the whole dependency set twice --
 # enough on its own to exceed a job's ephemeral-storage limit. uv's default cache
-# (`$HOME/.cache/uv`) sits on the container filesystem while the working directory
-# is its own mount, so they always differ unless the cache is moved.
+# (`$HOME/.cache/uv`) lands under `CacheConfig.mount_base_path`, which is the
+# network-backed cache volume when one is mounted, so it always differs from the
+# working directory unless it is moved.
 #
 # It stays on the working directory rather than the project cache volume, which is
 # network-backed: a package cache is latency-bound, and the volume is the right place
@@ -134,8 +135,9 @@ def build_exec_project(
     exclude_dirs: Sequence[str],
     external_dirs: Sequence[str],
     environment_variables: Mapping[str, Union[str, SecretReference]],
+    enable_cache: bool,
 ) -> TrainingProject:
-    """Build the training project for `truss train exec`.
+    """Build the training project for an exec job.
 
     Every parameter is required and keyword-only, so a caller cannot build a
     partially-specified project and the CLI stays the single source of defaults. The
@@ -155,15 +157,17 @@ def build_exec_project(
     resolved_base_image = base_image or default_base_image(accelerator, project)
 
     # Checkpointing stays off: a one-off command has no checkpoints to write. The
-    # cache volume is always mounted, so datasets and weights a rerun would otherwise
-    # re-download survive; the command itself still runs on local disk.
+    # cache volume is the caller's call -- it is where data a rerun should not
+    # re-download lives, which only some workloads have.
     runtime = Runtime(
         start_commands=build_start_commands(
             start_command=start_command,
             setup_steps=project.setup(resolved_base_image) if project else (),
         ),
         environment_variables=dict(environment_variables),
-        cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
+        cache_config=CacheConfig(enabled=True, require_cache_affinity=False)
+        if enable_cache
+        else None,
     )
 
     # SSH available on demand, rather than a session live from job startup: the

@@ -1,4 +1,10 @@
-"""`truss train exec`: run a local directory as a Baseten training job."""
+"""Run a local directory as a Baseten training job.
+
+The generic layer under `truss loops exec`: it assembles the job and knows nothing
+about what the command being run is for. Callers supply every policy decision --
+compute shape, cache volume, credentials -- so a second caller can choose
+differently.
+"""
 
 from .builder import (
     DEFAULT_EXEC_CPU_COUNT,

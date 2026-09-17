@@ -11,11 +11,10 @@ import rich_click as click
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.cli.loops_commands import LOOPS_EXEC_CPU_COUNT, LOOPS_EXEC_MEMORY
 from truss.cli.train.exec import (
     API_KEYS_SETTINGS_URL,
     BASETEN_API_KEY_ENV_VAR,
-    DEFAULT_EXEC_CPU_COUNT,
-    DEFAULT_EXEC_MEMORY,
     PYTHON_BASE_IMAGE,
     SECRETS_SETTINGS_URL,
     SUPPORTED_EXEC_ACCELERATORS,
@@ -48,6 +47,7 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
+    CacheConfig,
     InteractiveSessionProvider,
     InteractiveSessionTrigger,
     SecretReference,
@@ -107,14 +107,15 @@ def _build(**overrides):
         project_name="my-project",
         accelerator=None,
         gpu_count=1,
-        cpu_count=DEFAULT_EXEC_CPU_COUNT,
-        memory=DEFAULT_EXEC_MEMORY,
+        cpu_count=LOOPS_EXEC_CPU_COUNT,
+        memory=LOOPS_EXEC_MEMORY,
         base_image=None,
         project=None,
         workspace_root=None,
         exclude_dirs=(),
         external_dirs=(),
         environment_variables={},
+        enable_cache=True,
     )
     kwargs.update(overrides)
     return build_exec_project(**kwargs)
@@ -179,8 +180,8 @@ def test_build_exec_project_cpu_defaults(tmp_path):
 
     job = project.job
     assert job.compute.accelerator is None
-    assert job.compute.cpu_count == DEFAULT_EXEC_CPU_COUNT
-    assert job.compute.memory == DEFAULT_EXEC_MEMORY
+    assert job.compute.cpu_count == LOOPS_EXEC_CPU_COUNT
+    assert job.compute.memory == LOOPS_EXEC_MEMORY
     assert job.compute.node_count == 1
     assert job.image.base_image == PYTHON_BASE_IMAGE
     assert job.workspace is None
@@ -360,10 +361,13 @@ def test_build_start_commands_colocates_the_uv_cache_with_the_workdir():
 
 
 def test_uv_cache_is_not_on_the_network_backed_cache_volume():
-    """A package cache is latency-bound; the volume is for datasets and weights."""
+    """A package cache is latency-bound; the volume is for datasets and weights.
+
+    Asserted against the mount path itself, so moving the volume cannot silently
+    drag the uv cache onto it.
+    """
     script = build_start_commands(start_command=USER_COMMAND)[0]
-    assert "BT_PROJECT_CACHE_DIR" not in script
-    assert "BT_TEAM_CACHE_DIR" not in script
+    assert CacheConfig().mount_base_path not in script
 
 
 def test_uv_cache_is_exported_before_the_project_setup():
@@ -580,7 +584,7 @@ def _chdir(directory: Path):
 
 def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
     """Invoke `truss train exec` from `cwd`, returning (result, mock_push)."""
-    base_args = ["train", "exec", "--remote", "test_remote"]
+    base_args = ["loops", "exec", "--remote", "test_remote"]
     if tail:
         base_args.append("--tail")
     remote = remote if remote is not None else _mock_remote()
@@ -589,9 +593,9 @@ def _invoke_exec(args, cwd: Path, tail: bool = False, remote=None):
         _chdir(cwd),
         patch("truss_train.public_api.push") as mock_push,
         patch(
-            "truss.cli.train_commands.RemoteFactory.get_remote_team", return_value=None
+            "truss.cli.loops_commands.RemoteFactory.get_remote_team", return_value=None
         ),
-        patch("truss.cli.train_commands.RemoteFactory.create", return_value=remote),
+        patch("truss.cli.loops_commands.RemoteFactory.create", return_value=remote),
     ):
         mock_push.return_value = {
             "id": "job123",
@@ -644,8 +648,8 @@ def test_exec_defaults_to_cpu_only_job(tmp_path):
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
     assert job.compute.accelerator is None
-    assert job.compute.cpu_count == DEFAULT_EXEC_CPU_COUNT
-    assert job.compute.memory == DEFAULT_EXEC_MEMORY
+    assert job.compute.cpu_count == LOOPS_EXEC_CPU_COUNT
+    assert job.compute.memory == LOOPS_EXEC_MEMORY
 
 
 def test_exec_pushes_current_directory_as_source_dir(tmp_path):
@@ -1082,6 +1086,23 @@ def test_ensure_team_api_key_secret_reports_a_response_without_a_key_value():
     api.upsert_team_secret.assert_not_called()
 
 
+def test_a_key_that_cannot_be_stored_never_reaches_the_terminal(tmp_path):
+    """The CLI renders frame locals at debug log levels, so a plaintext key held in
+    a frame that raises is a key printed to the user's screen."""
+    remote = _mock_remote(secrets=(), provisioned=False)
+    remote.api.create_api_key.return_value = {"api_key": "sk-must-not-appear"}
+    remote.api.upsert_team_secret.side_effect = RuntimeError("503")
+
+    result, mock_push = _invoke_exec(
+        ["--log", "DEBUG", "--", "python", "my_script.py"], tmp_path, remote=remote
+    )
+
+    assert result.exit_code != 0
+    assert "sk-must-not-appear" not in result.output
+    assert API_KEYS_SETTINGS_URL in _message_text(result)
+    mock_push.assert_not_called()
+
+
 def test_ensure_team_api_key_secret_reports_a_key_it_could_not_store():
     """The key is live, unreferenced and unrevocable through this client, so
     swallowing this would accumulate credentials silently."""
@@ -1263,7 +1284,7 @@ def test_exec_still_pushes_when_the_api_key_cannot_be_provisioned(tmp_path):
 def test_exec_does_not_tail_by_default(tmp_path):
     """The motivating use case is a client running for hours, so blocking the
     terminal is the wrong default; matches `push` and `workstation`."""
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+    with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         result, mock_push = _invoke_exec(["--", "python", "my_script.py"], tmp_path)
 
     assert result.exit_code == 0, result.output
@@ -1272,7 +1293,7 @@ def test_exec_does_not_tail_by_default(tmp_path):
 
 
 def test_exec_tails_when_asked(tmp_path):
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+    with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = False
         result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
@@ -1285,7 +1306,7 @@ def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
     """Otherwise `truss train exec --tail -- pytest` is green in CI regardless of
     outcome. --tail is passed explicitly: it is opt-in, so this cannot rely on a
     default."""
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+    with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = True
         result, mock_push = _invoke_exec(
@@ -1300,7 +1321,7 @@ def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
 
 
 def test_exec_exits_zero_when_the_job_succeeds(tmp_path):
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+    with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = False
         result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
@@ -1402,7 +1423,7 @@ def test_exec_uv_warning_ignores_the_cwd_when_workspace_root_is_set(tmp_path):
 
 def test_exec_no_tail_flag_is_still_accepted(tmp_path):
     """Now the same as the default, but the paired form must keep working."""
-    with patch("truss.cli.train_commands.TrainingLogWatcher") as mock_watcher:
+    with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         result, _ = _invoke_exec(
             ["--no-tail", "--", "python", "my_script.py"], tmp_path
         )
