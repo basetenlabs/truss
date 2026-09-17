@@ -1,6 +1,5 @@
 import os
 import re
-import shlex
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -31,7 +30,11 @@ from truss.cli.train.exec import (
     validate_secret_references,
     validate_workspace_root,
 )
-from truss.cli.train.exec.builder import UV_CACHE_SUBDIR
+from truss.cli.train.exec.builder import (
+    JOB_WORKING_DIR,
+    UV_CACHE_DIR,
+    UV_CACHE_DIR_ENV_VAR,
+)
 from truss.cli.train.exec.uv import (
     PYPROJECT_FILE,
     UV_BASE_IMAGE,
@@ -82,19 +85,6 @@ def _uv_project(tmp_path: Path, lock: bool = True) -> Path:
     if lock:
         (tmp_path / "uv.lock").write_text("")
     return tmp_path
-
-
-def _assert_runs_last(start_commands, command: str) -> None:
-    """The user's command is the last thing the single start command runs.
-
-    Anything the builder prepends -- the uv cache export, a uv install -- must not
-    alter or reorder it. Compared after `shlex.split` undoes the `sh -c` quoting the
-    way a shell would, so a command containing quotes of its own still matches.
-    """
-    assert len(start_commands) == 1
-    shell, flag, payload = shlex.split(start_commands[0])
-    assert (shell, flag) == ("/bin/sh", "-c")
-    assert payload.endswith(f"&& {command}")
 
 
 def _build(**overrides):
@@ -272,16 +262,18 @@ def test_build_exec_project_environment_variables(tmp_path):
         },
     ).job
     assert job.runtime.environment_variables == {
+        UV_CACHE_DIR_ENV_VAR: UV_CACHE_DIR,
         "PLAIN": "1",
         "BASETEN_API_KEY": SecretReference(name="my_api_key"),
     }
 
 
-def test_build_exec_project_no_environment_variables_by_default(tmp_path):
+def test_build_exec_project_sets_only_the_uv_cache_by_default(tmp_path):
+    """Nothing else is injected; the uv cache is a placement fix, not a policy."""
     job = _build(
         start_command=["python", "my_script.py"], project_name="my-project"
     ).job
-    assert job.runtime.environment_variables == {}
+    assert job.runtime.environment_variables == {UV_CACHE_DIR_ENV_VAR: UV_CACHE_DIR}
 
 
 # --- builder: --env / --secret parsing ---------------------------------------
@@ -320,21 +312,16 @@ def test_parse_environment_variables_rejects_duplicate_keys():
 
 
 def test_build_start_commands_runs_the_command_verbatim():
-    # The command keeps its own quoting; only the uv cache export precedes it.
-    _assert_runs_last(
-        build_start_commands(
-            start_command=["python", "my script.py", "--steps", "100"]
-        ),
-        "python 'my script.py' --steps 100",
-    )
+    assert build_start_commands(
+        start_command=["python", "my script.py", "--steps", "100"]
+    ) == ["python 'my script.py' --steps 100"]
 
 
 def test_build_start_commands_prepends_the_idempotent_uv_install():
     assert build_start_commands(
         start_command=USER_COMMAND, setup_steps=UV_INSTALL_STEPS
     ) == [
-        '/bin/sh -c \'export UV_CACHE_DIR="$PWD/.uv-cache" && '
-        "{ command -v uv >/dev/null 2>&1 || "
+        "/bin/sh -c '{ command -v uv >/dev/null 2>&1 || "
         "pip install --quiet uv || { "
         "curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh && "
         "sh /tmp/uv-install.sh ; } ; } && "
@@ -346,18 +333,12 @@ def test_build_start_commands_prepends_the_idempotent_uv_install():
 # --- uv cache placement ------------------------------------------------------
 
 
-def test_build_start_commands_colocates_the_uv_cache_with_the_workdir():
-    """uv falls back to copying when its cache and the venv are on different mounts,
-    which stores the dependency set twice."""
-    command = build_start_commands(start_command=USER_COMMAND)[0]
-    script = command[len("/bin/sh -c ") :].strip("'")
-
-    steps = script.split(" && ")
-    assert steps[0] == f'export UV_CACHE_DIR="$PWD/{UV_CACHE_SUBDIR}"'
-    assert steps[-1] == USER_COMMAND_STR
-    assert (
-        subprocess.run(["sh", "-n", "-c", script], capture_output=True).returncode == 0
-    )
+def test_uv_cache_is_set_in_the_job_environment():
+    """A shell export would not reach an interactive session into the job, which
+    this command enables by default."""
+    env = _build().job.runtime.environment_variables
+    assert env[UV_CACHE_DIR_ENV_VAR] == UV_CACHE_DIR
+    assert UV_CACHE_DIR.startswith(JOB_WORKING_DIR)
 
 
 def test_uv_cache_is_not_on_the_network_backed_cache_volume():
@@ -366,16 +347,15 @@ def test_uv_cache_is_not_on_the_network_backed_cache_volume():
     Asserted against the mount path itself, so moving the volume cannot silently
     drag the uv cache onto it.
     """
-    script = build_start_commands(start_command=USER_COMMAND)[0]
-    assert CacheConfig().mount_base_path not in script
+    assert not UV_CACHE_DIR.startswith(CacheConfig().mount_base_path)
 
 
-def test_uv_cache_is_exported_before_the_project_setup():
-    """Otherwise the install populates the default cache on another filesystem."""
-    script = build_start_commands(
-        start_command=USER_COMMAND, setup_steps=UV_INSTALL_STEPS
-    )[0]
-    assert script.index("UV_CACHE_DIR") < script.index(UV_PIP_INSTALL)
+def test_an_explicit_uv_cache_dir_wins():
+    """Ours is a default, not an override of what the user asked for."""
+    env = _build(
+        environment_variables={UV_CACHE_DIR_ENV_VAR: "/somewhere/else"}
+    ).job.runtime.environment_variables
+    assert env[UV_CACHE_DIR_ENV_VAR] == "/somewhere/else"
 
 
 def test_build_exec_project_always_mounts_the_cache_volume():
@@ -402,8 +382,7 @@ def test_build_exec_project_with_uv_selects_the_uv_image_on_cpu():
     ).job
     assert job.image.base_image == UV_BASE_IMAGE
     # The uv image already ships uv, so no install step is prepended.
-    _assert_runs_last(job.runtime.start_commands, USER_COMMAND_STR)
-    assert "install.sh" not in job.runtime.start_commands[0]
+    assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
 def test_build_exec_project_with_uv_installs_uv_on_the_gpu_image():
@@ -435,8 +414,7 @@ def test_build_exec_project_without_with_uv_injects_nothing(accelerator):
     job = _build(
         start_command=USER_COMMAND, project_name="my-project", accelerator=accelerator
     ).job
-    _assert_runs_last(job.runtime.start_commands, USER_COMMAND_STR)
-    assert "install.sh" not in job.runtime.start_commands[0]
+    assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
 # --- uv install failure mode, secret/env edge cases, workspace root ----------
@@ -612,10 +590,9 @@ def test_exec_passes_start_command_through_after_double_dash(tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    _assert_runs_last(
-        mock_push.call_args[1]["config"].job.runtime.start_commands,
-        "python my_script.py --steps 100 --verbose",
-    )
+    assert mock_push.call_args[1]["config"].job.runtime.start_commands == [
+        "python my_script.py --steps 100 --verbose"
+    ]
 
 
 def test_exec_start_command_may_reuse_our_own_flag_names(tmp_path):
@@ -636,9 +613,7 @@ def test_exec_start_command_may_reuse_our_own_flag_names(tmp_path):
 
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
-    _assert_runs_last(
-        job.runtime.start_commands, "python my_script.py --memory 4Gi --tail"
-    )
+    assert job.runtime.start_commands == ["python my_script.py --memory 4Gi --tail"]
     assert job.compute.memory == "16Gi"
 
 
@@ -769,6 +744,7 @@ def test_exec_env_and_secret_flags(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert mock_push.call_args[1]["config"].job.runtime.environment_variables == {
+        UV_CACHE_DIR_ENV_VAR: UV_CACHE_DIR,
         "MY_URL": "https://example.com/?a=1&b=2",
         "BASETEN_API_KEY": SecretReference(name="my_api_key"),
     }
@@ -811,7 +787,7 @@ def test_exec_with_uv_selects_the_uv_image_and_keeps_the_command(tmp_path):
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
     assert job.image.base_image == UV_BASE_IMAGE
-    _assert_runs_last(job.runtime.start_commands, USER_COMMAND_STR)
+    assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
 def test_exec_without_with_uv_uses_the_plain_python_image(tmp_path):
@@ -820,7 +796,7 @@ def test_exec_without_with_uv_uses_the_plain_python_image(tmp_path):
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
     assert job.image.base_image == PYTHON_BASE_IMAGE
-    _assert_runs_last(job.runtime.start_commands, "python my_script.py")
+    assert job.runtime.start_commands == ["python my_script.py"]
 
 
 @pytest.mark.parametrize("with_uv", [True, False])
@@ -839,7 +815,7 @@ def test_exec_image_flag_overrides_the_base_image(with_uv, tmp_path):
         assert "astral.sh/uv/install.sh" in job.runtime.start_commands[0]
         assert job.runtime.start_commands[0].endswith(f"{USER_COMMAND_STR}'")
     else:
-        _assert_runs_last(job.runtime.start_commands, USER_COMMAND_STR)
+        assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
 def test_exec_warns_about_a_uv_project_without_with_uv(tmp_path):
@@ -1195,7 +1171,7 @@ def test_exec_with_uv_uses_the_uv_image_even_without_uv_metadata(tmp_path):
     assert result.exit_code == 0, result.output
     job = mock_push.call_args[1]["config"].job
     assert job.image.base_image == UV_BASE_IMAGE
-    _assert_runs_last(job.runtime.start_commands, USER_COMMAND_STR)
+    assert job.runtime.start_commands == [USER_COMMAND_STR]
 
 
 def test_exec_provisions_the_api_key_secret_without_secret_flags(tmp_path):

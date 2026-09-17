@@ -23,6 +23,7 @@ from truss_train.definitions import (
 )
 
 from .project import Project
+from .uv import UV_CACHE_SUBDIR
 
 # A CPU-only job doesn't need a CUDA image.
 PYTHON_BASE_IMAGE = "python:3.12-slim"
@@ -89,20 +90,21 @@ def validate_workspace_root(source_dir: Path, workspace_root: Optional[str]) -> 
     return root
 
 
-# The working directory and the uv cache have to share a filesystem. uv hardlinks
-# wheels out of its cache into the venv and silently falls back to full copies when
-# the two are on different mounts, which stores the whole dependency set twice --
-# enough on its own to exceed a job's ephemeral-storage limit. uv's default cache
-# (`$HOME/.cache/uv`) lands under `CacheConfig.mount_base_path`, which is the
-# network-backed cache volume when one is mounted, so it always differs from the
-# working directory unless it is moved.
-#
-# It stays on the working directory rather than the project cache volume, which is
-# network-backed: a package cache is latency-bound, and the volume is the right place
-# for datasets and weights instead.
-UV_CACHE_SUBDIR = ".uv-cache"
+# The job's working directory, mounted on every training pod.
+JOB_WORKING_DIR = "/b10/workspace"
 
-_LOCAL_UV_CACHE_STEP = f'export UV_CACHE_DIR="$PWD/{UV_CACHE_SUBDIR}"'
+# uv hardlinks wheels out of its cache into the venv and silently falls back to full
+# copies when the two are on different mounts, storing the whole dependency set
+# twice -- enough on its own to exceed a job's ephemeral-storage limit. Its default
+# cache lands under `CacheConfig.mount_base_path`, which is the network-backed cache
+# volume when one is mounted, so point it at the working directory instead: same
+# filesystem as the venv, and local disk, which a package cache wants and a dataset
+# does not.
+#
+# Set as a job environment variable rather than exported in the start command, so an
+# interactive session into the job gets it too.
+UV_CACHE_DIR_ENV_VAR = "UV_CACHE_DIR"
+UV_CACHE_DIR = f"{JOB_WORKING_DIR}/{UV_CACHE_SUBDIR}"
 
 
 def build_start_commands(
@@ -110,15 +112,15 @@ def build_start_commands(
 ) -> List[str]:
     """Build `Runtime.start_commands` for `start_command`.
 
-    The user's command always runs last and verbatim. Steps that prepare the
-    environment run first -- co-locating the uv cache with the working directory,
-    then `setup_steps` from the detected project type -- chained into a single
-    `/bin/sh -c` entry to match the pattern in `truss/templates/train/config.py`, so
-    that an `export` is still in effect when the command runs.
+    The user's command always runs last and verbatim. `setup_steps` (from the
+    detected project type) run first, chained into a single `/bin/sh -c` entry to
+    match the pattern in `truss/templates/train/config.py`, so that anything they
+    export is still in effect when the command runs.
     """
     command = shlex.join(start_command)
-    steps = [_LOCAL_UV_CACHE_STEP, *setup_steps]
-    return [f"/bin/sh -c {shlex.quote(' && '.join([*steps, command]))}"]
+    if not setup_steps:
+        return [command]
+    return [f"/bin/sh -c {shlex.quote(' && '.join([*setup_steps, command]))}"]
 
 
 def build_exec_project(
@@ -164,7 +166,10 @@ def build_exec_project(
             start_command=start_command,
             setup_steps=project.setup(resolved_base_image) if project else (),
         ),
-        environment_variables=dict(environment_variables),
+        environment_variables={
+            UV_CACHE_DIR_ENV_VAR: UV_CACHE_DIR,
+            **environment_variables,
+        },
         cache_config=CacheConfig(enabled=True, require_cache_affinity=False)
         if enable_cache
         else None,

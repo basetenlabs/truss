@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 # hence trixie-slim.)
 UV_BASE_IMAGE = "ghcr.io/astral-sh/uv:0.12.6-python3.12-trixie-slim"
 
+UV_CACHE_SUBDIR = ".uv-cache"
+
 UV_LOCK_FILE = "uv.lock"
 PYPROJECT_FILE = "pyproject.toml"
 
