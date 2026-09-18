@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import logging
 import os
 import signal
 import socket
@@ -21,12 +22,26 @@ from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import Response
 
-from truss.templates.shared import serialization
+from truss.templates.shared import log_config, serialization
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_json_formatter_marks_only_cold_start_logs():
+    formatter = log_config._DefaultJsonFormatter()
+    record = logging.LogRecord("test", logging.INFO, "", 0, "starting", (), None)
+
+    try:
+        log_config.disable_cold_start_logging()
+        assert "cold_start" not in json.loads(formatter.format(record))
+
+        log_config.enable_cold_start_logging()
+        assert json.loads(formatter.format(record))["cold_start"] == "1"
+    finally:
+        log_config.disable_cold_start_logging()
 
 
 @pytest.fixture
@@ -85,6 +100,61 @@ def _make_connected_request(request_id=None):
     )
     mock_request.is_disconnected = AsyncMock(return_value=False)
     return mock_request
+
+
+def test_prediction_health_check_preserves_cold_start_logging(app_path):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        model = MagicMock(load_failed=False, ready=True)
+        endpoints = truss_server_module.BasetenEndpoints(model, sdk_trace.NoOpTracer())
+
+        with patch.object(
+            truss_server_module.log_config, "disable_cold_start_logging"
+        ) as disable_cold_start_logging:
+            endpoints.check_healthy()
+
+    disable_cold_start_logging.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "endpoint, ready, healthy, succeeds",
+    [
+        ("model_ready", True, None, True),
+        ("model_ready", False, None, False),
+        ("model_ready", True, True, True),
+        ("model_ready", True, False, False),
+        ("model_loaded", True, None, True),
+        ("model_loaded", False, None, False),
+        ("invocations_ready", True, None, True),
+        ("invocations_ready", False, None, False),
+    ],
+)
+async def test_only_successful_readiness_ends_cold_start_logging(
+    app_path, endpoint, ready, healthy, succeeds
+):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        server_module = importlib.import_module("truss_server")
+        model = MagicMock(load_failed=False, ready=ready)
+        model.is_healthy = AsyncMock(return_value=healthy)
+        endpoints = server_module.BasetenEndpoints(model, sdk_trace.NoOpTracer())
+        logging_config = server_module.log_config
+        formatter = logging_config._DefaultJsonFormatter()
+        record = logging.LogRecord("test", logging.INFO, "", 0, "startup", (), None)
+        args = () if endpoint == "invocations_ready" else ("model",)
+
+        logging_config.enable_cold_start_logging()
+        try:
+            if succeeds:
+                assert await getattr(endpoints, endpoint)(*args) == {}
+            else:
+                with pytest.raises(server_module.errors.ModelNotReady):
+                    await getattr(endpoints, endpoint)(*args)
+            assert (
+                "cold_start" in json.loads(formatter.format(record))
+            ) is not succeeds
+        finally:
+            logging_config.disable_cold_start_logging()
 
 
 @pytest.mark.anyio

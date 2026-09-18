@@ -462,10 +462,11 @@ class ModelWrapper:
             try:
                 start_time = time.perf_counter()
                 self._load_impl()
-                self._status = ModelWrapper.Status.READY
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
+                # Finish startup logging before a readiness probe can succeed.
+                self._status = ModelWrapper.Status.READY
             except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
