@@ -1,8 +1,10 @@
 use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
+use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
+use std::collections::HashSet;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +17,7 @@ pub struct RequestProcessingPreference {
     pub max_concurrent_requests: Option<usize>,
     pub batch_size: Option<usize>,
     pub max_chars_per_request: Option<usize>,
+    pub pin_initial_endpoint_once: Option<bool>,
     pub timeout_s: Option<f64>,
     pub hedge_delay: Option<f64>,
     pub total_timeout_s: Option<f64>,
@@ -23,6 +26,9 @@ pub struct RequestProcessingPreference {
     pub max_retries: Option<u32>,
     pub initial_backoff_ms: Option<u64>,
     pub cancel_token: Option<CancellationToken>,
+    pub primary_api_key_override: Option<String>,
+    pub extra_headers: Option<std::collections::HashMap<String, String>>,
+    pub non_retryable_status_codes: Option<HashSet<u16>>,
 }
 
 impl RequestProcessingPreference {
@@ -36,15 +42,21 @@ impl RequestProcessingPreference {
         RequestProcessingPreference {
             max_concurrent_requests: self.max_concurrent_requests.or(Some(DEFAULT_CONCURRENCY)),
             batch_size: self.batch_size.or(Some(DEFAULT_BATCH_SIZE)),
-            max_chars_per_request: self.max_chars_per_request,
+            max_chars_per_request: self
+                .max_chars_per_request
+                .or(Some(DEFAULT_MAX_CHARS_PER_REQUEST)),
+            pin_initial_endpoint_once: self.pin_initial_endpoint_once.or(Some(false)),
             timeout_s: self.timeout_s.or(Some(DEFAULT_REQUEST_TIMEOUT_S)),
             hedge_delay: self.hedge_delay,
             total_timeout_s: self.total_timeout_s,
             hedge_budget_pct: self.hedge_budget_pct.or(Some(HEDGE_BUDGET_PERCENTAGE)),
             retry_budget_pct: self.retry_budget_pct.or(Some(RETRY_BUDGET_PERCENTAGE)),
-            max_retries: self.max_retries.or(Some(MAX_HTTP_RETRIES)),
+            max_retries: self.max_retries.or(Some(DEFAULT_MAX_RETRIES)),
             initial_backoff_ms: self.initial_backoff_ms.or(Some(INITIAL_BACKOFF_MS)),
             cancel_token: self.cancel_token.clone(),
+            primary_api_key_override: self.primary_api_key_override.clone(),
+            extra_headers: self.extra_headers.clone(),
+            non_retryable_status_codes: self.non_retryable_status_codes.clone(),
         }
     }
 }
@@ -65,6 +77,11 @@ impl RequestProcessingPreference {
     /// Builder pattern: set max chars per request
     pub fn with_max_chars_per_request(mut self, value: usize) -> Self {
         self.max_chars_per_request = Some(value);
+        self
+    }
+
+    pub fn with_pin_initial_endpoint_once(mut self, value: bool) -> Self {
+        self.pin_initial_endpoint_once = Some(value);
         self
     }
 
@@ -116,15 +133,37 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set primary API key override
+    pub fn with_primary_api_key_override(mut self, key: String) -> Self {
+        self.primary_api_key_override = Some(key);
+        self
+    }
+
+    /// Builder pattern: set extra headers
+    pub fn with_extra_headers(
+        mut self,
+        headers: std::collections::HashMap<String, String>,
+    ) -> Self {
+        self.extra_headers = Some(headers);
+        self
+    }
+
+    /// Builder pattern: set HTTP status codes that should not be retried.
+    pub fn with_non_retryable_status_codes(mut self, status_codes: HashSet<u16>) -> Self {
+        self.non_retryable_status_codes = Some(status_codes);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
-    /// This pairs the preference with request-specific data (base_url, total_requests)
+    /// This pairs the preference with request-specific data (base_url, total_requests, api_key)
     /// and returns a validated config ready for processing.
     pub fn pair_with_request_validate_and_convert(
         &self,
         base_url: String,
         total_requests: usize,
+        api_key: String,
     ) -> Result<RequestProcessingConfig, ClientError> {
-        RequestProcessingConfig::new_from_preference(self, base_url, total_requests)
+        RequestProcessingConfig::new_from_preference(self, base_url, total_requests, api_key)
     }
 }
 
@@ -152,6 +191,7 @@ pub struct RequestProcessingConfig {
     pub max_concurrent_requests: usize,
     pub batch_size: usize,
     pub max_chars_per_request: Option<usize>,
+    pub pin_initial_endpoint_once: bool,
     pub base_url: String,
 
     /// HTTP timing settings (stored as Duration consistently)
@@ -171,6 +211,19 @@ pub struct RequestProcessingConfig {
 
     /// Cancellation token for coordinated shutdown
     pub cancel_token: CancellationToken,
+
+    /// Primary API key to use for requests
+    pub api_key_primary: String,
+
+    /// Extra headers to include with all requests
+    pub extra_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Optional HTTP status codes that override retryable defaults.
+    pub(crate) non_retryable_status_codes: Option<Arc<HashSet<u16>>>,
+
+    /// Client-level endpoint router for single or pooled routing.
+    pub(crate) endpoint_router: Arc<EndpointRouter>,
+    pub(crate) pinned_initial_endpoint: Option<EndpointSelection>,
 }
 
 impl RequestProcessingConfig {
@@ -188,6 +241,7 @@ impl RequestProcessingConfig {
         max_retries: u32,
         initial_backoff_ms: u64,
         total_requests: usize,
+        api_key: &str,
     ) -> Result<(), ClientError> {
         // Validate total_requests
         if total_requests == 0 {
@@ -296,7 +350,22 @@ impl RequestProcessingConfig {
             )));
         }
 
+        // Validate API key
+        if api_key.is_empty() {
+            return Err(ClientError::InvalidParameter(
+                "API key cannot be empty".to_string(),
+            ));
+        }
+
         Ok(())
+    }
+
+    fn build_non_retryable_status_codes(
+        status_codes: Option<&HashSet<u16>>,
+    ) -> Option<Arc<HashSet<u16>>> {
+        status_codes
+            .filter(|codes| !codes.is_empty())
+            .map(|codes| Arc::new(codes.clone()))
     }
 
     /// Calculate budget based on total requests and percentage
@@ -315,6 +384,7 @@ impl RequestProcessingConfig {
         preference: &RequestProcessingPreference,
         base_url: String,
         total_requests: usize,
+        api_key: String,
     ) -> Result<Self, ClientError> {
         // Apply defaults to preference
         let pref = preference.with_defaults();
@@ -325,10 +395,19 @@ impl RequestProcessingConfig {
         let timeout_s = pref.timeout_s.unwrap();
         let hedge_delay = pref.hedge_delay;
         let max_chars_per_request = pref.max_chars_per_request;
+        let pin_initial_endpoint_once = pref.pin_initial_endpoint_once.unwrap();
         let hedge_budget_pct = pref.hedge_budget_pct.unwrap();
         let retry_budget_pct = pref.retry_budget_pct.unwrap();
         let max_retries = pref.max_retries.unwrap();
         let initial_backoff_ms = pref.initial_backoff_ms.unwrap();
+        let non_retryable_status_codes = pref.non_retryable_status_codes.as_ref();
+
+        // Handle API key override
+        let api_key_primary = if let Some(ref key) = pref.primary_api_key_override {
+            key.clone()
+        } else {
+            api_key
+        };
 
         // Validate parameters
         Self::validate_parameters(
@@ -343,7 +422,11 @@ impl RequestProcessingConfig {
             max_retries,
             initial_backoff_ms,
             total_requests,
+            &api_key_primary,
         )?;
+
+        let non_retryable_status_codes =
+            Self::build_non_retryable_status_codes(non_retryable_status_codes);
 
         // Create customer request ID for this batch operation
         let customer_request_id = CustomerRequestId::new_batch();
@@ -373,7 +456,8 @@ impl RequestProcessingConfig {
             max_concurrent_requests,
             batch_size,
             max_chars_per_request,
-            base_url,
+            pin_initial_endpoint_once,
+            base_url: base_url.clone(),
             timeout: Duration::from_secs_f64(timeout_s),
             total_timeout: pref.total_timeout_s.map(Duration::from_secs_f64),
             hedge_delay: hedge_delay.map(Duration::from_secs_f64),
@@ -384,6 +468,11 @@ impl RequestProcessingConfig {
             retry_budget_pct,
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
+            api_key_primary,
+            extra_headers: pref.extra_headers.clone(),
+            non_retryable_status_codes,
+            endpoint_router: EndpointRouter::single(base_url),
+            pinned_initial_endpoint: None,
         })
     }
 
@@ -423,6 +512,52 @@ impl RequestProcessingConfig {
     /// Create individual request customer ID for a specific batch index
     pub fn create_request_customer_id(&self, batch_index: usize) -> CustomerRequestId {
         self.customer_request_id.new_request(batch_index)
+    }
+
+    pub(crate) fn with_endpoint_router(mut self, endpoint_router: Arc<EndpointRouter>) -> Self {
+        self.endpoint_router = endpoint_router;
+        self
+    }
+
+    pub(crate) fn with_pinned_initial_endpoint(
+        mut self,
+        pinned_initial_endpoint: Option<EndpointSelection>,
+    ) -> Self {
+        self.pinned_initial_endpoint = pinned_initial_endpoint;
+        self
+    }
+
+    pub(crate) fn select_attempt_url(
+        &self,
+        request_suffix: &str,
+        attempted_endpoint_indices: &[usize],
+    ) -> (String, EndpointSelection) {
+        if attempted_endpoint_indices.is_empty() {
+            if let Some(pinned_selection) = self.pinned_initial_endpoint.clone() {
+                return (
+                    build_url_for_selected_endpoint(&pinned_selection.base_url, request_suffix),
+                    pinned_selection,
+                );
+            }
+        }
+
+        self.endpoint_router
+            .select_attempt_url(request_suffix, attempted_endpoint_indices)
+    }
+
+    pub(crate) fn select_hedge_url(
+        &self,
+        request_suffix: &str,
+        original_endpoint_index: usize,
+    ) -> (String, EndpointSelection) {
+        self.endpoint_router
+            .select_hedge_url(request_suffix, original_endpoint_index)
+    }
+
+    pub(crate) fn is_explicitly_non_retryable_status(&self, status: u16) -> bool {
+        self.non_retryable_status_codes
+            .as_ref()
+            .is_some_and(|status_codes| status_codes.contains(&status))
     }
 }
 
@@ -715,7 +850,7 @@ mod tests {
         for batch in &batches {
             let _total_chars: usize = batch.iter().map(|s| s.chars().count()).sum();
             // Allow some flexibility due to batching algorithm
-            assert!(batch.len() > 0, "No empty batches should be created");
+            assert!(!batch.is_empty(), "No empty batches should be created");
         }
     }
 
@@ -920,6 +1055,7 @@ mod tests {
         assert_eq!(pref.batch_size, None);
         assert_eq!(pref.timeout_s, None);
         assert!(pref.max_chars_per_request.is_none());
+        assert_eq!(pref.pin_initial_endpoint_once, None);
         assert!(pref.hedge_delay.is_none());
         assert!(pref.total_timeout_s.is_none());
         assert_eq!(pref.hedge_budget_pct, None);
@@ -936,7 +1072,11 @@ mod tests {
             pref_with_defaults.timeout_s,
             Some(DEFAULT_REQUEST_TIMEOUT_S)
         );
-        assert!(pref_with_defaults.max_chars_per_request.is_none());
+        assert_eq!(
+            pref_with_defaults.max_chars_per_request,
+            Some(DEFAULT_MAX_CHARS_PER_REQUEST)
+        );
+        assert_eq!(pref_with_defaults.pin_initial_endpoint_once, Some(false));
         assert!(pref_with_defaults.hedge_delay.is_none());
         assert!(pref_with_defaults.total_timeout_s.is_none());
         assert_eq!(
@@ -954,6 +1094,7 @@ mod tests {
         let pref = RequestProcessingPreference::new()
             .with_max_concurrent_requests(64)
             .with_batch_size(32)
+            .with_pin_initial_endpoint_once(true)
             .with_timeout_s(30.0)
             .with_hedge_delay(0.5)
             .with_total_timeout_s(120.0)
@@ -962,6 +1103,7 @@ mod tests {
 
         assert_eq!(pref.max_concurrent_requests, Some(64));
         assert_eq!(pref.batch_size, Some(32));
+        assert_eq!(pref.pin_initial_endpoint_once, Some(true));
         assert_eq!(pref.timeout_s, Some(30.0));
         assert_eq!(pref.hedge_delay, Some(0.5));
         assert_eq!(pref.total_timeout_s, Some(120.0));
@@ -974,17 +1116,23 @@ mod tests {
         let pref = RequestProcessingPreference::new()
             .with_max_concurrent_requests(64)
             .with_batch_size(32)
+            .with_pin_initial_endpoint_once(true)
             .with_timeout_s(30.0)
             .with_hedge_delay(0.5)
             .with_hedge_budget_pct(0.20)
             .with_retry_budget_pct(0.10);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         assert_eq!(config.max_concurrent_requests, 64);
         assert_eq!(config.batch_size, 32);
+        assert!(config.pin_initial_endpoint_once);
         assert_eq!(config.timeout.as_secs_f64(), 30.0);
         assert_eq!(config.hedge_delay.map(|d| d.as_secs_f64()), Some(0.5));
         assert_eq!(config.base_url, "https://example.com");
@@ -999,8 +1147,11 @@ mod tests {
     fn test_negative_budget_percentages_validation() {
         let pref = RequestProcessingPreference::new().with_hedge_budget_pct(-0.1);
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1011,8 +1162,11 @@ mod tests {
 
         let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(-0.05);
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1026,8 +1180,11 @@ mod tests {
     fn test_maximum_budget_percentages_validation() {
         let pref = RequestProcessingPreference::new().with_hedge_budget_pct(4.0); // 400% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1039,8 +1196,11 @@ mod tests {
 
         let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(3.5); // 350% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1056,8 +1216,11 @@ mod tests {
         // Test initial_backoff_ms validation
         let pref = RequestProcessingPreference::new().with_initial_backoff_ms(25); // Below MIN_BACKOFF_MS (50)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1067,15 +1230,18 @@ mod tests {
             _ => panic!("Expected InvalidParameter error"),
         }
 
-        let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(35000); // Above MAX_BACKOFF_MS (30000)
+        let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(50000); // Above MAX_BACKOFF_MS (45000)
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
                 assert!(msg.contains("initial_backoff_ms must be between"));
-                assert!(msg.contains("30000"));
+                assert!(msg.contains("45000"));
             }
             _ => panic!("Expected InvalidParameter error"),
         }
@@ -1083,23 +1249,29 @@ mod tests {
         // Test valid backoff values
         let pref3 = RequestProcessingPreference::new().with_initial_backoff_ms(125); // Valid default value
 
-        let result3 =
-            pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result3 = pref3.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result3.is_ok());
     }
 
     #[test]
     fn test_max_retries_validation() {
         // Test max_retries validation
-        let pref = RequestProcessingPreference::new().with_max_retries(5); // Above MAX_HTTP_RETRIES (4)
+        let pref = RequestProcessingPreference::new().with_max_retries(7); // Above MAX_HTTP_RETRIES (6)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
                 assert!(msg.contains("max_retries cannot exceed"));
-                assert!(msg.contains("4"));
+                assert!(msg.contains("6"));
             }
             _ => panic!("Expected InvalidParameter error"),
         }
@@ -1107,9 +1279,50 @@ mod tests {
         // Test valid max_retries values
         let pref2 = RequestProcessingPreference::new().with_max_retries(3); // Valid value
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_ok());
+    }
+
+    #[test]
+    fn test_non_retryable_status_codes_accept_any_u16() {
+        let pref = RequestProcessingPreference::new()
+            .with_non_retryable_status_codes(HashSet::from([650]));
+
+        let config = pref
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("non-retryable status overrides should not be range-validated");
+
+        assert!(config.is_explicitly_non_retryable_status(650));
+        assert!(!config.is_explicitly_non_retryable_status(529));
+
+        let empty_pref =
+            RequestProcessingPreference::new().with_non_retryable_status_codes(HashSet::new());
+
+        let empty_config = empty_pref
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("empty non-retryable status override should be accepted");
+        assert!(!empty_config.is_explicitly_non_retryable_status(650));
+
+        let default_config = RequestProcessingPreference::new()
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
+            .expect("default preference should be accepted");
+        assert!(!default_config.is_explicitly_non_retryable_status(650));
     }
 
     #[test]
@@ -1120,7 +1333,11 @@ mod tests {
             .with_retry_budget_pct(0.05);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 1)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                1,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Initial budgets should be 2 (minimum budget with our new logic)
@@ -1153,7 +1370,11 @@ mod tests {
             .with_hedge_budget_pct(0.10);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should create hedge budget when delay equals MIN_HEDGE_DELAY_S
@@ -1165,7 +1386,11 @@ mod tests {
             .with_hedge_budget_pct(0.10);
 
         let config2 = pref2
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should create hedge budget when delay is above MIN_HEDGE_DELAY_S
@@ -1175,7 +1400,11 @@ mod tests {
         let pref3 = RequestProcessingPreference::new().with_hedge_budget_pct(0.10);
 
         let config3 = pref3
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should set hedge budget to 0 when no delay is specified

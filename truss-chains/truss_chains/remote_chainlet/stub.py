@@ -295,6 +295,10 @@ class StubBase(BasetenSession, abc.ABC):
         headers = {}
         if trace_parent := utils.get_trace_parent():
             headers[private_types.OTEL_TRACE_PARENT_HEADER_KEY] = trace_parent
+        if request_id := utils.get_request_id():
+            headers[private_types.REQUEST_ID_HEADER_KEY] = request_id
+        if chain_request_id := utils.get_chain_request_id():
+            headers[private_types.CHAIN_REQUEST_ID_HEADER_KEY] = chain_request_id
 
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:

@@ -219,7 +219,7 @@ def _raise_errors():
     framework.raise_validation_errors()
 
 
-TEST_FILE = __file__
+TEST_FILE = re.escape(__file__)
 
 
 def test_raises_without_depends():

@@ -1,19 +1,24 @@
 import asyncio
+import contextlib
 import json
 import logging
 import logging.config
 import os
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Generator
+from collections.abc import AsyncGenerator, Awaitable, Generator, Iterator
 from http import HTTPStatus
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import pydantic
 import uvicorn
 import yaml
-from common import errors, tracing
-from common.schema import TrussSchema
+from _truss_common import errors, tracing
+from _truss_common.schema import TrussSchema
+from _truss_shared import log_config, serialization
+from _truss_shared.log_config import chain_request_id_context, request_id_context
+from _truss_shared.secrets_resolver import SecretsResolver
 from fastapi import (
     Depends,
     FastAPI,
@@ -22,7 +27,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from fastapi.routing import APIWebSocketRoute as FastAPIWebSocketRoute
 from model_wrapper import ModelWrapper
@@ -38,15 +43,13 @@ from prometheus_client import (
     process_collector,
 )
 from pydantic import BaseModel
-from shared import log_config, serialization
-from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
-TIMEOUT_GRACEFUL_SHUTDOWN = 120
+TIMEOUT_GRACEFUL_SHUTDOWN = 3600
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 
 # Hardcoded 100MiB message maximum on websocket connections.
@@ -68,6 +71,41 @@ async def parse_body(request: Request) -> bytes:
         error_message = "Client disconnected while reading request."
         logging.warning(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
+
+
+def _install_disconnect_watcher(request: Request) -> None:
+    """Install a disconnect watcher for model code.
+
+    This must run on the event loop before model code. The context manager can
+    then be entered from async model code or an offloaded thread. It yields a
+    threading event that is set when the client disconnects:
+
+        def predict(self, request: Request):
+            with request.state.watch_disconnect() as disconnected:
+                while not disconnected.is_set():
+                    yield next_chunk()
+    """
+    loop = asyncio.get_running_loop()
+
+    @contextlib.contextmanager
+    def watch_disconnect() -> Iterator[Event]:
+        disconnected = Event()
+
+        async def watch() -> None:
+            try:
+                while not await request.is_disconnected():
+                    await asyncio.sleep(1)
+                disconnected.set()
+            except Exception:
+                logging.exception("Error while watching for client disconnect.")
+
+        watch_future = asyncio.run_coroutine_threadsafe(watch(), loop)
+        try:
+            yield disconnected
+        finally:
+            watch_future.cancel()
+
+    request.state.watch_disconnect = watch_disconnect
 
 
 async def _safe_close_websocket(
@@ -178,6 +216,11 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         request_id = request.headers.get("x-baseten-request-id")
+        chain_request_id = request.headers.get("x-baseten-chain-request-id")
+        # Set request_id in context so it's included in all log records
+        request_id_context.set(request_id)
+        chain_request_id_context.set(chain_request_id)
+        _install_disconnect_watcher(request)
 
         logging.debug(
             f"[DEBUG] Request received - {request.method} /{method.__name__} "
@@ -232,8 +275,35 @@ class BasetenEndpoints:
             method=self._model.completions, request=request, body_raw=body_raw
         )
 
+    async def embeddings(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.embeddings, request=request, body_raw=body_raw
+        )
+
+    async def messages(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.messages, request=request, body_raw=body_raw
+        )
+
+    async def responses(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.responses, request=request, body_raw=body_raw
+        )
+
     async def websocket(self, ws: WebSocket) -> None:
         self.check_healthy()
+        # Set request_id in context so it's included in all log records
+        request_id = ws.headers.get("x-baseten-request-id")
+        chain_request_id = ws.headers.get("x-baseten-chain-request-id")
+        request_id_context.set(request_id)
+        chain_request_id_context.set(chain_request_id)
+
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
@@ -319,12 +389,24 @@ class BasetenEndpoints:
         else:
             return self._model.truss_schema.serialize()
 
+    # Sync def so FastAPI runs it in a threadpool, avoiding blocking the
+    # event loop during module re-import.
+    def hot_reload(self, request: Request):
+        try:
+            self._model.hot_reload()
+        except Exception as exc:
+            # Return error summary only; full traceback is already logged
+            # by model_wrapper.hot_reload() in the container logs.
+            return JSONResponse(
+                status_code=422, content={"error": f"{type(exc).__name__}: {exc}"}
+            )
+        return {"msg": "Hot reload complete"}
+
     @staticmethod
     def is_binary(request: Request):
-        return (
-            "Content-Type" in request.headers
-            and request.headers["Content-Type"] == "application/octet-stream"
-        )
+        content_type = request.headers.get("Content-Type", "")
+        media_type = content_type.partition(";")[0].strip().lower()
+        return media_type == "application/octet-stream"
 
 
 class TrussServer:
@@ -381,12 +463,17 @@ class TrussServer:
                 return
 
     def create_application(self):
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            self.on_startup()
+            yield
+
         app = FastAPI(
             title="Baseten Inference Server",
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
-            on_startup=[self.on_startup],
+            lifespan=lifespan,
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
@@ -431,12 +518,33 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
+                FastAPIRoute(
+                    r"/v1/embeddings",
+                    self._endpoints.embeddings,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/messages",
+                    self._endpoints.messages,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/responses",
+                    self._endpoints.responses,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
                 # Websocket endpoint
                 FastAPIWebSocketRoute(r"/v1/websocket", self._endpoints.websocket),
                 # Endpoint aliases for Sagemaker hosting
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
                     r"/invocations", self._endpoints.invocations, methods=["POST"]
+                ),
+                FastAPIRoute(
+                    r"/hot-reload", self._endpoints.hot_reload, methods=["POST"]
                 ),
             ],
             exception_handlers={

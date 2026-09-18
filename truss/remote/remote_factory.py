@@ -1,4 +1,7 @@
+import enum
 import inspect
+import json
+import logging
 import os
 
 try:
@@ -12,10 +15,44 @@ except ImportError:
 from functools import partial
 from operator import is_not
 from pathlib import Path
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional, Tuple, Type
+
+import keyring
+import keyring.backends.fail
+import keyring.backends.null
+import keyring.errors
 
 from truss.remote.baseten import BasetenRemote
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
+
+logger = logging.getLogger(__name__)
+
+KEYRING_SERVICE = "baseten-truss"
+KEYRING_DISABLED_ENV = "BASETEN_TRUSS_AUTH_KEYRING_DISABLED"
+
+REMOTE_URL_ENV = "BASETEN_TRUSS_AUTH_REMOTE_URL"
+API_KEY_ENV = "BASETEN_TRUSS_AUTH_API_KEY"
+# Name of the remote synthesized from the env vars above. Never typed by users,
+# only shown in output; the brackets avoid colliding with a trussrc section.
+ENV_REMOTE_NAME = "<environment>"
+
+
+class AuthType(str, enum.Enum):
+    API_KEY = "api_key"
+    OAUTH = "oauth"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+_INLINE_SECRET_KEYS_BY_AUTH_TYPE: Dict[str, Tuple[str, ...]] = {
+    AuthType.API_KEY: ("api_key",),
+    AuthType.OAUTH: ("oauth_access_token", "oauth_refresh_token", "oauth_expires_at"),
+}
+_INLINE_SECRET_KEYS = tuple(
+    key for keys in _INLINE_SECRET_KEYS_BY_AUTH_TYPE.values() for key in keys
+)
+_keyring_fallback_warned = False
 
 USER_TRUSSRC_PATH = Path(os.environ.get("USER_TRUSSRC_PATH", "~/.trussrc")).expanduser()
 
@@ -31,6 +68,46 @@ def update_config(config: ConfigParser):
         config.write(configfile)
 
 
+def env_remote_config() -> Optional[RemoteConfig]:
+    """Build a remote config from the environment, or None if not configured.
+
+    BASETEN_TRUSS_AUTH_REMOTE_URL and BASETEN_TRUSS_AUTH_API_KEY together fully
+    define a remote, bypassing the trussrc and the keyring. Setting just one of
+    them is an error.
+    """
+    remote_url = os.environ.get(REMOTE_URL_ENV)
+    api_key = os.environ.get(API_KEY_ENV)
+    if not remote_url and not api_key:
+        return None
+    if not remote_url or not api_key:
+        missing, present = (
+            (REMOTE_URL_ENV, API_KEY_ENV)
+            if not remote_url
+            else (API_KEY_ENV, REMOTE_URL_ENV)
+        )
+        raise ValueError(f"{present} is set but {missing} is not; set both or neither.")
+    return RemoteConfig(
+        name=ENV_REMOTE_NAME,
+        configs={
+            "remote_provider": "baseten",
+            "remote_url": remote_url,
+            "api_key": api_key,
+            "api_key_use_bearer": True,
+        },
+    )
+
+
+def _reject_env_remote_name(remote_name: str) -> None:
+    """Guard the trussrc writers against the env-configured remote, which has
+    no section to write to or delete."""
+    if remote_name == ENV_REMOTE_NAME:
+        raise ValueError(
+            f"Remote {ENV_REMOTE_NAME} comes from {REMOTE_URL_ENV} and "
+            f"{API_KEY_ENV}, so it is not stored in the trussrc. Unset them to "
+            "manage saved remotes."
+        )
+
+
 class RemoteFactory:
     """
     A factory for instantiating a TrussRemote from a .trussrc file and a user-specified remote config name
@@ -40,6 +117,10 @@ class RemoteFactory:
 
     @staticmethod
     def get_available_config_names() -> List[str]:
+        # An env-configured remote hides the trussrc, so it is the only choice.
+        if env_remote_config():
+            return [ENV_REMOTE_NAME]
+
         if not USER_TRUSSRC_PATH.exists():
             return []
 
@@ -51,6 +132,17 @@ class RemoteFactory:
         """
         Load and validate a remote config from the .trussrc file
         """
+        if env_config := env_remote_config():
+            # Only `get_available_config_names` hands out ENV_REMOTE_NAME, so
+            # any other name was typed as `--remote` and cannot be honored.
+            if remote_name != ENV_REMOTE_NAME:
+                raise ValueError(
+                    f"Cannot use remote {remote_name!r}: {REMOTE_URL_ENV} and "
+                    f"{API_KEY_ENV} are set, which takes precedence over the "
+                    "trussrc. Unset them to select a remote by name."
+                )
+            return env_config
+
         if not USER_TRUSSRC_PATH.exists():
             raise FileNotFoundError("No ~/.trussrc file found.")
 
@@ -59,13 +151,22 @@ class RemoteFactory:
         if remote_name not in config:
             raise ValueError(f"Service provider {remote_name} not found in ~/.trussrc")
 
-        return RemoteConfig(name=remote_name, configs=dict(config[remote_name]))
+        remote_config = RemoteConfig(
+            name=remote_name, configs=dict(config[remote_name])
+        )
+        _apply_secrets_to_config(remote_config)
+        return remote_config
 
     @staticmethod
     def update_remote_config(remote_config: RemoteConfig):
         """
         Load and validate a remote config from the .trussrc file
         """
+        _reject_env_remote_name(remote_config.name)
+        remote_config = RemoteConfig(
+            name=remote_config.name, configs=dict(remote_config.configs)
+        )
+        _offload_secrets_from_config(remote_config)
         config = load_config()
         config[remote_config.name] = remote_config.configs
         update_config(config)
@@ -81,9 +182,32 @@ class RemoteFactory:
         except (FileNotFoundError, ValueError):
             return None
 
+    @staticmethod
+    def remove_remote_config(remote_name: str) -> None:
+        """Remove a remote entirely: keyring entry and trussrc section.
+
+        ``truss auth login`` adds a remote section; ``truss auth logout`` is the
+        inverse. Caller is expected to have verified the remote exists.
+        """
+        _reject_env_remote_name(remote_name)
+        if not _keyring_disabled_by_env() and _keyring_backend_usable():
+            try:
+                keyring.delete_password(KEYRING_SERVICE, remote_name)
+            except keyring.errors.PasswordDeleteError:
+                pass
+            except keyring.errors.KeyringError as exc:
+                logger.warning("Keyring delete failed for %s: %s", remote_name, exc)
+        if not USER_TRUSSRC_PATH.exists():
+            return
+        config = load_config()
+        if remote_name in config:
+            config.remove_section(remote_name)
+            update_config(config)
+
     @classmethod
     def create(cls, remote: str) -> TrussRemote:
         remote_config = cls.load_remote_config(remote).configs
+        remote_config.setdefault("oauth_remote_name", remote)
         if "remote_provider" not in remote_config:
             raise ValueError(f"Missing 'remote_provider' field for remote `{remote}`.")
         provider = remote_config.pop("remote_provider")
@@ -115,3 +239,122 @@ class RemoteFactory:
                 f"Missing required parameter(s) {list(missing)} for remote `{remote}`."
             )
         return remote_class(**passed_config)
+
+
+def _keyring_disabled_by_env() -> bool:
+    return os.environ.get(KEYRING_DISABLED_ENV, "").lower() in ("1", "true", "yes")
+
+
+def _keyring_backend_usable() -> bool:
+    backend = keyring.get_keyring()
+    return not isinstance(
+        backend, (keyring.backends.fail.Keyring, keyring.backends.null.Keyring)
+    )
+
+
+def _apply_secrets_to_config(remote_config: RemoteConfig) -> None:
+    """Merge any keyring-stored secrets into ``remote_config.configs``.
+
+    Sections without ``auth_type`` (legacy plaintext) are returned unchanged.
+    Sections opted into ``auth_type`` get their secret keys filled from the
+    keyring entry under (service=baseten-truss, account=remote_name). Inline
+    secrets already present on the section win (env-disabled or
+    backend-unavailable fallback). If neither inline nor keyring can supply
+    all expected secrets, raises so callers see a clear failure.
+    """
+    configs = remote_config.configs
+    auth_type = configs.get("auth_type")
+    if not isinstance(auth_type, str):
+        return
+    secret_keys = _INLINE_SECRET_KEYS_BY_AUTH_TYPE.get(auth_type)
+    if secret_keys is None:
+        return
+    if all(key in configs for key in secret_keys):
+        return
+    if _keyring_disabled_by_env() or not _keyring_backend_usable():
+        raise ValueError(
+            f"No credentials for remote {remote_config.name!r}: keyring is "
+            "unavailable and no inline secret is present."
+        )
+    try:
+        blob = keyring.get_password(KEYRING_SERVICE, remote_config.name)
+    except keyring.errors.KeyringError as exc:
+        raise ValueError(
+            f"Keyring read failed for remote {remote_config.name!r}: {exc}"
+        ) from exc
+    if not blob:
+        raise ValueError(
+            f"No credentials in keyring for remote {remote_config.name!r}; "
+            "run `truss login`."
+        )
+    try:
+        payload = json.loads(blob)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Keyring entry for remote {remote_config.name!r} is not valid JSON."
+        ) from exc
+    if payload.get("auth_type") != auth_type or not all(
+        key in payload for key in secret_keys
+    ):
+        raise ValueError(
+            f"Keyring entry for remote {remote_config.name!r} is malformed."
+        )
+    for key in secret_keys:
+        configs.setdefault(key, payload[key])
+
+
+def _offload_secrets_from_config(remote_config: RemoteConfig) -> None:
+    """If the section opts into ``auth_type``, push secrets into the keyring.
+
+    Only triggers when the caller has set ``auth_type`` on ``configs``. Legacy
+    callers writing plaintext ``api_key`` (no ``auth_type``) flow through
+    unchanged. When the keyring is disabled by env var, the secrets are left
+    inline silently (the user opted in to that). When the keyring backend is
+    unavailable or a write fails, we warn once and leave the secrets inline.
+    """
+    global _keyring_fallback_warned
+    configs = remote_config.configs
+    auth_type = configs.get("auth_type")
+    if not isinstance(auth_type, str):
+        return
+    # API keys are intentionally left plaintext in ~/.trussrc rather than
+    # offloaded to the OS keyring. The SSH proxy command run by the system SSH
+    # client executes under a stock Python interpreter with no keyring backend,
+    # so it can only read an api_key that lives inline in the trussrc. OAuth
+    # credentials still go to the keyring below. Existing keyring-stored api_keys
+    # remain readable via _apply_secrets_to_config; this only keeps new logins
+    # inline.
+    if auth_type == AuthType.API_KEY:
+        return
+    secret_keys = _INLINE_SECRET_KEYS_BY_AUTH_TYPE.get(auth_type)
+    if secret_keys is None or not all(key in configs for key in secret_keys):
+        return
+    if _keyring_disabled_by_env():
+        return
+    if not _keyring_backend_usable():
+        if not _keyring_fallback_warned:
+            logger.warning(
+                "Warning: no usable OS keyring backend; storing credentials for "
+                "%s in plaintext in %s.",
+                remote_config.name,
+                USER_TRUSSRC_PATH,
+            )
+            _keyring_fallback_warned = True
+        return
+    payload = json.dumps(
+        {"auth_type": auth_type, **{key: configs[key] for key in secret_keys}}
+    )
+    try:
+        keyring.set_password(KEYRING_SERVICE, remote_config.name, payload)
+    except keyring.errors.KeyringError as exc:
+        if not _keyring_fallback_warned:
+            logger.warning(
+                "Warning: keyring write failed for %s (%s); leaving secret in "
+                "plaintext.",
+                remote_config.name,
+                exc,
+            )
+            _keyring_fallback_warned = True
+        return
+    for key in _INLINE_SECRET_KEYS:
+        configs.pop(key, None)

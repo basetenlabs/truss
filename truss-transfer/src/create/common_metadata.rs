@@ -64,6 +64,8 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
         };
 
         let mut list_stream = object_store.list(Some(&prefix_path));
+        let mut listed_objects = 0usize;
+        let mut matched_objects = 0usize;
 
         while let Some(meta) = list_stream
             .next()
@@ -71,6 +73,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             .transpose()
             .map_err(|e| anyhow!("Failed to list objects: {}", e))?
         {
+            listed_objects += 1;
             let object_path = meta.location.to_string();
 
             // Extract relative path from the prefix (for file naming)
@@ -100,6 +103,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 debug!("Ignoring file: {}", relative_path);
                 continue;
             }
+            matched_objects += 1;
 
             let hash = provider.extract_hash(&meta);
             let last_modified_time = provider.last_modified_time(&meta);
@@ -120,6 +124,24 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             };
 
             basetenpointers.push(pointer);
+        }
+
+        if matched_objects == 0 {
+            if listed_objects == 0 {
+                return Err(anyhow!(
+                    "No objects found for weights source '{}' under prefix '{}'. Check that the URI points to an existing object or folder.",
+                    model.repo_id,
+                    prefix
+                ));
+            }
+
+            return Err(anyhow!(
+                "No objects matched weights filters for source '{}'. Listed {} object(s), allow_patterns={:?}, ignore_patterns={:?}.",
+                model.repo_id,
+                listed_objects,
+                model.allow_patterns,
+                model.ignore_patterns
+            ));
         }
     }
 

@@ -1,12 +1,16 @@
 import datetime
 import logging
+import os
 import re
 import sys
+import threading
+import time
 import warnings
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pydantic
+import requests as requests_lib
 import rich
 import rich.live
 import rich.logging
@@ -17,8 +21,14 @@ import rich_click as click
 from rich.markup import escape
 
 import truss
+from truss.base import truss_config
 from truss.cli.utils import self_upgrade
+
+if TYPE_CHECKING:
+    from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
+from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +47,22 @@ _log_level_str_to_level = {
     "D": logging.DEBUG,
     "DEBUG": logging.DEBUG,
 }
+
+# Keepalive constants
+_KEEPALIVE_INTERVAL_SEC = 30
+_KEEPALIVE_MAX_CONSECUTIVE_FAILURES = 20  # be very generous
+_KEEPALIVE_MAX_DURATION_SEC = 24 * 60 * 60  # 24 hours
+_KEEPALIVE_WARNING_BEFORE_EXIT_SEC = 30 * 60  # 30 minutes
+# Truss servers answer 200 on this route; docker_server deployments don't serve
+# it and need `keepalive_ping_path` to pick their readiness endpoint instead.
+KEEPALIVE_DEFAULT_PING_PATH = "v1/models/model"
+
+
+def keepalive_ping_path(config: truss_config.TrussConfig) -> str:
+    """Return the path the keepalive loop should ping for this deployment."""
+    if config.docker_server:
+        return config.docker_server.readiness_endpoint.lstrip("/")
+    return KEEPALIVE_DEFAULT_PING_PATH
 
 
 def set_logging_level() -> None:
@@ -68,13 +94,30 @@ def set_logging_level() -> None:
 def check_is_interactive() -> bool:
     """Detects if CLI is operated interactively by human, so we can ask things,
     that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        ctx = click.get_current_context(silent=True)
+        root_obj = ctx.find_root().obj if ctx else None
+        if root_obj and root_obj.get("non_interactive", False):
+            return False
+    except RuntimeError:
+        pass
+    return True
 
 
 def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
     # We use this for params that are not "exposed" to the signature of the subcommands.
     # therefore we store them directly on the context (not in contex.params).
     ctx.ensure_object(dict)[param.name] = value
+
+
+def _store_non_interactive_callback(
+    ctx: click.Context, param: click.Parameter, value: bool
+) -> None:
+    obj = ctx.ensure_object(dict)
+    # Child commands share this object; their defaults must preserve an enabled flag.
+    obj[param.name] = value or obj.get(param.name, False)
 
 
 def get_required_option(ctx: click.Context, name: str) -> object:
@@ -105,7 +148,7 @@ def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
         default=False,
         help="Disables interactive prompts, use in CI / automated execution contexts.",
         expose_value=False,
-        callback=_store_param_callback,
+        callback=_store_non_interactive_callback,
     )(f)
 
 
@@ -144,7 +187,9 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     return wrapper
 
 
-def upgrade_dialogue():
+def maybe_upgrade_dialogue():
+    if os.environ.get("TRUSS_NO_UPDATE_CHECK", "").lower() in ("1", "true"):
+        return
     try:
         self_upgrade.notify_if_outdated(truss.__version__)
     except Exception as e:
@@ -162,7 +207,7 @@ def common_options(
         def wrapper(*args: object, **kwargs: object) -> Any:
             if add_middleware:
                 set_logging_level()
-                upgrade_dialogue()
+                maybe_upgrade_dialogue()
 
             return f(*args, **kwargs)
 
@@ -174,6 +219,21 @@ def common_options(
 def format_link(url: str, display_text: Optional[str] = None) -> str:
     display_text = display_text or url
     return f"[link={url}]{display_text}[/link]"
+
+
+def print_deployment_links(
+    *, model_id: str, version_id: str, logs_url: str, hostname: Optional[str] = None
+) -> None:
+    """Print a labeled block of deployment identifiers and links.
+
+    Shared across deployment-touching commands (`truss push`, `truss watch`,
+    `truss train ... deploy_checkpoints`) so they render the same format.
+    """
+    console.print(f"   [bold]{'Model ID:':<14}[/bold] {model_id}")
+    console.print(f"   [bold]{'Deployment ID:':<14}[/bold] {version_id}")
+    if hostname:
+        console.print(f"   [bold]{'Endpoint:':<14}[/bold] {hostname}")
+    console.print(f"   [bold]{'Logs:':<14}[/bold] {format_link(logs_url)}")
 
 
 def is_human_log_level(ctx: click.Context) -> bool:
@@ -233,3 +293,144 @@ def format_bytes_to_human_readable(bytes: int) -> str:
         return f"{bytes / 1000:.2f} KB"
     else:
         return f"{bytes} B"
+
+
+def wait_for_development_model_ready(
+    model_hostname: str,
+    model_id: str,
+    dev_version_id: str,
+    remote_provider: BasetenRemote,
+    console: "rich_console.Console",
+) -> None:
+    # Wake the model in case it's scaled to zero
+    wake_url = f"{model_hostname}/development/wake"
+    try:
+        requests_lib.post(
+            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+        )
+    except requests_lib.RequestException:
+        # best effort
+        pass
+
+    # Wait for model to be ready before starting keepalive
+    with console.status(
+        "[bold green]Waiting for development model to be ready..."
+    ) as status:
+        while True:
+            time.sleep(1)
+            try:
+                deployment = remote_provider.api.get_deployment(
+                    model_id, dev_version_id
+                )
+                deployment_status = deployment["status"]
+            except Exception:
+                continue
+            status.update(
+                f"[bold green]Waiting for development model to be ready... "
+                f"Current Status: {deployment_status}"
+            )
+            if deployment_status in [ACTIVE_STATUS, "LOADING_MODEL"]:
+                break
+            if deployment_status not in DEPLOYING_STATUSES + [
+                "SCALED_TO_ZERO",
+                "WAKING_UP",
+                "UPDATING",
+            ]:
+                console.print(
+                    f"❌ Development model failed with status {deployment_status}.",
+                    style="red",
+                )
+                sys.exit(1)
+
+
+def _keepalive_url(
+    model_hostname: str, is_draft: bool, deployment_id: Optional[str], ping_path: str
+) -> str:
+    """Build the warm-up endpoint for a deployment.
+
+    Draft (development) deployments expose `/development/...`, while published
+    deployments are pinged via their specific `/deployment/{id}/...` endpoint.
+    """
+    if is_draft:
+        return f"{model_hostname}/development/sync/{ping_path}"
+    if not deployment_id:
+        raise ValueError(
+            "deployment_id is required to keep a published deployment warm."
+        )
+    return f"{model_hostname}/deployment/{deployment_id}/sync/{ping_path}"
+
+
+def start_keepalive(
+    model_hostname: str,
+    header_provider: Callable[[], dict[str, str]],
+    *,
+    is_draft: bool = True,
+    deployment_id: Optional[str] = None,
+    ping_path: str = KEEPALIVE_DEFAULT_PING_PATH,
+) -> threading.Event:
+    """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
+    keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id, ping_path)
+    console.print("💤 --no-sleep enabled: keeping model warm")
+    stop_event = threading.Event()
+    keepalive_thread = threading.Thread(
+        target=keepalive_loop,
+        args=(keepalive_url, header_provider, stop_event),
+        daemon=True,
+    )
+    keepalive_thread.start()
+    return stop_event
+
+
+def keepalive_loop(
+    keepalive_url: str,
+    header_provider: Callable[[], dict[str, str]],
+    stop_event: threading.Event,
+) -> None:
+    consecutive_failures = 0
+    start_time = time.time()
+    warning_emitted = False
+
+    while not stop_event.is_set():
+        elapsed_time = time.time() - start_time
+
+        if time.time() - start_time > _KEEPALIVE_MAX_DURATION_SEC:
+            console.print(
+                "⚠️  Keepalive has been running for 24 hours. Exiting truss watch.",
+                style="yellow",
+            )
+            os._exit(0)
+
+        # emit warning before exit once
+        if not warning_emitted and elapsed_time > (
+            _KEEPALIVE_MAX_DURATION_SEC - _KEEPALIVE_WARNING_BEFORE_EXIT_SEC
+        ):
+            console.print(
+                "⚠️  Keepalive will automatically exit in 30 minutes (24 hour limit).",
+                style="yellow",
+            )
+            warning_emitted = True
+
+        try:
+            resp = requests_lib.get(
+                keepalive_url, headers=header_provider(), timeout=10
+            )
+            if resp.status_code == 200:
+                consecutive_failures = 0
+            elif 400 <= resp.status_code < 500:
+                # Ignore 4xx errors
+                pass
+            else:
+                # Count 5xx errors as failures
+                consecutive_failures += 1
+        except requests_lib.RequestException:
+            consecutive_failures += 1
+
+        if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:
+            console.print(
+                f"⚠️  Keepalive ping failed {consecutive_failures} times in a row. "
+                "Exiting truss watch.",
+                style="red",
+            )
+            os._exit(1)  # kill process not just the thread
+
+        stop_event.wait(timeout=_KEEPALIVE_INTERVAL_SEC)

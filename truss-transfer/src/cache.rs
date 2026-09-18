@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use log::{debug, info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, timeout, Duration};
 
 use crate::constants::*;
 use crate::download_core::check_metadata_size;
@@ -283,28 +283,39 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
                 }
             }
         });
-        let copy_result = match fs::rename(download_path, &incomplete_cache_path).await {
-            Ok(_) => {
-                info!("Successfully moved file to cache.");
-                Ok(0) // Using 0 as a placeholder for success, similar to how copy returns bytes.
+        let copy_result = timeout(Duration::from_secs(900), async {
+            match fs::rename(download_path, &incomplete_cache_path).await {
+                Ok(_) => {
+                    info!("Successfully moved file to cache.");
+                    Ok(0) // Using 0 as a placeholder for success, similar to how copy returns bytes.
+                }
+                Err(_) => {
+                    //  Failed to move file, falling back to copy (likely cross-device)
+                    let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
+                    info!("Successfully copied local file to incomplete cache.");
+                    copy_result
+                }
             }
-            Err(_) => {
-                //  Failed to move file, falling back to copy (likely cross-device)
-                let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
-                info!("Successfully copied local file to incomplete cache.");
-                copy_result
-            }
-        };
+        })
+        .await;
 
         // Stop monitoring regardless of copy result
         monitor_handle.abort();
 
         match copy_result {
-            Ok(_) => debug!("Successfully copied to incomplete cache file."),
-            Err(e) => {
+            Ok(inner_result) => match inner_result {
+                Ok(_) => debug!("Successfully copied to incomplete cache file."),
+                Err(e) => {
+                    warn!(
+                        "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
+                        e
+                    );
+                    return Ok(());
+                }
+            },
+            Err(_) => {
                 warn!(
-                    "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
-                    e
+                    "Timed out after 15 minutes while copying local file to incomplete cache file."
                 );
                 return Ok(());
             }
@@ -362,25 +373,6 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
             }
         }
     }
-
-    // Delete the local file as its copy is now in the cache.
-    info!("Deleting local file at {:?}", download_path);
-    fs::remove_file(download_path)
-        .await
-        .with_context(|| format!("Failed to delete local file {download_path:?}"))?;
-
-    // Create a symlink from the cache file to the original download location.
-    info!(
-        "Creating symlink from cache file {:?} to local file path {:?}",
-        cache_path, download_path
-    );
-    create_symlink_or_skip(cache_path, download_path, size)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to create symlink from cache file {cache_path:?} to local file path {download_path:?}"
-            )
-        })?;
 
     info!(
         "Successfully handled b10cache for file: {:?}",

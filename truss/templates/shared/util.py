@@ -7,7 +7,7 @@ import psutil
 
 BLOB_DOWNLOAD_TIMEOUT_SECS = 600  # 10 minutes
 # number of seconds to wait for truss server child processes before sending kill signal
-CHILD_PROCESS_WAIT_TIMEOUT_SECONDS = 120
+CHILD_PROCESS_WAIT_TIMEOUT_SECONDS = 3600
 
 
 def model_supports_predict_proba(model: object) -> bool:

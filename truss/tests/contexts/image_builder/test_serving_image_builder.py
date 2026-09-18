@@ -1,8 +1,10 @@
 import filecmp
 import json
 import os
+import subprocess
+import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -10,16 +12,37 @@ import pytest
 import yaml
 
 from truss.base.constants import TRTLLM_PREDICT_CONCURRENCY, TRTLLM_TRUSS_DIR
-from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
+from truss.base.truss_config import (
+    DockerServer,
+    ModelCache,
+    ModelRepo,
+    RemoteSSH,
+    TrussConfig,
+)
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
+    _resolve_cache_mount_id,
+    generate_docker_server_nginx_config,
     get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
+from truss.util.jinja import dockerfile_env_value, dockerfile_shell_value
 
 BASE_DIR = Path(__file__).parent
+
+
+def _external_data_curl_lines(dockerfile: str) -> list[str]:
+    # `curl -L ` (space) avoids the uv bootstrap `curl -LsSf`.
+    return [
+        line
+        for line in dockerfile.splitlines()
+        if line.strip().startswith("RUN")
+        and "curl -L " in line
+        and "/app/data/" in line
+    ]
 
 
 @patch("platform.machine", return_value="amd")
@@ -28,8 +51,8 @@ def test_serving_image_dockerfile_from_user_base_image(
 ):
     th = TrussHandle(custom_model_truss_dir)
     # The test fixture python varies with host version, need to pin here.
-    th.update_python_version("py39")
-    th.set_base_image("baseten/truss-server-base:3.9-v0.4.3", "/usr/local/bin/python3")
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(th.spec.truss_dir)
     with TemporaryDirectory() as tmp_dir:
@@ -53,6 +76,371 @@ def test_serving_image_dockerfile_from_user_base_image(
         assert gen_docker_lines == server_docker_lines
 
 
+@patch("platform.machine", return_value="amd")
+def test_apt_mirror_url_override(mock_machine, custom_model_truss_dir, monkeypatch):
+    monkeypatch.setenv("BT_APT_MIRROR_URL", "mirror://mirrors.ubuntu.com/JP.txt")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "mirror://mirrors.ubuntu.com/JP.txt" in dockerfile
+    assert "mirror://mirrors.ubuntu.com/US.txt" not in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_external_data_url_shell_metacharacters_escaped_in_dockerfile(
+    mock_machine, custom_model_truss_dir
+):
+    """external_data URLs are embedded in a shell RUN curl; metacharacters must not break out."""
+    malicious_url = 'http://example.com/model" ; echo pwned ; echo "'
+    local_data_path = "weights/model.bin"
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=malicious_url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    curl_lines = _external_data_curl_lines(dockerfile)
+    assert len(curl_lines) == 1
+    curl_line = curl_lines[0]
+
+    expected_url = dockerfile_shell_value(malicious_url)
+    expected_dst = dockerfile_shell_value(
+        str(PurePosixPath("/app/data") / local_data_path)
+    )
+    assert f"curl -L {expected_url} -o {expected_dst}" in curl_line
+    assert "; echo pwned ;" not in curl_line.replace(expected_url, "")
+
+
+@patch("platform.machine", return_value="amd")
+def test_external_data_url_backticks_escaped_in_dockerfile(
+    mock_machine, custom_model_truss_dir
+):
+    """dockerfile_env_value leaves backticks live in RUN; shlex quoting must not."""
+    malicious_url = "http://example.com/`id`"
+    local_data_path = "weights/model.bin"
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=malicious_url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    curl_lines = _external_data_curl_lines(dockerfile)
+    assert len(curl_lines) == 1
+    curl_line = curl_lines[0]
+
+    expected_url = dockerfile_shell_value(malicious_url)
+    assert f"curl -L {expected_url}" in curl_line
+    assert expected_url == "'http://example.com/`id`'"
+
+
+@patch("platform.machine", return_value="amd")
+def test_external_data_dest_is_posix_container_path(
+    mock_machine, custom_model_truss_dir
+):
+    """Dest must stay /app/data/... on every host OS. Path.resolve() on Windows
+    turns that into C:\\app\\data\\... and curl writes to the wrong place."""
+    local_data_path = "weights/model.bin"
+    curl_line = _render_external_data_curl_line(
+        custom_model_truss_dir, "http://example.com/model.bin", local_data_path
+    )
+    expected_dst = dockerfile_shell_value(
+        str(PurePosixPath("/app/data") / local_data_path)
+    )
+    assert f"-o {expected_dst}" in curl_line
+    assert "/app/data/weights" in curl_line
+    assert ":\\app\\data" not in curl_line
+    assert ":/app/data" not in curl_line
+
+
+def _render_external_data_curl_line(truss_dir, url: str, local_data_path: str) -> str:
+    th = TrussHandle(truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_external_data_item(url=url, local_data_path=local_data_path)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+    curl_lines = _external_data_curl_lines(dockerfile)
+    assert len(curl_lines) == 1
+    return curl_lines[0]
+
+
+@patch("platform.machine", return_value="amd")
+@pytest.mark.skipif(sys.platform == "win32", reason="/bin/sh is not on Windows CI")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/model.bin",
+        'http://example.com/x" ; touch PWNED ; echo "',
+        "http://example.com/`touch PWNED`",
+        "http://example.com/$(touch PWNED)",
+        "http://example.com/$HOME/weights.bin",
+        "http://example.com/it's.bin",
+    ],
+)
+def test_external_data_run_line_is_safe_under_posix_sh(
+    mock_machine, custom_model_truss_dir, url
+):
+    """Execute the generated RUN under /bin/sh (dash here; Docker's default)."""
+    with TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        pwned = tmp_path / "pwned"
+        data_root = tmp_path / "data"
+        argv_file = tmp_path / "argv"
+        resolved_url = url.replace("PWNED", str(pwned))
+        curl_line = _render_external_data_curl_line(
+            custom_model_truss_dir, resolved_url, "weights/model.bin"
+        )
+        run_body = (
+            curl_line.strip().removeprefix("RUN ").replace("/app/data", str(data_root))
+        )
+        curl = tmp_path / "curl"
+        curl.write_text(f"#!/bin/sh\nprintf '%s\\0' \"$@\" > '{argv_file}'\n")
+        curl.chmod(0o755)
+        env = os.environ.copy()
+        env["PATH"] = f"{tmp_path}:{env['PATH']}"
+        subprocess.run(
+            ["/bin/sh", "-c", run_body], env=env, check=True, capture_output=True
+        )
+        argv = [a.decode() for a in argv_file.read_bytes().split(b"\0") if a]
+        assert argv[1] == resolved_url
+        assert pwned.exists() is False
+
+
+@patch("platform.machine", return_value="amd")
+def test_clean_uv_env_passes_proxy_and_ca_vars(mock_machine, custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.live_reload(True)
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    uv_env_lines = [
+        line for line in dockerfile.splitlines() if "env -i" in line and " uv " in line
+    ]
+    assert uv_env_lines, (
+        "expected `env -i ... uv ...` lines for live_reload control env"
+    )
+    for line in uv_env_lines:
+        for var in (
+            'HTTP_PROXY="$HTTP_PROXY"',
+            'HTTPS_PROXY="$HTTPS_PROXY"',
+            'NO_PROXY="$NO_PROXY"',
+            'SSL_CERT_FILE="$SSL_CERT_FILE"',
+            'REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE"',
+            'PIP_CERT="$PIP_CERT"',
+        ):
+            assert var in line, f"{var} missing from: {line}"
+
+
+@pytest.mark.parametrize("env_value", [None, ""])
+@patch("platform.machine", return_value="amd")
+def test_apt_mirror_url_default(
+    mock_machine, custom_model_truss_dir, monkeypatch, env_value
+):
+    if env_value is None:
+        monkeypatch.delenv("BT_APT_MIRROR_URL", raising=False)
+    else:
+        monkeypatch.setenv("BT_APT_MIRROR_URL", env_value)
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "mirror://mirrors.ubuntu.com/US.txt" in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_disabled(mock_machine, custom_model_truss_dir, monkeypatch):
+    """When TRUSS_CACHE_MOUNT_ID is unset, the Dockerfile keeps --no-cache-dir
+    and apt cleanup, and contains no BuildKit cache mounts."""
+    monkeypatch.delenv("TRUSS_CACHE_MOUNT_ID", raising=False)
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    assert "--mount=type=cache" not in dockerfile
+    assert "--no-cache-dir" in dockerfile
+    assert "rm -rf /var/lib/apt/lists/*" in dockerfile
+    assert "/etc/apt/apt.conf.d/docker-clean" not in dockerfile
+    assert "UV_CACHE_DIR" not in dockerfile
+    assert "PIP_CACHE_DIR" not in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_enabled(mock_machine, custom_model_truss_dir, monkeypatch):
+    """When TRUSS_CACHE_MOUNT_ID is set, the Dockerfile injects BuildKit cache
+    mounts with the provided id, drops --no-cache-dir, defeats apt's
+    docker-clean config, and stops removing the apt list cache."""
+    monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", "test123")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_python_requirement("numpy")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    # apt, pip, and uv cache mounts with the right id
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-test123,target=/var/cache/apt,sharing=locked"
+        in dockerfile
+    )
+    assert (
+        "--mount=type=cache,id=truss-apt-lib-test123,target=/var/lib/apt,sharing=locked"
+        in dockerfile
+    )
+    assert "--mount=type=cache,id=truss-uv-test123,target=/root/.cache/uv" in dockerfile
+    # No --no-cache-dir flags should remain.
+    assert "--no-cache-dir" not in dockerfile
+    # docker-clean must be removed and keep-cache configured.
+    assert "rm -f /etc/apt/apt.conf.d/docker-clean" in dockerfile
+    assert "Keep-Downloaded-Packages" in dockerfile
+    # apt list cleanup must NOT run when cache mounts are active.
+    assert "rm -rf /var/lib/apt/lists/*" not in dockerfile
+    # uv/pip cache dirs pinned for deterministic mount targets.
+    assert "ENV UV_CACHE_DIR=/root/.cache/uv" in dockerfile
+    assert "ENV PIP_CACHE_DIR=/root/.cache/pip" in dockerfile
+
+
+@patch("platform.machine", return_value="amd")
+def test_cache_mount_id_enabled_with_system_pkgs_ssh_and_docker_server(
+    mock_machine, custom_model_truss_dir, monkeypatch
+):
+    """Exercise the conditional apt-cleanup branches that the basic
+    enabled-state test doesn't cover: system_packages, openssh, and
+    docker_server (which also wraps uv installs in `clean_uv_env`). These
+    paths each have a distinct shape for the conditional trailing `\\`,
+    so we want at least one render that proves all three are well-formed
+    and free of orphaned line continuations when caching is on.
+    """
+    monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", "combo")
+    th = TrussHandle(custom_model_truss_dir)
+    th.update_python_version("py313")
+    th.set_base_image("baseten/truss-server-base:3.13-v0.4.3", "/usr/local/bin/python3")
+    th.add_system_package("ffmpeg")
+    th.add_python_requirement("numpy")
+    th._update_config(
+        runtime=th.spec.config.runtime.model_copy(
+            update={"remote_ssh": RemoteSSH(enabled=True)}
+        ),
+        docker_server=DockerServer(
+            start_command='sh -c "python -m http.server 8000"',
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        ),
+    )
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+
+    # System packages install gets the apt cache mount and skips list cleanup.
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update && apt-get install --yes --no-install-recommends "
+        "$(cat system_packages.txt)"
+    ) in dockerfile
+    # openssh install gets the apt cache mount; the trailing `\` chain must
+    # still flow into `chmod +x` (no orphaned `\` if the conditional skipped).
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update && apt-get install --yes --no-install-recommends openssh-server \\"
+    ) in dockerfile
+    assert "chmod +x /usr/local/bin/baseten-ssh-server.sh" in dockerfile
+    # docker_server apt install: nginx + curl with apt mount, no list cleanup.
+    assert (
+        "--mount=type=cache,id=truss-apt-cache-combo,target=/var/cache/apt,sharing=locked "
+        "--mount=type=cache,id=truss-apt-lib-combo,target=/var/lib/apt,sharing=locked "
+        "apt-get update -y && apt-get install -y --no-install-recommends "
+    ) in dockerfile
+    # The default-site removal must stay chained into the install RUN (same
+    # layer) so no overlayfs whiteout is emitted for it.
+    assert "&& rm -f /etc/nginx/sites-enabled/default" in dockerfile
+    assert "RUN rm -f /etc/nginx/sites-enabled/default" not in dockerfile
+    # docker_server uv install must combine the uv cache mount with
+    # `clean_uv_env`, which was extended to forward UV_CACHE_DIR / PIP_CACHE_DIR.
+    assert (
+        "--mount=type=cache,id=truss-uv-combo,target=/root/.cache/uv "
+        'env -i PATH="$PATH" HOME="$HOME" '
+        'HTTP_PROXY="$HTTP_PROXY" HTTPS_PROXY="$HTTPS_PROXY" NO_PROXY="$NO_PROXY" '
+        'SSL_CERT_FILE="$SSL_CERT_FILE" REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE" PIP_CERT="$PIP_CERT" '
+        'UV_CACHE_DIR="$UV_CACHE_DIR" PIP_CACHE_DIR="$PIP_CACHE_DIR" '
+        "uv --no-config pip install --python /docker_server/.venv/bin/python "
+        "-r /app/docker_server_requirements.txt"
+    ) in dockerfile
+    # Sanity: no --no-cache-dir anywhere, no list cleanup anywhere, no
+    # orphaned ` \\\n\\s+&&` followed by `chmod` (i.e. no broken continuations).
+    assert "--no-cache-dir" not in dockerfile
+    assert "rm -rf /var/lib/apt/lists/*" not in dockerfile
+
+
+def test_resolve_cache_mount_id_rejects_invalid_chars(monkeypatch):
+    """Unsanitized characters in TRUSS_CACHE_MOUNT_ID could inject extra
+    `--mount` flags via the `id=` field, so we reject them at resolve time."""
+    for bad in [
+        "has space",
+        "comma,injection",
+        "equals=sign",
+        "with/slash",
+        "semi;colon",
+    ]:
+        monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", bad)
+        with pytest.raises(ValueError, match="TRUSS_CACHE_MOUNT_ID"):
+            _resolve_cache_mount_id()
+
+    for ok in ["abc", "abc-123", "abc_123", "ABC", "0"]:
+        monkeypatch.setenv("TRUSS_CACHE_MOUNT_ID", ok)
+        assert _resolve_cache_mount_id() == ok
+
+    monkeypatch.delenv("TRUSS_CACHE_MOUNT_ID", raising=False)
+    assert _resolve_cache_mount_id() is None
+
+
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_python_requirement("numpy")
@@ -65,10 +453,13 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
         with open(tmp_path / "requirements.txt", "r") as f:
             requirements_content = f.read()
 
-        with open(f"{BASE_DIR}/../../../templates/server/requirements.txt", "r") as f:
-            base_requirements_content = f.read()
-
-        assert requirements_content == base_requirements_content + "numpy\n"
+        # User-specified "numpy" should be subtracted from base requirements
+        # and only appear as the user's appended requirement.
+        assert "numpy\n" in requirements_content
+        assert "numpy>=1.23.5,<2.0" not in requirements_content
+        # All other base requirements should still be present
+        assert "fastapi" in requirements_content
+        assert "uvicorn" in requirements_content
 
 
 def test_env_vars_baked_into_image(test_data_path):
@@ -92,11 +483,11 @@ def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -112,11 +503,8 @@ def test_correct_hf_files_accessed_for_caching():
         files_to_cache = flatten_cached_files(files_to_cache)
         assert str(hf_path / "version.txt") in files_to_cache
 
-        blobs = [
-            blob
-            for blob in files_to_cache
-            if blob.startswith(f"{hf_path}/models--openai--whisper-small/blobs/")
-        ]
+        blob_prefix = str(hf_path / "models--openai--whisper-small" / "blobs") + os.sep
+        blobs = [blob for blob in files_to_cache if blob.startswith(blob_prefix)]
         assert len(blobs) >= 1
 
         files = model_files[model]["files"]
@@ -133,8 +521,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -169,8 +556,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -205,8 +591,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -245,8 +630,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -299,6 +683,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
         assert container.logs()
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v1"
     tr = TrussHandle(truss_dir)
@@ -413,6 +798,7 @@ EXPECTED_CACHE_V2 = [
 ]
 
 
+@pytest.mark.skip(reason="Skipping due to HF 429s")
 def test_model_cache_dockerfile_v2(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)
@@ -429,7 +815,10 @@ def test_model_cache_dockerfile_v2(test_data_path):
         with open(tmp_path / "bptr-manifest", "r") as f:
             json_bptr = json.load(f)["pointers"]
         # sort json_bptr by file_name to ensure consistent order
-        json_bptr = list(sorted(json_bptr, key=lambda x: x["file_name"]))
+        # Normalize separators for sorting since backslash sorts differently
+        json_bptr = list(
+            sorted(json_bptr, key=lambda x: x["file_name"].replace("\\", "/"))
+        )
 
         assert len(json_bptr) == 7, (
             f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
@@ -441,8 +830,11 @@ def test_model_cache_dockerfile_v2(test_data_path):
             assert json_bptr[i]["uid"] == expected["uid"], (
                 f"UID mismatch at index {i}: {json_bptr[i]['uid']} != {expected['uid']}"
             )
-            assert json_bptr[i]["file_name"] == expected["file_name"], (
-                f"File name mismatch at index {i}: {json_bptr[i]['file_name']} != {expected['file_name']}"
+            # Normalize path separators for cross-platform compatibility
+            # (truss-transfer Rust crate uses OS-native separators)
+            actual_file_name = json_bptr[i]["file_name"].replace("\\", "/")
+            assert actual_file_name == expected["file_name"], (
+                f"File name mismatch at index {i}: {actual_file_name} != {expected['file_name']}"
             )
             assert json_bptr[i]["resolution"]["expiration_timestamp"] == 4044816725, (
                 f"expected expiration timestamp to be 4044816725, got {json_bptr[i]['resolution']['expiration_timestamp']}"
@@ -547,7 +939,7 @@ def _assert_copied(src_path: str, dest_path: str):
             )
 
 
-def test_hash_dir_sanitization(custom_model_truss_dir):
+def test_hash_dir_includes_runtime_fields(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_environment_variable("foo", "bar")
     image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
@@ -555,8 +947,9 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
+        # The build hash now reflects the full config (no runtime fields are excluded).
         truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
-        assert truss_config.environment_variables == {}
+        assert truss_config.environment_variables == {"foo": "bar"}
 
 
 class TestDockerServerSupervisordConfig:
@@ -784,3 +1177,159 @@ python main.py --gpus $PARALLEL
         assert cfg.has_section("supervisord")
         assert cfg.has_section("program:nginx")
         assert cfg.has_section("eventlistener:quit_on_failure")
+
+
+def test_nginx_config_disables_disk_writes(tmp_path):
+    """Test that nginx configuration disables all disk writes."""
+
+    class MockDockerServer:
+        predict_endpoint = "/predict"
+        readiness_endpoint = "/readiness"
+        liveness_endpoint = "/health"
+        server_port = 8090
+
+    class MockTransport:
+        kind = "http"
+
+    class MockRuntime:
+        transport = MockTransport()
+
+    class MockConfig:
+        docker_server = MockDockerServer()
+        runtime = MockRuntime()
+
+    generate_docker_server_nginx_config(tmp_path, MockConfig())
+
+    with open(tmp_path / "proxy.conf", "r") as f:
+        nginx_config = f.read()
+
+    # Verify logging is disabled
+    assert "access_log off;" in nginx_config
+    assert "error_log /dev/null;" in nginx_config
+
+    # Verify temp paths use /dev/shm (in-memory filesystem)
+    assert "client_body_temp_path /dev/shm/nginx_client_temp;" in nginx_config
+    assert "proxy_temp_path /dev/shm/nginx_proxy_temp;" in nginx_config
+    assert "fastcgi_temp_path /dev/shm/nginx_fastcgi_temp;" in nginx_config
+    assert "uwsgi_temp_path /dev/shm/nginx_uwsgi_temp;" in nginx_config
+    assert "scgi_temp_path /dev/shm/nginx_scgi_temp;" in nginx_config
+
+
+class TestDockerServerSlimBuild:
+    def _make_docker_server_truss(
+        self,
+        tmp_path,
+        transport_kind="http",
+        start_command="python main.py --port 8000",
+    ):
+        truss_dir = tmp_path / f"docker_server_truss_{transport_kind}"
+        th = TrussHandle(init_directory(truss_dir))
+        th.update_python_version("py311")
+        th.set_base_image("python:3.11-slim", "/usr/local/bin/python3")
+        config = th.spec.config
+        config.docker_server = DockerServer(
+            start_command=start_command,
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        config.runtime.transport = {"kind": transport_kind}
+        with (truss_dir / "config.yaml").open("w") as f:
+            yaml.dump(config.to_dict(verbose=True), f)
+        return truss_dir
+
+    @pytest.mark.parametrize("transport_kind", ["http", "grpc"])
+    def test_slim_dockerfile_omits_nginx_and_supervisord(
+        self, tmp_path, transport_kind
+    ):
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, transport_kind=transport_kind
+        )
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / f"build_{transport_kind}"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "SERVER_START_CMD" in dockerfile
+        assert 'ENTRYPOINT ["sh", "-c"]' in dockerfile
+        assert "nginx" not in dockerfile.lower()
+        assert "supervisord" not in dockerfile.lower()
+        assert not (build_dir / "proxy.conf").exists()
+        assert not (build_dir / "supervisord.conf").exists()
+        assert not (build_dir / "docker_server_requirements.txt").exists()
+
+    def test_slim_dockerfile_start_cmd_env_preserves_quotes(self, tmp_path):
+        start_command = (
+            'sh -c "vllm serve /app/model'
+            ' --hf-overrides \'{"text_config": {"sliding_window": 4096}}\''
+            ' --port $PORT"'
+        )
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, start_command=start_command
+        )
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / "build_quoted_start_cmd"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        env_line = next(
+            line
+            for line in dockerfile.splitlines()
+            if line.startswith("ENV SERVER_START_CMD=")
+        )
+        # tojson would have baked \u0027 (') into ENV, which the Dockerfile
+        # parser keeps verbatim. CMD may keep \uXXXX: JSON exec form decodes it.
+        assert "\\u00" not in env_line
+        assert env_line == "ENV SERVER_START_CMD=" + dockerfile_env_value(start_command)
+
+        cmd_line = next(
+            line for line in dockerfile.splitlines() if line.startswith("CMD [")
+        )
+        assert json.loads(cmd_line[len("CMD ") :]) == [start_command]
+
+    def test_legacy_dockerfile_unchanged_when_flag_off(self, tmp_path):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        builder = ServingImageBuilderContext.run(truss_dir)
+        build_dir = tmp_path / "build"
+        builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "supervisord" in dockerfile
+        assert "nginx" in dockerfile
+        assert (build_dir / "proxy.conf").exists()
+        assert (build_dir / "supervisord.conf").exists()
+        assert (build_dir / "docker_server_requirements.txt").exists()
+
+    @pytest.mark.parametrize("env_value", ["", "false", "False", "0", "no", "1"])
+    def test_legacy_dockerfile_when_flag_value_is_not_true(self, tmp_path, env_value):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": env_value}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / f"build_{env_value or 'empty'}"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "supervisord" in dockerfile
+        assert "nginx" in dockerfile
+
+    def test_no_build_skips_slim_branch_even_with_flag_on(self, tmp_path):
+        truss_dir = self._make_docker_server_truss(tmp_path)
+        config_path = truss_dir / "config.yaml"
+        with config_path.open() as f:
+            cfg = yaml.safe_load(f)
+        cfg["docker_server"]["no_build"] = True
+        with config_path.open("w") as f:
+            yaml.dump(cfg, f)
+
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / "build_no_build_slim"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert "SERVER_START_CMD" not in dockerfile
+        assert "nginx" not in dockerfile.lower()
+        assert "supervisord" not in dockerfile.lower()

@@ -14,6 +14,7 @@ import rich
 from InquirerPy import inquirer
 from rich.text import Text
 
+from truss.cli import remote_cli
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import (
@@ -25,13 +26,37 @@ from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
-from truss_train.definitions import DeployCheckpointsConfig
+from truss_train.definitions import (
+    AvailabilityModel,
+    CheckpointList,
+    DeployCheckpointsConfig,
+)
+
+QUEUED_JOB_STATUSES = ["TRAINING_JOB_PENDING"]
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
     "TRAINING_JOB_CREATED",
     "TRAINING_JOB_DEPLOYING",
 ]
+
+# Human-readable labels for a job's `availability_model`. DEDICATED is
+# non-preemptible on-demand capacity (and the default when the field is absent,
+# which predates it); SPOT is interruptible.
+_AVAILABILITY_MODEL_LABELS = {
+    AvailabilityModel.DEDICATED: "On-demand",
+    AvailabilityModel.SPOT: "Spot",
+}
+
+
+def _format_capacity_type(job: dict) -> str:
+    raw = job.get("availability_model") or AvailabilityModel.DEDICATED
+    try:
+        model = AvailabilityModel(raw)
+    except ValueError:
+        # Unknown future value: surface it rather than dropping it.
+        return str(raw).title()
+    return _AVAILABILITY_MODEL_LABELS.get(model, model.value.title())
 
 
 def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
@@ -60,8 +85,10 @@ def get_args_for_stop(
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
+            user_email = job.get("user", {}).get("email")
+            user_msg = f" (created by {user_email})" if user_email else ""
             confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}?",
+                message=f"Are you sure you want to stop training job {job_id_to_stop}{user_msg}?",
                 default=False,
             ).execute()
             if not confirm:
@@ -75,10 +102,12 @@ def _get_active_job(
     remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> dict:
     jobs = remote_provider.api.search_training_jobs(
-        statuses=ACTIVE_JOB_STATUSES, project_id=project_id, job_id=job_id
+        statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES,
+        project_id=project_id,
+        job_id=job_id,
     )
     if not jobs:
-        raise click.UsageError("No running jobs found.")
+        raise click.UsageError("No queued or running jobs found.")
     if len(jobs) > 1:
         display_training_jobs(
             jobs, remote_provider.remote_url, title="Active Training Jobs"
@@ -94,13 +123,41 @@ class DisplayTableColumn:
     accessor: Callable[[dict], str]
 
 
-def display_training_jobs(
-    jobs, remote_url: str, checkpoints_by_job_id=None, title="Training Job Details"
-):
-    checkpoints_by_job_id = checkpoints_by_job_id or {}
-    console.print(title, style="bold magenta")
+def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title=title,
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Job Name")
+    table.add_column("Project")
+    table.add_column("Status")
+    table.add_column("Instance Type")
+    table.add_column("Capacity Type")
+    table.add_column("Created By")
+    table.add_column("Created")
+    table.add_column("Job Page", style="bold yellow")
+
     for job in jobs:
-        display_training_job(job, remote_url, checkpoints_by_job_id.get(job["id"], []))
+        table.add_row(
+            job["id"],
+            job["name"],
+            job["training_project"]["name"],
+            job["current_status"],
+            job["instance_type"]["name"],
+            _format_capacity_type(job),
+            job.get("user", {}).get("email", ""),
+            cli_common.format_localized_time(job["created_at"]),
+            cli_common.format_link(
+                status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+                "link",
+            ),
+        )
+
+    console.print(table)
 
 
 def recreate_training_job(
@@ -126,6 +183,19 @@ def recreate_training_job(
     return job_resp
 
 
+def update_training_job(
+    remote_provider: BasetenRemote, job_id: str, *, priority: Optional[int] = None
+) -> Dict[str, Any]:
+    if priority is None:
+        raise ValueError("At least one field to update must be provided.")
+    job = _get_job_by_job_id(remote_provider, job_id)
+    project_id = job["training_project"]["id"]
+    job_id = job["id"]
+    return remote_provider.api.update_training_job(
+        project_id, job_id, priority=priority
+    )
+
+
 def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table = rich.table.Table(
         show_header=True,
@@ -140,6 +210,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table.add_column("Last Modified")
     table.add_column("Latest Job ID", style="bold yellow")
     table.add_column("Latest Job Status", style="bold yellow")
+    table.add_column("Checkpoint Sync", style="bold yellow")
     table.add_column("Status Page", style="bold yellow")
 
     # most recent projects at bottom of terminal
@@ -158,7 +229,49 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
             cli_common.format_localized_time(project["updated_at"]),
             latest_job_id,
             latest_job.get("current_status", ""),
+            latest_job.get("checkpoint_sync_status", ""),
             latest_job_link,
+        )
+
+    console.print(table)
+
+
+def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Queued Training Jobs",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Job Name")
+    table.add_column("Project")
+    table.add_column("Instance Type")
+    table.add_column("Capacity Type")
+    table.add_column("Priority")
+    table.add_column("Created By")
+    table.add_column("Queued At")
+    table.add_column("Job Page", style="bold yellow")
+
+    sorted_jobs = sorted(
+        jobs, key=lambda j: (-(j.get("priority") or 0), j.get("created_at", ""))
+    )
+
+    for job in sorted_jobs:
+        table.add_row(
+            job["id"],
+            job["name"],
+            job["training_project"]["name"],
+            job["instance_type"]["name"],
+            _format_capacity_type(job),
+            str(job.get("priority") or 0),
+            job.get("user", {}).get("email", ""),
+            cli_common.format_localized_time(job["created_at"]),
+            cli_common.format_link(
+                status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+                "link",
+            ),
         )
 
     console.print(table)
@@ -170,7 +283,7 @@ def view_training_details(
     """
     view_training_details shows a list of jobs that meet the provided project_id and job_id filters.
 
-     If no filters are provided, the command will show a list of all training projects and a list of active jobs.
+     If no filters are provided, the command will show a list of all training projects along with queued and active jobs.
     """
     if job_id or project_id:
         jobs_response = remote_provider.api.search_training_jobs(
@@ -193,23 +306,27 @@ def view_training_details(
     else:
         projects = remote_provider.api.list_training_projects()
         display_training_projects(projects, remote_provider.remote_url)
-        active_jobs = remote_provider.api.search_training_jobs(
-            statuses=ACTIVE_JOB_STATUSES
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES
         )
+        queued_jobs = [j for j in jobs if j["current_status"] in QUEUED_JOB_STATUSES]
+        active_jobs = [j for j in jobs if j["current_status"] in ACTIVE_JOB_STATUSES]
+        if queued_jobs:
+            display_queued_jobs(queued_jobs, remote_provider.remote_url)
         if active_jobs:
             display_training_jobs(
                 active_jobs, remote_provider.remote_url, title="Active Training Jobs"
             )
-        else:
-            console.print("No active training jobs.", style="yellow")
+        if not queued_jobs and not active_jobs:
+            console.print("No queued or active training jobs.", style="yellow")
 
 
 def stop_all_jobs(remote_provider: BasetenRemote, project_id: Optional[str]):
     active_jobs = remote_provider.api.search_training_jobs(
-        project_id=project_id, statuses=ACTIVE_JOB_STATUSES
+        project_id=project_id, statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES
     )
     if not active_jobs:
-        console.print("No active jobs found.", style="yellow")
+        console.print("No queued or active jobs found.", style="yellow")
         return
     confirm = inquirer.confirm(
         message=f"Are you sure you want to stop {len(active_jobs)} active jobs?",
@@ -236,15 +353,37 @@ def view_training_job_metrics(
 def create_model_version_from_inference_template(
     remote_provider: BasetenRemote, args: DeployCheckpointArgs
 ) -> DeploySuccessResult:
+    if args.deploy_config_path and args.checkpoint_ids:
+        raise click.UsageError(
+            "--checkpoint-ids cannot be combined with --config. "
+            "Pick one source of checkpoint identifiers."
+        )
+
+    if args.checkpoint_ids:
+        config = DeployCheckpointsConfig(
+            checkpoint_details=CheckpointList(loops_checkpoint_ids=args.checkpoint_ids)
+        )
+        return deploy_checkpoints.create_model_version_from_inference_template(
+            remote_provider,
+            config,
+            args.project_id,
+            args.job_id,
+            args.run_id,
+            args.dry_run,
+            args.is_loops_command,
+        )
+
     if not args.deploy_config_path:
         return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider,
             DeployCheckpointsConfig(),
             args.project_id,
             args.job_id,
+            args.run_id,
             args.dry_run,
+            args.is_loops_command,
         )
-    #### User provided a checkpoint deploy config file
+    # User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
@@ -253,8 +392,34 @@ def create_model_version_from_inference_template(
             checkpoint_deploy,
             args.project_id,
             args.job_id,
+            args.run_id,
             args.dry_run,
+            args.is_loops_command,
         )
+
+
+def write_truss_config(
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
+) -> None:
+    if not result.truss_config:
+        return
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = (
+        f"{result.model_version.name}_{result.model_version.id}"
+        if result.model_version
+        else f"dry_run_{datestamp}"
+    )
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
+    os.makedirs(output_dir, exist_ok=True)
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
+        )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 def _get_checkpoint_names(
@@ -270,6 +435,15 @@ def print_deploy_checkpoints_success_message(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
     checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
+    if not checkpoint_names:
+        # Loops checkpoint deploys reference checkpoints by ID; the client
+        # doesn't know each name without an extra API call. Skip the
+        # name-specific guidance.
+        console.print(
+            Text("\nDeployment succeeded. Set the `model` parameter on each "),
+            Text("request to the Loops checkpoint name (e.g. `step-100`)."),
+        )
+        return
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),
@@ -304,6 +478,12 @@ def display_training_job(
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
+    table.add_row("Priority", str(job.get("priority") or 0))
+    table.add_row(
+        "Availability Model", str(job.get("availability_model") or "dedicated")
+    )
+    if user_email := job.get("user", {}).get("email"):
+        table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
@@ -313,6 +493,10 @@ def display_training_job(
             "link",
         ),
     )
+
+    # Add checkpoint sync status if present
+    if job.get("checkpoint_sync_status"):
+        table.add_row("Checkpoint Sync", job["checkpoint_sync_status"])
 
     # Add error message if present
     if job.get("error_message"):
@@ -642,3 +826,92 @@ def view_cache_summary_by_project(
 
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
+
+
+def _usage_split(item: dict) -> Tuple[str, str]:
+    """Return (on-demand, spot) usage cells for a capacity item.
+
+    The backend splits usage_count into dedicated (on-demand) and spot. A
+    pre-split backend omits the breakdown; fall back to showing the total
+    under on-demand so the column still reflects real usage.
+    """
+    dedicated = item.get("dedicated_usage_count")
+    spot = item.get("spot_usage_count")
+    if dedicated is None and spot is None:
+        return str(item.get("usage_count", 0)), "0"
+    return str(dedicated or 0), str(spot or 0)
+
+
+def display_training_capacity(remote_provider: BasetenRemote) -> None:
+    """Fetch and display org- and team-level GPU capacity limits and usage."""
+    capacity = remote_provider.api.get_training_capacity()
+    gpu_capacities = capacity.get("gpu_capacities", [])
+    team_gpu_capacities = capacity.get("team_gpu_capacities", [])
+
+    if not gpu_capacities and not team_gpu_capacities:
+        console.print("No Training GPU capacity limits.")
+        return
+
+    if gpu_capacities:
+        org_table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Training GPU Capacity",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        org_table.add_column("GPU Type", style="cyan")
+        org_table.add_column("Baseline", justify="right")
+        org_table.add_column("Limit", justify="right")
+        org_table.add_column("On-Demand", justify="right")
+        org_table.add_column("Spot", justify="right")
+        for item in gpu_capacities:
+            on_demand, spot = _usage_split(item)
+            org_table.add_row(
+                item.get("gpu_type", ""),
+                str(item.get("baseline", 0)),
+                str(item.get("limit", 0)),
+                on_demand,
+                spot,
+            )
+        console.print(org_table)
+
+    if team_gpu_capacities:
+        team_table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Team Training GPU Capacity",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        team_table.add_column("Team", style="cyan")
+        team_table.add_column("GPU Type", style="cyan")
+        team_table.add_column("Limit", justify="right")
+        team_table.add_column("On-Demand", justify="right")
+        team_table.add_column("Spot", justify="right")
+        for item in team_gpu_capacities:
+            on_demand, spot = _usage_split(item)
+            team_table.add_row(
+                item.get("team_name", ""),
+                item.get("gpu_type", ""),
+                str(item.get("limit", 0)),
+                on_demand,
+                spot,
+            )
+        console.print(team_table)
+
+
+def update_team_training_gpu_capacity(
+    remote_provider: BasetenRemote, team_name: str, gpu_type: str, capacity: int
+) -> Dict[str, Any]:
+    """Set the max concurrent GPUs of a given type a team may use. Org-admin only."""
+    existing_teams = remote_provider.api.get_teams()
+    team = existing_teams.get(team_name)
+    if team is None:
+        raise click.ClickException(
+            f"Team '{team_name}' does not exist. "
+            f"Available teams: {remote_cli.format_available_teams(existing_teams)}"
+        )
+    return remote_provider.api.update_team_training_gpu_capacity(
+        team_id=team.id, gpu_type=gpu_type, max_gpus=capacity
+    )

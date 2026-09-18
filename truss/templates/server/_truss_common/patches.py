@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 def apply_patches(enabled: bool, requirements: list):
     """
-    Apply patches to certain functions. The patches are contained in each patch module under 'patches' directory.
+    Apply patches to certain functions. The patches are contained in each patch module under 'patch_modules' directory.
     If a patch cannot be applied, it logs the name of the function and the exception details.
     """
-    PATCHES_DIR = Path(__file__).parent / "patches"
+    PATCHES_DIR = Path(__file__).parent / "patch_modules"
     if not enabled:
         return
     for requirement in requirements:

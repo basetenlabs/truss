@@ -12,6 +12,7 @@ from truss.remote.baseten import core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     MAX_BATCH_SIZE,
+    create_bis_llm_service,
     create_truss_service,
     get_training_job_logs_with_pagination,
 )
@@ -978,3 +979,124 @@ def test_create_truss_service_passes_deploy_timeout_minutes_for_development_mode
     api.create_development_model_from_truss.assert_called_once()
     _, kwargs = api.create_development_model_from_truss.call_args
     assert kwargs["deploy_timeout_minutes"] == 600
+
+
+def test_create_truss_service_passes_labels():
+    """Test that labels are passed through to create_model_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
+    api.create_model_from_truss.return_value = return_value
+    labels = {"git_sha": "abc123", "environment": "production"}
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id=None,
+        labels=labels,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_from_truss.assert_called_once()
+    _, kwargs = api.create_model_from_truss.call_args
+    assert kwargs["labels"] == labels
+
+
+def test_create_truss_service_passes_labels_for_development_model():
+    """Test that labels are passed through to create_development_model_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_development_model_from_truss.return_value = return_value
+    labels = {"git_sha": "abc123"}
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=True,
+        model_id=None,
+        labels=labels,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_development_model_from_truss.assert_called_once()
+    _, kwargs = api.create_development_model_from_truss.call_args
+    assert kwargs["labels"] == labels
+
+
+def test_create_truss_service_passes_labels_for_existing_model():
+    """Test that labels are passed through to create_model_version_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    labels = {"git_sha": "abc123", "count": 42}
+
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="existing_model_id",
+        labels=labels,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["labels"] == labels
+
+
+def test_create_bus_llm_service_creates_new_model():
+    api = MagicMock()
+    api.create_bis_llm_model.return_value = {
+        "model_id": "bis-llm-model-id",
+        "version_id": "bis-llm-deployment-id",
+        "hostname": "hostname",
+        "instance_type_name": "A10G",
+    }
+    body = {"name": "my-bis-llm", "resources": {"accelerator": "A10G"}}
+
+    version_handle = create_bis_llm_service(api, body=body, team_id="team-123")
+
+    assert version_handle.model_id == "bis-llm-model-id"
+    assert version_handle.version_id == "bis-llm-deployment-id"
+    api.create_bis_llm_model.assert_called_once_with(body=body, team_id="team-123")
+
+
+def test_create_bis_llm_service_creates_model_version():
+    api = MagicMock()
+    api.create_bis_llm_model_version.return_value = {
+        "model_id": "bis-llm-model-id",
+        "version_id": "bis-llm-deployment-id",
+        "hostname": "hostname",
+        "instance_type_name": "A10G",
+    }
+    body = {"resources": {"accelerator": "A10G"}}
+
+    version_handle = create_bis_llm_service(
+        api, body=body, model_id="bis-llm-model-id", team_id="team-123"
+    )
+
+    assert version_handle.model_id == "bis-llm-model-id"
+    assert version_handle.version_id == "bis-llm-deployment-id"
+    api.create_bis_llm_model_version.assert_called_once_with(
+        model_id="bis-llm-model-id", body=body
+    )

@@ -2,7 +2,6 @@ environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
 model_name: Test Build Commands
-python_version: py39
 resources:
   accelerator: null
   cpu: '1'

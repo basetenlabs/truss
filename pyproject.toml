@@ -1,11 +1,12 @@
 [project]
 name = "truss"
-version = "0.12.11rc1"
+version = "0.18.31rc1"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
     { name = "Phil Howes", email = "no-reply@baseten.co" },
 ]
+# When updating requires-python, also update classifiers below to match.
 requires-python = ">=3.9,<3.15"
 readme = "README.md"
 license = "MIT"
@@ -15,6 +16,14 @@ keywords = [
     "Model Serving",
     "Model Deployment",
     "Machine Learning",
+]
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "huggingface_hub>=0.25.0",
@@ -30,6 +39,7 @@ dependencies = [
     "httpx>=0.24.1",
     "httpx-ws>=0.7.1,<0.8",
     "inquirerpy>=0.3.4,<0.4",
+    "keyring>=25,<26",
     "libcst>=1.1.2",
     "loguru>=0.7.2",
     "packaging>=20.9",
@@ -39,11 +49,11 @@ dependencies = [
     "python-on-whales>=0.68.0",
     "requests>=2.31",
     "rich>=13.4.2,<14",
-    "rich-click>=1.6.1,<2",
+    "rich-click>=1.8.9,<2",
     "ruff>=0.4.8",
     "tenacity>=8.0.1",
     "watchfiles>=0.19.0,<0.20",
-    "truss-transfer>=0.0.37,<0.0.40",
+    "truss-transfer>=0.0.42,<0.0.44",
 ]
 
 [project.urls]
@@ -92,7 +102,7 @@ dev-server = [
     "opentelemetry-sdk>=1.25.0",
     "prometheus-client>=0.21.1,<0.22",
     "uvicorn>=0.24.0",
-    "uvloop>=0.17.0",
+    "uvloop>=0.17.0; sys_platform != 'win32'",
     "websockets>=14.0",
 ]
 

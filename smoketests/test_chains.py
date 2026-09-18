@@ -181,7 +181,7 @@ def test_itest_chain_publish(prepare) -> None:
     tmpdir, truss_rc_path, remote = prepare
 
     chain_src = CHAINS_ROOT / "tests" / "itest_chain" / "itest_chain.py"
-    command = f"truss chains push {chain_src} --publish --name=itest_publish --no-wait"
+    command = f"truss chains push {chain_src} --name=itest_publish --no-wait"
 
     stdout, stderr = run_command(truss_rc_path, command)
     if stderr:

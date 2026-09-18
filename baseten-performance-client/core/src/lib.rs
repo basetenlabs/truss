@@ -2,6 +2,7 @@ pub mod cancellation;
 pub mod client;
 pub mod constants;
 pub mod customer_request_id;
+pub mod endpoint_routing;
 pub mod errors;
 pub mod http;
 pub mod http_client;
@@ -12,14 +13,19 @@ pub mod utils;
 pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
+pub use endpoint_routing::{
+    Endpoint, EndpointConfig, EndpointHealthCheckConfig, EndpointHealthConfig,
+    EndpointHealthStatus, EndpointPool, EndpointPoolConfig, EndpointPoolHealthSnapshot,
+    DEFAULT_TIMEOUT_IS_NO_VOTE,
+};
 pub use errors::ClientError;
 pub use http::*;
-// http_client is internal only - not reexported
 pub use split_policy::RequestProcessingPreference;
 pub use utils::*;
 
 /// Initialize tracing with default WARN level
 /// This is called automatically when the library is loaded
+#[cfg(feature = "auto-init-tracing")]
 #[ctor::ctor]
 fn init_tracing() {
     // Check for PERFORMANCE_CLIENT_LOG_LEVEL first (highest priority)
@@ -31,11 +37,16 @@ fn init_tracing() {
         std::env::set_var("RUST_LOG", crate::constants::DEFAULT_LOG_LEVEL);
     }
 
-    // Initialize subscriber only once
+    // Initialize subscriber only once, and only if not already initialized
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
-        tracing_subscriber::fmt()
+        // Try to initialize tracing, but don't panic if it's already initialized
+        if tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .init();
+            .try_init()
+            .is_err()
+        {
+            // Tracing is already initialized, which is fine
+        }
     });
 }

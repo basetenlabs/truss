@@ -106,6 +106,23 @@ async def test_model_wrapper_streaming_timeout(app_path):
 
 
 @pytest.mark.anyio
+async def test_gather_generator_decodes_byte_chunks(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    gather_generator = getattr(model_wrapper_module, "_gather_generator")
+
+    async def byte_stream():
+        # A 4-byte emoji split across the chunk boundary must survive.
+        yield b"hello \xf0\x9f"
+        yield b"\x98\x80"
+
+    assert await gather_generator(byte_stream()) == "hello \U0001f600"
+
+
+@pytest.mark.anyio
 async def test_trt_llm_truss_predict(
     trt_llm_truss_container_fs, helpers, connected_request
 ):
@@ -165,7 +182,7 @@ async def test_trt_llm_truss_missing_model_py(
         mock_predict_called = False
 
         # Need to import from the same path as ModelWrapper for retries to work.
-        errors_module = sys.modules["common.errors"]
+        errors_module = sys.modules["_truss_common.errors"]
 
         # NB(nikhil): The underlying .load() takes longer on CI, so we wrap predict until the model is ready.
         @retry(
@@ -224,6 +241,31 @@ async def test_open_ai_completion_endpoints(
             {}, connected_request
         )
         assert chat_completions_resp == "chat_completions"
+
+        embeddings_resp = await model_wrapper.embeddings({}, connected_request)
+        assert embeddings_resp == "embeddings"
+
+
+@pytest.mark.anyio
+async def test_messages_endpoint(open_ai_container_fs, helpers, connected_request):
+    app_path = open_ai_container_fs / "app"
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_paths(app_path),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper.load()
+
+        messages_resp = await model_wrapper.messages({}, connected_request)
+        assert messages_resp == "messages"
+
+        responses_resp = await model_wrapper.responses({}, connected_request)
+        assert responses_resp == "responses"
 
 
 @contextmanager

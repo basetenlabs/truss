@@ -6,7 +6,7 @@ from truss import __version__
 # This needs to be updated whenever we want to update
 # base images on a merge. Updating this version will cause
 # base images to be pushed with this tag.
-TRUSS_BASE_IMAGE_VERSION_TAG = "v0.12.0"
+TRUSS_BASE_IMAGE_VERSION_TAG = "v0.13.0"
 
 
 def file_is_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:

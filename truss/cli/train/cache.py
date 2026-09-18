@@ -7,7 +7,6 @@ from typing import Any, Callable, Optional
 
 import rich
 
-from truss.cli.train import common
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.custom_types import (
@@ -317,7 +316,7 @@ def view_cache_summary(
         total_size = sum(
             file_info.file_summary.size_bytes for file_info in files_with_total_sizes
         )
-        total_size_str = common.format_bytes_to_human_readable(total_size)
+        total_size_str = cli_common.format_bytes_to_human_readable(total_size)
 
         viewer.output_cache_summary(
             cache_data, files_with_total_sizes, total_size, total_size_str, project_id

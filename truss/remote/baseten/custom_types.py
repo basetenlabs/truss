@@ -16,6 +16,9 @@ class DeployedChainlet(pydantic.BaseModel):
     status: str
     logs_url: str
     oracle_name: str
+    oracle_id: str
+    oracle_version_id: str
+    hostname: Optional[str] = None
 
 
 class ChainletArtifact(pydantic.BaseModel):
@@ -171,3 +174,35 @@ class TeamType(pydantic.BaseModel):
     id: str = pydantic.Field(description="Team identifier")
     name: str = pydantic.Field(description="Team display name")
     default: bool = pydantic.Field(description="Whether this is the default team")
+
+
+class OidcTeamInfo(pydantic.BaseModel):
+    """Team information for OIDC configuration."""
+
+    id: str = pydantic.Field(description="Team identifier")
+    name: str = pydantic.Field(description="Team display name")
+
+
+class AwsAssumeRoleInfo(pydantic.BaseModel):
+    """Trust-policy inputs for the AWS AssumeRole auth method."""
+
+    role_arn: str = pydantic.Field(
+        description="Baseten role ARN to allow in the IAM role's trust policy"
+    )
+    external_id: str = pydantic.Field(
+        description="sts:ExternalId Baseten presents for this organization"
+    )
+
+
+class OidcInfo(pydantic.BaseModel):
+    """OIDC configuration information for workload identity."""
+
+    org_id: str = pydantic.Field(description="Organization identifier")
+    teams: list[OidcTeamInfo] = pydantic.Field(
+        description="List of teams with id and name"
+    )
+    issuer: str = pydantic.Field(description="OIDC issuer URL")
+    audience: str = pydantic.Field(description="OIDC audience")
+    workload_types: list[str] = pydantic.Field(
+        description="Available workload type options"
+    )

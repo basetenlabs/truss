@@ -87,6 +87,8 @@ class TrussTRTLLMQuantizationType(str, Enum):
     # FP8 + fp8 kv cache quantization (faster attention when used with fp8 context fmha, required for fp8 ctx fmha)!
     # not usable for asymmetric model with bias=True e.g. qwen2.5 models
     FP8_KV = "fp8_kv"
+    # fp8, but only mlp layers are in fp8, rest is 16 bit, also 16 bit kv cache
+    FP8_MLP_ONLY = "fp8_mlp_only"
     # fp4 with 16 bit kv cache
     FP4 = "fp4"
     # fp4 with fp8 kv cache quantization
@@ -117,7 +119,7 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """
 
     calib_size: int = 1024
-    calib_dataset: str = "cnn_dailymail"
+    calib_dataset: str = "abisee/cnn_dailymail"
     calib_max_seq_length: int = 1536
 
     def __init__(self, **data):
@@ -203,6 +205,22 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
     )
+    # maximum LoRA rank supported by the cache
+    lora_cache_max_adapter_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
+    # LoRA rank used to size cache pages
+    lora_cache_optimal_adapter_size: Optional[
+        Annotated[int, Field(strict=True, ge=1)]
+    ] = None
+    # fraction of GPU memory available after engine load reserved for the LoRA cache
+    lora_cache_gpu_memory_fraction: Optional[
+        Annotated[float, Field(strict=True, gt=0, le=1)]
+    ] = None
+    # host memory reserved for the LoRA cache (in bytes)
+    lora_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
     # wheter to
     enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
@@ -218,8 +236,21 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     total_token_limit: int = 500000
     # only for embedding models (e.g. encoder models and encoder_bert models)
     webserver_default_route: Optional[
-        Literal["/v1/embeddings", "/rerank", "/predict"]
+        Literal["/v1/embeddings", "/rerank", "/predict", "/predict_tokens"]
     ] = None
+
+    @model_validator(mode="after")
+    def validate_lora_cache_adapter_sizes(self):
+        if (
+            self.lora_cache_max_adapter_size is not None
+            and self.lora_cache_optimal_adapter_size is not None
+            and self.lora_cache_optimal_adapter_size > self.lora_cache_max_adapter_size
+        ):
+            raise ValueError(
+                "lora_cache_optimal_adapter_size cannot be greater than "
+                "lora_cache_max_adapter_size"
+            )
+        return self
 
 
 class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
@@ -274,7 +305,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
         1  # "max_beam_width greater than 1 is not currently supported"
     )
     max_prompt_embedding_table_size: int = 0
-    checkpoint_repository: CheckpointRepository
+    checkpoint_repository: Optional[CheckpointRepository] = None
     gather_all_token_logits: bool = False
     # if you want to ignore the dtype of the model you loaded.
     # recommend to not use unless you get a error during the build (model failing with compile error)
@@ -313,6 +344,26 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     # for v2, skip the build step and use a engine that you e.g. provider otherwise
     # e.g. via model_cache.
     skip_build_result: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_runtime_lora_cache_fields(cls, data):
+        if isinstance(data, dict):
+            misplaced_fields = sorted(
+                {
+                    "lora_cache_max_adapter_size",
+                    "lora_cache_optimal_adapter_size",
+                    "lora_cache_gpu_memory_fraction",
+                    "lora_cache_host_memory_bytes",
+                }
+                & data.keys()
+            )
+            if misplaced_fields:
+                raise ValueError(
+                    f"{', '.join(misplaced_fields)} must be configured under "
+                    "trt_llm.runtime, not trt_llm.build"
+                )
+        return data
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -376,15 +427,8 @@ pip install truss==0.10.8
             # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
-            if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                if self.max_num_tokens != 8192:
-                    # only warn if it is not the default value
-                    logger.warning(
-                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
-                    )
-                self = self.model_copy(
-                    update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
-                )
+            if "max_num_tokens" not in self.model_fields_set:
+                self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
             # set page_kv_cache and use_paged_context_fmha to false for encoder
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False
@@ -552,7 +596,7 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
 
     @property
     def resolved_checkpoint_repository(self) -> CheckpointRepository:
-        if self.build:
+        if self.build and self.build.checkpoint_repository:
             return self.build.checkpoint_repository
         elif self.checkpoint_repository:
             return self.checkpoint_repository
@@ -571,11 +615,17 @@ class VersionsOverrides(PydanticTrTBaseModel):
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
+    bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
-        for field in ["engine_builder_version", "briton_version", "bei_version"]:
+        for field in [
+            "engine_builder_version",
+            "briton_version",
+            "bei_version",
+            "bei_bert_version",
+        ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
                 raise ValueError(f"{field} must start with a number")
@@ -589,9 +639,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     # INTERNAL
     bei_image: str
-    beibert_image: str = (
-        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
-    )
+    beibert_image: str
     briton_image: str
     v2_llm_image: str
 
@@ -606,6 +654,10 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
 
     def model_post_init(self, __context):
         """Post-initialization validation and adjustments."""
+        if self.build.checkpoint_repository is None:
+            raise ValueError(
+                "trt_llm.build.checkpoint_repository is required for v1 inference stack."
+            )
         if (
             self.runtime.enable_chunked_context
             and (
@@ -717,6 +769,15 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
     @model_validator(mode="after")
     def validate_inference_stack_v2(self: "TRTLLMConfigurationV2", context):
         """Validate that the build configuration is compatible with the v2 inference stack."""
+        if (
+            self.build.checkpoint_repository is None
+            and not self.build.skip_build_result
+        ):
+            raise ValueError(
+                "trt_llm.build.checkpoint_repository is required when "
+                "trt_llm.build.skip_build_result is not set for v2 inference stack."
+            )
+
         allowed_modify_fields = [
             "checkpoint_repository",
             "quantization_type",
@@ -734,6 +795,11 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
             quantization_config=TrussTRTQuantizationConfiguration(),
         ).model_dump(exclude_unset=False)
         for field in build_settings:
+            # NB(nikhil): By default we `allow_extra` for these configuration classes, but we want to
+            # ignore newer client versions/data for the purpose of this validation.
+            if field not in self.build.model_fields:
+                continue
+
             if (
                 field not in allowed_modify_fields
                 and build_settings[field] != build_settings_reference[field]
@@ -873,6 +939,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
     elif trt_llm_config.build.quantization_type in [
         TrussTRTLLMQuantizationType.FP8,
         TrussTRTLLMQuantizationType.FP8_KV,
+        TrussTRTLLMQuantizationType.FP8_MLP_ONLY,
         TrussTRTLLMQuantizationType.FP4,
         TrussTRTLLMQuantizationType.FP4_KV,
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
@@ -896,6 +963,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
         truss_config.Accelerator.H100_40GB,
         truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
+        truss_config.Accelerator.L40S,
         truss_config.Accelerator.A100_40GB,
     ]:
         raise ValueError(

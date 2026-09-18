@@ -1,5 +1,5 @@
 use crate::create::object_storage_client::get_client_options;
-use crate::secrets::get_secret_from_file;
+use crate::secrets::get_secret;
 use anyhow::{anyhow, Result};
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
@@ -52,8 +52,7 @@ pub fn s3_storage(
         .with_bucket_name(bucket_name)
         .with_client_options(get_client_options());
 
-    // Read AWS credentials from single file
-    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
+    if let Some(credentials_content) = get_secret(runtime_secret_name) {
         // Try to parse as JSON first
         if let Ok(credentials) = serde_json::from_str::<AwsCredentials>(&credentials_content) {
             builder = builder
@@ -70,7 +69,7 @@ pub fn s3_storage(
         }
     } else {
         return Err(anyhow!(
-            "Failed to read AWS credentials from not existing file: {}",
+            "AWS credential '{}' not found in environment variable or file",
             runtime_secret_name
         ));
     }

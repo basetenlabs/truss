@@ -265,9 +265,8 @@ mod tests {
                 serde_json::to_string(&manifest_json).unwrap()
             }
             Err(e) => {
-                // if Failed to read Azure credentials from not existing file: azure-storage in error.
                 if e.to_string().contains(
-                    "Failed to read Azure credentials from not existing file: azure-storage",
+                    "Azure credential 'azure-storage' not found in environment variable or file",
                 ) {
                     println!("Azure test failed (expected without credentials): {e}");
                     // This is expected since we don't have real Azure credentials

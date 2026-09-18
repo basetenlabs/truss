@@ -3,6 +3,7 @@ import builtins
 import collections
 import contextlib
 import contextvars
+import functools
 import json
 import logging
 import statistics
@@ -116,13 +117,15 @@ _REQUESTS_TOTAL = prometheus_client.Counter(
 )
 
 
-def populate_chainlet_service_predict_urls(
-    chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
-) -> Mapping[str, public_types.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
-    if not chainlet_to_service:
-        return {}
+@functools.lru_cache(maxsize=1)
+def load_dynamic_chainlet_config() -> dict[str, public_types.ServiceDescriptorUrls]:
+    """Load and validate ``dynamic_chainlet_config`` (display name → URLs).
 
+    Result is LRU-cached per process; tests that patch mount paths must call
+    ``cache_clear()`` on this function first.
+
+    Raises ``MissingDependencyError`` if unset or empty.
+    """
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
@@ -131,9 +134,29 @@ def populate_chainlet_service_predict_urls(
             f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
             "found. Cannot override Chainlet configs."
         )
+    data = json.loads(dynamic_chainlet_config_str)
+    if not isinstance(data, dict):
+        # Ignore unexpected root types (e.g. `json.dumps("")` decodes to a string).
+        # Historically `in`/`not in` on those values behaved like an empty mapping.
+        data = {}
+    return {
+        name: public_types.ServiceDescriptorUrls.model_validate(entry)
+        for name, entry in data.items()
+    }
 
-    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
 
+def populate_chainlet_service_predict_urls(
+    chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
+) -> Mapping[str, public_types.DeployedServiceDescriptor]:
+    """Combine static ``ServiceDescriptor`` entries (from codegen / ``config.yaml``) with
+    predict and internal URLs from the mounted ``dynamic_chainlet_config``.
+    """
+    if not chainlet_to_service:
+        return {}
+
+    dynamic_chainlet_config = load_dynamic_chainlet_config()
+
+    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
     for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
@@ -149,10 +172,11 @@ def populate_chainlet_service_predict_urls(
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
-        if internal_url := dynamic_chainlet_config[display_name].get("internal_url"):
+        url: dict[str, Any]
+        if internal_url := dynamic_chainlet_config[display_name].internal_url:
             url = {"internal_url": internal_url}
         else:
-            predict_url = dynamic_chainlet_config[display_name].get("predict_url")
+            predict_url = dynamic_chainlet_config[display_name].predict_url
             url = {"predict_url": predict_url}
 
         chainlet_to_deployed_service[chainlet_name] = (
@@ -354,6 +378,12 @@ class ThreadSemaphoreWrapper(
 _trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "trace_parent", default=None
 )
+_request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
+_chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
+    contextvars.ContextVar("chain_request_id", default=None)
+)
 
 
 @contextlib.contextmanager
@@ -378,6 +408,34 @@ def trace_parent_raw(trace_parent: str) -> Iterator[None]:
 
 def get_trace_parent() -> Optional[str]:
     return _trace_parent_context.get()
+
+
+@contextlib.contextmanager
+def _request_id(headers: Mapping[str, str]) -> Iterator[None]:
+    token = _request_id_context.set(headers.get(private_types.REQUEST_ID_HEADER_KEY))
+    try:
+        yield
+    finally:
+        _request_id_context.reset(token)
+
+
+def get_request_id() -> Optional[str]:
+    return _request_id_context.get()
+
+
+@contextlib.contextmanager
+def _chain_request_id(headers: Mapping[str, str]) -> Iterator[None]:
+    token = _chain_request_id_context.set(
+        headers.get(private_types.CHAIN_REQUEST_ID_HEADER_KEY)
+    )
+    try:
+        yield
+    finally:
+        _chain_request_id_context.reset(token)
+
+
+def get_chain_request_id() -> Optional[str]:
+    return _chain_request_id_context.get()
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
@@ -586,7 +644,7 @@ async def async_response_raise_errors(
 
 @contextlib.contextmanager
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
-    with _trace_parent(headers):
+    with _trace_parent(headers), _request_id(headers), _chain_request_id(headers):
         try:
             yield
         except Exception as e:

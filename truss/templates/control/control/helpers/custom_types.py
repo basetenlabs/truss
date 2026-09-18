@@ -40,9 +40,16 @@ class PatchBody:
 class ModelCodePatch(PatchBody):
     path: str  # Relative to model module directory
     content: Optional[str] = None
+    content_bytes: Optional[str] = None  # Base64-encoded binary content
+    hot_reload: bool = False
 
     def to_dict(self):
-        return {"action": self.action.value, "path": self.path, "content": self.content}
+        d = {"action": self.action.value, "path": self.path, "content": self.content}
+        if self.content_bytes is not None:
+            d["content_bytes"] = self.content_bytes
+        if self.hot_reload:
+            d["hot_reload"] = True
+        return d
 
     @staticmethod
     def from_dict(patch_dict: dict):
@@ -51,6 +58,8 @@ class ModelCodePatch(PatchBody):
             action=Action[action_str],
             path=patch_dict["path"],
             content=patch_dict["content"],
+            content_bytes=patch_dict.get("content_bytes"),
+            hot_reload=patch_dict.get("hot_reload", False),
         )
 
 
@@ -128,9 +137,13 @@ class DataPatch(PatchBody):
 class PackagePatch(PatchBody):
     path: str
     content: Optional[str] = None
+    content_bytes: Optional[str] = None  # Base64-encoded binary content
 
     def to_dict(self):
-        return {"action": self.action.value, "content": self.content, "path": self.path}
+        d = {"action": self.action.value, "content": self.content, "path": self.path}
+        if self.content_bytes is not None:
+            d["content_bytes"] = self.content_bytes
+        return d
 
     @staticmethod
     def from_dict(patch_dict: dict):
@@ -138,6 +151,7 @@ class PackagePatch(PatchBody):
         return PackagePatch(
             action=Action[action_str],
             content=patch_dict["content"],
+            content_bytes=patch_dict.get("content_bytes"),
             path=patch_dict["path"],
         )
 

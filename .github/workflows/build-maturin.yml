@@ -91,6 +91,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
+          maturin-version: "v1.8.1"
           manylinux: auto
           docker-options: >
             ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
@@ -144,6 +145,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
+          maturin-version: "v1.8.1"
           manylinux: musllinux_1_2
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -219,6 +221,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
+          maturin-version: "v1.8.1"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:

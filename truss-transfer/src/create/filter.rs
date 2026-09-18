@@ -81,10 +81,19 @@ pub fn filter_repo_files(
     allow_patterns: Option<&[String]>,
     ignore_patterns: Option<&[String]>,
 ) -> Result<Vec<String>, HfError> {
+    let total_files = files.len();
     let filtered_files = files
         .into_iter()
         .filter(|file| !should_ignore_file(file, allow_patterns, ignore_patterns))
-        .collect();
+        .collect::<Vec<_>>();
+
+    if filtered_files.is_empty() {
+        return Err(HfError::InvalidMetadata(format!(
+            "No files matched weights filters. Listed {total_files} file(s), \
+            allow_patterns={:?}, ignore_patterns={:?}",
+            allow_patterns, ignore_patterns
+        )));
+    }
 
     Ok(filtered_files)
 }
@@ -136,5 +145,24 @@ mod tests {
 
         // Should allow when no patterns specified
         assert!(!should_ignore_file("any_file.txt", None, None));
+    }
+
+    #[test]
+    fn test_filter_repo_files_errors_when_allow_patterns_match_nothing() {
+        let files = vec!["model.bin".to_string(), "README.md".to_string()];
+        let allow_patterns = vec!["*.safetensors".to_string()];
+
+        let err = filter_repo_files(files, Some(&allow_patterns), None).unwrap_err();
+
+        assert!(err.to_string().contains("No files matched weights filters"));
+        assert!(err.to_string().contains("Listed 2 file(s)"));
+    }
+
+    #[test]
+    fn test_filter_repo_files_errors_when_repo_listing_is_empty() {
+        let err = filter_repo_files(vec![], None, None).unwrap_err();
+
+        assert!(err.to_string().contains("No files matched weights filters"));
+        assert!(err.to_string().contains("Listed 0 file(s)"));
     }
 }

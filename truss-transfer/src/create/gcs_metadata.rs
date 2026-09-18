@@ -1,8 +1,7 @@
 use crate::create::object_storage_client::get_client_options;
+use crate::secrets::get_secret;
 use crate::types::GcsError;
 use object_store::gcp::GoogleCloudStorageBuilder;
-
-use crate::secrets::get_secret_path;
 
 /// Parse GCS URI (gs://bucket/path) into bucket and prefix
 pub fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
@@ -29,10 +28,15 @@ pub fn gcs_storage(
     bucket: &str,
     runtime_secret_name: &str,
 ) -> Result<object_store::gcp::GoogleCloudStorage, GcsError> {
-    let path = get_secret_path(runtime_secret_name);
+    let key = get_secret(runtime_secret_name).ok_or_else(|| {
+        GcsError::InvalidUri(format!(
+            "GCS credential '{}' not found in environment variable or file",
+            runtime_secret_name
+        ))
+    })?;
 
     GoogleCloudStorageBuilder::new()
-        .with_service_account_path(&path)
+        .with_service_account_key(&key)
         .with_bucket_name(bucket)
         .with_client_options(get_client_options())
         .build()

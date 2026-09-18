@@ -1,1 +1,2 @@
 supervisor==4.2.5
+setuptools==81.0.0

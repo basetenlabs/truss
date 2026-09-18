@@ -1,0 +1,359 @@
+import inspect
+import json
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
+from click.testing import CliRunner
+
+from truss.base.constants import WORKSTATION_TEMPLATE_DIR
+from truss.cli.cli import truss_cli
+from truss.cli.train.workstation import (
+    SUPPORTED_WORKSTATION_ACCELERATORS,
+    build_workstation_project,
+    copy_workstation_templates,
+    default_base_image,
+    workstation_ssh_hostnames,
+)
+from truss.remote.baseten.custom_types import TeamType
+from truss.remote.baseten.remote import BasetenRemote
+from truss_train.definitions import (
+    InteractiveSessionProvider,
+    InteractiveSessionTrigger,
+)
+
+EXPECTED_TEMPLATE_FILES = [
+    "setup_slurm.sh",
+    "install_slurm.sh",
+    "setup_controller.sh",
+    "setup_worker.sh",
+]
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "expected_image"),
+    [
+        ("H100", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
+        ("B200", "nvidia/cuda:12.9.1-devel-ubuntu24.04"),
+        ("B300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+        ("GB300", "nvidia/cuda:13.0.3-devel-ubuntu24.04"),
+    ],
+)
+def test_default_base_image(accelerator, expected_image):
+    assert default_base_image(accelerator) == expected_image
+
+
+def test_build_workstation_project_defaults():
+    project = build_workstation_project(
+        accelerator="H100", gpu_count=1, project_id="workstation-H100"
+    )
+    assert project.name == "workstation-H100"
+
+    job = project.job
+    assert job.compute.accelerator.accelerator.value == "H100"
+    assert job.compute.accelerator.count == 1
+    assert job.compute.node_count == 1
+    assert job.runtime.start_commands == ["sleep infinity"]
+    assert job.interactive_session is not None
+    assert job.interactive_session.trigger == InteractiveSessionTrigger.ON_STARTUP
+    assert job.interactive_session.session_provider == InteractiveSessionProvider.SSH
+
+
+@pytest.mark.parametrize("accelerator", SUPPORTED_WORKSTATION_ACCELERATORS)
+def test_build_workstation_project_supported_accelerators_multi_gpu(accelerator):
+    project = build_workstation_project(
+        accelerator=accelerator, gpu_count=4, project_id="my-workstation"
+    )
+    assert project.name == "my-workstation"
+
+    job = project.job
+    assert job.compute.accelerator.accelerator.value == accelerator
+    assert job.compute.accelerator.count == 4
+
+
+def test_build_workstation_project_invalid_accelerator():
+    with pytest.raises(ValueError):
+        build_workstation_project(accelerator="INVALID", gpu_count=1, project_id="test")
+
+
+def test_build_workstation_project_multinode_uses_slurm():
+    project = build_workstation_project(
+        accelerator="H100",
+        gpu_count=8,
+        project_id="test",
+        node_count=4,
+        orchestrator="slurm",
+    )
+    job = project.job
+    assert job.compute.node_count == 4
+    assert job.runtime.start_commands == ["bash /b10/workspace/setup_slurm.sh"]
+
+
+def test_copy_workstation_templates():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        copy_workstation_templates(Path(tmp_dir))
+        for name in EXPECTED_TEMPLATE_FILES:
+            script = Path(tmp_dir) / name
+            assert script.exists(), f"Missing {name}"
+            assert os.access(script, os.X_OK), f"{name} is not executable"
+
+
+def test_workstation_template_dir_exists():
+    assert WORKSTATION_TEMPLATE_DIR.exists()
+    for name in EXPECTED_TEMPLATE_FILES:
+        assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
+
+
+@pytest.mark.parametrize("remote", [None, "baseten"])
+def test_workstation_ssh_hostnames_omits_default_remote(remote):
+    assert workstation_ssh_hostnames("job123", 1, remote=remote) == [
+        "training-job-job123-0.ssh.baseten.co"
+    ]
+
+
+def test_workstation_ssh_hostnames_includes_non_default_remote():
+    # Needed so the proxy command resolves the right ~/.trussrc entry when the
+    # user has several remotes configured.
+    assert workstation_ssh_hostnames("job123", 1, remote="dev") == [
+        "training-job-job123-0.dev.ssh.baseten.co"
+    ]
+
+
+def test_workstation_ssh_hostnames_one_per_node_in_rank_order():
+    assert workstation_ssh_hostnames("job123", 3) == [
+        "training-job-job123-0.ssh.baseten.co",
+        "training-job-job123-1.ssh.baseten.co",
+        "training-job-job123-2.ssh.baseten.co",
+    ]
+
+
+class TestWorkstationTeamResolution:
+    @staticmethod
+    def _setup_mock_remote(teams, existing_projects=None):
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.list_training_projects.return_value = existing_projects or []
+        return mock_remote
+
+    @staticmethod
+    def _invoke_workstation(runner, team_name=None):
+        args = ["train", "workstation", "--remote", "test_remote"]
+        if team_name:
+            args.extend(["--team", team_name])
+        return runner.invoke(truss_cli, args)
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_team_provided_passes_team_id_to_push(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {
+            "team-a": {"id": "team1", "name": "team-a", "default": True},
+            "team-b": {"id": "team2", "name": "team-b", "default": False},
+        }
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = {
+            "id": "job123",
+            "training_project": {"id": "proj123", "name": "workstation-H100"},
+        }
+
+        result = self._invoke_workstation(CliRunner(), team_name="team-b")
+
+        assert result.exit_code == 0, result.output
+        assert mock_push.call_args[1]["team_id"] == "team2"
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_single_team_auto_resolves_without_flag(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {"only-team": {"id": "team9", "name": "only-team", "default": False}}
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = {
+            "id": "job123",
+            "training_project": {"id": "proj123", "name": "workstation-H100"},
+        }
+
+        result = self._invoke_workstation(CliRunner())
+
+        assert result.exit_code == 0, result.output
+        assert mock_push.call_args[1]["team_id"] == "team9"
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_invalid_team_errors_before_push(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        teams = {"team-a": {"id": "team1", "name": "team-a", "default": True}}
+        mock_remote_factory.return_value = self._setup_mock_remote(teams)
+        mock_get_remote_team.return_value = None
+
+        result = self._invoke_workstation(CliRunner(), team_name="nonexistent")
+
+        assert result.exit_code == 1
+        assert "does not exist" in result.output
+        mock_push.assert_not_called()
+
+
+class TestWorkstationJsonOutput:
+    PUSH_RESPONSE = {
+        "id": "job123",
+        "training_project": {"id": "proj123", "name": "workstation-H100"},
+    }
+
+    @staticmethod
+    def _setup_mock_remote():
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = {
+            "team-a": TeamType(id="team1", name="team-a", default=True)
+        }
+        mock_api.list_training_projects.return_value = []
+        return mock_remote
+
+    @staticmethod
+    def _invoke(*extra_args):
+        runner_kwargs = {}
+        if "mix_stderr" in inspect.signature(CliRunner.__init__).parameters:
+            runner_kwargs["mix_stderr"] = False
+
+        return CliRunner(**runner_kwargs).invoke(
+            truss_cli,
+            [
+                "train",
+                "workstation",
+                "--remote",
+                "test_remote",
+                "--output-format",
+                "json",
+                *extra_args,
+            ],
+        )
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_output_carries_node_addresses(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke()
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload["job_id"] == "job123"
+        assert payload["project"] == {"id": "proj123", "name": "workstation-H100"}
+        assert payload["accelerator"] == "H100"
+        assert payload["gpu_count"] == 1
+        assert payload["node_count"] == 1
+        assert payload["orchestrator"] is None
+        assert payload["nodes"] == [
+            {
+                "rank": 0,
+                "hostname": "training-job-job123-0.test_remote.ssh.baseten.co",
+                "is_leader": True,
+            }
+        ]
+        assert payload["job"] == self.PUSH_RESPONSE
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_output_multi_node(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke("--node-count", "2")
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload["node_count"] == 2
+        assert payload["gpu_count"] == 8
+        assert payload["orchestrator"] == "slurm"
+        assert [node["rank"] for node in payload["nodes"]] == [0, 1]
+        assert [node["is_leader"] for node in payload["nodes"]] == [True, False]
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_keeps_progress_output_off_stdout(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke()
+
+        assert result.exit_code == 0, result.output
+        # stdout parses as a single JSON document, nothing else interleaved.
+        json.loads(result.stdout)
+        assert "Launching workstation" in result.stderr
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_suppresses_rest_client_error_print(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote = self._setup_mock_remote()
+        mock_remote_factory.return_value = mock_remote
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke()
+
+        assert result.exit_code == 0, result.output
+        # Otherwise 4xx messages land on stdout and corrupt the JSON stream.
+        assert mock_remote.api.suppress_error_print is True
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_json_mode_reports_failures_as_structured_error(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.side_effect = RuntimeError("no capacity")
+
+        result = self._invoke()
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {"error": {"message": "no capacity"}}
+
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_text_mode_is_unchanged_by_default(
+        self, mock_remote_factory, mock_get_remote_team, mock_push
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = CliRunner().invoke(
+            truss_cli, ["train", "workstation", "--remote", "test_remote"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Workstation created!" in result.output
+        assert "ssh training-job-job123-0.test_remote.ssh.baseten.co" in result.output

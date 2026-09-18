@@ -125,6 +125,20 @@ def mock_deploy_chain_deployment_response():
     return response
 
 
+def mock_create_bis_llm_model_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"id": "llm-model-123"})
+    return response
+
+
+def mock_create_bis_llm_model_version_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"id": "llm-model-version-123"})
+    return response
+
+
 @mock.patch("requests.post", return_value=mock_successful_response())
 def test_post_graphql_query_success(mock_post, baseten_api):
     response_data = {"data": {"status": "success"}}
@@ -176,7 +190,9 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -206,7 +222,9 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
@@ -238,7 +256,9 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
@@ -269,7 +289,9 @@ def test_create_model_version_from_truss_with_deploy_timeout_minutes(
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -314,7 +336,9 @@ def test_create_model_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert 'version_name: "deployment_name"' in gql_mutation
 
@@ -338,7 +362,9 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "version_name: " not in gql_mutation
 
@@ -360,7 +386,9 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
 
@@ -382,7 +410,9 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: " not in gql_mutation
@@ -406,7 +436,9 @@ def test_create_development_model_from_truss_with_deploy_timeout_minutes(
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "userDeployMetadata": None,
+        "rawConfig": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: 300" in gql_mutation
@@ -546,6 +578,26 @@ def test_upsert_training_project(mock_post, baseten_api):
     assert "training-project" == upsert_body["name"]
 
 
+def mock_update_training_job_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"training_job": {"id": "job_id", "priority": 42}}
+    )
+    return response
+
+
+@mock.patch("requests.patch", return_value=mock_update_training_job_response())
+def test_update_training_job(mock_patch, baseten_api):
+    result = baseten_api.update_training_job("project_id", "job_id", priority=42)
+
+    assert result == {"id": "job_id", "priority": 42}
+
+    called_url = mock_patch.call_args[0][0]
+    assert called_url.endswith("/v1/training_projects/project_id/jobs/job_id")
+    assert mock_patch.call_args[1]["json"] == {"priority": 42}
+
+
 # Mock responses for training job logs pagination tests
 def mock_training_job_logs_response(logs, has_more=True):
     """Helper function to create mock training job logs response"""
@@ -593,3 +645,195 @@ def test_fetch_log_batch(baseten_api):
     mock_rest_client.post.assert_called_with(
         "v1/training_projects/project-123/jobs/job-456/logs", body=query_params
     )
+
+
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123", "environment": "production"}
+    baseten_api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        labels=labels,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    variables = mock_post.call_args[1]["json"]["variables"]
+
+    assert "user_deploy_metadata: $userDeployMetadata" in gql_mutation
+    assert "$userDeployMetadata: JSONString" in gql_mutation
+    assert (
+        variables["userDeployMetadata"]
+        == '{"git_sha": "abc123", "environment": "production"}'
+    )
+
+
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_without_labels(mock_post, baseten_api):
+    baseten_api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+    )
+
+    variables = mock_post.call_args[1]["json"]["variables"]
+    assert variables["userDeployMetadata"] is None
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123", "count": 42}
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        labels=labels,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    variables = mock_post.call_args[1]["json"]["variables"]
+
+    assert "user_deploy_metadata: $userDeployMetadata" in gql_mutation
+    assert variables["userDeployMetadata"] == '{"git_sha": "abc123", "count": 42}'
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123"}
+    baseten_api.create_development_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        b10_types.TrussUserEnv.collect(),
+        labels=labels,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    variables = mock_post.call_args[1]["json"]["variables"]
+
+    assert "user_deploy_metadata: $userDeployMetadata" in gql_mutation
+    assert variables["userDeployMetadata"] == '{"git_sha": "abc123"}'
+
+
+@mock.patch("requests.post", return_value=mock_create_bis_llm_model_response())
+def test_create_bis_llm_model_team_routing(mock_post, baseten_api):
+    baseten_api.create_bis_llm_model(body={"name": "my-llm"}, team_id="team-abc")
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/teams/team-abc/llm_models"
+    )
+
+    baseten_api.create_bis_llm_model(body={"name": "my-llm"})
+    assert mock_post.call_args[0][0] == "https://api.baseten.co/v1/llm_models"
+
+
+@mock.patch("requests.post", return_value=mock_create_bis_llm_model_version_response())
+def test_create_bis_llm_model_version_routing(mock_post, baseten_api):
+    baseten_api.create_bis_llm_model_version(
+        model_id="llm-model-123", body={"name": "my-llm"}
+    )
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
+    )
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_is_lightweight(mock_post, baseten_api):
+    # Identification query must not pull version signatures for every model.
+    baseten_api.get_models_for_watch()
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert "all: true" in query
+    assert "id" in query
+    assert "name" in query
+    assert "team" in query
+    assert "versions" not in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_models_for_watch_with_team_and_chainlets(mock_post, baseten_api):
+    baseten_api.get_models_for_watch(team_id="team1", chainlets_only=True)
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'team_id: "team1"' in query
+    assert "chainlets_only: true" in query
+    assert "truss_signature" not in query
+
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_get_model_with_versions_by_id_includes_signature(mock_post, baseten_api):
+    # The resolved model is loaded by id with full version info for patching.
+    baseten_api.get_model_with_versions_by_id("model123")
+
+    query = mock_post.call_args[1]["json"]["query"]
+    assert 'model(id: "model123")' in query
+    assert "versions" in query
+    assert "truss_hash" in query
+    assert "truss_signature" in query
+
+
+def test_get_model_deployment_logs_passes_filters(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1",
+        "deploy-1",
+        start_epoch_millis=1000,
+        end_epoch_millis=2000,
+        min_level="INFO",
+        replica="abcde",
+        request_id="req-1",
+        search_pattern="oops.*",
+        includes=["foo", "bar"],
+        excludes=["noise"],
+    )
+
+    args, kwargs = mock_rest_client.post.call_args
+    assert args[0] == "v1/models/model-1/deployments/deploy-1/logs"
+    assert kwargs["body"] == {
+        "start_epoch_millis": 1000,
+        "end_epoch_millis": 2000,
+        "min_level": "INFO",
+        "replica": "abcde",
+        "request_id": "req-1",
+        "search_pattern": "oops.*",
+        "includes": ["foo", "bar"],
+        "excludes": ["noise"],
+    }
+
+
+def test_get_model_deployment_logs_omits_unset_filters(baseten_api):
+    # Unset/empty filters and bounds are left out of the body entirely so the
+    # server applies its own defaults.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": []}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.get_model_deployment_logs(
+        "model-1", "deploy-1", includes=[], excludes=[]
+    )
+
+    assert mock_rest_client.post.call_args[1]["body"] == {}
+
+
+def test_deactivate_loops_run_posts_run_deactivate_endpoint(baseten_api):
+    # Deactivating by run id hits the run-scoped endpoint; the server resolves
+    # the run to its deployment and tears down both halves.
+    mock_rest_client = mock.Mock()
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.deactivate_loops_run("run-1")
+
+    assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs/run-1/deactivate"
+    assert mock_rest_client.post.call_args[1]["body"] == {}
+    mock_rest_client.get.assert_not_called()

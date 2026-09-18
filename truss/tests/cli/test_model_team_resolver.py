@@ -66,7 +66,7 @@ class TestModelTeamResolver:
         mock_remote = self._setup_mock_remote(teams)
 
         if should_raise:
-            with pytest.raises(click.ClickException) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 resolve_model_team_name(
                     remote_provider=mock_remote,
                     provided_team_name=provided_team_name,
@@ -306,6 +306,18 @@ class TestModelTeamResolver:
         else:
             mock_remote.api.get_teams.assert_not_called()
 
+    def test_no_teams_resolves_to_no_team(self):
+        # With no teams there is nothing to prompt with, so push proceeds without a
+        # team and lets the backend report why the API key has none.
+        mock_remote = self._setup_mock_remote({})
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote, provided_team_name=None
+        )
+
+        assert team_name is None
+        assert team_id is None
+
     @pytest.mark.parametrize(
         "existing_model_name,should_call_models_api",
         [(None, False), ("some-model", True)],
@@ -393,7 +405,12 @@ class TestResolveModelForWatch:
             name: TeamType(**team_data) for name, team_data in teams.items()
         }
         mock_api.get_teams.return_value = teams_with_type
+        # Identification uses the lightweight query...
         mock_api.get_models_for_watch.return_value = {"models": models}
+        # ...and full version info is loaded for only the resolved model by id.
+        mock_api.get_model_with_versions_by_id.side_effect = lambda model_id: {
+            "model": next(m for m in models if m["id"] == model_id)
+        }
         return mock_remote
 
     def test_single_model_found(self):
@@ -508,6 +525,9 @@ class TestResolveModelForWatch:
         }
         mock_api.get_teams.return_value = teams_with_type
         mock_api.get_models_for_watch.return_value = {"models": models_team1}
+        mock_api.get_model_with_versions_by_id.side_effect = lambda model_id: {
+            "model": next(m for m in models_team1 if m["id"] == model_id)
+        }
 
         model, versions = resolve_model_for_watch(
             mock_remote, "my-model", provided_team_name="Team Alpha"
@@ -518,6 +538,8 @@ class TestResolveModelForWatch:
         mock_api.get_models_for_watch.assert_called_once_with(
             team_id="team1", chainlets_only=False
         )
+        # Full version info is loaded for only the resolved model.
+        mock_api.get_model_with_versions_by_id.assert_called_once_with("model1")
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""
@@ -531,7 +553,7 @@ class TestResolveModelForWatch:
         }
         mock_api.get_teams.return_value = teams_with_type
 
-        with pytest.raises(click.ClickException) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             resolve_model_for_watch(
                 mock_remote, "my-model", provided_team_name="NonExistent"
             )
@@ -564,11 +586,145 @@ class TestResolveModelForWatch:
         assert "not found in team" in str(exc_info.value)
 
 
+class TestNonInteractiveResolution:
+    """Test allow_interactive=False behavior for SDK usage."""
+
+    @staticmethod
+    def _setup_mock_remote(teams, models_response=None):
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
+        mock_api.models.return_value = models_response or {"models": []}
+        return mock_remote, teams_with_type
+
+    def test_non_interactive_raises_on_ambiguous_teams(self):
+        """Multiple teams, no team provided, allow_interactive=False → ValueError."""
+        mock_remote, teams = self._setup_mock_remote(
+            {
+                "Team A": {"id": "a", "name": "Team A", "default": True},
+                "Team B": {"id": "b", "name": "Team B", "default": False},
+            }
+        )
+
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            resolve_model_team_name(
+                remote_provider=mock_remote,
+                provided_team_name=None,
+                existing_model_name="new-model",
+                existing_teams=teams,
+                allow_interactive=False,
+            )
+
+    def test_non_interactive_invalid_team_raises_valueerror(self):
+        """Invalid team name with allow_interactive=False → ValueError."""
+        mock_remote, teams = self._setup_mock_remote(
+            {"Team A": {"id": "a", "name": "Team A", "default": True}}
+        )
+
+        with pytest.raises(ValueError, match="does not exist"):
+            resolve_model_team_name(
+                remote_provider=mock_remote,
+                provided_team_name="BadTeam",
+                existing_teams=teams,
+                allow_interactive=False,
+            )
+
+    def test_non_interactive_single_team_auto_resolves(self):
+        """Single team with allow_interactive=False → auto-selects."""
+        mock_remote, teams = self._setup_mock_remote(
+            {"Only Team": {"id": "only", "name": "Only Team", "default": True}}
+        )
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name=None,
+            existing_teams=teams,
+            allow_interactive=False,
+        )
+
+        assert team_name == "Only Team"
+        assert team_id == "only"
+
+    @patch("truss.cli.resolvers.model_team_resolver.RemoteFactory.get_remote_team")
+    def test_remote_name_fallback_to_trussrc(self, mock_get_remote_team):
+        """remote_name triggers .trussrc team lookup as fallback."""
+        mock_get_remote_team.return_value = "Team A"
+        mock_remote, teams = self._setup_mock_remote(
+            {
+                "Team A": {"id": "a", "name": "Team A", "default": True},
+                "Team B": {"id": "b", "name": "Team B", "default": False},
+            }
+        )
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name=None,
+            existing_teams=teams,
+            remote_name="baseten",
+        )
+
+        mock_get_remote_team.assert_called_once_with("baseten")
+        assert team_name == "Team A"
+        assert team_id == "a"
+
+    @patch("truss.cli.resolvers.model_team_resolver.RemoteFactory.get_remote_team")
+    def test_remote_name_not_used_when_team_provided(self, mock_get_remote_team):
+        """Explicit team name takes priority over .trussrc fallback."""
+        mock_remote, teams = self._setup_mock_remote(
+            {
+                "Team A": {"id": "a", "name": "Team A", "default": True},
+                "Team B": {"id": "b", "name": "Team B", "default": False},
+            }
+        )
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name="Team B",
+            existing_teams=teams,
+            remote_name="baseten",
+        )
+
+        mock_get_remote_team.assert_not_called()
+        assert team_name == "Team B"
+        assert team_id == "b"
+
+    def test_non_interactive_model_in_multiple_teams_raises_valueerror(self):
+        """Model exists in multiple teams, allow_interactive=False → ValueError."""
+        mock_remote, teams = self._setup_mock_remote(
+            {
+                "Team A": {"id": "a", "name": "Team A", "default": True},
+                "Team B": {"id": "b", "name": "Team B", "default": False},
+            },
+            models_response={
+                "models": [
+                    {"name": "my-model", "team": {"id": "a", "name": "Team A"}},
+                    {"name": "my-model", "team": {"id": "b", "name": "Team B"}},
+                ]
+            },
+        )
+
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            resolve_model_team_name(
+                remote_provider=mock_remote,
+                provided_team_name=None,
+                existing_model_name="my-model",
+                existing_teams=teams,
+                allow_interactive=False,
+            )
+
+
 class TestInquireTeamEdgeCases:
     """Test edge cases for inquire_team with team names containing '(default)'."""
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_team_name_containing_default_not_default_team(self, mock_select):
+    def test_team_name_containing_default_not_default_team(
+        self, mock_select, mock_interactive
+    ):
         """Team named 'My Team (default)' that is NOT the default should return exact name."""
         teams = {
             "My Team (default)": TeamType(
@@ -584,8 +740,11 @@ class TestInquireTeamEdgeCases:
 
         assert result == "My Team (default)"
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_team_name_containing_default_is_default_team(self, mock_select):
+    def test_team_name_containing_default_is_default_team(
+        self, mock_select, mock_interactive
+    ):
         """Team named 'My Team (default)' that IS the default should return exact name."""
         teams = {
             "My Team (default)": TeamType(
@@ -601,8 +760,11 @@ class TestInquireTeamEdgeCases:
 
         assert result == "My Team (default)"
 
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=True)
     @patch("truss.cli.remote_cli.inquirer.select")
-    def test_regular_default_team_returns_clean_name(self, mock_select):
+    def test_regular_default_team_returns_clean_name(
+        self, mock_select, mock_interactive
+    ):
         """Regular team that is default should return clean name without suffix."""
         teams = {
             "Team Alpha": TeamType(id="team1", name="Team Alpha", default=True),
@@ -615,3 +777,20 @@ class TestInquireTeamEdgeCases:
         result = inquire_team(existing_teams=teams)
 
         assert result == "Team Alpha"
+
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=False)
+    def test_non_interactive_raises_usage_error(self, mock_interactive):
+        """When not interactive, inquire_team should raise UsageError listing teams."""
+        teams = {
+            "Team Alpha": TeamType(id="team1", name="Team Alpha", default=True),
+            "Team Beta": TeamType(id="team2", name="Team Beta", default=False),
+        }
+
+        with pytest.raises(click.UsageError) as exc_info:
+            inquire_team(existing_teams=teams)
+
+        message = str(exc_info.value)
+        assert "non-interactive" in message
+        assert "--team" in message
+        assert "Team Alpha" in message
+        assert "Team Beta" in message

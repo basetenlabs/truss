@@ -29,6 +29,8 @@ TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
+REQUEST_ID_HEADER_KEY = "x-baseten-request-id"
+CHAIN_REQUEST_ID_HEADER_KEY = "x-baseten-chain-request-id"
 RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 HEALTH_CHECK_METHOD_NAME = "is_healthy"
@@ -66,6 +68,7 @@ class EntityType(utils.StrEnum):
     CHAINLET = enum.auto()
     MODEL = enum.auto()
     ENGINE_BUILDER_MODEL = enum.auto()
+    TRUSS_CHAINLET = enum.auto()
 
 
 class FrameworkConfig(custom_types.SafeModelNonSerializable):
@@ -240,6 +243,8 @@ class ChainletAPIDescriptor(custom_types.SafeModelNonSerializable):
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
     health_check: Optional[HealthCheckAPIDescriptor]
+    # Set for TRUSS_CHAINLET entity type only
+    truss_dir: Optional[pathlib.Path] = None
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)
@@ -251,6 +256,10 @@ class ChainletAPIDescriptor(custom_types.SafeModelNonSerializable):
     @property
     def display_name(self) -> str:
         return self.chainlet_cls.display_name
+
+    @property
+    def is_truss_chainlet(self) -> bool:
+        return self.chainlet_cls.entity_type == EntityType.TRUSS_CHAINLET
 
 
 ########################################################################################

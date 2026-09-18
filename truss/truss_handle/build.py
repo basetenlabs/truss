@@ -39,8 +39,13 @@ def _populate_traditional_target_directory(config: TrussConfig, dir_path: Path):
     model_dir = dir_path / config.model_module_dir
     copy_tree_path(TRADITIONAL_CUSTOM_TEMPLATE_DIR / "model", model_dir)
 
-    # Write config
+    # Write config with schema reference for IDE autocompletion
     with (dir_path / CONFIG_FILE).open("w") as config_file:
+        config_file.write(
+            "# yaml-language-server:"
+            " $schema=https://raw.githubusercontent.com/basetenlabs/truss"
+            "/main/truss/config.schema.json\n"
+        )
         yaml.dump(config.to_dict(verbose=False), config_file)
 
 
@@ -98,16 +103,20 @@ def init_directory(
     return target_directory_path
 
 
-def load(truss_directory: Union[str, Path]) -> TrussHandle:
+def load(
+    truss_directory: Union[str, Path], config_path: Optional[Path] = None
+) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
     as a container locally or uploaded into a model serving environment.
 
     Args:
         truss_directory (str | Path): The local directory of an existing Truss
+        config_path (Path | None): Optional path to a config file. If not provided,
+            defaults to config.yaml in the truss directory.
     Returns:
         TrussHandle
     """
-    return TrussHandle(Path(truss_directory))
+    return TrussHandle(Path(truss_directory), config_path=config_path)
 
 
 def cleanup() -> None:

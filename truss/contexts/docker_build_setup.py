@@ -53,6 +53,7 @@ def _fill_trt_llm_versions(
             accelerator = tr.spec.config.resources.accelerator.accelerator
             docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
                 Accelerator.L4: "89-",
+                Accelerator.L40S: "89-",
                 Accelerator.A100: "",
                 Accelerator.H100: "hopper-",
                 Accelerator.H100_40GB: "hopper-",
@@ -61,6 +62,9 @@ def _fill_trt_llm_versions(
                 Accelerator.H200: "hopper-",
                 Accelerator.V100: "turing-",
                 Accelerator.B200: "blackwell-",
+                Accelerator.RTX_PRO_6000: "sm120-",
+                Accelerator.B300: "blackwell-",
+                Accelerator.GB300: "blackwell-",
                 None: "unsupported none please upgrade truss",
             }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
             if docker_image_suffix.startswith("unsupported"):

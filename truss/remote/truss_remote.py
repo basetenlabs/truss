@@ -6,6 +6,7 @@ import requests
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss.remote.baseten.user_agent import with_user_agent
 from truss.truss_handle.truss_handle import TrussHandle
 
 
@@ -70,7 +71,7 @@ class TrussService(ABC):
             headers = {}
 
         auth_header = self.authenticate()
-        headers = {**headers, **auth_header}
+        headers = with_user_agent({**headers, **auth_header})
         if method == "GET":
             response = requests.request(method, url, headers=headers, stream=stream)
         elif method == "POST":
@@ -176,6 +177,13 @@ class TrussService(ABC):
         pass
 
     @abstractmethod
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[Dict[str, Any]]:
+        """
+        Poll for a deployment, yielding the full deployment dict.
+        """
+        pass
+
+    @abstractmethod
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         """
         Poll for a deployment status.
@@ -251,6 +259,7 @@ class TrussRemote(ABC):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        team_name: Optional[str] = None,
     ) -> None:
         """
         This method watches for changes to files in the `target_directory`,

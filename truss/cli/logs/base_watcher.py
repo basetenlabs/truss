@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import time
 from abc import ABC, abstractmethod
@@ -64,9 +65,13 @@ class LogWatcher(ABC):
 
         self._last_poll_time_ms = now_ms
 
-    def watch(self) -> Iterator[ParsedLog]:
+    def watch(self, show_spinner: bool = True) -> Iterator[ParsedLog]:
         self.before_polling()
-        with console.status("Polling logs", spinner="aesthetic"):
+        with (
+            console.status("Polling logs", spinner="aesthetic")
+            if show_spinner
+            else contextlib.nullcontext()
+        ):
             while True:
                 for log in self.poll():
                     yield log

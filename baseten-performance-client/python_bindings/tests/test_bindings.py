@@ -34,12 +34,14 @@ def test_request_processing_preference_basic():
         timeout_s=30.0,
         hedge_delay=0.5,
         total_timeout_s=60.0,
+        non_retryable_status_codes={529},
     )
     assert custom_preference.max_concurrent_requests == 64
     assert custom_preference.batch_size == 32
     assert custom_preference.timeout_s == 30.0
     assert custom_preference.hedge_delay == 0.5
     assert custom_preference.total_timeout_s == 60.0
+    assert custom_preference.non_retryable_status_codes == {529}
 
 
 def test_request_processing_preference_property_setters():
@@ -58,6 +60,7 @@ def test_request_processing_preference_property_setters():
     preference.retry_budget_pct = 0.10
     preference.max_retries = 5
     preference.initial_backoff_ms = 250
+    preference.non_retryable_status_codes = {429, 529}
 
     assert preference.max_concurrent_requests == 128
     assert preference.batch_size == 64
@@ -68,6 +71,7 @@ def test_request_processing_preference_property_setters():
     assert preference.retry_budget_pct == 0.10
     assert preference.max_retries == 5
     assert preference.initial_backoff_ms == 250
+    assert preference.non_retryable_status_codes == {429, 529}
 
 
 def test_cancellation_token_basic():
@@ -123,16 +127,50 @@ def test_performance_client_with_cancellation_token():
     )
 
     token = CancellationToken()
+    assert token.is_cancelled() is False
     preference = RequestProcessingPreference(
         max_concurrent_requests=32, cancel_token=token
     )
-
+    assert token.is_cancelled() is False
     assert preference.cancel_token is not None
     assert not preference.cancel_token.is_cancelled()
 
     # Test cancellation
     preference.cancel_token.cancel()
     assert preference.cancel_token.is_cancelled()
+    assert token.is_cancelled()
+
+
+def test_request_processing_preference_api_key_override():
+    """Test RequestProcessingPreference with API key override."""
+    from baseten_performance_client import RequestProcessingPreference
+
+    # Test default creation (no API key override)
+    preference = RequestProcessingPreference()
+    assert preference.primary_api_key_override is None
+
+    # Test creation with API key override
+    override_key = "override-api-key-12345"
+    preference_with_override = RequestProcessingPreference(
+        primary_api_key_override=override_key
+    )
+    assert preference_with_override.primary_api_key_override == override_key
+
+    # Test setting API key override after creation
+    preference.primary_api_key_override = "new-override-key"
+    assert preference.primary_api_key_override == "new-override-key"
+
+    # Test with other parameters and API key override
+    complex_preference = RequestProcessingPreference(
+        max_concurrent_requests=64,
+        batch_size=32,
+        timeout_s=30.0,
+        primary_api_key_override="complex-override-key",
+    )
+    assert complex_preference.max_concurrent_requests == 64
+    assert complex_preference.batch_size == 32
+    assert complex_preference.timeout_s == 30.0
+    assert complex_preference.primary_api_key_override == "complex-override-key"
 
 
 def test_http_client_wrapper_initialization():

@@ -1,5 +1,6 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
+use crate::endpoint_routing::{normalize_request_suffix, EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
@@ -21,7 +22,7 @@ use tracing;
 /// - `Http2`: Pool of HTTP/2 clients for high-performance concurrent requests
 ///
 /// Sharing among multiple baseten-performance-client instances is supported and encouraged via `Arc`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum HttpClientWrapper {
     Http1(Arc<Client>),
     Http2(Arc<Vec<(Arc<AtomicUsize>, Arc<Client>)>>),
@@ -63,16 +64,16 @@ impl Deref for ClientGuard {
 }
 
 impl HttpClientWrapper {
-    pub fn new(http_version: u8) -> Result<Arc<Self>, ClientError> {
+    pub fn new(http_version: u8, proxy: Option<String>) -> Result<Arc<Self>, ClientError> {
         let wrapper = if http_version == 2 {
             let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
             for _ in 0..HTTP2_CLIENT_POOL_SIZE {
-                let client = PerformanceClientCore::get_http_client(2)?;
+                let client = PerformanceClientCore::get_http_client(2, proxy.clone())?;
                 pool.push((Arc::new(AtomicUsize::new(0)), Arc::new(client)));
             }
             HttpClientWrapper::Http2(Arc::new(pool))
         } else {
-            let client = PerformanceClientCore::get_http_client(1)?;
+            let client = PerformanceClientCore::get_http_client(1, proxy)?;
             HttpClientWrapper::Http1(Arc::new(client))
         };
         Ok(Arc::new(wrapper))
@@ -135,6 +136,8 @@ impl HttpClientWrapper {
 ///     Some("your-api-key".to_string()),
 ///     2, // HTTP/2
 ///     None,
+///     None, // proxy
+///     None, // endpoint pool
 /// )?;
 ///
 /// // Configure processing preferences
@@ -173,6 +176,8 @@ pub struct PerformanceClientCore {
     /// It's exposed as public for advanced use cases but typically shouldn't
     /// be modified directly.
     pub client_wrapper: Arc<HttpClientWrapper>,
+
+    endpoint_router: Arc<EndpointRouter>,
 }
 
 impl PerformanceClientCore {
@@ -181,13 +186,15 @@ impl PerformanceClientCore {
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<Arc<HttpClientWrapper>>,
+        proxy: Option<String>,
+        endpoint_pool: Option<Arc<EndpointPool>>,
     ) -> Result<Self, ClientError> {
         let api_key = Self::get_api_key(api_key)?;
 
         let client_wrapper = if let Some(wrapper) = client_wrapper {
             wrapper
         } else {
-            HttpClientWrapper::new(http_version)?
+            HttpClientWrapper::new(http_version, proxy)?
         };
 
         if WARNING_SLOW_PROVIDERS
@@ -200,11 +207,19 @@ impl PerformanceClientCore {
             );
         }
 
-        Ok(PerformanceClientCore {
+        let endpoint_router = endpoint_pool
+            .map(EndpointRouter::pooled)
+            .unwrap_or_else(|| EndpointRouter::single(base_url.clone()));
+        let base_url = endpoint_router.primary_url().to_string();
+
+        let client = PerformanceClientCore {
             api_key,
             base_url: base_url.into(),
             client_wrapper,
-        })
+            endpoint_router,
+        };
+
+        Ok(client)
     }
 
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {
@@ -288,8 +303,15 @@ impl PerformanceClientCore {
         Arc::clone(&self.client_wrapper)
     }
 
-    pub fn get_http_client(http_version: u8) -> Result<Client, ClientError> {
+    pub fn get_http_client(http_version: u8, proxy: Option<String>) -> Result<Client, ClientError> {
         let mut client_builder = Client::builder();
+
+        if let Some(proxy_url) = proxy {
+            client_builder = client_builder.proxy(
+                reqwest::Proxy::all(&proxy_url)
+                    .map_err(|e| ClientError::Network(format!("Invalid proxy URL: {}", e)))?,
+            );
+        }
 
         if http_version == 2 {
             client_builder = client_builder
@@ -315,6 +337,18 @@ impl PerformanceClientCore {
 }
 
 impl PerformanceClientCore {
+    fn maybe_pin_initial_endpoint(
+        &self,
+        config: RequestProcessingConfig,
+    ) -> RequestProcessingConfig {
+        if !config.pin_initial_endpoint_once {
+            return config;
+        }
+
+        let pinned_selection = config.endpoint_router.select_endpoint(&[]);
+        config.with_pinned_initial_endpoint(Some(pinned_selection))
+    }
+
     // Generic batch processing method - handles pre-batched requests for ALL API types
     // Uses JoinSetGuard for automatic cancellation on drop (RAII pattern)
     #[allow(clippy::too_many_arguments)]
@@ -323,12 +357,12 @@ impl PerformanceClientCore {
         batches: Vec<Vec<String>>,
         config: &RequestProcessingConfig,
         create_payload: impl Fn(Vec<String>) -> T + Send + Sync + 'static,
-        endpoint_url: Arc<str>,
+        endpoint_path: Arc<str>,
         adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
         total_timeout: Option<Duration>,
     ) -> Result<(R, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError>
     where
-        T: serde::Serialize + Send + 'static,
+        T: serde::Serialize + Clone + Send + Sync + 'static,
         R: serde::de::DeserializeOwned + Combinable + Send + 'static,
     {
         let start_time = std::time::Instant::now();
@@ -378,7 +412,7 @@ impl PerformanceClientCore {
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
-            let url = endpoint_url.clone();
+            let request_suffix = normalize_request_suffix(endpoint_path.as_ref());
 
             // Generate individual request ID for this batch
             let request_customer_id = config_clone.create_request_customer_id(batch_index);
@@ -392,10 +426,9 @@ impl PerformanceClientCore {
 
                 let request_time_start = Instant::now();
 
-                // Send request with pre-created payload and URL
                 let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
                     &client,
-                    url.to_string(),
+                    request_suffix,
                     payload,
                     api_key,
                     request_timeout_duration,
@@ -532,13 +565,17 @@ impl PerformanceClientCore {
     > {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len())?;
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                texts.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config);
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/v1/embeddings".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -553,7 +590,7 @@ impl PerformanceClientCore {
                     dimensions,
                     user: user.clone(),
                 },
-                endpoint_url,
+                endpoint_path,
                 |response: &mut CoreOpenAIEmbeddingsResponse, start_index| {
                     for item in &mut response.data {
                         item.index += start_index;
@@ -587,14 +624,18 @@ impl PerformanceClientCore {
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len())?;
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                texts.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config);
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/rerank".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -611,7 +652,7 @@ impl PerformanceClientCore {
                     truncate,
                     truncation_direction: truncation_direction.clone(),
                 },
-                endpoint_url,
+                endpoint_path,
                 |results: &mut Vec<CoreRerankResult>, start_index| {
                     for item in results {
                         item.index += start_index;
@@ -653,14 +694,18 @@ impl PerformanceClientCore {
     > {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), inputs.len())?;
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                inputs.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config);
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/predict", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/predict".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -679,7 +724,7 @@ impl PerformanceClientCore {
                         truncation_direction: truncation_direction.clone(),
                     }
                 },
-                endpoint_url,
+                endpoint_path,
                 |_results: &mut Vec<Vec<CoreClassificationResult>>, _start_index| {
                     // Classification responses don't have index fields to adjust
                 },
@@ -705,15 +750,20 @@ impl PerformanceClientCore {
         url_path: String,
         payloads_json: Vec<serde_json::Value>,
         preference: &RequestProcessingPreference,
-        custom_headers: Option<HeaderMap>,
         method: crate::http::HttpMethod,
-    ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
+    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
         let total_payloads = payloads_json.len();
 
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), total_payloads)?;
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                total_payloads,
+                self.api_key.clone(),
+            )?
+            .with_endpoint_router(Arc::clone(&self.endpoint_router));
+        let config = self.maybe_pin_initial_endpoint(config);
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
@@ -721,24 +771,19 @@ impl PerformanceClientCore {
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
-            Result<(usize, serde_json::Value, HeaderMap, Duration), ClientError>,
+            Result<(usize, rmpv::Value, HeaderMap, Duration), ClientError>,
         > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());
-        let mut indexed_results: Vec<(usize, serde_json::Value, HeaderMap, Duration)> =
+        let mut indexed_results: Vec<(usize, rmpv::Value, HeaderMap, Duration)> =
             Vec::with_capacity(total_payloads);
-
-        let custom_headers = custom_headers.map(Arc::new);
 
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
             // Clone config for this iteration
             let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
-            let base_url = self.base_url.clone();
-            let url_path = url_path.clone();
+            let request_suffix = normalize_request_suffix(&url_path);
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
-            let custom_headers = custom_headers.clone();
-            let method = method;
 
             // Generate individual request ID for this batch
             let request_customer_id = config.create_request_customer_id(index);
@@ -749,23 +794,16 @@ impl PerformanceClientCore {
                     .await
                     .map_err(|e| ClientError::Network(format!("Semaphore closed: {}", e)))?;
                 let client = client_wrapper.get_client();
-
-                let full_url = format!(
-                    "{}/{}",
-                    base_url.trim_end_matches('/'),
-                    url_path.trim_start_matches('/')
-                );
                 let request_time_start = std::time::Instant::now();
 
                 let result_tuple = send_http_request_with_headers(
                     &client,
-                    full_url,
+                    request_suffix,
                     payload_item_json,
                     api_key,
                     individual_request_timeout,
                     &config_clone,
                     request_customer_id,
-                    custom_headers.as_deref(),
                     method,
                 )
                 .await;
@@ -829,7 +867,7 @@ impl PerformanceClientCore {
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
 
-        let final_results: Vec<(serde_json::Value, HeaderMap, Duration)> = indexed_results
+        let final_results: Vec<(rmpv::Value, HeaderMap, Duration)> = indexed_results
             .into_iter()
             .map(|(_, val, headers, dur)| (val, headers, dur))
             .collect();

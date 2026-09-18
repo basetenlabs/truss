@@ -17,6 +17,7 @@ from typing import (
 )
 
 import pydantic
+from typing_extensions import Self
 
 from truss.base import custom_types, truss_config
 
@@ -196,10 +197,17 @@ class DockerImage(custom_types.SafeModelNonSerializable):
           a Baseten default image for a supported python version (e.g.
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
           provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
-        pip_requirements_file: Path to a file containing pip requirements. The file
-          content is naively concatenated with ``pip_requirements``.
-        pip_requirements: A list of pip requirements to install.  The items are
-          naively concatenated with the content of the ``pip_requirements_file``.
+        pip_requirements_file: **Deprecated.** Use ``requirements_file`` instead.
+          Path to a file containing pip requirements. The file content is naively
+          concatenated with ``pip_requirements``.
+        pip_requirements: A list of pip requirements to install. Only supported
+          with pip-style requirements files. Cannot be used with ``pyproject.toml``
+          or ``uv.lock`` requirements files.
+        requirements_file: Path to a requirements file. Supports ``requirements.txt``
+          (pip format), ``pyproject.toml``, and ``uv.lock``. The file type is
+          auto-detected from the filename. For pip-style files, the content is
+          concatenated with ``pip_requirements``. For ``pyproject.toml`` and
+          ``uv.lock``, the file is copied as-is into the build context.
         apt_requirements: A list of apt requirements to install.
         data_dir: Data from this directory is copied into the docker image and
           accessible to the remote chainlet at runtime.
@@ -214,9 +222,12 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
-    pip_requirements_file: Optional[AbsPath] = None
+    pip_requirements_file: Optional[AbsPath] = pydantic.Field(
+        default=None, deprecated="Use `requirements_file` instead."
+    )
     pip_requirements: list[str] = pydantic.Field(default_factory=list)
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
+    requirements_file: Optional[AbsPath] = None
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
     truss_server_version_override: Optional[str] = pydantic.Field(
@@ -237,6 +248,19 @@ class DockerImage(custom_types.SafeModelNonSerializable):
                     "`DockerImage.base_image` as string is deprecated. Specify as "
                     f"`BasetenImage` or `CustomImage` (see docs: {doc_link})."
                 )
+
+        if values.get("pip_requirements_file"):
+            if values.get("requirements_file"):
+                raise ChainsUsageError(
+                    "Cannot specify both `pip_requirements_file` and "
+                    "`requirements_file`. Use `requirements_file` only — "
+                    "`pip_requirements_file` is deprecated."
+                )
+            logging.warning(
+                "`DockerImage.pip_requirements_file` is deprecated, use "
+                "`requirements_file` instead."
+            )
+            values["requirements_file"] = values["pip_requirements_file"]
         return values
 
 
@@ -294,7 +318,7 @@ class Compute:
         Furthermore, the ``predict_concurrency`` of a single instance is implemented in
         two ways:
 
-        - Via python's ``asyncio``, if ``run_remote`` is an async def. This
+        - Through Python's ``asyncio``, if ``run_remote`` is an async def. This
           requires that ``run_remote`` yields to the event loop.
 
         - With a threadpool if it's a synchronous function. This requires
@@ -392,13 +416,14 @@ class Assets:
               chainlet should have access to. You can manage secrets on baseten
               `here <https://app.baseten.co/settings/secrets>`_.
             external_data: Data to be downloaded from public URLs and made available
-              in the deployment (via ``context.data_dir``). See
+              in the deployment (through ``context.data_dir``). See
               `here <https://docs.baseten.co/reference/config#external-data>`_ for
               more details.
             weights: One or more ``truss_config.WeightsSource`` objects for MDN
               weight mirroring. Weights are pre-downloaded during deployment and
               mounted at the specified ``mount_location``. Supports sources like
-              ``hf://``, ``s3://``, ``gs://``, ``azure://``, ``r2://``, ``https://``.
+              ``hf://``, ``s3://``, ``gs://``, ``azure://``, ``r2://``, ``cw://``,
+              ``https://``.
               If authentication is needed, specify ``auth_secret_name`` which
               references a secret in your Baseten organization (not ``secret_keys``).
         """
@@ -469,6 +494,11 @@ class RemoteConfig(custom_types.SafeModelNonSerializable):
     assets: Assets = Assets()
     name: Optional[str] = None
     options: ChainletOptions = ChainletOptions()
+    build_commands: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Shell commands run during the Docker image build, after system "
+        "packages and before chain code (same as Truss `config.yaml` `build_commands`).",
+    )
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -699,9 +729,8 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
-class DeployedServiceDescriptor(custom_types.SafeModel):
-    """Bundles values to establish an RPC session to a dependency chainlet,
-    specifically with ``StubBase``."""
+class ServiceDescriptorUrls(custom_types.SafeModel):
+    """Predict and internal URLs from ``dynamic_chainlet_config``"""
 
     class InternalURL(custom_types.SafeModel):
         gateway_run_remote_url: str  # Includes `https` and endpoint.
@@ -710,23 +739,27 @@ class DeployedServiceDescriptor(custom_types.SafeModel):
         def __str__(self) -> str:
             return f"{self.gateway_run_remote_url} (-> {self.hostname})"
 
-    name: str
-    display_name: str
-    options: RPCOptions
     predict_url: Optional[str] = None
     internal_url: Optional[InternalURL] = pydantic.Field(
         None, description="If provided, takes precedence over `predict_url`."
     )
 
     @pydantic.model_validator(mode="after")
-    def check_at_least_one_url(
-        self: "DeployedServiceDescriptor",
-    ) -> "DeployedServiceDescriptor":
+    def check_at_least_one_url(self) -> Self:
         if not self.predict_url and not self.internal_url:
             raise ValueError(
                 "At least one of 'predict_url' or 'internal_url' must be provided."
             )
         return self
+
+
+class DeployedServiceDescriptor(ServiceDescriptorUrls):
+    """Bundles values to establish an RPC session to a dependency chainlet,
+    specifically with ``StubBase``."""
+
+    name: str
+    display_name: str
+    options: RPCOptions
 
 
 class Environment(custom_types.SafeModel):

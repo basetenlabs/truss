@@ -1,8 +1,10 @@
+import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
 import pytest
+import tomlkit
 import yaml
 
 from truss.base.truss_config import TrussConfig
@@ -17,7 +19,11 @@ from truss.templates.control.control.helpers.custom_types import (
     PatchType,
     PythonRequirementPatch,
 )
+from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_code_patch,
+)
 from truss.truss_handle.patch.calc_patch import (
+    _calc_changed_paths,
     _calc_python_requirements_patches,
     _calc_unignored_paths,
     calc_truss_patch,
@@ -53,6 +59,43 @@ def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(action=Action.ADD, path="dummy", content="content"),
     )
+
+
+def test_calc_and_apply_binary_model_code(custom_model_truss_dir: Path, tmp_path: Path):
+    # Verify binary files survive the full patch round-trip (calc, serialize, apply)
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    binary_content = b"\xff\xd8\xff\xe0\x00\x10"
+    (custom_model_truss_dir / "model" / "weights.bin").write_bytes(binary_content)
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+
+    assert len(patches) == 1
+    serialized = patches[0].to_dict()
+    deserialized = Patch.from_dict(serialized)
+
+    target_dir = tmp_path / "applied" / "model"
+    target_dir.mkdir(parents=True)
+    apply_code_patch(target_dir, deserialized.body, logging.getLogger())
+    assert (target_dir / "weights.bin").read_bytes() == binary_content
+
+
+def test_calc_and_apply_binary_package(
+    custom_model_truss_dir_with_bundled_packages: Path, tmp_path: Path
+):
+    # Verify binary package files survive the full patch round-trip (calc, serialize, apply)
+    prev_sign = calc_truss_signature(custom_model_truss_dir_with_bundled_packages)
+    binary_content = b"\x00\x01\x02\xff\xfe\xfd"
+    pkg_dir = custom_model_truss_dir_with_bundled_packages / "packages" / "test_package"
+    (pkg_dir / "lib.so").write_bytes(binary_content)
+    patches = calc_truss_patch(custom_model_truss_dir_with_bundled_packages, prev_sign)
+
+    assert len(patches) == 1
+    serialized = patches[0].to_dict()
+    deserialized = Patch.from_dict(serialized)
+
+    target_dir = tmp_path / "applied" / "packages"
+    target_dir.mkdir(parents=True)
+    apply_code_patch(target_dir, deserialized.body, logging.getLogger())
+    assert (target_dir / "test_package" / "lib.so").read_bytes() == binary_content
 
 
 def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path):
@@ -876,6 +919,44 @@ def test_calc_unignored_paths():
     assert unignored_paths == {"config.yaml", "model/model.py"}
 
 
+def test_calc_truss_patch_ignores_old_signature_directory_entry(
+    custom_model_truss_dir: Path,
+):
+    previous_signature = calc_truss_signature(custom_model_truss_dir)
+    previous_signature.content_hashes_by_path["model/cache"] = None
+
+    patches = calc_truss_patch(
+        custom_model_truss_dir, previous_signature, ignore_patterns=["cache/"]
+    )
+
+    assert patches == []
+
+
+def test_calc_changed_paths_prunes_ignored_dirs(tmp_path, monkeypatch):
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "model.py").touch()
+    (tmp_path / "ignored" / "deep").mkdir(parents=True)
+    (tmp_path / "ignored" / "deep" / "large.bin").touch()
+
+    walked_dirs = []
+    original_walk = os.walk
+
+    def tracking_walk(*args, **kwargs):
+        for entry in original_walk(*args, **kwargs):
+            walked_dirs.append(Path(entry[0]).relative_to(tmp_path))
+            yield entry
+
+    monkeypatch.setattr("truss.util.path.os.walk", tracking_walk)
+
+    changed_paths = _calc_changed_paths(tmp_path, {}, ["ignored/"])
+
+    assert set(changed_paths["added"]) == {"model", os.path.join("model", "model.py")}
+    assert changed_paths["updated"] == []
+    assert changed_paths["removed"] == []
+    assert Path("ignored") not in walked_dirs
+    assert Path("ignored/deep") not in walked_dirs
+
+
 def _apply_config_change_and_calc_patches(
     custom_model_truss_dir: Path,
     config_op: Callable[[TrussConfig], Any],
@@ -924,3 +1005,183 @@ def test_calc_python_requirements_patches(
 ):
     actual = _calc_python_requirements_patches(prev_raw_reqs, new_raw_reqs)
     assert actual == expected_patches, desc
+
+
+def _write_pyproject(truss_dir: Path, dependencies: List[str]) -> str:
+    doc = tomlkit.document()
+    project = tomlkit.table()
+    project.add("name", "test-project")
+    project.add("dependencies", dependencies)
+    doc.add("project", project)
+    pyproject_path = truss_dir / "pyproject.toml"
+    pyproject_path.write_text(tomlkit.dumps(doc))
+    return "pyproject.toml"
+
+
+def test_calc_patch_pyproject_add_dependency(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(custom_model_truss_dir, ["requests>=2.28"])
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0"])
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.ADD, requirement="numpy==1.24.0"),
+        )
+    ]
+
+
+def test_calc_patch_pyproject_remove_dependency(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(
+            custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0"]
+        )
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(custom_model_truss_dir, ["requests>=2.28"])
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.REMOVE, requirement="numpy"),
+        )
+    ]
+
+
+def test_calc_patch_pyproject_update_dependency(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(custom_model_truss_dir, ["requests>=2.28"])
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(custom_model_truss_dir, ["requests>=3.0"])
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE, requirement="requests>=3.0"
+            ),
+        )
+    ]
+
+
+def test_calc_patch_pyproject_no_changes(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(
+            custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0"]
+        )
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        # Rewrite identical content — no change
+        _write_pyproject(custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0"])
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    assert patches == []
+
+
+def test_calc_patch_pyproject_filters_non_pypi_deps(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(custom_model_truss_dir, ["requests>=2.28"])
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(
+            custom_model_truss_dir,
+            ["requests>=2.28", "numpy==1.24.0", "git+https://github.com/foo/bar.git"],
+        )
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.ADD, requirement="numpy==1.24.0"),
+        )
+    ]
+
+
+def test_calc_patch_pyproject_add_remove_and_update(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        filename = _write_pyproject(
+            custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0", "flask>=2.0"]
+        )
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(
+            custom_model_truss_dir, ["requests>=3.0", "torch>=2.0", "flask>=2.0"]
+        )
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    req_patches.sort(key=lambda p: p.body.requirement)
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.REMOVE, requirement="numpy"),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE, requirement="requests>=3.0"
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.ADD, requirement="torch>=2.0"),
+        ),
+    ]
+
+
+def test_calc_patch_uv_lock_reads_sibling_pyproject(custom_model_truss_dir: Path):
+    def config_pre_op(config: TrussConfig):
+        _write_pyproject(custom_model_truss_dir, ["requests>=2.28"])
+
+        (custom_model_truss_dir / "uv.lock").write_text("# lock file content")
+        config.requirements_file = "uv.lock"
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        _write_pyproject(custom_model_truss_dir, ["requests>=2.28", "numpy==1.24.0"])
+        (custom_model_truss_dir / "uv.lock").write_text("# updated lock content")
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op, config_pre_op=config_pre_op
+    )
+    req_patches = [p for p in patches if p.type == PatchType.PYTHON_REQUIREMENT]
+    assert req_patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(action=Action.ADD, requirement="numpy==1.24.0"),
+        )
+    ]

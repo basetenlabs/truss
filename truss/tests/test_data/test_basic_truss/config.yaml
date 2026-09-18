@@ -3,7 +3,6 @@ environment_variables:
 external_package_dirs: []
 model_metadata: {}
 model_name: basic truss
-python_version: py39
 requirements: []
 resources:
   accelerator: null

@@ -19,6 +19,7 @@ CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
 TRAINING_TEMPLATE_DIR = TEMPLATES_DIR / "train"
+WORKSTATION_TEMPLATE_DIR = TEMPLATES_DIR / "workstation"
 # Must be sorted ascendingly.
 SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
@@ -30,7 +31,7 @@ BEI_REQUIRED_MAX_NUM_TOKENS = 16384
 TRTLLM_MIN_MEMORY_REQUEST_GI = 10
 HF_MODELS_API_URL = "https://huggingface.co/api/models"
 HF_ACCESS_TOKEN_KEY = "hf_access_token"
-TRUSSLESS_MAX_PAYLOAD_SIZE = "64M"
+TRUSSLESS_MAX_PAYLOAD_SIZE = "100M"
 # Alias for TEMPLATES_DIR
 SERVING_DIR: pathlib.Path = TEMPLATES_DIR
 
@@ -38,20 +39,26 @@ REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
+CONSTRAINTS_TXT_FILENAME = "constraints.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
+PYPROJECT_TOML_FILENAME = "pyproject.toml"
+UV_LOCK_FILENAME = "uv.lock"
 
 FILENAME_CONSTANTS_MAP = {
     "config_requirements_filename": REQUIREMENTS_TXT_FILENAME,
     "user_supplied_requirements_filename": USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+    "pyproject_toml_filename": PYPROJECT_TOML_FILENAME,
+    "uv_lock_filename": UV_LOCK_FILENAME,
     "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
     "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
+    "constraints_filename": CONSTRAINTS_TXT_FILENAME,
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 NO_BUILD_DOCKERFILE_TEMPLATE_NAME = "no_build.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
-MODEL_CACHE_PATH = pathlib.Path("/app/model_cache")
+MODEL_CACHE_PATH = pathlib.PurePosixPath("/app/model_cache")
 README_TEMPLATE_NAME = "README.md.jinja"
 MODEL_README_NAME = "README.md"
 
@@ -83,5 +90,8 @@ OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecat
 PRODUCTION_ENVIRONMENT_NAME = "production"
 
 TRUSS_BASE_IMAGE_NAME = "baseten/truss-server-base"
+
+DEFAULT_REMOTE_NAME = "baseten"
+DEFAULT_REMOTE_URL = "https://app.baseten.co"
 
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/loaded_checkpoints"

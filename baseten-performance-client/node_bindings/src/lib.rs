@@ -2,17 +2,18 @@
 
 use baseten_performance_client_core::{
   CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
-  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse,
+  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse, Endpoint as CoreEndpoint,
+  EndpointConfig as CoreEndpointConfig, EndpointPool as CoreEndpointPool, EndpointPoolConfig,
   HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-  MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+  DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE,
+  HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
 };
 
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 // Use constants from core crate - no more hardcoded values!
@@ -199,9 +200,10 @@ pub struct CancellationToken {
 impl CancellationToken {
   /// Create a new cancellation token
   #[napi(constructor)]
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     Self {
-      inner: CoreCancellationToken::new(),
+      inner: CoreCancellationToken::new(false),
     }
   }
 
@@ -233,6 +235,7 @@ impl RequestProcessingPreference {
     batch_size: Option<u32>,
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
+    pin_initial_endpoint_once: Option<bool>,
     hedge_delay: Option<f64>,
     total_timeout_s: Option<f64>,
     hedge_budget_pct: Option<f64>,
@@ -240,11 +243,17 @@ impl RequestProcessingPreference {
     max_retries: Option<u32>,
     initial_backoff_ms: Option<u32>,
     cancel_token: Option<&CancellationToken>,
+    primary_api_key_override: Option<String>,
+    extra_headers: Option<HashMap<String, String>>,
+    non_retryable_status_codes: Option<Vec<u16>>,
   ) -> Self {
+    let non_retryable_status_codes: Option<HashSet<u16>> =
+      non_retryable_status_codes.map(|codes| codes.into_iter().collect());
     let inner = RustRequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
       batch_size: batch_size.map(|x| x as usize),
       max_chars_per_request: max_chars_per_request.map(|x| x as usize),
+      pin_initial_endpoint_once,
       timeout_s,
       hedge_delay,
       total_timeout_s,
@@ -253,6 +262,9 @@ impl RequestProcessingPreference {
       max_retries,
       initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
       cancel_token: cancel_token.map(|token| token.inner.clone()),
+      primary_api_key_override,
+      extra_headers,
+      non_retryable_status_codes,
     };
 
     // Apply defaults using the same method as Rust core
@@ -290,6 +302,11 @@ impl RequestProcessingPreference {
   }
 
   #[napi(getter)]
+  pub fn pin_initial_endpoint_once(&self) -> bool {
+    self.complete.pin_initial_endpoint_once.unwrap_or(false)
+  }
+
+  #[napi(getter)]
   pub fn total_timeout_s(&self) -> Option<f64> {
     self.complete.total_timeout_s
   }
@@ -312,7 +329,7 @@ impl RequestProcessingPreference {
 
   #[napi(getter)]
   pub fn max_retries(&self) -> u32 {
-    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32
+    self.complete.max_retries.unwrap_or(DEFAULT_MAX_RETRIES)
   }
 
   #[napi(getter)]
@@ -321,6 +338,29 @@ impl RequestProcessingPreference {
       .complete
       .initial_backoff_ms
       .unwrap_or(INITIAL_BACKOFF_MS) as u32
+  }
+
+  #[napi(getter)]
+  pub fn primary_api_key_override(&self) -> Option<String> {
+    self.complete.primary_api_key_override.clone()
+  }
+
+  #[napi(getter)]
+  pub fn extra_headers(&self) -> Option<HashMap<String, String>> {
+    self.complete.extra_headers.clone()
+  }
+
+  #[napi(getter)]
+  pub fn non_retryable_status_codes(&self) -> Vec<u16> {
+    let mut status_codes: Vec<u16> = self
+      .complete
+      .non_retryable_status_codes
+      .clone()
+      .unwrap_or_default()
+      .into_iter()
+      .collect();
+    status_codes.sort_unstable();
+    status_codes
   }
 }
 
@@ -332,9 +372,82 @@ pub struct HttpClientWrapper {
 #[napi]
 impl HttpClientWrapper {
   #[napi(constructor)]
-  pub fn new(http_version: Option<u8>) -> napi::Result<Self> {
+  pub fn new(http_version: Option<u8>, proxy: Option<String>) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
-    let inner = HttpClientWrapperRs::new(http_version).map_err(convert_core_error_to_napi_error)?;
+    let inner =
+      HttpClientWrapperRs::new(http_version, proxy).map_err(convert_core_error_to_napi_error)?;
+    Ok(Self { inner })
+  }
+}
+
+#[napi]
+pub struct Endpoint {
+  inner: CoreEndpoint,
+}
+
+#[napi]
+impl Endpoint {
+  #[napi(constructor)]
+  pub fn new(
+    base_url: String,
+    api_key: String,
+    client_wrapper: &HttpClientWrapper,
+    deep_health_url: Option<String>,
+    deployment_health_path: Option<String>,
+    health_check_interval_s: Option<f64>,
+    health_check_timeout_s: Option<f64>,
+    health_check_retries: Option<u32>,
+    health_fail_on_first: Option<bool>,
+    deployment_timeout_is_no_vote: Option<bool>,
+    deep_timeout_is_no_vote: Option<bool>,
+  ) -> napi::Result<Self> {
+    let mut config = CoreEndpointConfig::new(base_url, api_key, Arc::clone(&client_wrapper.inner));
+    if let Some(interval_s) = health_check_interval_s {
+      config = config.with_health_check_interval(std::time::Duration::from_secs_f64(interval_s));
+    }
+    if let Some(timeout_s) = health_check_timeout_s {
+      config = config.with_health_check_timeout(std::time::Duration::from_secs_f64(timeout_s));
+    }
+    if let Some(retries) = health_check_retries {
+      config = config.with_health_check_retries(retries);
+    }
+    config = config.with_standard_health_checks(
+      deep_health_url,
+      health_fail_on_first.unwrap_or(false),
+      deployment_health_path,
+      deployment_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+      deep_timeout_is_no_vote.unwrap_or(DEFAULT_TIMEOUT_IS_NO_VOTE),
+    );
+
+    let inner = CoreEndpoint::new(config).map_err(convert_core_error_to_napi_error)?;
+    Ok(Self { inner })
+  }
+}
+
+#[napi]
+pub struct EndpointPool {
+  inner: Arc<CoreEndpointPool>,
+}
+
+#[napi]
+impl EndpointPool {
+  #[napi(constructor)]
+  pub fn new(endpoints: Vec<&Endpoint>, endpoint_weights: Option<Vec<f64>>) -> napi::Result<Self> {
+    if endpoints.is_empty() {
+      return Err(create_napi_error("endpoints must not be empty"));
+    }
+
+    let mut config = EndpointPoolConfig::new(
+      endpoints
+        .into_iter()
+        .map(|endpoint| endpoint.inner.clone())
+        .collect(),
+    );
+    if let Some(weights) = endpoint_weights {
+      config = config.with_weights(weights);
+    }
+
+    let inner = CoreEndpointPool::new(config).map_err(convert_core_error_to_napi_error)?;
     Ok(Self { inner })
   }
 }
@@ -352,11 +465,21 @@ impl PerformanceClient {
     api_key: Option<String>,
     http_version: Option<u8>,
     client_wrapper: Option<&HttpClientWrapper>,
+    proxy: Option<String>,
+    endpoint_pool: Option<&EndpointPool>,
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
-    let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
-      .map_err(convert_core_error_to_napi_error)?;
+    let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
+    let core_client = PerformanceClientCore::new(
+      base_url,
+      api_key,
+      http_version,
+      wrapper,
+      proxy,
+      endpoint_pool,
+    )
+    .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })
   }
@@ -491,13 +614,15 @@ impl PerformanceClient {
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
 
+  // TODO: This JSON-compatible return type cannot preserve MessagePack binary, invalid UTF-8
+  // strings, or maps with non-string keys. The API return type is subject to change when those
+  // values are exposed through native JavaScript types.
   #[napi]
   pub async fn batch_post(
     &self,
     url_path: String,
     payloads: Vec<JsonValue>,
     preference: Option<&RequestProcessingPreference>,
-    custom_headers: Option<std::collections::HashMap<String, String>>,
     method: Option<String>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
@@ -507,12 +632,13 @@ impl PerformanceClient {
     let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     // Parse method parameter using core function
-    let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-      .map_err(|e| create_napi_error(&e))?;
+    let http_method =
+      baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
+        .map_err(|e| create_napi_error(&e))?;
 
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, &pref, custom_headers, http_method)
+      .process_batch_post_requests(url_path, payloads, &pref, http_method)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
@@ -522,7 +648,10 @@ impl PerformanceClient {
     let mut individual_request_times = Vec::new();
 
     for (json_value, headers, duration) in results {
-      data.push(json_value);
+      data.push(
+        serde_json::to_value(json_value)
+          .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))?,
+      );
       response_headers.push(headers);
       individual_request_times.push(duration.as_secs_f64());
     }

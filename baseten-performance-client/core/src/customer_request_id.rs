@@ -60,6 +60,7 @@ impl CustomerRequestId {
     }
 
     /// Increment retry count and clear cache
+    #[cfg(test)] // Only used in tests
     pub(crate) fn increment_retry(&mut self) -> &mut Self {
         if let Some(ref mut count) = self.retry_count {
             *count += 1;
@@ -70,42 +71,50 @@ impl CustomerRequestId {
     }
 
     /// Set hedge ID and clear cache
+    #[cfg(test)] // Only used in tests
     pub(crate) fn set_hedge(&mut self, hedge_id: u32) -> &mut Self {
         self.hedge_id = Some(hedge_id);
         self
     }
 
     /// Get the customer prefix (from env var or default)
+    #[cfg(test)]
     pub(crate) fn customer_prefix(&self) -> Option<&str> {
         self.customer_prefix.as_deref()
     }
 
     /// Get the batch index
+    #[cfg(test)]
     pub(crate) fn batch_index(&self) -> Option<usize> {
         self.batch_index
     }
 
     /// Get the retry count
+    #[cfg(test)]
     pub(crate) fn retry_count(&self) -> Option<u32> {
         self.retry_count
     }
 
     /// Get the hedge ID
+    #[cfg(test)]
     pub(crate) fn hedge_id(&self) -> Option<u32> {
         self.hedge_id
     }
 
     /// Get the UUID suffix component (last 8 characters)
+    #[cfg(test)]
     pub(crate) fn uuid_suffix(&self) -> &str {
         &self.uuid_suffix
     }
 
     /// Check if this is a hedged request
+    #[cfg(test)]
     pub(crate) fn is_hedged(&self) -> bool {
         self.hedge_id.is_some()
     }
 
     /// Check if this is a retried request
+    #[cfg(test)]
     pub(crate) fn is_retried(&self) -> bool {
         self.retry_count.map(|count| count > 0).unwrap_or(false)
     }

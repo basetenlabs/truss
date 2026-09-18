@@ -1,11 +1,22 @@
 from unittest.mock import Mock, patch
 
+import click
+import pytest
+from rich.console import Console
+
 from truss.cli.train.cache import (
     calculate_directory_sizes,
     create_file_summary_with_directory_sizes,
 )
-from truss.cli.train.core import view_training_job_metrics
-from truss.remote.baseten.custom_types import FileSummary
+from truss.cli.train.core import (
+    _format_capacity_type,
+    display_queued_jobs,
+    display_training_capacity,
+    display_training_jobs,
+    update_team_training_gpu_capacity,
+    view_training_job_metrics,
+)
+from truss.remote.baseten.custom_types import FileSummary, TeamType
 
 
 @patch("truss.cli.train.metrics_watcher.time.sleep")
@@ -442,3 +453,269 @@ def test_calculate_directory_sizes_max_depth():
     assert result_depth_2["/root/level1"] == 100  # file1.txt only
     assert result_depth_2["/root/level1/level2"] == 200  # file2.txt only
     assert result_depth_2["/root/level1/level2/level3"] == 300  # file3.txt only
+
+
+def _capacity_rows(out: str) -> dict:
+    return {
+        cells[0]: cells
+        for line in out.splitlines()
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
+
+
+def test_display_training_capacity(capsys):
+    """Usage is split into On-Demand and Spot columns per GPU type."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {
+                "gpu_type": "H100",
+                "baseline": 16,
+                "limit": 64,
+                "usage_count": 40,
+                "dedicated_usage_count": 24,
+                "spot_usage_count": 16,
+            },
+            {
+                "gpu_type": "A10G",
+                "baseline": 0,
+                "limit": 8,
+                "usage_count": 0,
+                "dedicated_usage_count": 0,
+                "spot_usage_count": 0,
+            },
+        ]
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
+
+    rows = _capacity_rows(capsys.readouterr().out)
+    # GPU Type, Baseline, Limit, On-Demand, Spot
+    assert rows["H100"] == ["H100", "16", "64", "24", "16"]
+    assert rows["A10G"] == ["A10G", "0", "8", "0", "0"]
+
+
+def test_display_training_capacity_with_teams(capsys):
+    """Team capacities are rendered in a second table with split usage columns."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {
+                "gpu_type": "H100",
+                "baseline": 16,
+                "limit": 64,
+                "usage_count": 32,
+                "dedicated_usage_count": 32,
+                "spot_usage_count": 0,
+            }
+        ],
+        "team_gpu_capacities": [
+            {
+                "team_id": "team_abc",
+                "team_name": "ml-research",
+                "gpu_type": "H100",
+                "baseline": 0,
+                "limit": 32,
+                "usage_count": 8,
+                "dedicated_usage_count": 2,
+                "spot_usage_count": 6,
+            }
+        ],
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
+
+    out = capsys.readouterr().out
+    rows = _capacity_rows(out)
+
+    assert "Team Training GPU Capacity" in out
+    # Org table keeps Baseline: GPU Type, Baseline, Limit, On-Demand, Spot
+    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
+    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, On-Demand, Spot
+    assert rows["ml-research"] == ["ml-research", "H100", "32", "2", "6"]
+    assert "Baseline" not in rows["Team"]
+
+
+def test_display_training_capacity_pre_split_backend(capsys):
+    """A pre-split backend (only usage_count) shows the total under On-Demand."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [
+            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
+        ]
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_capacity(mock_remote)
+
+    rows = _capacity_rows(capsys.readouterr().out)
+    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
+
+
+def test_display_training_capacity_teams_only(capsys):
+    """A team table is shown even when there are no org-level capacities."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [],
+        "team_gpu_capacities": [
+            {
+                "team_id": "team_abc",
+                "team_name": "ml-research",
+                "gpu_type": "H100",
+                "baseline": 0,
+                "limit": 32,
+                "usage_count": 0,
+            }
+        ],
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    out = capsys.readouterr().out
+    assert "Team Training GPU Capacity" in out
+    assert "No Training GPU capacity limits." not in out
+
+
+def test_display_training_capacity_empty(capsys):
+    """Empty state message is printed when there are no GPU capacities."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = {
+        "gpu_capacities": [],
+        "team_gpu_capacities": [],
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    assert "No Training GPU capacity limits." in capsys.readouterr().out
+
+
+def test_update_team_training_gpu_capacity_resolves_team_and_calls_api():
+    """Team name is resolved to a team_id before calling the update API."""
+    mock_api = Mock()
+    mock_api.get_teams.return_value = {
+        "ml-research": TeamType(id="team_abc", name="ml-research", default=False)
+    }
+    mock_api.update_team_training_gpu_capacity.return_value = {
+        "team_id": "team_abc",
+        "team_name": "ml-research",
+        "gpu_type": "H100",
+        "baseline": 0,
+        "limit": 32,
+        "usage_count": 0,
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    result = update_team_training_gpu_capacity(
+        mock_remote, team_name="ml-research", gpu_type="H100", capacity=32
+    )
+
+    mock_api.update_team_training_gpu_capacity.assert_called_once_with(
+        team_id="team_abc", gpu_type="H100", max_gpus=32
+    )
+    assert result["limit"] == 32
+
+
+def test_update_team_training_gpu_capacity_unknown_team_raises():
+    """An unknown team name raises a ClickException listing the available teams."""
+    mock_api = Mock()
+    mock_api.get_teams.return_value = {
+        "ml-research": TeamType(id="team_abc", name="ml-research", default=False)
+    }
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    with pytest.raises(click.ClickException, match="ml-research"):
+        update_team_training_gpu_capacity(
+            mock_remote, team_name="does-not-exist", gpu_type="H100", capacity=32
+        )
+
+    mock_api.update_team_training_gpu_capacity.assert_not_called()
+
+
+def test_format_capacity_type():
+    """availability_model maps to human-readable labels; absent reads as on-demand."""
+    assert _format_capacity_type({"availability_model": "spot"}) == "Spot"
+    assert _format_capacity_type({"availability_model": "dedicated"}) == "On-demand"
+    # Absent / null predates the field and reads as on-demand.
+    assert _format_capacity_type({}) == "On-demand"
+    assert _format_capacity_type({"availability_model": None}) == "On-demand"
+    # An unknown future value is surfaced rather than dropped.
+    assert _format_capacity_type({"availability_model": "reserved"}) == "Reserved"
+
+
+def _make_job(job_id, availability_model=None, **overrides):
+    job = {
+        "id": job_id,
+        "name": f"{job_id}-name",
+        "training_project": {"id": "proj1", "name": "proj"},
+        "instance_type": {"name": "H100"},
+        "current_status": "TRAINING_JOB_RUNNING",
+        "priority": 0,
+        "created_at": "2026-07-13T00:00:00Z",
+        "user": {"email": "a@b.co"},
+    }
+    if availability_model is not None:
+        job["availability_model"] = availability_model
+    job.update(overrides)
+    return job
+
+
+def _rows_by_first_cell(out: str) -> dict:
+    """Parse a rendered rich table into {first_cell: [cells...]} for exact assertions."""
+    return {
+        cells[0]: cells
+        for line in out.splitlines()
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
+
+
+def test_display_queued_jobs_shows_capacity_type(capsys):
+    """Queued jobs table maps each job's availability_model to its Capacity Type cell."""
+    jobs = [
+        _make_job("spotjob", availability_model="spot"),
+        _make_job("dedjob", availability_model="dedicated"),
+        _make_job("oldjob"),  # no availability_model -> on-demand
+    ]
+
+    # Render wide so the extra column isn't truncated at the default 80 cols.
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_queued_jobs(jobs, "https://app.baseten.co")
+
+    out = capsys.readouterr().out
+    rows = _rows_by_first_cell(out)
+    # Columns: Job ID, Job Name, Project, Instance Type, Capacity Type, ...
+    assert rows["Job ID"][4] == "Capacity Type"
+    assert rows["spotjob"][4] == "Spot"
+    assert rows["dedjob"][4] == "On-demand"
+    assert rows["oldjob"][4] == "On-demand"
+
+
+def test_display_training_jobs_shows_capacity_type(capsys):
+    """Active jobs table maps each job's availability_model to its Capacity Type cell."""
+    jobs = [
+        _make_job("spotjob", availability_model="spot"),
+        _make_job("dedjob", availability_model="dedicated"),
+    ]
+
+    with patch("truss.cli.train.core.console", Console(width=200)):
+        display_training_jobs(jobs, "https://app.baseten.co")
+
+    out = capsys.readouterr().out
+    rows = _rows_by_first_cell(out)
+    # Columns: Job ID, Job Name, Project, Status, Instance Type, Capacity Type, ...
+    assert rows["Job ID"][5] == "Capacity Type"
+    assert rows["spotjob"][5] == "Spot"
+    assert rows["dedjob"][5] == "On-demand"

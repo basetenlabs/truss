@@ -1,0 +1,10 @@
+model_name: PlainTrussReader
+model_class_filename: model.py
+model_class_name: Model
+python_version: py311
+requirements:
+  - truss_chains
+resources:
+  cpu: "1"
+  memory: 512Mi
+  use_gpu: false

@@ -62,6 +62,18 @@ class Model:
             "foo",
             False,
         ),
+        # class body has a class-level assignment — must not crash with AttributeError
+        (
+            """
+class Model:
+    class_attr = "hello"
+    def __init__(self, foo):
+        pass
+            """,
+            "Model",
+            "foo",
+            False,
+        ),
     ],
 )
 def test_has_class_init_arg(src, expected_arg, class_name, expected_to_raise):
@@ -70,6 +82,18 @@ def test_has_class_init_arg(src, expected_arg, class_name, expected_to_raise):
             _verify_has_class_init_arg(src, class_name, expected_arg)
     else:
         _verify_has_class_init_arg(src, class_name, expected_arg)
+
+
+def test_class_not_found_error_message_is_accurate():
+    """When the named class doesn't exist the error must say 'not found', not
+    mislead the user into thinking the class exists but lacks __init__."""
+    src = """
+class Model:
+    def __init__(self, trt_llm):
+        pass
+    """
+    with pytest.raises(ValidationError, match="not found"):
+        _verify_has_class_init_arg(src, "WrongClassName", "trt_llm")
 
 
 def test_validate(custom_model_trt_llm):

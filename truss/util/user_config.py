@@ -1,6 +1,7 @@
 """Tools to configure and track the Truss CLI state and behavior, e.g. auto-upgrades."""
 
 import datetime
+import functools
 import logging
 import os
 import pathlib
@@ -313,5 +314,11 @@ class _StateWrapper:
         return update_info
 
 
-state = _StateWrapper.read_or_create()
-settings = _SettingsWrapper.read_or_create()
+@functools.cache
+def get_state() -> _StateWrapper:
+    return _StateWrapper.read_or_create()
+
+
+@functools.cache
+def get_settings() -> _SettingsWrapper:
+    return _SettingsWrapper.read_or_create()

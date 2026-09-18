@@ -3,7 +3,7 @@ from typing import AsyncGenerator, Awaitable, Generator, Union
 
 from pydantic import BaseModel
 
-from truss.templates.server.common.schema import TrussSchema
+from truss.templates.server._truss_common.schema import TrussSchema
 
 
 class ModelInput(BaseModel):

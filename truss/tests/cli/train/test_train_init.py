@@ -1,3 +1,4 @@
+import os
 from unittest.mock import Mock, call, mock_open, patch
 
 import pytest
@@ -427,7 +428,7 @@ class TestDownloadGitDirectory:
         assert result is True
         expected_calls = [
             call("/local/dir", exist_ok=True),
-            call("/local/dir/subdir", exist_ok=True),
+            call(os.path.join("/local/dir", "subdir"), exist_ok=True),
         ]
         mock_makedirs.assert_has_calls(expected_calls)
 
@@ -481,7 +482,9 @@ class TestDownloadGitDirectory:
 
         # Assert
         assert result is True
-        mock_file.assert_called_once_with("/local/dir/single_file.txt", "wb")
+        mock_file.assert_called_once_with(
+            os.path.join("/local/dir", "single_file.txt"), "wb"
+        )
 
     @patch("os.makedirs")
     @patch("requests.get")

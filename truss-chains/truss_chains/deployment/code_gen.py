@@ -27,7 +27,6 @@ import logging
 import os
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -37,11 +36,16 @@ from typing import Any, Iterable, Mapping, Optional, cast, get_args, get_origin
 
 import libcst
 import pydantic
+import tomlkit
 
 import truss
+from truss.base import constants as truss_constants
 from truss.base import custom_types, truss_config
+from truss.base.truss_config import RequirementsFileType
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
+from truss.util import requirements as truss_requirements
+from truss.util.path import copy_file_path
 from truss_chains import framework, private_types, public_types, utils
 
 _INDENT = " " * 4
@@ -76,10 +80,8 @@ def _indent(text: str, num: int = 1) -> str:
     return textwrap.indent(text, _INDENT * num)
 
 
-def _run_simple_subprocess(cmd: str) -> None:
-    process = subprocess.Popen(
-        shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+def _run_simple_subprocess(cmd: list[str]) -> None:
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     _, stderr = process.communicate()
     if process.returncode != 0:
         raise ChildProcessError(f"Error: {stderr.decode()}")
@@ -87,8 +89,10 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 def _format_python_file(file_path: pathlib.Path) -> None:
     # Resolve importing sorting and unused import issues.
-    _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
-    _run_simple_subprocess(f"ruff format {file_path}")
+    _run_simple_subprocess(
+        ["ruff", "check", str(file_path), "--fix", "--select", "F401,I"]
+    )
+    _run_simple_subprocess(["ruff", "format", str(file_path)])
 
 
 class _Source(custom_types.SafeModelNonSerializable):
@@ -378,6 +382,8 @@ def _gen_stub_src_for_deps(
     imports: set[str] = set()
     src_parts: list[str] = []
     for dep in dependencies:
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            continue
         _update_src(_gen_stub_src(dep), src_parts, imports)
 
     if not (imports or src_parts):
@@ -449,7 +455,12 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
         # `dep.name` is the class name, while `name` is the argument name.
-        stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
+        # inject chainlet subclass-specific `depends` imports
+        if framework.is_truss_chainlet(dep.chainlet_cls):
+            imports.add("from truss_chains.remote_chainlet import truss_chainlet")
+            stub_args.append(f"{name}=truss_chainlet.TrussHandle({dep.display_name!r})")
+        else:
+            stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
     if chainlet_descriptor.has_context:
         if stub_args:
@@ -636,13 +647,27 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _make_requirements(image: public_types.DockerImage) -> list[str]:
-    """Merges file- and list-based requirements and adds truss git if not present."""
+def _detect_requirements_file_type(
+    image: public_types.DockerImage,
+) -> RequirementsFileType:
+    """Detect the type of requirements file from the DockerImage config."""
+    if not image.requirements_file:
+        return RequirementsFileType.NOT_PROVIDED
+    basename = pathlib.Path(image.requirements_file.abs_path).name
+    if basename == truss_constants.UV_LOCK_FILENAME:
+        return RequirementsFileType.UV_LOCK
+    elif basename == truss_constants.PYPROJECT_TOML_FILENAME:
+        return RequirementsFileType.PYPROJECT
+    return RequirementsFileType.PIP
+
+
+def _make_pip_requirements(image: public_types.DockerImage) -> list[str]:
+    """Merges file- and list-based pip requirements and adds truss if not present."""
     pip_requirements: set[str] = set()
-    if image.pip_requirements_file:
+    if image.requirements_file:
         pip_requirements.update(
             req
-            for req in pathlib.Path(image.pip_requirements_file.abs_path)
+            for req in pathlib.Path(image.requirements_file.abs_path)
             .read_text()
             .splitlines()
             if not req.strip().startswith("#")
@@ -680,6 +705,104 @@ def _make_requirements(image: public_types.DockerImage) -> list[str]:
         pip_requirements.add(truss_pip)
 
     return sorted(pip_requirements)
+
+
+def _has_truss_dependency(pyproject_path: pathlib.Path) -> bool:
+    """Check if truss is listed in a pyproject.toml's dependencies."""
+    deps = truss_requirements.parse_requirements_from_pyproject(pyproject_path)
+    has_truss = any(_TRUSS_PIP_PATTERN.match(dep) for dep in deps)
+    has_truss_git = any(_TRUSS_GIT in dep for dep in deps)
+    return has_truss or has_truss_git
+
+
+def _add_truss_to_pyproject(pyproject_path: pathlib.Path) -> None:
+    truss_pip = f"truss=={truss.__version__}"
+    logging.warning(
+        f"truss is not found in the dependencies of `{pyproject_path.name}`. "
+        f"Auto-adding `{truss_pip}` to the build copy."
+    )
+    with open(pyproject_path) as f:
+        doc = tomlkit.load(f)
+    project = doc.setdefault("project", {})
+    deps = project.setdefault("dependencies", [])
+    deps.append(truss_pip)
+    with open(pyproject_path, "w") as f:
+        tomlkit.dump(doc, f)
+
+
+def _maybe_add_truss_pyproject(pyproject_path: pathlib.Path) -> bool:
+    if _has_truss_dependency(pyproject_path):
+        return False
+
+    _add_truss_to_pyproject(pyproject_path)
+    return True
+
+
+def _prepare_pyproject_requirements(
+    image: public_types.DockerImage,
+    chainlet_dir: pathlib.Path,
+    req_file_type: RequirementsFileType,
+) -> str:
+    """Copy pyproject.toml/uv.lock into chainlet_dir and return the config filename."""
+    if image.pip_requirements:
+        raise public_types.ChainsUsageError(
+            "`pip_requirements` cannot be used together with a "
+            f"`{req_file_type.value}` requirements file. Manage all "
+            "dependencies in your pyproject.toml instead."
+        )
+
+    # NB(nikhil): At this point we should know the `requirements_file` exists, but helps with type constraining.
+    if not image.requirements_file:
+        raise public_types.ChainsUsageError(
+            "requirements_file must be set for pyproject requirements"
+        )
+
+    req_file_path = pathlib.Path(image.requirements_file.abs_path)
+    pyproject_path = chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+
+    req_filename = truss_constants.UV_LOCK_FILENAME
+    if req_file_type == RequirementsFileType.UV_LOCK:
+        copy_file_path(req_file_path, chainlet_dir / truss_constants.UV_LOCK_FILENAME)
+        copy_file_path(
+            req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME,
+            pyproject_path,
+        )
+    else:
+        req_filename = truss_constants.PYPROJECT_TOML_FILENAME
+        copy_file_path(req_file_path, pyproject_path)
+
+    if _maybe_add_truss_pyproject(pyproject_path):
+        if req_file_type == RequirementsFileType.UV_LOCK:
+            subprocess.run(
+                ["uv", "lock"], cwd=chainlet_dir, check=True, capture_output=True
+            )
+
+    return req_filename
+
+
+def _prepare_legacy_requirements(
+    image: public_types.DockerImage, chainlet_dir: pathlib.Path
+) -> str:
+    """Merge file- and list-based pip requirements and return the config filename."""
+    pip_requirements = _make_pip_requirements(image)
+    # TODO: `pip_requirements` will add server requirements which give version
+    #  conflicts. Check if that's still the case after relaxing versions.
+    # config.requirements = pip_requirements
+    pip_requirements_file_path = chainlet_dir / _REQUIREMENTS_FILENAME
+    pip_requirements_file_path.write_text("\n".join(pip_requirements))
+    # Absolute paths don't work with remote build.
+    return _REQUIREMENTS_FILENAME
+
+
+def _prepare_requirements(
+    image: public_types.DockerImage, chainlet_dir: pathlib.Path
+) -> str:
+    """Prepare requirements files in chainlet_dir and return the config filename."""
+    req_file_type = _detect_requirements_file_type(image)
+    if req_file_type in (RequirementsFileType.PYPROJECT, RequirementsFileType.UV_LOCK):
+        return _prepare_pyproject_requirements(image, chainlet_dir, req_file_type)
+    else:
+        return _prepare_legacy_requirements(image, chainlet_dir)
 
 
 def _inplace_fill_base_image(
@@ -742,6 +865,7 @@ def _gen_truss_config(
     config.runtime.streaming_read_timeout = remote_config.options.streaming_read_timeout
     config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
     config.environment_variables = dict(remote_config.options.env_variables)
+    config.build_commands = list(remote_config.build_commands)
 
     if remote_config.docker_image.truss_server_version_override:
         config.runtime.truss_server_version_override = (
@@ -750,6 +874,9 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
+        # Enables BDN weight mirroring for engine builder checkpoints.
+        if assets.weights:
+            config.weights = truss_config.Weights(assets.weights)
         truss_config.TrussConfig.model_validate(config)
         return config
 
@@ -759,14 +886,9 @@ def _gen_truss_config(
     config.runtime.health_checks = remote_config.options.health_checks
     # Image.
     _inplace_fill_base_image(remote_config.docker_image, config)
-    pip_requirements = _make_requirements(remote_config.docker_image)
-    # TODO: `pip_requirements` will add server requirements which give version
-    #  conflicts. Check if that's still the case after relaxing versions.
-    # config.requirements = pip_requirements
-    pip_requirements_file_path = chainlet_dir / _REQUIREMENTS_FILENAME
-    pip_requirements_file_path.write_text("\n".join(pip_requirements))
-    # Absolute paths don't work with remote build.
-    config.requirements_file = _REQUIREMENTS_FILENAME
+    config.requirements_file = _prepare_requirements(
+        remote_config.docker_image, chainlet_dir
+    )
     config.system_packages = remote_config.docker_image.apt_requirements
     if remote_config.docker_image.external_package_dirs:
         for ext_dir in remote_config.docker_image.external_package_dirs:
@@ -825,6 +947,31 @@ def gen_truss_model(
     )
 
 
+def _prepare_truss_chainlet_artifact(
+    chainlet_dir: pathlib.Path,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+    model_name: str,
+) -> pathlib.Path:
+    src_truss_dir = chainlet_descriptor.truss_dir
+    if src_truss_dir is None or not src_truss_dir.is_dir():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` resolved to "
+            f"`{src_truss_dir}`, which is not a directory."
+        )
+    truss_path.copy_tree_path(src_truss_dir, chainlet_dir)
+
+    config_path = chainlet_dir / serving_image_builder.CONFIG_FILE
+    if not config_path.is_file():
+        raise public_types.ChainsUsageError(
+            f"`TrussChainlet.{chainlet_descriptor.name}.truss_dir` ({src_truss_dir}) is "
+            "missing `config.yaml` — not a valid Truss directory."
+        )
+    config = truss_config.TrussConfig.from_yaml(config_path)
+    config.model_name = model_name
+    config.write_to_yaml_file(config_path, verbose=True)
+    return chainlet_dir
+
+
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
     chain_name: str,
@@ -844,6 +991,10 @@ def gen_truss_chainlet(
         f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
+    if chainlet_descriptor.is_truss_chainlet:
+        return _prepare_truss_chainlet_artifact(
+            chainlet_dir, chainlet_descriptor, model_name=model_name or chain_name
+        )
     if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
         engine_builder_config = cast(
             framework.EngineBuilderChainlet, chainlet_descriptor.chainlet_cls

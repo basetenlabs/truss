@@ -1,4 +1,6 @@
+import base64
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -27,7 +29,10 @@ from truss.templates.control.control.helpers.truss_patch.system_packages import 
 )
 from truss.truss_handle.patch.custom_types import ChangedPaths, TrussSignature
 from truss.truss_handle.patch.hash import file_content_hash_str
-from truss.util.path import get_ignored_relative_paths
+from truss.util.path import (
+    get_ignored_relative_paths,
+    get_unignored_relative_paths_from_root,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = ["**/__pycache__/**/*", "**/__pycache__/**"]
@@ -123,13 +128,21 @@ def calc_truss_patch(
             logger.info(
                 f"Created patch to {action.value.lower()} model code file: {path}"
             )
+            try:
+                content = full_path.read_text(encoding="utf-8")
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .png) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=action,
                         path=_relative_to(path, model_module_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
@@ -151,13 +164,21 @@ def calc_truss_patch(
             if not full_path.is_file():
                 continue
             logger.info(f"Created patch to {action.value.lower()} package file: {path}")
+            try:
+                content = full_path.read_text(encoding="utf-8")
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .pyd) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
                     body=PackagePatch(
                         action=action,
                         path=_relative_to(path, bundled_packages_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
@@ -172,9 +193,9 @@ def _changed_path_is_requirements_file(changed_path: str, new_config: TrussConfi
     _changed_path_is_requirements_file determines if `changed_path` is the same path
     as the requirements file on a new configuration.
     """
-    return new_config.requirements_file and Path(changed_path) == Path(
-        new_config.requirements_file
-    )
+    if not new_config.requirements_file:
+        return False
+    return Path(changed_path) == Path(new_config.requirements_file)
 
 
 def _calc_changed_paths(
@@ -185,15 +206,19 @@ def _calc_changed_paths(
     """
     TODO(pankaj) add support for directory creation in patch
     """
-    root_relative_new_paths = set(
-        (str(path.relative_to(root)) for path in root.glob("**/*"))
-    )
-    unignored_new_paths = _calc_unignored_paths(
-        root_relative_new_paths, ignore_patterns
+    unignored_new_paths = set(
+        str(path)
+        for path in get_unignored_relative_paths_from_root(root, ignore_patterns)
     )
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
     unignored_prev_paths = _calc_unignored_paths(
-        previous_root_relative_paths, ignore_patterns
+        previous_root_relative_paths,
+        ignore_patterns,
+        directory_paths={
+            path
+            for path, content_hash in previous_root_path_content_hashes.items()
+            if content_hash is None
+        },
     )
 
     added_paths = unignored_new_paths - unignored_prev_paths
@@ -217,10 +242,24 @@ def _calc_changed_paths(
 
 
 def _calc_unignored_paths(
-    root_relative_paths: Set[str], ignore_patterns: Optional[List[str]] = None
+    root_relative_paths: Set[str],
+    ignore_patterns: Optional[List[str]] = None,
+    directory_paths: Optional[Set[str]] = None,
 ) -> Set[str]:
+    """Filter stored paths, matching directory-only patterns with a trailing slash."""
     ignored_paths = set(
         get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    directory_paths_by_match_path = {
+        f"{Path(path).as_posix()}/": path for path in directory_paths or set()
+    }
+    ignored_directory_match_paths = set(
+        get_ignored_relative_paths(directory_paths_by_match_path, ignore_patterns)
+    )
+    ignored_paths.update(
+        path
+        for match_path, path in directory_paths_by_match_path.items()
+        if match_path in ignored_directory_match_paths
     )
     return root_relative_paths - ignored_paths  # type: ignore
 
@@ -231,9 +270,7 @@ def _calc_config_patches(
     prev_config: TrussConfig,
     new_config: TrussConfig,
 ) -> List[Patch]:
-    """Calculate patch based on changes to config.
-
-    Returns None if patch cannot be calculated. Empty list means no relevant
+    """Calculate patch based on changes to config. Empty list means no relevant
     differences found.
     """
     try:
@@ -467,7 +504,7 @@ def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
 
 
 def _relative_to(path: str, relative_to_path: str):
-    return str(Path(path).relative_to(relative_to_path))
+    return Path(path).relative_to(relative_to_path).as_posix()
 
 
 def _strictly_under(path: str, parent_paths: List[str]) -> bool:
@@ -476,6 +513,6 @@ def _strictly_under(path: str, parent_paths: List[str]) -> bool:
     them. Assumes that parent paths themselves are not under each other.
     """
     for dir_path in parent_paths:
-        if path.startswith(dir_path) and not path == dir_path:
+        if path.startswith(dir_path + os.sep):
             return True
     return False

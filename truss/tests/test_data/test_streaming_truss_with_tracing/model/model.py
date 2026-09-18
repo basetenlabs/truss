@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 
 class JSONFileExporter(trace_export.SpanExporter):
-    # Copied form truss/templates/server/common/tracing.py.
+    # Copied form truss/templates/server/_truss_common/tracing.py.
 
     def __init__(self, file_path: pathlib.Path):
         self._file = file_path.open("a")

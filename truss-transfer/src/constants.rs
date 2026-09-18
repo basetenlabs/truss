@@ -25,12 +25,17 @@ pub static TRUSS_TRANSFER_LOG: Lazy<String> = Lazy::new(|| {
         .unwrap_or_else(|_| "info".to_string())
 });
 
-/// Environment variable to enable Baseten FS
+/// Environment variable to enable Baseten FS (requires both flags to be set)
 pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
-    env::var("BASETEN_FS_ENABLED")
+    let b10fs_enabled = env::var("BASETEN_FS_ENABLED")
         .ok()
         .map(|s| is_truthy(&s))
-        .unwrap_or(false)
+        .unwrap_or(false);
+    let use_b10fs_truss_transfer = env::var("USE_BASETEN_FS_TRUSS_TRANSFER")
+        .ok()
+        .map(|s| is_truthy(&s))
+        .unwrap_or(false);
+    b10fs_enabled && use_b10fs_truss_transfer
 });
 
 pub static HF_TOKEN: Lazy<Option<String>> = Lazy::new(|| {
@@ -100,6 +105,9 @@ pub static TRUSS_TRANSFER_DOWNLOAD_DIR: Lazy<String> = Lazy::new(|| {
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
+/// Prefix for environment variable-based secrets (used at build time)
+pub static SECRET_ENV_VAR_PREFIX: &str = "TRUSS_SECRET_";
+
 pub static SECRET_PATH_WHITELIST: &[&str] = &["/secrets", "/aws-secrets", "/app", "/tmp"];
 
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
@@ -125,11 +133,11 @@ pub static TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS: Lazy<f64> = Lazy::new(|| {
 
 /// Default download speed for b10fs (MB/s)
 /// Typical disk write: 1.3GB/s, followed by read of 2GB/s
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
+pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 600.0;
 
 /// Download speed for instances with few cores (MB/s)
 /// Typical disk write: 250MB/s, followed by read of 350MB/s
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0;
+pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 150.0;
 
 /// Minimum required available space in GB for b10fs
 pub static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
