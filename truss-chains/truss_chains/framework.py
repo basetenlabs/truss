@@ -1780,7 +1780,7 @@ def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
 
 
 class TrussChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
-    """Declares an existing Truss directory as a non-entry leaf chain member.
+    """Declares an existing Truss directory as a chain member that only receives calls.
 
     Unlike ``ChainletBase``, the framework does not generate a ``model.py`` or
     a typed ``StubBase`` for this declaration — the user's Truss directory

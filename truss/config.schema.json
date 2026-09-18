@@ -199,7 +199,7 @@
           "default": "",
           "description": "The path to the Docker image.",
           "examples": [
-            "vllm/vllm-openai:v0.7.3",
+            "vllm/vllm-openai:v0.29.0",
             "nvcr.io/nvidia/nemo:23.03"
           ],
           "title": "Image",
@@ -207,9 +207,9 @@
         },
         "python_executable_path": {
           "default": "",
-          "description": "A path to the Python executable on the image.",
+          "description": "A path to the Python executable on the image. Truss uses `python3` from the image's PATH when this is empty.",
           "examples": [
-            "/usr/bin/python"
+            "/usr/bin/python3"
           ],
           "title": "Python Executable Path",
           "type": "string"
