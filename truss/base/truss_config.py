@@ -1372,12 +1372,12 @@ class BaseImage(custom_types.ConfigModel):
     image: str = pydantic.Field(
         default="",
         description="The path to the Docker image.",
-        examples=["vllm/vllm-openai:v0.7.3", "nvcr.io/nvidia/nemo:23.03"],
+        examples=["vllm/vllm-openai:v0.29.0", "nvcr.io/nvidia/nemo:23.03"],
     )
     python_executable_path: str = pydantic.Field(
         default="",
-        description="A path to the Python executable on the image.",
-        examples=["/usr/bin/python"],
+        description="A path to the Python executable on the image. Truss uses `python3` from the image's PATH when this is empty.",
+        examples=["/usr/bin/python3"],
     )
     docker_auth: Optional[DockerAuthSettings] = pydantic.Field(
         default=None,
