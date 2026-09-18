@@ -1,16 +1,22 @@
 import json
+import shlex
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import rich.table
 import rich_click as click
 import yaml
+from rich.markup import escape
 
 import truss.cli.train.core as train_cli
+import truss.cli.train_commands as train_commands
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.loops_deployment_log_watcher import LoopsDeploymentLogWatcher
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.loops_checkpoint_viewer import (
     resolve_most_recent_run_for_base_model,
     view_loops_checkpoint_list,
@@ -19,10 +25,29 @@ from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     TRAINER_CHECKPOINT_TARGET,
 )
+from truss.cli.train.exec import (
+    BASETEN_API_KEY_ENV_VAR,
+    DEFAULT_EXEC_PROJECT_NAME,
+    SUPPORTED_EXEC_ACCELERATORS,
+    UvProject,
+    build_exec_project,
+    ensure_team_api_key_secret,
+    get_project_type,
+    parse_environment_variables,
+    validate_secret_references,
+    validate_workspace_root,
+)
 from truss.cli.utils import common
-from truss.cli.utils.output import console
+from truss.cli.utils.output import console, json_command
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss_train import public_api as train_public_api
+
+# A Loops client is an orchestration process: it tokenizes locally, holds a large
+# connection pool, and drives GPU workers that idle out if it stalls. These are the
+# shape people run it at by hand today, rather than the platform's own defaults.
+LOOPS_EXEC_CPU_COUNT = 16
+LOOPS_EXEC_MEMORY = "64Gi"
 
 
 @click.group()
@@ -1231,3 +1256,353 @@ def view_loops_logs(
     _stream_model_deployment_logs(
         remote_provider, resolved_model_id, resolved_sampler_deployment_id, tail
     )
+
+
+def _print_exec_json(
+    *,
+    job_resp: dict,
+    ssh_hostname: str,
+    start_command: str,
+    environment_variables: dict,
+    cpu_count: int,
+    memory: str,
+    accelerator: Optional[str],
+    gpu_count: int,
+) -> None:
+    """Emit the job's identity and shape as JSON on stdout.
+
+    The job is not running yet when this is printed. Callers should poll
+    `truss train view --job-id <id>` before connecting or expecting logs.
+    """
+    project = job_resp.get("training_project") or {}
+    output = {
+        "job_id": job_resp["id"],
+        "project": {"id": project.get("id"), "name": project.get("name")},
+        "ssh_hostname": ssh_hostname,
+        "start_command": start_command,
+        # Names only: an --env value can be as sensitive as a secret. Taken from the
+        # built job rather than the flags, since the builder contributes its own.
+        "environment_variables": sorted(environment_variables),
+        "compute": {
+            "cpu_count": cpu_count,
+            "memory": memory,
+            "accelerator": accelerator,
+            "gpu_count": gpu_count if accelerator else None,
+        },
+        "job": job_resp,
+    }
+    # Flushed explicitly: with --tail the process keeps streaming logs after this,
+    # and a block-buffered pipe would otherwise withhold the payload.
+    print(json.dumps(output, indent=2), flush=True)
+
+
+@loops.command(name="exec", context_settings={"ignore_unknown_options": True})
+@click.argument("start_command", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--accelerator",
+    type=click.Choice(SUPPORTED_EXEC_ACCELERATORS, case_sensitive=False),
+    default=None,
+    help="GPU accelerator type. Omit for a CPU-only job (the default).",
+)
+@click.option(
+    "--gpu-count",
+    type=click.IntRange(1, 8),
+    default=None,
+    help="Number of GPUs (1-8, default: 1). Requires --accelerator.",
+)
+@click.option(
+    "--cpu-count",
+    type=click.IntRange(min=1),
+    default=LOOPS_EXEC_CPU_COUNT,
+    show_default=True,
+    help="Number of CPUs to request.",
+)
+@click.option(
+    "--memory",
+    type=str,
+    default=LOOPS_EXEC_MEMORY,
+    show_default=True,
+    help="Memory to request (e.g. 8Gi).",
+)
+@click.option(
+    "--project-name",
+    type=str,
+    required=False,
+    help="Training project name (default: the name of the current directory).",
+)
+@click.option("--image", type=str, required=False, help="Custom Docker base image.")
+@click.option(
+    "--workspace-root",
+    type=str,
+    required=False,
+    help=(
+        "Directory to upload instead of just the current directory. Must be a "
+        "parent of the current directory."
+    ),
+)
+@click.option(
+    "--exclude-dir",
+    "exclude_dirs",
+    type=str,
+    multiple=True,
+    help=(
+        "Top-level directory of the workspace root to leave out of the upload. "
+        "Repeatable."
+    ),
+)
+@click.option(
+    "--external-dir",
+    "external_dirs",
+    type=str,
+    multiple=True,
+    help="Directory outside the workspace root to include in the upload. Repeatable.",
+)
+@click.option(
+    "--env",
+    type=str,
+    multiple=True,
+    help="Environment variable for the job as KEY=VALUE. Repeatable.",
+)
+@click.option(
+    "--secret",
+    "secrets",
+    type=str,
+    multiple=True,
+    help=(
+        "Environment variable sourced from a Baseten workspace secret, as "
+        "KEY=SECRET_NAME. Create secrets at https://app.baseten.co/settings/secrets. "
+        "Repeatable."
+    ),
+)
+@click.option(
+    "-o",
+    "--output-format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and all other "
+        "output (progress, logs) to stderr."
+    ),
+)
+@click.option(
+    "--api-key/--no-api-key",
+    "api_key",
+    default=True,
+    help=(
+        "Set BASETEN_API_KEY in the job from a per-team secret, creating the key on "
+        "first use. Pass --no-api-key for a job that should carry no credential."
+    ),
+)
+@click.option(
+    "--with-uv",
+    is_flag=True,
+    default=False,
+    help=(
+        "Make uv available in the job image. Your command should invoke uv itself, "
+        "e.g. `truss loops exec --with-uv -- uv run python my_client.py`."
+    ),
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
+@click.option(
+    "--tail/--no-tail",
+    default=False,
+    show_default=True,
+    help=(
+        "Stream status + logs after push instead of returning immediately. With "
+        "--tail, exec exits non-zero if the job fails."
+    ),
+)
+@common.common_options()
+@json_command
+def exec_loops_command(
+    start_command: tuple[str, ...],
+    accelerator: Optional[str],
+    gpu_count: Optional[int],
+    cpu_count: int,
+    memory: str,
+    project_name: Optional[str],
+    image: Optional[str],
+    workspace_root: Optional[str],
+    exclude_dirs: tuple[str, ...],
+    external_dirs: tuple[str, ...],
+    env: tuple[str, ...],
+    secrets: tuple[str, ...],
+    output_format: str,
+    api_key: bool,
+    with_uv: bool,
+    remote: Optional[str],
+    provided_team_name: Optional[str],
+    tail: bool,
+):
+    """Run a Loops client from the current directory on Baseten.
+
+    Archives the directory the command is invoked from, ships it to a training job
+    sized for an orchestration client, and runs START_COMMAND there. Pass the
+    command after `--`:
+
+        truss loops exec -- python my_client.py
+
+    START_COMMAND always runs last and verbatim. BASETEN_API_KEY is provided from a
+    per-team secret unless you set it yourself; pass --with-uv to get uv in the job
+    image. SSH into the job is available on demand.
+    """
+    as_json = output_format == "json"
+
+    if not start_command:
+        raise click.UsageError(
+            "No start command given. Pass the command to run after `--`, "
+            "e.g. `truss loops exec -- python my_client.py`."
+        )
+    if gpu_count is not None and accelerator is None:
+        raise click.UsageError("--gpu-count requires --accelerator.")
+
+    if accelerator:
+        accelerator = accelerator.upper()
+    gpu_count = gpu_count or 1
+
+    environment_variables = parse_environment_variables(env=env, secrets=secrets)
+
+    source_dir = Path.cwd()
+    # Validate before any API call: truss_train's own check runs after the training
+    # project has been created, which would leave a stray empty project behind.
+    workspace_dir = validate_workspace_root(source_dir, workspace_root)
+    if not project_name:
+        # Repeated runs from the same checkout should group into one project.
+        project_name = source_dir.name or DEFAULT_EXEC_PROJECT_NAME
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    if as_json:
+        # The REST client prints 4xx messages straight to stdout, which would
+        # corrupt the JSON stream. Let them surface as exceptions instead, so
+        # json_command can render them as a structured error.
+        remote_provider.api.suppress_error_print = True
+
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+    _, team_id = train_commands._resolve_team_name(
+        remote_provider, effective_team_name, existing_project_name=project_name
+    )
+    validate_secret_references(
+        remote_provider.api, environment_variables, team_id=team_id
+    )
+
+    # A training job is given no Baseten credential, so anything calling the Baseten
+    # API needs one supplied. Only provision when the user hasn't named the variable
+    # themselves, so an explicit --secret or --env always wins.
+    if api_key and team_id and BASETEN_API_KEY_ENV_VAR not in environment_variables:
+        # Deliberately not caught: an orphaned key needs the user's attention, and
+        # continuing would hide it behind a successful push.
+        api_key_secret = ensure_team_api_key_secret(remote_provider.api, team_id)
+        if api_key_secret:
+            environment_variables[BASETEN_API_KEY_ENV_VAR] = api_key_secret
+            console.print(
+                f"Using [cyan]{escape(BASETEN_API_KEY_ENV_VAR)}[/cyan] from the team "
+                f"secret [cyan]{escape(api_key_secret.name)}[/cyan]."
+            )
+        else:
+            console.print(
+                f"Warning: could not provision a team Baseten API key, so "
+                f"{BASETEN_API_KEY_ENV_VAR} will not be set in the job. Pass "
+                f"`--secret {BASETEN_API_KEY_ENV_VAR}=<secret-name>` if the command "
+                "calls the Baseten API.",
+                style="yellow",
+            )
+
+    # --with-uv names uv explicitly, so it selects UvProject directly. Detection only
+    # drives the warning below, and is the hook a future --project-type would use.
+    detected_project = get_project_type(workspace_dir)
+    training_project = build_exec_project(
+        start_command=start_command,
+        project_name=project_name,
+        accelerator=accelerator,
+        gpu_count=gpu_count,
+        cpu_count=cpu_count,
+        memory=memory,
+        base_image=image,
+        project=UvProject() if with_uv else None,
+        workspace_root=workspace_root,
+        exclude_dirs=exclude_dirs,
+        external_dirs=external_dirs,
+        environment_variables=environment_variables,
+        enable_cache=True,
+    )
+
+    compute_str = (
+        f"{gpu_count}x {accelerator}" if accelerator else f"{cpu_count} CPU / {memory}"
+    )
+    if not with_uv and detected_project is not None:
+        console.print(
+            f"Warning: this looks like a {detected_project.label} project, but "
+            "--with-uv was not passed, so uv will not be present in the job image.",
+            style="yellow",
+        )
+
+    # Escaped: `myproj[v2]` would otherwise be read as console markup, reporting a
+    # different name than the one being pushed.
+    console.print(
+        f"Launching [cyan]{escape(project_name)}[/cyan] from "
+        f"[cyan]{escape(str(source_dir))}[/cyan] on [cyan]{escape(compute_str)}[/cyan]..."
+    )
+
+    job_resp = train_public_api.push(
+        config=training_project, remote=remote, source_dir=source_dir, team_id=team_id
+    )
+
+    job_id = job_resp["id"]
+    project_id = job_resp["training_project"]["id"]
+    ssh_hostname = f"training-job-{job_id}-0.ssh.baseten.co"
+
+    if as_json:
+        _print_exec_json(
+            job_resp=job_resp,
+            ssh_hostname=ssh_hostname,
+            start_command=shlex.join(start_command),
+            environment_variables=training_project.job.runtime.environment_variables,
+            cpu_count=cpu_count,
+            memory=memory,
+            accelerator=accelerator,
+            gpu_count=gpu_count,
+        )
+    else:
+        console.print(
+            f"\n[green]Job created![/green]\n"
+            f"\n"
+            f"SSH is available on demand. Check the interactive session with:\n"
+            f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
+            f"\n"
+            f"Then SSH in with:\n"
+            f"  [cyan]ssh {ssh_hostname}[/cyan]\n"
+            f"\n"
+            f"If you haven't set up SSH yet, run:\n"
+            f"  [cyan]truss ssh setup[/cyan]\n"
+            f"\n"
+            f"View logs:\n"
+            f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"
+            f"\n"
+            f"Stop the job:\n"
+            f"  [cyan]truss train stop --job-id {job_id}[/cyan]"
+        )
+
+    if tail:
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+
+        if watcher.failed:
+            # Without this, `truss loops exec --tail -- pytest` is green in CI no
+            # matter what the job did. sys.exit rather than click's Exit, which
+            # subclasses RuntimeError and would be caught by `common_options`' error
+            # handler and reported as "ERROR Exit: 1".
+            sys.exit(1)
