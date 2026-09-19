@@ -1,7 +1,9 @@
 from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
     AvailabilityModel,
+    AWSAssumeRoleDockerAuth,
     AWSIAMDockerAuth,
+    AWSOIDCDockerAuth,
     BasetenCheckpoint,
     CacheConfig,
     CheckpointingConfig,
@@ -11,6 +13,7 @@ from truss_train.definitions import (
     DeployCheckpointsRuntime,
     DockerAuth,
     FullCheckpoint,
+    GCPOIDCDockerAuth,
     GCPServiceAccountJSONDockerAuth,
     Image,
     LoadCheckpointConfig,
@@ -44,7 +47,10 @@ __all__ = [
     "LoRADetails",
     "CheckpointingConfig",
     "CacheConfig",
+    "AWSAssumeRoleDockerAuth",
     "AWSIAMDockerAuth",
+    "AWSOIDCDockerAuth",
+    "GCPOIDCDockerAuth",
     "GCPServiceAccountJSONDockerAuth",
     "RegistrySecretDockerAuth",
     "LoadCheckpointConfig",

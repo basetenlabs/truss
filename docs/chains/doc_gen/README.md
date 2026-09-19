@@ -2,8 +2,9 @@ This generation process of the documentation is *extremely* scrappy and just
 an interim solution. It requires significant manual oversight and the code
 quality in this directory is non-existent.
 
-Extra deps required:
-`pip install sphinx sphinx_rtd_theme sphinx_markdown_builder sphinx-pydantic`
+Extra deps required (newer sphinx/sphinx-markdown-builder versions silently
+fall back to `.md` output and drop types from parameter tables):
+`pip install "sphinx==7.4.7" sphinx_rtd_theme "sphinx-markdown-builder==0.6.6" sphinx-pydantic`
 
 
 The general process is:

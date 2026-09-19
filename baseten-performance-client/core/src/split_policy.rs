@@ -42,7 +42,9 @@ impl RequestProcessingPreference {
         RequestProcessingPreference {
             max_concurrent_requests: self.max_concurrent_requests.or(Some(DEFAULT_CONCURRENCY)),
             batch_size: self.batch_size.or(Some(DEFAULT_BATCH_SIZE)),
-            max_chars_per_request: self.max_chars_per_request,
+            max_chars_per_request: self
+                .max_chars_per_request
+                .or(Some(DEFAULT_MAX_CHARS_PER_REQUEST)),
             pin_initial_endpoint_once: self.pin_initial_endpoint_once.or(Some(false)),
             timeout_s: self.timeout_s.or(Some(DEFAULT_REQUEST_TIMEOUT_S)),
             hedge_delay: self.hedge_delay,
@@ -1070,7 +1072,10 @@ mod tests {
             pref_with_defaults.timeout_s,
             Some(DEFAULT_REQUEST_TIMEOUT_S)
         );
-        assert!(pref_with_defaults.max_chars_per_request.is_none());
+        assert_eq!(
+            pref_with_defaults.max_chars_per_request,
+            Some(DEFAULT_MAX_CHARS_PER_REQUEST)
+        );
         assert_eq!(pref_with_defaults.pin_initial_endpoint_once, Some(false));
         assert!(pref_with_defaults.hedge_delay.is_none());
         assert!(pref_with_defaults.total_timeout_s.is_none());

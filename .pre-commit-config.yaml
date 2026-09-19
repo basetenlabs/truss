@@ -7,6 +7,7 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=500"]
       - id: trailing-whitespace
+        exclude: "docs/chains/doc_gen/reference.patch"
       - id: end-of-file-fixer
       - id: check-yaml
       - id: fix-byte-order-marker

@@ -303,13 +303,15 @@ async def async_classify():
 
 The `RequestProcessingPreference` class provides a unified way to configure all request processing parameters. This is the recommended approach for advanced configuration as it provides better type safety and clearer intent.
 
+The framework defaults are 256 concurrent requests, a batch size of 8, and 8,000 characters per request. `max_chars_per_request` accepts values from 50 through 1,048,576.
+
 ```python
 from baseten_performance_client import RequestProcessingPreference
 
 # Create a preference with custom settings
 preference = RequestProcessingPreference(
-    max_concurrent_requests=64,        # Parallel requests (default: 128)
-    batch_size=32,                     # Items per batch (default: 128)
+    max_concurrent_requests=64,        # Parallel requests (default: 256)
+    batch_size=32,                     # Items per batch (default: 8)
     timeout_s=30.0,                   # Per-request timeout (default: 3600.0)
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)

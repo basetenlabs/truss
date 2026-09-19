@@ -931,7 +931,11 @@ def push(
         trt_llm_build_config = tr.spec.config.trt_llm.build
         if (
             trt_llm_build_config.quantization_type
-            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+            in [
+                TrussTRTLLMQuantizationType.FP8,
+                TrussTRTLLMQuantizationType.FP8_KV,
+                TrussTRTLLMQuantizationType.FP8_MLP_ONLY,
+            ]
             and not trt_llm_build_config.num_builder_gpus
         ):
             fp8_and_num_builder_gpus_text = (
