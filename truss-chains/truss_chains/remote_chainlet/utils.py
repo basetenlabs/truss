@@ -1,5 +1,6 @@
 import asyncio
 import builtins
+import codecs
 import collections
 import contextlib
 import contextvars
@@ -455,6 +456,15 @@ def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseM
 
     """
     return {name: getattr(obj, name) for name in obj.model_fields_set}
+
+
+async def decode_str_stream(stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
+    """Decodes a UTF-8 byte stream whose chunk boundaries may split a character."""
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    async for data in stream:
+        if text := decoder.decode(data):
+            yield text
+    decoder.decode(b"", final=True)  # Raises on a truncated trailing character.
 
 
 # Error Propagation Utils. #############################################################
