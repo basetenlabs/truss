@@ -87,6 +87,8 @@ class TrussTRTLLMQuantizationType(str, Enum):
     # FP8 + fp8 kv cache quantization (faster attention when used with fp8 context fmha, required for fp8 ctx fmha)!
     # not usable for asymmetric model with bias=True e.g. qwen2.5 models
     FP8_KV = "fp8_kv"
+    # fp8, but only mlp layers are in fp8, rest is 16 bit, also 16 bit kv cache
+    FP8_MLP_ONLY = "fp8_mlp_only"
     # fp4 with 16 bit kv cache
     FP4 = "fp4"
     # fp4 with fp8 kv cache quantization
@@ -425,15 +427,8 @@ pip install truss==0.10.8
             # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
-            if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                if self.max_num_tokens != 8192:
-                    # only warn if it is not the default value
-                    logger.warning(
-                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
-                    )
-                self = self.model_copy(
-                    update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
-                )
+            if "max_num_tokens" not in self.model_fields_set:
+                self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
             # set page_kv_cache and use_paged_context_fmha to false for encoder
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False
@@ -944,6 +939,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
     elif trt_llm_config.build.quantization_type in [
         TrussTRTLLMQuantizationType.FP8,
         TrussTRTLLMQuantizationType.FP8_KV,
+        TrussTRTLLMQuantizationType.FP8_MLP_ONLY,
         TrussTRTLLMQuantizationType.FP4,
         TrussTRTLLMQuantizationType.FP4_KV,
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
