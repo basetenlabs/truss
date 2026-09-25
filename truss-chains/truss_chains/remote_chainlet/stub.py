@@ -415,10 +415,22 @@ class StubBase(BasetenSession, abc.ABC):
 
         async def _rpc() -> AsyncIterator[bytes]:
             client: "aiohttp.ClientSession"
-            async with self._client_async() as client:
-                response = await client.post(self._target_url, **params)
+            # The response outlives this function, so the generator below owns the
+            # client context and releases it when exhausted or closed.
+            async with contextlib.AsyncExitStack() as stack:
+                client = await stack.enter_async_context(self._client_async())
+                response = await stack.enter_async_context(
+                    client.post(self._target_url, **params)
+                )
                 await utils.async_response_raise_errors(response, self.name)
-                return response.content.iter_any()
+                owned = stack.pop_all()
+
+            async def _stream() -> AsyncIterator[bytes]:
+                async with owned:
+                    async for chunk in response.content.iter_any():
+                        yield chunk
+
+            return _stream()
 
         try:
             return await retry(_rpc)
