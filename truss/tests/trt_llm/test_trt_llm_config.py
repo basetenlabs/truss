@@ -12,6 +12,7 @@ from truss.base.trt_llm_config import (
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
+from truss.base.truss_config import TrussConfig
 
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
@@ -161,6 +162,7 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
 def test_trt_llm_encoder(trtllm_config_encoder):
     config = TRTLLMConfigurationV1(**trtllm_config_encoder["trt_llm"])
     # no paged_kv_cache for encoder and no use_paged_context_fmha
+    assert config.build.num_builder_gpus is None
     assert config.build.plugin_configuration.paged_kv_cache is False
     assert config.build.plugin_configuration.use_paged_context_fmha is False
 
@@ -295,3 +297,45 @@ def test_trt_llm_config_additional_fields(trtllm_config_v2):
 
     assert config.inference_stack == "v2"
     assert isinstance(config.build, TrussTRTLLMBuildConfiguration)
+
+
+@pytest.mark.parametrize("gpu_count", [1, 2, 3, 8])
+@pytest.mark.parametrize("requested_parallelism", [1, 8])
+def test_encoder_data_parallel_deployment(
+    trtllm_config_encoder, gpu_count, requested_parallelism
+):
+    trtllm_config_encoder["resources"]["accelerator"] = f"H100:{gpu_count}"
+    build = trtllm_config_encoder["trt_llm"]["build"]
+    build.update(
+        tensor_parallel_count=requested_parallelism,
+        pipeline_parallel_count=requested_parallelism,
+        sequence_parallel_count=requested_parallelism,
+        num_builder_gpus=requested_parallelism,
+    )
+    config = TrussConfig.from_dict(trtllm_config_encoder)
+    assert config.resources.accelerator.count == gpu_count
+    serialized = config.to_dict()["trt_llm"]["build"]
+    for field in (
+        "tensor_parallel_count",
+        "pipeline_parallel_count",
+        "sequence_parallel_count",
+    ):
+        assert serialized[field] == 1
+    assert serialized["num_builder_gpus"] == requested_parallelism
+    assert (
+        TrussConfig.from_dict(config.to_dict()).resources.accelerator.count == gpu_count
+    )
+
+
+def test_decoder_still_requires_matching_gpu_count(trtllm_config_encoder):
+    trtllm_config_encoder["resources"]["accelerator"] = "H100:8"
+    trtllm_config_encoder["trt_llm"]["build"]["base_model"] = "decoder"
+    with pytest.raises(ValueError, match="Tensor parallelism and GPU count"):
+        TrussConfig.from_dict(trtllm_config_encoder)
+
+
+def test_encoder_bert_still_requires_one_gpu(trtllm_config_encoder):
+    trtllm_config_encoder["resources"]["accelerator"] = "H100:8"
+    trtllm_config_encoder["trt_llm"]["build"]["base_model"] = "encoder_bert"
+    with pytest.raises(ValueError, match="Tensor parallelism and GPU count"):
+        TrussConfig.from_dict(trtllm_config_encoder)

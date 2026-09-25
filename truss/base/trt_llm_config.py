@@ -416,6 +416,19 @@ pip install truss==0.10.8
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
+        if self.base_model in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT):
+            # Encoder artifacts are single-GPU; deployment replicas share the artifact.
+            for field in (
+                "tensor_parallel_count",
+                "pipeline_parallel_count",
+                "sequence_parallel_count",
+            ):
+                value = getattr(self, field)
+                if value not in (None, 1):
+                    logger.warning(
+                        "Encoder builds require %s=1; overriding %s", field, value
+                    )
+                setattr(self, field, 1)
         if self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
             if self.max_seq_len:
@@ -1035,7 +1048,12 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         * trt_llm_config_v1.build.sequence_parallel_count
     )
 
-    if world_size != config.resources.accelerator.count:
+    # The C++ encoder runtime loads one single-GPU engine per visible GPU.
+    # Encoder-BERT uses a separate runtime without data-parallel replicas.
+    if (
+        trt_llm_config_v1.build.base_model != TrussTRTLLMModel.ENCODER
+        and world_size != config.resources.accelerator.count
+    ):
         raise ValueError(
             "Tensor parallelism and GPU count must be the same for TRT-LLM"
             f"You have set tensor_parallel_count={trt_llm_config_v1.build.tensor_parallel_count}, "
