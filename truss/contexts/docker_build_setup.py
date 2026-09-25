@@ -44,11 +44,6 @@ def _fill_trt_llm_versions(
             tr.spec.config.trt_llm.build.base_model
             == trt_llm_config.TrussTRTLLMModel.ENCODER
         ):
-            if tr.spec.config.resources.accelerator.count > 1:
-                # Defaults are resolved by the platform after client validation.
-                # Also accept an explicit version tag pinned to a digest.
-                image_tag = image_versions.bei_image.split("@", 1)[0].rpartition(":")[2]
-                trt_llm_config.validate_bei_data_parallel_version(image_tag)
             print(f"Using BEI image: {image_versions.bei_image}")
             tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
         elif (

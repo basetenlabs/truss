@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from packaging.version import InvalidVersion, Version
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -994,20 +993,6 @@ def trt_llm_validation_v2(config: "TrussConfig") -> "TrussConfig":
     return config
 
 
-def validate_bei_data_parallel_version(version: str) -> None:
-    message = (
-        "Multi-GPU encoder deployments require BEI >= 0.0.38rc0; "
-        f"selected version is {version!r}. Set trt_llm.version_overrides.bei_version "
-        "to a compatible release, such as 0.0.38rc1."
-    )
-    try:
-        compatible = Version(version) >= Version("0.0.38rc0")
-    except InvalidVersion as exc:
-        raise ValueError(message) from exc
-    if not compatible:
-        raise ValueError(message)
-
-
 def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
     from truss.base import constants
 
@@ -1062,15 +1047,6 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         * trt_llm_config_v1.build.pipeline_parallel_count
         * trt_llm_config_v1.build.sequence_parallel_count
     )
-
-    if (
-        trt_llm_config_v1.build.base_model == TrussTRTLLMModel.ENCODER
-        and config.resources.accelerator.count > 1
-        and trt_llm_config_v1.version_overrides.bei_version is not None
-    ):
-        validate_bei_data_parallel_version(
-            trt_llm_config_v1.version_overrides.bei_version
-        )
 
     # The C++ encoder runtime loads one single-GPU engine per visible GPU.
     # Encoder-BERT uses a separate runtime without data-parallel replicas.
