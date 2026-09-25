@@ -1048,10 +1048,8 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         * trt_llm_config_v1.build.sequence_parallel_count
     )
 
-    # The C++ encoder runtime loads one single-GPU engine per visible GPU.
-    # Encoder-BERT uses a separate runtime without data-parallel replicas.
     if (
-        trt_llm_config_v1.build.base_model != TrussTRTLLMModel.ENCODER
+        trt_llm_config_v1.build.base_model == TrussTRTLLMModel.DECODER
         and world_size != config.resources.accelerator.count
     ):
         raise ValueError(
