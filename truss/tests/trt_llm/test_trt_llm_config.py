@@ -1,9 +1,11 @@
 import copy
+from unittest.mock import Mock
 
 import pydantic
 import pytest
 
 from truss.base.trt_llm_config import (
+    ImageVersions,
     TRTLLMConfiguration,
     TRTLLMConfigurationV1,
     TRTLLMConfigurationV2,
@@ -13,6 +15,7 @@ from truss.base.trt_llm_config import (
     TrussTRTLLMRuntimeConfiguration,
 )
 from truss.base.truss_config import TrussConfig
+from truss.contexts.docker_build_setup import _fill_trt_llm_versions
 
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
@@ -339,3 +342,67 @@ def test_encoder_bert_still_requires_one_gpu(trtllm_config_encoder):
     trtllm_config_encoder["trt_llm"]["build"]["base_model"] = "encoder_bert"
     with pytest.raises(ValueError, match="Tensor parallelism and GPU count"):
         TrussConfig.from_dict(trtllm_config_encoder)
+
+
+@pytest.mark.parametrize("gpu_count", [1, 8])
+@pytest.mark.parametrize(
+    "version,compatible",
+    [
+        ("0.0.37", False),
+        ("0.0.38.dev1", False),
+        ("0.0.38rc0", True),
+        ("0.0.38rc1", True),
+        ("0.0.38", True),
+        ("0.0.38-custom", False),
+    ],
+)
+def test_encoder_runtime_override_compatibility(
+    trtllm_config_encoder, gpu_count, version, compatible
+):
+    trtllm_config_encoder["resources"]["accelerator"] = f"H100:{gpu_count}"
+    trtllm_config_encoder["trt_llm"]["version_overrides"] = {"bei_version": version}
+    if gpu_count > 1 and not compatible:
+        with pytest.raises(
+            ValueError, match="Multi-GPU encoder deployments require BEI"
+        ):
+            TrussConfig.from_dict(trtllm_config_encoder)
+    else:
+        assert (
+            TrussConfig.from_dict(trtllm_config_encoder).resources.accelerator.count
+            == gpu_count
+        )
+
+
+@pytest.mark.parametrize(
+    "gpu_count,image,compatible",
+    [
+        (8, "baseten/bei:0.0.37", False),
+        (8, "baseten/bei:latest", False),
+        (8, "baseten/bei@sha256:" + "a" * 64, False),
+        (8, "baseten/bei:0.0.38rc1", True),
+        (8, "registry:5000/bei:0.0.38rc1@sha256:" + "a" * 64, True),
+        (1, "baseten/bei:0.0.37", True),
+    ],
+)
+def test_resolved_encoder_image_compatibility(
+    trtllm_config_encoder, gpu_count, image, compatible
+):
+    # No client override: the platform selects the actual image later.
+    trtllm_config_encoder["resources"]["accelerator"] = f"H100:{gpu_count}"
+    tr = Mock()
+    tr.spec.config = TrussConfig.from_dict(trtllm_config_encoder)
+    versions = ImageVersions(
+        bei_image=image,
+        beibert_image="unused",
+        briton_image="unused",
+        v2_llm_image="unused",
+    )
+    if compatible:
+        _fill_trt_llm_versions(tr, versions)
+        tr.set_base_image.assert_called_once_with(image, "/usr/bin/python3")
+    else:
+        with pytest.raises(
+            ValueError, match="Multi-GPU encoder deployments require BEI"
+        ):
+            _fill_trt_llm_versions(tr, versions)
+        tr.set_base_image.assert_not_called()
