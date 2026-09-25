@@ -5,6 +5,7 @@ import pathlib
 import uvicorn
 import yaml
 from application import create_app
+from endpoints import WS_MAX_MSG_SZ_BYTES
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -73,6 +74,7 @@ class ControlServer:
             # of uvicorn.
             http="h11",
             loop="uvloop",
+            ws_max_size=WS_MAX_MSG_SZ_BYTES,
             **extra_kwargs,
         )
 
