@@ -32,7 +32,8 @@ def anyio_backend():
 @pytest.fixture
 def app_path(truss_container_fs, helpers):
     truss_container_app_path = truss_container_fs / "app"
-    with helpers.sys_path(truss_container_app_path):
+    # Hot reload imports `model` from sys.path. An earlier entry must not win.
+    with helpers.sys_paths(truss_container_app_path):
         yield truss_container_app_path
 
 
