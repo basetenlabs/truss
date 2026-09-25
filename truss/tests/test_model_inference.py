@@ -65,12 +65,13 @@ def _assert_logs_contain_error(
     )
 
 
-def _assert_logs_contain(logs: str, message: str, level: str = "INFO"):
+def _assert_startup_log(logs: str, message: str, level: str = "INFO"):
     loglines = [json.loads(line) for line in logs.splitlines()]
-    assert any(_log_contains_line(line, message, level) for line in loglines), (
-        f"Did not find expected  logs.\n"
-        f"Expected message: {message}\nActual logs:\n{loglines}"
-    )
+    matching_lines = [
+        line for line in loglines if _log_contains_line(line, message, level)
+    ]
+    assert matching_lines, f"Did not find expected startup log: {message}"
+    assert all(line.get("cold_start") == "1" for line in matching_lines)
 
 
 class _PropagatingThread(Thread):
@@ -147,10 +148,10 @@ def test_model_load_logs(test_data_path):
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         logs = container.logs()
-        _assert_logs_contain(logs, message="Executing model.load()")
-        _assert_logs_contain(logs, message="Loading truss model from file")
-        _assert_logs_contain(logs, message="Completed model.load()")
-        _assert_logs_contain(logs, message="User Load Message")
+        _assert_startup_log(logs, message="Executing model.load()")
+        _assert_startup_log(logs, message="Loading truss model from file")
+        _assert_startup_log(logs, message="Completed model.load()")
+        _assert_startup_log(logs, message="User Load Message")
 
 
 @pytest.mark.integration

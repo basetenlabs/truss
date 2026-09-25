@@ -15,6 +15,22 @@ request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextV
 chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
     contextvars.ContextVar("chain_request_id", default=None)
 )
+_cold_start_logging_enabled = False
+
+
+def enable_cold_start_logging() -> None:
+    global _cold_start_logging_enabled
+    _cold_start_logging_enabled = True
+
+
+def disable_cold_start_logging() -> None:
+    global _cold_start_logging_enabled
+    _cold_start_logging_enabled = False
+
+
+def _add_cold_start_field(log_record: dict) -> None:
+    if _cold_start_logging_enabled:
+        log_record["cold_start"] = "1"
 
 
 def _disable_json_logging() -> bool:
@@ -55,6 +71,7 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
             log_record["request_id"] = request_id
         if chain_request_id := chain_request_id_context.get():
             log_record["chain_request_id"] = chain_request_id
+        _add_cold_start_field(log_record)
 
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
@@ -81,6 +98,7 @@ class _DefaultJsonFormatter(jsonlogger.JsonFormatter):
             log_record["request_id"] = request_id
         if chain_request_id := chain_request_id_context.get():
             log_record["chain_request_id"] = chain_request_id
+        _add_cold_start_field(log_record)
 
 
 class _AccessFormatter(logging.Formatter):
