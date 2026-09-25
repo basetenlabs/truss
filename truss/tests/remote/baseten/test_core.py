@@ -1,3 +1,4 @@
+import itertools
 import json
 from tempfile import NamedTemporaryFile
 from unittest import mock
@@ -1100,3 +1101,33 @@ def test_create_bis_llm_service_creates_model_version():
     api.create_bis_llm_model_version.assert_called_once_with(
         model_id="bis-llm-model-id", body=body
     )
+
+
+def test_get_training_job_logs_with_pagination_stops_at_timeout(baseten_api):
+    """A chatty job needs one request per batch of lines, so an unbounded scan
+    outlives the caller. The deadline must return the logs fetched so far."""
+    counter = itertools.count()
+    baseten_api._fetch_log_batch = mock.Mock(
+        side_effect=lambda *_: [
+            {
+                "timestamp": str(1640995200000000000 + 60_000_000_000 * next(counter)),
+                "message": "Log",
+            }
+        ]
+    )
+    baseten_api.get_training_job = mock.Mock(
+        return_value={"training_job": {"created_at": "2022-01-01T00:00:00Z"}}
+    )
+
+    # Deadline is set at construction and still unbreached for the first batch;
+    # every later reading is past it. Batches never run out on their own.
+    readings = iter([0.0, 0.0])
+    with mock.patch(
+        "truss.remote.baseten.core.time.monotonic", lambda: next(readings, 999.0)
+    ):
+        result = get_training_job_logs_with_pagination(
+            baseten_api, "project-123", "job-456", batch_size=1, timeout_sec=30.0
+        )
+
+    assert len(result) == 1
+    assert baseten_api._fetch_log_batch.call_count == 1
