@@ -1,8 +1,10 @@
 use crate::cancellation::JoinSetGuard;
+use crate::client_spans::{self, RecordingSpan};
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::split_policy::RequestProcessingConfig;
+use crate::trace_context::TRACEPARENT_HEADER_NAME;
 
 use rand::Rng;
 use reqwest::{
@@ -10,7 +12,8 @@ use reqwest::{
     Client,
 };
 use std::collections::HashSet;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing;
 
@@ -44,29 +47,40 @@ where
     R: serde::de::DeserializeOwned,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
-        let mut request_builder = client
-            .post(attempt_url)
-            .bearer_auth(&api_key)
-            .json(&payload)
-            .timeout(request_timeout)
-            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+    let labels = AttemptLabels {
+        method: reqwest::Method::POST.as_str(),
+        customer_request_id: &customer_request_id_header,
+    };
+    let (response, span) =
+        send_request_with_retry(&request_suffix, config, &labels, |attempt_url| {
+            let mut request_builder = client
+                .post(attempt_url)
+                .bearer_auth(&api_key)
+                .json(&payload)
+                .timeout(request_timeout)
+                .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
-        request_builder = add_timeout_headers(request_builder, request_timeout);
-        request_builder = add_response_negotiation_headers(request_builder, config);
+            request_builder = add_timeout_headers(request_builder, request_timeout);
+            request_builder = add_response_negotiation_headers(request_builder, config);
 
-        if let Some(ref headers) = config.extra_headers {
-            for (key, value) in headers {
-                request_builder = request_builder.header(key, value);
+            if let Some(ref headers) = config.extra_headers {
+                for (key, value) in headers {
+                    request_builder = request_builder.header(key, value);
+                }
             }
-        }
 
-        request_builder
-    })
-    .await?;
+            request_builder
+        })
+        .await?;
 
     let successful_response =
-        ensure_successful_response(response, Some(customer_request_id.to_string())).await?;
+        match ensure_successful_response(response, Some(customer_request_id.to_string())).await {
+            Ok(response) => response,
+            Err(err) => {
+                client_spans::fail_span(span, client_spans::error_type(&err));
+                return Err(err);
+            }
+        };
 
     // Extract headers
     let mut headers_map = std::collections::HashMap::new();
@@ -77,9 +91,10 @@ where
         );
     }
 
-    let response_data: R = parse_response_body(successful_response).await?;
+    let response_data: Result<R, ClientError> = parse_response_body(successful_response).await;
+    client_spans::finish_span(span, &response_data);
 
-    Ok((response_data, headers_map))
+    Ok((response_data?, headers_map))
 }
 
 // Unified HTTP request helper with headers extraction
@@ -98,33 +113,45 @@ where
     T: serde::Serialize,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
-        let mut request_builder = client
-            .request(method.into(), attempt_url)
-            .bearer_auth(&api_key)
-            .timeout(request_timeout)
-            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
+    let reqwest_method = reqwest::Method::from(method);
+    let labels = AttemptLabels {
+        method: reqwest_method.as_str(),
+        customer_request_id: &customer_request_id_header,
+    };
+    let (response, span) =
+        send_request_with_retry(&request_suffix, config, &labels, |attempt_url| {
+            let mut request_builder = client
+                .request(reqwest_method.clone(), attempt_url)
+                .bearer_auth(&api_key)
+                .timeout(request_timeout)
+                .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
-        request_builder = add_timeout_headers(request_builder, request_timeout);
+            request_builder = add_timeout_headers(request_builder, request_timeout);
 
-        request_builder = add_response_negotiation_headers(request_builder, config);
+            request_builder = add_response_negotiation_headers(request_builder, config);
 
-        if method.has_body() {
-            request_builder = request_builder.json(&payload);
-        }
-
-        if let Some(ref headers) = config.extra_headers {
-            for (key, value) in headers {
-                request_builder = request_builder.header(key, value);
+            if method.has_body() {
+                request_builder = request_builder.json(&payload);
             }
-        }
 
-        request_builder
-    })
-    .await?;
+            if let Some(ref headers) = config.extra_headers {
+                for (key, value) in headers {
+                    request_builder = request_builder.header(key, value);
+                }
+            }
+
+            request_builder
+        })
+        .await?;
 
     let successful_response =
-        ensure_successful_response(response, Some(customer_request_id.to_string())).await?;
+        match ensure_successful_response(response, Some(customer_request_id.to_string())).await {
+            Ok(response) => response,
+            Err(err) => {
+                client_spans::fail_span(span, client_spans::error_type(&err));
+                return Err(err);
+            }
+        };
 
     // Extract headers
     let mut headers_map = std::collections::HashMap::new();
@@ -135,14 +162,15 @@ where
         );
     }
 
-    let response_value: rmpv::Value =
+    let response_value: Result<rmpv::Value, ClientError> =
         if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
-            parse_response_body(successful_response).await?
+            parse_response_body(successful_response).await
         } else {
-            rmpv::Value::Map(Vec::new())
+            Ok(rmpv::Value::Map(Vec::new()))
         };
+    client_spans::finish_span(span, &response_value);
 
-    Ok((response_value, headers_map))
+    Ok((response_value?, headers_map))
 }
 
 fn add_response_negotiation_headers(
@@ -231,11 +259,78 @@ async fn ensure_successful_response(
     }
 }
 
+/// Identifies an attempt on its span.
+struct AttemptLabels<'a> {
+    method: &'a str,
+    customer_request_id: &'a str,
+}
+
+/// Builds one attempt's request along with its span (when recording) and `traceparent` header.
+fn build_attempt(
+    build_request: &impl Fn(&str) -> reqwest::RequestBuilder,
+    url: &str,
+    config: &RequestProcessingConfig,
+    labels: &AttemptLabels<'_>,
+    resend_count: u32,
+    hedge: bool,
+) -> (reqwest::RequestBuilder, Option<RecordingSpan>) {
+    let mut span = client_spans::start_attempt_span(config.call_trace.as_ref(), labels.method);
+    if let Some(span) = span.as_mut() {
+        client_spans::record_attempt_attributes(
+            span,
+            labels.method,
+            url,
+            labels.customer_request_id,
+            resend_count,
+            hedge,
+        );
+    }
+
+    let mut request_builder = build_request(url);
+    // A traceparent the caller put in extra_headers wins; reqwest would otherwise send both.
+    if !extra_headers_contains(config, TRACEPARENT_HEADER_NAME) {
+        if let Some(traceparent) =
+            client_spans::attempt_traceparent(config.call_trace.as_ref(), span.as_ref())
+        {
+            request_builder =
+                request_builder.header(TRACEPARENT_HEADER_NAME, traceparent.to_string());
+        }
+    }
+    (request_builder, span)
+}
+
+/// Sends one attempt, marking time-to-headers on its span. The span comes back with the response,
+/// still owed a finish once the body is consumed; a failed send finishes it here.
+async fn send_attempt(
+    request_builder: reqwest::RequestBuilder,
+    mut span: Option<RecordingSpan>,
+    map_err: impl FnOnce(reqwest::Error) -> ClientError,
+) -> Result<(reqwest::Response, Option<RecordingSpan>), ClientError> {
+    match request_builder.send().await {
+        Ok(response) => {
+            if let Some(span) = span.as_mut() {
+                span.add_event("http.response.headers");
+                span.set_attribute(
+                    "http.response.status_code",
+                    i64::from(response.status().as_u16()),
+                );
+            }
+            Ok((response, span))
+        }
+        Err(err) => {
+            let err = map_err(err);
+            client_spans::fail_span(span, client_spans::error_type(&err));
+            Err(err)
+        }
+    }
+}
+
 async fn send_request_with_retry(
     request_suffix: &str,
     config: &RequestProcessingConfig,
+    labels: &AttemptLabels<'_>,
     build_request: impl Fn(&str) -> reqwest::RequestBuilder,
-) -> Result<reqwest::Response, ClientError> {
+) -> Result<(reqwest::Response, Option<RecordingSpan>), ClientError> {
     let mut retries_done = 0;
     let mut current_backoff = config.initial_backoff;
     let max_retries = config.max_retries;
@@ -271,41 +366,73 @@ async fn send_request_with_retry(
             );
         }
 
-        let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
-            let request_builder = build_request(&attempt_url);
+        let response_result = if should_hedge {
+            let primary = build_attempt(
+                &build_request,
+                &attempt_url,
+                config,
+                labels,
+                retries_done,
+                false,
+            );
             let (hedge_url, hedge_selection) =
                 config.select_hedge_url(request_suffix, selected_endpoint_index);
-            let hedge_builder = build_request(&hedge_url);
             let _ = hedge_selection;
-            send_request_with_hedging(request_builder, hedge_builder, config).await
+            send_request_with_hedging(
+                primary,
+                || {
+                    build_attempt(
+                        &build_request,
+                        &hedge_url,
+                        config,
+                        labels,
+                        retries_done,
+                        true,
+                    )
+                },
+                config,
+            )
+            .await
         } else {
-            build_request(&attempt_url).send().await.map_err(|e| {
+            let (request_builder, span) = build_attempt(
+                &build_request,
+                &attempt_url,
+                config,
+                labels,
+                retries_done,
+                false,
+            );
+            send_attempt(request_builder, span, |e| {
                 convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
             })
+            .await
         };
 
         // Decide retry exactly once per iteration.
         let should_retry_iteration = match response_result {
-            Ok(resp) => {
+            Ok((resp, span)) => {
                 let status = resp.status();
 
                 if status.is_success() {
-                    return Ok(resp);
+                    return Ok((resp, span));
                 }
 
                 let retryable = is_retryable_status(status.as_u16(), config);
                 let should_retry = retryable && retries_done < max_retries;
 
                 if !should_retry {
-                    return ensure_successful_response(
+                    let result = ensure_successful_response(
                         resp,
                         Some(config.customer_request_id.to_string()),
                     )
                     .await;
+                    client_spans::finish_span(span, &result);
+                    return result.map(|resp| (resp, None));
                 }
 
                 // Retryable status: drain the body so the connection can be reused.
                 let _ = resp.bytes().await;
+                client_spans::fail_span(span, status.as_u16().to_string());
                 true
             }
 
@@ -380,24 +507,38 @@ async fn send_request_with_retry(
     }
 }
 
-fn spawn_hedged_request_cleanup(
-    mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>>,
-) {
+type AttemptResult = Result<(reqwest::Response, Option<RecordingSpan>), ClientError>;
+
+fn spawn_hedged_request_cleanup(mut join_set: JoinSetGuard<AttemptResult>) {
     join_set.abort_all();
     tokio::spawn(async move {
         while let Some(result) = join_set.join_next().await {
-            if let Ok(Ok(response)) = result {
+            // A loser aborted mid-flight drops its span inside the task, which marks it
+            // hedge_cancelled; one that finished before the abort is marked here.
+            if let Ok(Ok((response, span))) = result {
                 let _ = response.bytes().await;
+                if let Some(mut span) = span {
+                    span.set_attribute("b10.perfclient.hedge_cancelled", true);
+                    span.finish();
+                }
             }
         }
     });
 }
 
+/// Races the primary attempt against a hedge sent after `hedge_delay`. The hedge's request and
+/// span are built only if it is actually sent, so an unsent hedge leaves no span behind.
 pub(crate) async fn send_request_with_hedging(
-    request_builder: reqwest::RequestBuilder,
-    request_builder_hedge: reqwest::RequestBuilder,
+    primary: (reqwest::RequestBuilder, Option<RecordingSpan>),
+    build_hedge: impl FnOnce() -> (reqwest::RequestBuilder, Option<RecordingSpan>),
     config: &RequestProcessingConfig,
-) -> Result<reqwest::Response, ClientError> {
+) -> AttemptResult {
+    let (request_builder, mut primary_span) = primary;
+    let hedge_race = Arc::new(AtomicBool::new(false));
+    if let Some(span) = primary_span.as_mut() {
+        span.set_hedge_race(Arc::clone(&hedge_race));
+    }
+
     // Validate that we have hedge budget and hedge delay
     let hedge_budget = &config.hedge_budget;
     let hedge_delay = config.hedge_delay.ok_or_else(|| {
@@ -408,14 +549,18 @@ pub(crate) async fn send_request_with_hedging(
     // Check if we have hedge budget available
     if hedge_budget.load(Ordering::SeqCst) == 0 {
         tracing::debug!("No hedge budget available, using normal request");
-        return request_builder.send().await.map_err(ClientError::from);
+        return send_attempt(request_builder, primary_span, ClientError::from).await;
     }
 
     // Use JoinSetGuard to ensure all spawned tasks are aborted on drop
-    let mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>> = JoinSetGuard::new();
+    let mut join_set: JoinSetGuard<AttemptResult> = JoinSetGuard::new();
 
     // Start the original request
-    join_set.spawn(async move { request_builder.send().await.map_err(ClientError::from) });
+    join_set.spawn(send_attempt(
+        request_builder,
+        primary_span,
+        ClientError::from,
+    ));
 
     // Wait for hedge delay
     let hedge_timer = tokio::time::sleep(hedge_delay);
@@ -439,11 +584,13 @@ pub(crate) async fn send_request_with_hedging(
 
             // Allow hedging if we had budget before decrement (budget was > 0)
             if budget_before_decrement > 0 {
+                let (request_builder_hedge, mut hedge_span) = build_hedge();
+                if let Some(span) = hedge_span.as_mut() {
+                    span.set_hedge_race(Arc::clone(&hedge_race));
+                }
+                hedge_race.store(true, Ordering::SeqCst);
                 join_set.spawn(async move {
-                    let result = request_builder_hedge
-                        .send()
-                        .await
-                        .map_err(ClientError::from);
+                    let result = send_attempt(request_builder_hedge, hedge_span, ClientError::from).await;
                     tracing::debug!("hedged request faster than original");
                     result
                 });
@@ -465,6 +612,12 @@ pub(crate) async fn send_request_with_hedging(
             }
         }
     };
+
+    let mut response_result = response_result;
+    if let Ok((_, Some(span))) = response_result.as_mut() {
+        // The winner is finished by the caller; a later cancellation is not a lost race.
+        span.leave_hedge_race();
+    }
 
     spawn_hedged_request_cleanup(join_set);
     response_result

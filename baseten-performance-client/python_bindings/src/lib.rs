@@ -534,6 +534,8 @@ pub struct RequestProcessingPreference {
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
     #[pyo3(get, set)]
     pub non_retryable_status_codes: HashSet<u16>,
+    #[pyo3(get, set)]
+    pub traceparent: Option<String>,
 }
 
 impl RequestProcessingPreference {
@@ -560,16 +562,64 @@ impl RequestProcessingPreference {
             primary_api_key_override: self.primary_api_key_override.clone(),
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes,
+            traceparent: self.traceparent.clone(),
         }
     }
 }
 
+/// Converts the call's preference; without an explicit traceparent, the call joins the caller's
+/// active OpenTelemetry span, if any.
 fn rust_preference_from_py(
+    py: Python<'_>,
     preference: Option<&RequestProcessingPreference>,
 ) -> RustRequestProcessingPreference {
-    preference
+    let mut rust_preference = preference
         .map(RequestProcessingPreference::to_rust_preference)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if rust_preference.traceparent.is_none() {
+        rust_preference.traceparent = ambient_traceparent(py);
+    }
+    rust_preference
+}
+
+/// Set once `opentelemetry` is known not to be installed, so calls stop paying for a failed
+/// import (a sys.path search) every time.
+static OPENTELEMETRY_MISSING: AtomicBool = AtomicBool::new(false);
+
+/// The caller's active OpenTelemetry span as a traceparent. Never raises: tracing must not break
+/// a request.
+fn ambient_traceparent(py: Python<'_>) -> Option<String> {
+    if OPENTELEMETRY_MISSING.load(Ordering::Relaxed) {
+        return None;
+    }
+    let trace_module = match py.import("opentelemetry.trace") {
+        Ok(module) => module,
+        Err(err) => {
+            if err.is_instance_of::<pyo3::exceptions::PyModuleNotFoundError>(py) {
+                OPENTELEMETRY_MISSING.store(true, Ordering::Relaxed);
+            }
+            return None;
+        }
+    };
+    let span_context = trace_module
+        .call_method0("get_current_span")
+        .and_then(|span| span.call_method0("get_span_context"))
+        .ok()?;
+    if !span_context
+        .getattr("is_valid")
+        .ok()?
+        .extract::<bool>()
+        .ok()?
+    {
+        return None;
+    }
+    let trace_id: u128 = span_context.getattr("trace_id").ok()?.extract().ok()?;
+    let span_id: u64 = span_context.getattr("span_id").ok()?.extract().ok()?;
+    let flags: u8 = span_context.getattr("trace_flags").ok()?.extract().ok()?;
+    Some(format!(
+        "00-{:032x}-{:016x}-{:02x}",
+        trace_id, span_id, flags
+    ))
 }
 
 #[pymethods]
@@ -590,7 +640,8 @@ impl RequestProcessingPreference {
         cancel_token = None,
         primary_api_key_override = None,
         extra_headers = None,
-        non_retryable_status_codes = None
+        non_retryable_status_codes = None,
+        traceparent = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -608,6 +659,7 @@ impl RequestProcessingPreference {
         primary_api_key_override: Option<String>,
         extra_headers: Option<std::collections::HashMap<String, String>>,
         non_retryable_status_codes: Option<HashSet<u16>>,
+        traceparent: Option<String>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -625,6 +677,7 @@ impl RequestProcessingPreference {
             primary_api_key_override,
             extra_headers,
             non_retryable_status_codes,
+            traceparent,
         };
 
         // Apply defaults using the same method as Rust core
@@ -648,6 +701,7 @@ impl RequestProcessingPreference {
             primary_api_key_override: complete.primary_api_key_override,
             extra_headers: complete.extra_headers,
             non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
+            traceparent: complete.traceparent,
         }
     }
 
@@ -656,14 +710,14 @@ impl RequestProcessingPreference {
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None,
+            None, None,
         ))
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?}, traceparent={:?})",
             self.max_concurrent_requests,
             self.batch_size,
             self.pin_initial_endpoint_once,
@@ -674,7 +728,8 @@ impl RequestProcessingPreference {
             self.retry_budget_pct,
             self.max_retries,
             self.initial_backoff_ms,
-            self.non_retryable_status_codes
+            self.non_retryable_status_codes,
+            self.traceparent
         ))
     }
 
@@ -805,7 +860,7 @@ impl PerformanceClient {
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -887,7 +942,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         // Extract cancellation token if present
         let cancel_token = preference.and_then(|p| p.cancel_token.clone());
@@ -950,7 +1005,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1005,7 +1060,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -1058,7 +1113,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1109,7 +1164,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -1169,7 +1224,7 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         // Parse method parameter using core function
         let http_method =
@@ -1260,7 +1315,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         // Use provided preference or create default
-        let rust_preference = rust_preference_from_py(preference);
+        let rust_preference = rust_preference_from_py(py, preference);
 
         // Parse method parameter using core function
         let http_method =
@@ -1349,7 +1404,7 @@ mod tests {
     fn request_processing_preference_to_rust_uses_mutated_public_fields() {
         let mut preference = RequestProcessingPreference::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None,
+            None, None,
         );
 
         preference.max_concurrent_requests = 64;

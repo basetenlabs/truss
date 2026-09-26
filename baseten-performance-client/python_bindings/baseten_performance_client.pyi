@@ -230,6 +230,8 @@ class RequestProcessingPreference:
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         cancel_token: Optional CancellationToken for cancelling operations.
         extra_headers: Optional dictionary of custom headers to include with all requests.
+        traceparent: Optional W3C traceparent of the caller's span. When unset, the active
+            OpenTelemetry span (if opentelemetry is installed) is used.
 
     Example:
         >>> # Use all defaults
@@ -279,6 +281,7 @@ class RequestProcessingPreference:
         primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
         non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
+        traceparent: typing.Optional[builtins.str] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -299,6 +302,10 @@ class RequestProcessingPreference:
             primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
             non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
+            traceparent: Optional W3C traceparent (00-<trace id>-<span id>-<flags>) of the
+                caller's span; this call's requests join that trace. When unset, the active
+                OpenTelemetry span (if opentelemetry is installed) is used. Invalid values raise
+                ValueError when the call is made.
         """
 
     # Property definitions with type hints
@@ -317,6 +324,7 @@ class RequestProcessingPreference:
     primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
     non_retryable_status_codes: typing.Set[builtins.int]
+    traceparent: typing.Optional[builtins.str]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":

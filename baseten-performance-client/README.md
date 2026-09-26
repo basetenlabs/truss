@@ -926,6 +926,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - Default: `warn`
   - Priority: `PERFORMANCE_CLIENT_LOG_LEVEL` > `RUST_LOG` > default
 - `PERFORMANCE_CLIENT_REQUEST_ID_PREFIX`: Custom prefix for request IDs (default: "perfclient")
+- `BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT` / `BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS`: export client spans over OTLP (see [Tracing](#tracing))
 
 ### Logging Examples
 
@@ -941,6 +942,21 @@ RUST_LOG=debug python your_script.py
 
 # PERFORMANCE_CLIENT_LOG_LEVEL takes precedence
 PERFORMANCE_CLIENT_LOG_LEVEL=error RUST_LOG=trace python your_script.py  # Uses error level
+```
+
+### Tracing
+
+Every request can carry a W3C `traceparent` header, so a server that honors trace context can join it to your trace:
+
+- **Parent:** `RequestProcessingPreference(traceparent="00-<trace id>-<span id>-<flags>")`, or, when unset, the active OpenTelemetry span in Python (if `opentelemetry` is installed). A `traceparent` in `extra_headers` always wins. With no parent and no span export, no `traceparent` is sent.
+- **Client spans (opt-in):** set `BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT` to an OTLP/HTTP base URL (`/v1/traces` is appended) and, if the endpoint needs credentials, `BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS` (same format as `OTEL_EXPORTER_OTLP_HEADERS`, e.g. `authorization=Basic%20<base64>`). The client then exports one `perfclient.<operation>` span per call and one CLIENT span per HTTP attempt (retries and hedges included), and each attempt's `traceparent` names its own span. Attempt spans record `http.request.method`, `url.full` (without query string), `server.address`, `server.port`, `http.response.status_code`, `error.type`, `http.request.resend_count`, `b10.customer_request_id`, a `http.response.headers` event at time to first byte, and `b10.perfclient.hedge` / `b10.perfclient.hedge_cancelled` for hedging. `service.name` comes from `OTEL_SERVICE_NAME` (default `baseten-performance-client`).
+
+These are separate from the standard `OTEL_*` variables on purpose: your application's own SDK can keep exporting to your backend (with its own credentials) while client spans go elsewhere. Export runs on a background thread, never blocks requests, and drops spans rather than queueing without bound; spans still buffered when the process exits are lost.
+
+```bash
+export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=https://otlp.example.com
+export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS="authorization=Basic%20$(printf 'user:pass' | base64)"
+python your_script.py
 ```
 
 ## Development

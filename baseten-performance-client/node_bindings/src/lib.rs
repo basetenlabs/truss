@@ -265,6 +265,7 @@ impl RequestProcessingPreference {
       primary_api_key_override,
       extra_headers,
       non_retryable_status_codes,
+      traceparent: None,
     };
 
     // Apply defaults using the same method as Rust core
