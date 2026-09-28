@@ -3,6 +3,7 @@ use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::split_policy::RequestProcessingConfig;
+use crate::utils::try_consume_budget;
 
 use rand::Rng;
 use reqwest::{
@@ -312,22 +313,24 @@ async fn send_request_with_retry(
             Err(client_error) => {
                 let should_retry = match &client_error {
                     ClientError::LocalTimeout(_, _) => {
-                        let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        let budget_available = try_consume_budget(&config.retry_budget);
                         tracing::debug!(
-                            "Local timeout encountered, retrying... Remaining retry budget: {} {}",
-                            remaining_budget,
+                            "Local timeout encountered, retry budget available: {}, remaining: {} {}",
+                            budget_available,
+                            config.retry_budget.load(Ordering::SeqCst),
                             config.customer_request_id.to_string()
                         );
-                        remaining_budget > 0
+                        budget_available
                     }
                     ClientError::RemoteTimeout(_, _) => {
-                        let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        let budget_available = try_consume_budget(&config.retry_budget);
                         tracing::debug!(
-                            "Remote timeout encountered, retrying... Remaining retry budget: {} {}",
-                            remaining_budget,
+                            "Remote timeout encountered, retry budget available: {}, remaining: {} {}",
+                            budget_available,
+                            config.retry_budget.load(Ordering::SeqCst),
                             config.customer_request_id.to_string()
                         );
-                        remaining_budget > 0
+                        budget_available
                     }
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
                     ClientError::Connect(_) => retries_done <= 1,
@@ -335,14 +338,14 @@ async fn send_request_with_retry(
                         if retries_done == 0 {
                             true
                         } else {
-                            let remaining_budget =
-                                config.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                            let budget_available = try_consume_budget(&config.retry_budget);
                             tracing::debug!(
-                                "Network error encountered, retrying... Remaining retry budget: {} {}",
-                                remaining_budget,
+                                "Network error encountered, retry budget available: {}, remaining: {} {}",
+                                budget_available,
+                                config.retry_budget.load(Ordering::SeqCst),
                                 config.customer_request_id.to_string()
                             );
-                            remaining_budget > 0
+                            budget_available
                         }
                     }
                     _ => {
@@ -433,12 +436,14 @@ pub(crate) async fn send_request_with_hedging(
         }
         // Hedge delay expired, start hedged request
         _ = hedge_timer => {
-            // Decrement hedge budget and check if we had budget available
-            let budget_before_decrement = hedge_budget.fetch_sub(1, Ordering::SeqCst);
-            tracing::debug!("Hedge budget decremented from {} to {}", budget_before_decrement, budget_before_decrement.saturating_sub(1));
+            let budget_available = try_consume_budget(hedge_budget);
+            tracing::debug!(
+                "Hedge budget available: {}, remaining: {}",
+                budget_available,
+                hedge_budget.load(Ordering::SeqCst)
+            );
 
-            // Allow hedging if we had budget before decrement (budget was > 0)
-            if budget_before_decrement > 0 {
+            if budget_available {
                 join_set.spawn(async move {
                     let result = request_builder_hedge
                         .send()
