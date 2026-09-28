@@ -1,5 +1,5 @@
 //! Separate process: the exporter reads environment configuration once.
-use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Json, Router};
 use baseten_performance_client_core::{
     HttpMethod, PerformanceClientCore, RequestProcessingPreference, TraceContext,
 };
@@ -30,7 +30,9 @@ async fn exports_call_spans_with_matching_wire_context() {
             post(
                 |State(tx): State<mpsc::UnboundedSender<Value>>,
                  headers: HeaderMap,
-                 Json(body): Json<Value>| async move {
+                 body: Bytes| async move {
+                    let body: Value =
+                        serde_json::from_reader(flate2::read::GzDecoder::new(&body[..])).unwrap();
                     assert_eq!(headers["authorization"], "Bearer collector-only");
                     assert!(!headers.contains_key("x-application-secret"));
                     for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
@@ -58,6 +60,16 @@ async fn exports_call_spans_with_matching_wire_context() {
     );
     let client =
         PerformanceClientCore::new(url, Some("model-key".into()), 1, None, None, None).unwrap();
+    std::env::set_var(
+        "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+        "authorization=wrong,x-application-secret=must-not-leak",
+    );
+    std::env::set_var(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        "http://127.0.0.1:1/wrong",
+    );
+    std::env::set_var("OTEL_EXPORTER_OTLP_TRACES_COMPRESSION", "zstd");
+    std::env::set_var("OTEL_TRACES_SAMPLER", "always_off");
     let parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
     for (index, context) in [
         None,
