@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.1.14"
+version = "0.1.15-rc1"
 edition = "2021"
 description = "High performance HTTP client for Baseten.co and other APIs"
 license = "MIT"
@@ -11,6 +11,13 @@ keywords = ["http", "client", "async", "performance", "baseten"]
 categories = ["web-programming::http-client", "asynchronous"]
 
 [dependencies]
+opentelemetry = { version = "0.31", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.31", default-features = false, features = ["trace", "internal-logs"] }
+opentelemetry-otlp = { version = "0.31.1", default-features = false, features = ["http-json", "trace", "internal-logs", "gzip-http"] }
+opentelemetry-http = { version = "0.31", default-features = false, features = ["reqwest-blocking"] }
+async-trait = "0.1"
+bytes = "1"
+http = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
@@ -34,4 +41,5 @@ native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
 rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
 
 [dev-dependencies]
+flate2 = "1"
 axum = { version = "0.7", features = ["http2", "tokio"] }

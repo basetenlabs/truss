@@ -4,10 +4,17 @@ use crate::customer_request_id::CustomerRequestId;
 use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Explicit caller-owned W3C parent context.
+#[derive(Debug, Clone)]
+pub struct TraceContext {
+    pub traceparent: String,
+    pub tracestate: Option<String>,
+}
 
 /// User-facing configuration for request processing with budget percentages.
 /// This is the public API struct that gets validated and converted to RequestProcessingConfig.
@@ -29,6 +36,7 @@ pub struct RequestProcessingPreference {
     pub primary_api_key_override: Option<String>,
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
     pub non_retryable_status_codes: Option<HashSet<u16>>,
+    pub trace_context: Option<TraceContext>,
 }
 
 impl RequestProcessingPreference {
@@ -57,6 +65,7 @@ impl RequestProcessingPreference {
             primary_api_key_override: self.primary_api_key_override.clone(),
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes: self.non_retryable_status_codes.clone(),
+            trace_context: self.trace_context.clone(),
         }
     }
 }
@@ -136,6 +145,11 @@ impl RequestProcessingPreference {
     /// Builder pattern: set primary API key override
     pub fn with_primary_api_key_override(mut self, key: String) -> Self {
         self.primary_api_key_override = Some(key);
+        self
+    }
+
+    pub fn with_trace_context(mut self, context: TraceContext) -> Self {
+        self.trace_context = Some(context);
         self
     }
 
@@ -451,6 +465,31 @@ impl RequestProcessingConfig {
             Arc::new(AtomicUsize::new(0)) // Always present, but set to 0 when unused
         };
 
+        let mut extra_headers = pref.extra_headers.clone();
+        if let Some(context) = &pref.trace_context {
+            let headers = extra_headers.get_or_insert_with(HashMap::new);
+            if headers.keys().any(|key| {
+                key.eq_ignore_ascii_case("traceparent") || key.eq_ignore_ascii_case("tracestate")
+            }) {
+                return Err(ClientError::InvalidParameter(
+                    "trace_context cannot be combined with trace headers in extra_headers".into(),
+                ));
+            }
+            for (name, value) in [
+                ("traceparent", Some(&context.traceparent)),
+                ("tracestate", context.tracestate.as_ref()),
+            ] {
+                if let Some(value) = value {
+                    if value.is_empty() || reqwest::header::HeaderValue::from_str(value).is_err() {
+                        return Err(ClientError::InvalidParameter(format!(
+                            "invalid {name} header"
+                        )));
+                    }
+                    headers.insert(name.into(), value.clone());
+                }
+            }
+        }
+
         Ok(RequestProcessingConfig {
             customer_request_id,
             max_concurrent_requests,
@@ -469,7 +508,7 @@ impl RequestProcessingConfig {
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
-            extra_headers: pref.extra_headers.clone(),
+            extra_headers,
             non_retryable_status_codes,
             endpoint_router: EndpointRouter::single(base_url),
             pinned_initial_endpoint: None,

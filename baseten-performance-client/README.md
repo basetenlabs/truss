@@ -969,3 +969,54 @@ Feel free to contribute to this repo, tag @michaelfeil for review.
 
 ## License
 MIT License
+
+### Explicit trace context
+
+Supply a caller-owned W3C context to forward it to the inference server (including
+BEI). Every batch, retry, and hedge carries the same headers. The server must be
+configured to extract W3C context and record/export its own spans.
+
+```python
+from baseten_performance_client import RequestProcessingPreference, TraceContext
+
+preference = RequestProcessingPreference(
+    trace_context=TraceContext(
+        traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        tracestate="vendor=value",  # optional
+    )
+)
+client.embed(["hello"], preference=preference)
+```
+
+In Node.js, set `preference.traceContext = { traceparent: "00-…", tracestate: "vendor=value" }`
+on a `RequestProcessingPreference` (use a complete W3C traceparent in real requests).
+Rust callers use `RequestProcessingPreference::with_trace_context(TraceContext { ... })`.
+
+Context is explicit and optional: no Python/Node OpenTelemetry dependency or ambient
+context lookup. The Rust implementation uses OpenTelemetry SDK spans and its batch exporter.
+With export disabled, headers are forwarded unchanged, including sampling flags.
+Supplying trace headers in both `trace_context` and `extra_headers` is an error.
+Existing callers can continue supplying these headers through `extra_headers` alone.
+
+To enable client-span export, set these before the first client request:
+
+```sh
+export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=http://localhost:4318
+# Optional, comma-separated literal name=value headers for the collector only:
+export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS='authorization=Bearer collector-token'
+```
+
+The endpoint accepts gzip-compressed OTLP/HTTP JSON; `/v1/traces` is appended unless already present.
+Configuration is read once per process. The application's `OTEL_*` variables are ignored.
+Each client call records one span covering all its batches, retries, and hedges, through
+response parsing. Its context is forwarded to the model so server spans join underneath it.
+A supplied sampled parent is preserved as the client span's parent; an unsampled parent
+is forwarded without recording. Without a parent, export creates a new root trace.
+The SDK validates and propagates W3C context when recording; an invalid traceparent is an error.
+
+The SDK exports on a separate thread, batching up to 256 spans every second,
+with a bounded 1,024-span queue and a five-second
+HTTP timeout. It is best effort: failed batches, queue overflow, and spans pending at
+process exit can be lost; there is no shutdown flush or export retry. Export failures
+do not fail inference. Client-call failures/cancellation mark the span as an error.
+Unset the endpoint to disable recording/export; the request loop has no tracing work.

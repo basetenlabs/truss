@@ -1,4 +1,5 @@
 use crate::cancellation::JoinSetGuard;
+use crate::client_spans::start_call_span;
 use crate::constants::*;
 use crate::endpoint_routing::{normalize_request_suffix, EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
@@ -7,6 +8,7 @@ use crate::http_client::*;
 use crate::split_policy::*;
 use crate::utils::process_joinset_outcome;
 
+use opentelemetry::trace::{Span as _, Status};
 use reqwest::Client;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -571,7 +573,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = start_call_span(&mut config, "perfclient.embed")?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -605,6 +608,9 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        if let Some(span) = &mut span {
+            span.set_status(Status::Ok);
+        }
         Ok((response, durations, headers, total_time))
     }
 
@@ -630,7 +636,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = start_call_span(&mut config, "perfclient.rerank")?;
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -670,6 +677,9 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        if let Some(span) = &mut span {
+            span.set_status(Status::Ok);
+        }
         Ok((response, durations, headers, total_time))
     }
 
@@ -700,7 +710,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = start_call_span(&mut config, "perfclient.classify")?;
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
@@ -740,6 +751,9 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        if let Some(span) = &mut span {
+            span.set_status(Status::Ok);
+        }
         Ok((response, durations, headers, total_time))
     }
 
@@ -763,7 +777,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = start_call_span(&mut config, "perfclient.batch_post")?;
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
@@ -873,6 +888,9 @@ impl PerformanceClientCore {
             .collect();
 
         let total_time = start_time.elapsed();
+        if let Some(span) = &mut span {
+            span.set_status(Status::Ok);
+        }
         Ok((final_results, total_time))
     }
 }

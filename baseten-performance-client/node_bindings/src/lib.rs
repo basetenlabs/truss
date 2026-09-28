@@ -220,6 +220,13 @@ impl CancellationToken {
   }
 }
 
+/// Explicit caller-owned W3C parent context.
+#[napi(object)]
+pub struct TraceContext {
+  pub traceparent: String,
+  pub tracestate: Option<String>,
+}
+
 /// Provides sensible defaults and getters for all properties.
 #[napi]
 pub struct RequestProcessingPreference {
@@ -246,6 +253,7 @@ impl RequestProcessingPreference {
     primary_api_key_override: Option<String>,
     extra_headers: Option<HashMap<String, String>>,
     non_retryable_status_codes: Option<Vec<u16>>,
+    trace_context: Option<TraceContext>,
   ) -> Self {
     let non_retryable_status_codes: Option<HashSet<u16>> =
       non_retryable_status_codes.map(|codes| codes.into_iter().collect());
@@ -265,12 +273,37 @@ impl RequestProcessingPreference {
       primary_api_key_override,
       extra_headers,
       non_retryable_status_codes,
+      trace_context: trace_context.map(|context| baseten_performance_client_core::TraceContext {
+        traceparent: context.traceparent,
+        tracestate: context.tracestate,
+      }),
     };
 
     // Apply defaults using the same method as Rust core
     let complete = inner.with_defaults();
 
     RequestProcessingPreference { complete }
+  }
+
+  #[napi(setter)]
+  pub fn set_trace_context(&mut self, context: Option<TraceContext>) {
+    self.complete.trace_context =
+      context.map(|context| baseten_performance_client_core::TraceContext {
+        traceparent: context.traceparent,
+        tracestate: context.tracestate,
+      });
+  }
+
+  #[napi(getter)]
+  pub fn trace_context(&self) -> Option<TraceContext> {
+    self
+      .complete
+      .trace_context
+      .as_ref()
+      .map(|context| TraceContext {
+        traceparent: context.traceparent.clone(),
+        tracestate: context.tracestate.clone(),
+      })
   }
 
   #[napi(getter)]

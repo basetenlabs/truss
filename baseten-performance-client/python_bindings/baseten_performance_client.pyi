@@ -208,6 +208,15 @@ class ClassificationResponse:
         """
         ...
 
+class TraceContext:
+    """Explicit caller-owned W3C parent context."""
+
+    def __init__(self, traceparent: str, tracestate: str | None = None) -> None: ...
+    @property
+    def traceparent(self) -> str: ...
+    @property
+    def tracestate(self) -> str | None: ...
+
 class RequestProcessingPreference:
     """
     Configuration for request processing with user-defined preferences.
@@ -279,6 +288,7 @@ class RequestProcessingPreference:
         primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
         non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
+        trace_context: TraceContext | None = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -317,6 +327,7 @@ class RequestProcessingPreference:
     primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
     non_retryable_status_codes: typing.Set[builtins.int]
+    trace_context: TraceContext | None
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":
