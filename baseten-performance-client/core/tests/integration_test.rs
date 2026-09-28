@@ -894,7 +894,7 @@ async fn test_background_health_worker_skips_unhealthy_endpoints() {
 
 #[tokio::test]
 async fn test_explicit_trace_context() {
-    const PARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00";
+    const PARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-03";
     for (enabled, retry, hedge, state) in [
         (false, false, false, None),
         (true, false, false, None),

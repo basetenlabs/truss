@@ -91,6 +91,14 @@ async fn exports_call_spans_with_matching_wire_context() {
             traceparent: parent.into(),
             tracestate: Some("vendor=value".into()),
         }),
+        Some(TraceContext {
+            traceparent: parent.replace("-01", "-03"),
+            tracestate: None,
+        }),
+        Some(TraceContext {
+            traceparent: parent.replace("-01", "-ff"),
+            tracestate: None,
+        }),
     ]
     .into_iter()
     .enumerate()
@@ -116,25 +124,36 @@ async fn exports_call_spans_with_matching_wire_context() {
         assert_eq!(
             wire["traceparent"],
             format!(
-                "00-{}-{}-01",
+                "00-{}-{}-{:02x}",
                 span["traceId"].as_str().unwrap(),
-                span["spanId"].as_str().unwrap()
+                span["spanId"].as_str().unwrap(),
+                span["flags"].as_u64().unwrap() & 3
             )
         );
         assert_eq!(wire["authorization"], "Bearer model-key");
         assert_eq!(span["name"], "perfclient.batch_post");
         assert_eq!(span["status"]["code"], 1);
+        assert_eq!(span["kind"], 3);
+        assert_eq!(
+            span["flags"].as_u64().unwrap() & 3,
+            if index >= 2 { 3 } else { 1 }
+        );
+        if index != 1 {
+            assert!(!wire.contains_key("tracestate"));
+        }
         let nanos = |key: &str| span[key].as_str().unwrap().parse::<u128>().unwrap();
         assert!(nanos("endTimeUnixNano") >= nanos("startTimeUnixNano"));
-        if index == 1 {
+        if index > 0 {
             assert_eq!(span["parentSpanId"], "00f067aa0ba902b7");
             assert_eq!(span["traceId"], "4bf92f3577b34da6a3ce929d0e0e4736");
+        }
+        if index == 1 {
             assert_eq!(wire["tracestate"], "vendor=value");
             assert_eq!(span["traceState"], "vendor=value");
         }
     }
     let preference = RequestProcessingPreference::new().with_trace_context(TraceContext {
-        traceparent: parent.replace("-01", "-00"),
+        traceparent: parent.replace("-01", "-02"),
         tracestate: None,
     });
     client
@@ -147,8 +166,8 @@ async fn exports_call_spans_with_matching_wire_context() {
         .await
         .unwrap();
     assert_eq!(
-        seen.lock().unwrap()[2]["traceparent"],
-        parent.replace("-01", "-00")
+        seen.lock().unwrap()[4]["traceparent"],
+        parent.replace("-01", "-02")
     );
     // A missing route fails inference, but still closes and exports the call span.
     assert!(client

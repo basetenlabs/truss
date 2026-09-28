@@ -2,8 +2,8 @@
 use crate::{split_policy::RequestProcessingConfig, ClientError};
 use opentelemetry::{
     propagation::TextMapPropagator,
-    trace::{Span as _, Status, TraceContextExt, Tracer, TracerProvider},
-    Context,
+    trace::{Span as _, SpanContext, SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
+    Context, TraceFlags,
 };
 use opentelemetry_http::{HttpClient, HttpError};
 use opentelemetry_otlp::{Compression, Protocol, WithExportConfig, WithHttpConfig};
@@ -141,11 +141,20 @@ pub(crate) fn start_call_span(
             )));
         }
     }
+    // SDK 0.31 rejects version-00 flags above 02; normalize only its extraction carrier.
+    let flags = carrier
+        .get_mut("traceparent")
+        .and_then(|parent| {
+            *parent = parent.trim().to_owned();
+            let flags = u8::from_str_radix(parent.get(53..55)?, 16).ok()?;
+            parent.replace_range(53..55, if flags & 1 == 1 { "01" } else { "00" });
+            Some(flags)
+        })
+        .unwrap_or_default();
     let propagator = TraceContextPropagator::new();
-    let parent = propagator.extract_with_context(&Context::new(), &carrier);
+    let mut parent = propagator.extract_with_context(&Context::new(), &carrier);
     if carrier.contains_key("traceparent") {
-        let parent_span = parent.span();
-        let context = parent_span.span_context();
+        let context = parent.span().span_context().clone();
         if !context.is_valid() {
             return Err(ClientError::InvalidParameter(
                 "invalid W3C traceparent".into(),
@@ -154,15 +163,37 @@ pub(crate) fn start_call_span(
         if !context.is_sampled() {
             return Ok(None);
         }
+        parent = Context::new().with_remote_span_context(SpanContext::new(
+            context.trace_id(),
+            context.span_id(),
+            TraceFlags::new(flags & 3),
+            true,
+            context.trace_state().clone(),
+        ));
     }
-    let mut span = tracer.start_with_context(name, &parent);
+    let mut span = tracer
+        .span_builder(name)
+        .with_kind(SpanKind::Client)
+        .start_with_context(tracer, &parent);
     headers.retain(|key, _| {
         !key.eq_ignore_ascii_case("traceparent") && !key.eq_ignore_ascii_case("tracestate")
     });
-    propagator.inject_context(
-        &Context::new().with_remote_span_context(span.span_context().clone()),
-        headers,
+    let context = span.span_context();
+    headers.insert(
+        "traceparent".into(),
+        format!(
+            "00-{}-{}-{:02x}",
+            context.trace_id(),
+            context.span_id(),
+            context.trace_flags(),
+        ),
     );
+    if let Some(state) = carrier
+        .remove("tracestate")
+        .filter(|state| !state.is_empty())
+    {
+        headers.insert("tracestate".into(), state);
+    }
     // SDK Drop exports on early return or cancellation; successful calls overwrite this status.
     span.set_status(Status::error("call failed or was cancelled"));
     Ok(Some(span))
