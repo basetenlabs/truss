@@ -12,9 +12,23 @@ use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn exports_call_spans_with_matching_wire_context() {
+    let cancellation_started = Arc::new(tokio::sync::Notify::new());
     let seen = Arc::new(Mutex::new(Vec::<HeaderMap>::new()));
     let (tx, mut rx) = mpsc::unbounded_channel();
     let app = Router::new()
+        .route(
+            "/blocked",
+            post({
+                let started = cancellation_started.clone();
+                move || {
+                    let started = started.clone();
+                    async move {
+                        started.notify_one();
+                        std::future::pending::<()>().await;
+                    }
+                }
+            }),
+        )
         .route(
             "/model",
             post({
@@ -109,6 +123,7 @@ async fn exports_call_spans_with_matching_wire_context() {
         );
         assert_eq!(wire["authorization"], "Bearer model-key");
         assert_eq!(span["name"], "perfclient.batch_post");
+        assert_eq!(span["status"]["code"], 1);
         let nanos = |key: &str| span[key].as_str().unwrap().parse::<u128>().unwrap();
         assert!(nanos("endTimeUnixNano") >= nanos("startTimeUnixNano"));
         if index == 1 {
@@ -151,5 +166,25 @@ async fn exports_call_spans_with_matching_wire_context() {
         .unwrap();
     assert_eq!(span["status"]["code"], 2);
     assert!(rx.try_recv().is_err());
+    {
+        let preference = RequestProcessingPreference::new();
+        let request = client.process_batch_post_requests(
+            "/blocked".into(),
+            vec![json!({})],
+            &preference,
+            HttpMethod::POST,
+        );
+        tokio::pin!(request);
+        tokio::select! {
+            result = &mut request => panic!("request unexpectedly completed: {result:?}"),
+            notified = tokio::time::timeout(Duration::from_secs(5), cancellation_started.notified()) => notified.unwrap(),
+        }
+        // Drop the pending request to exercise SDK span closure on cancellation.
+    }
+    let span = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(span["status"]["code"], 2);
     server.abort();
 }

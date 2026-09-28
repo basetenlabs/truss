@@ -116,78 +116,54 @@ fn init_tracer() -> Result<Option<SdkTracer>, String> {
         .map_err(|_| "Could not initialize performance-client OpenTelemetry".to_string())?
 }
 
-pub(crate) struct CallSpan {
-    span: Span,
-    completed: bool,
-}
-
-impl CallSpan {
-    pub(crate) fn start(
-        config: &mut RequestProcessingConfig,
-        name: &'static str,
-    ) -> Result<Option<Self>, ClientError> {
-        let Some(tracer) = TRACER
-            .get_or_init(init_tracer)
-            .as_ref()
-            .map_err(|error| ClientError::InvalidParameter(error.clone()))?
-        else {
+pub(crate) fn start_call_span(
+    config: &mut RequestProcessingConfig,
+    name: &'static str,
+) -> Result<Option<Span>, ClientError> {
+    let Some(tracer) = TRACER
+        .get_or_init(init_tracer)
+        .as_ref()
+        .map_err(|error| ClientError::InvalidParameter(error.clone()))?
+    else {
+        return Ok(None);
+    };
+    let headers = config.extra_headers.get_or_insert_default();
+    let mut carrier = HashMap::new();
+    for (key, value) in headers.iter().filter(|(key, _)| {
+        key.eq_ignore_ascii_case("traceparent") || key.eq_ignore_ascii_case("tracestate")
+    }) {
+        if carrier
+            .insert(key.to_ascii_lowercase(), value.clone())
+            .is_some()
+        {
+            return Err(ClientError::InvalidParameter(format!(
+                "duplicate {key} headers"
+            )));
+        }
+    }
+    let propagator = TraceContextPropagator::new();
+    let parent = propagator.extract_with_context(&Context::new(), &carrier);
+    if carrier.contains_key("traceparent") {
+        let parent_span = parent.span();
+        let context = parent_span.span_context();
+        if !context.is_valid() {
+            return Err(ClientError::InvalidParameter(
+                "invalid W3C traceparent".into(),
+            ));
+        }
+        if !context.is_sampled() {
             return Ok(None);
-        };
-        let headers = config.extra_headers.get_or_insert_default();
-        let mut carrier = HashMap::new();
-        for (key, value) in headers.iter().filter(|(key, _)| {
-            key.eq_ignore_ascii_case("traceparent") || key.eq_ignore_ascii_case("tracestate")
-        }) {
-            if carrier
-                .insert(key.to_ascii_lowercase(), value.clone())
-                .is_some()
-            {
-                return Err(ClientError::InvalidParameter(format!(
-                    "duplicate {key} headers"
-                )));
-            }
-        }
-        let propagator = TraceContextPropagator::new();
-        let parent = propagator.extract_with_context(&Context::new(), &carrier);
-        if carrier.contains_key("traceparent") {
-            let parent_span = parent.span();
-            let context = parent_span.span_context();
-            if !context.is_valid() {
-                return Err(ClientError::InvalidParameter(
-                    "invalid W3C traceparent".into(),
-                ));
-            }
-            if !context.is_sampled() {
-                return Ok(None);
-            }
-        }
-        let span = tracer.start_with_context(name, &parent);
-        headers.retain(|key, _| {
-            !key.eq_ignore_ascii_case("traceparent") && !key.eq_ignore_ascii_case("tracestate")
-        });
-        propagator.inject_context(
-            &Context::new().with_remote_span_context(span.span_context().clone()),
-            headers,
-        );
-        Ok(Some(Self {
-            span,
-            completed: false,
-        }))
-    }
-
-    pub(crate) fn complete(span: &mut Option<Self>) {
-        if let Some(span) = span {
-            span.completed = true;
         }
     }
-}
-
-impl Drop for CallSpan {
-    fn drop(&mut self) {
-        if !self.completed {
-            self.span
-                .set_status(Status::error("call failed or was cancelled"));
-        }
-        self.span.end();
-    }
+    let mut span = tracer.start_with_context(name, &parent);
+    headers.retain(|key, _| {
+        !key.eq_ignore_ascii_case("traceparent") && !key.eq_ignore_ascii_case("tracestate")
+    });
+    propagator.inject_context(
+        &Context::new().with_remote_span_context(span.span_context().clone()),
+        headers,
+    );
+    // SDK Drop exports on early return or cancellation; successful calls overwrite this status.
+    span.set_status(Status::error("call failed or was cancelled"));
+    Ok(Some(span))
 }
