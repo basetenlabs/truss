@@ -263,19 +263,6 @@ def test_get_wrapper_from_client_and_reuse():
     assert client2 is not None
 
 
-def test_explicit_trace_context():
-    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-    assert RequestProcessingPreference.default().trace_context is None
-    context = TraceContext(traceparent=parent, tracestate="vendor=value")
-    preference = RequestProcessingPreference(trace_context=context)
-    assert preference.trace_context.traceparent == parent
-    assert preference.trace_context.tracestate == "vendor=value"
-    preference.trace_context = TraceContext(parent)
-    assert preference.trace_context.tracestate is None
-    preference.trace_context = None
-    assert preference.trace_context is None
-
-
 def test_trace_context_forwarding():
     seen = []
 

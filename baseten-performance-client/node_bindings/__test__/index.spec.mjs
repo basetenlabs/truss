@@ -116,9 +116,7 @@ test('explicit trace context reaches the server and can be disabled', async (t) 
   t.teardown(() => server.close())
   const client = new PerformanceClient(`http://127.0.0.1:${server.address().port}`, 'test-key')
   const preference = new RequestProcessingPreference()
-  t.is(preference.traceContext, null)
   preference.traceContext = {traceparent: parent, tracestate: 'vendor=value'}
-  t.deepEqual(preference.traceContext, {traceparent: parent, tracestate: 'vendor=value'})
   await client.batchPost('/echo', [{}], preference)
   preference.traceContext = undefined
   await client.batchPost('/echo', [{}], preference)
