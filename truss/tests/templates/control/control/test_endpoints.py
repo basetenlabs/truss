@@ -13,7 +13,7 @@ from truss.tests.templates.control.control.conftest import setup_control_imports
 
 setup_control_imports()
 
-from truss.templates.control.control.endpoints import proxy_ws
+from truss.templates.control.control.endpoints import WS_MAX_MSG_SZ_BYTES, proxy_ws
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ async def test_proxy_ws_bidirectional_messaging(client_ws):
     with patch(
         "truss.templates.control.control.endpoints.aconnect_ws",
         return_value=mock_server_ws,
-    ):
+    ) as mock_connect:
         proxy_task = asyncio.create_task(proxy_ws(client_ws))
         client_queue.put_nowait(
             {"type": "websocket.disconnect", "code": 1002, "reason": "test-closure"}
@@ -66,6 +66,11 @@ async def test_proxy_ws_bidirectional_messaging(client_ws):
 
         await proxy_task
 
+    mock_connect.assert_called_once_with(
+        "/v1/websocket",
+        client_ws.app.state.proxy_client,
+        max_message_size_bytes=WS_MAX_MSG_SZ_BYTES,
+    )
     assert mock_server_ws.send_text.call_count == 2
     assert mock_server_ws.send_text.call_args_list == [(("msg1",),), (("msg2",),)]
     assert client_ws.send_text.call_count == 2

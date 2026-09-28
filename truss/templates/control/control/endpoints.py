@@ -28,6 +28,8 @@ control_app = APIRouter()
 
 WEBSOCKET_NORMAL_CLOSURE_CODE = 1000
 WEBSOCKET_SERVER_ERROR_CODE = 1011
+# uvicorn default is 16MiB; httpx-ws receive default is 64KiB.
+WS_MAX_MSG_SZ_BYTES = 100 * (1 << 20)
 
 
 class CloseableWebsocket(Protocol):
@@ -191,7 +193,9 @@ async def _handle_websocket_forwarding(
 async def _attempt_websocket_proxy(
     client_ws: WebSocket, proxy_client: httpx.AsyncClient, logger
 ):
-    async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+    async with aconnect_ws(  # type: ignore[var-annotated]
+        "/v1/websocket", proxy_client, max_message_size_bytes=WS_MAX_MSG_SZ_BYTES
+    ) as server_ws:
         await client_ws.accept()
         await _handle_websocket_forwarding(client_ws, server_ws)
 
