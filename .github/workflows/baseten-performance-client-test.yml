@@ -46,7 +46,7 @@ jobs:
       - name: test integration with fastapi server
         run: |
           source .venv/bin/activate
-          pip install fastapi uvicorn anyio pytest opentelemetry-sdk
+          pip install fastapi uvicorn anyio pytest
           python ./tests/integration_fastapi_server.py
           export BASETEN_API_KEY="wrong"
           python -m pytest tests

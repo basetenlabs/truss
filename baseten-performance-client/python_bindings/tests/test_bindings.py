@@ -1,3 +1,13 @@
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
+
+from baseten_performance_client import (
+    PerformanceClient,
+    RequestProcessingPreference,
+    TraceContext,
+)
+
+
 def test_baseten_performance_client_bindings_basic_test():
     from baseten_performance_client import PerformanceClient
 
@@ -251,3 +261,50 @@ def test_get_wrapper_from_client_and_reuse():
         client_wrapper=wrapper,
     )
     assert client2 is not None
+
+
+def test_explicit_trace_context():
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    assert RequestProcessingPreference.default().trace_context is None
+    context = TraceContext(traceparent=parent, tracestate="vendor=value")
+    preference = RequestProcessingPreference(trace_context=context)
+    assert preference.trace_context.traceparent == parent
+    assert preference.trace_context.tracestate == "vendor=value"
+    preference.trace_context = TraceContext(parent)
+    assert preference.trace_context.tracestate is None
+    preference.trace_context = None
+    assert preference.trace_context is None
+
+
+def test_trace_context_forwarding():
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append(dict(self.headers))
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}')
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            client = PerformanceClient(
+                f"http://127.0.0.1:{server.server_port}", "test-key", http_version=1
+            )
+            parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+            preference = RequestProcessingPreference(
+                trace_context=TraceContext(parent, "vendor=value")
+            )
+            client.batch_post("/echo", [{}], preference=preference)
+            client.batch_post("/echo", [{}])
+        finally:
+            server.shutdown()
+            thread.join()
+    assert seen[0]["traceparent"] == parent
+    assert seen[0]["tracestate"] == "vendor=value"
+    assert "traceparent" not in seen[1]
+    assert "tracestate" not in seen[1]

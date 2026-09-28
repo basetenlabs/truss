@@ -208,6 +208,15 @@ class ClassificationResponse:
         """
         ...
 
+class TraceContext:
+    """Caller-supplied W3C headers; does not record or export client spans."""
+
+    def __init__(self, traceparent: str, tracestate: str | None = None) -> None: ...
+    @property
+    def traceparent(self) -> str: ...
+    @property
+    def tracestate(self) -> str | None: ...
+
 class RequestProcessingPreference:
     """
     Configuration for request processing with user-defined preferences.
@@ -230,9 +239,6 @@ class RequestProcessingPreference:
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         cancel_token: Optional CancellationToken for cancelling operations.
         extra_headers: Optional dictionary of custom headers to include with all requests.
-        traceparent: Optional W3C traceparent of the caller's span. When unset, the active
-            OpenTelemetry span (if opentelemetry is installed) is used.
-        tracestate: Optional W3C tracestate sent with the traceparent.
 
     Example:
         >>> # Use all defaults
@@ -282,8 +288,7 @@ class RequestProcessingPreference:
         primary_api_key_override: typing.Optional[builtins.str] = None,
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
         non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
-        traceparent: typing.Optional[builtins.str] = None,
-        tracestate: typing.Optional[builtins.str] = None,
+        trace_context: TraceContext | None = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -304,13 +309,6 @@ class RequestProcessingPreference:
             primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
             non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
-            traceparent: Optional W3C traceparent (00-<trace id>-<span id>-<flags>) of the
-                caller's span; this call's requests join that trace. When unset, the active
-                OpenTelemetry span (if opentelemetry is installed) is used, with its tracestate.
-                Invalid values raise ValueError when the call is made. An unsampled parent
-                (flags 00) is forwarded but never recorded as client spans.
-            tracestate: Optional W3C tracestate sent unchanged alongside traceparent; setting it
-                without traceparent raises ValueError.
         """
 
     # Property definitions with type hints
@@ -329,8 +327,7 @@ class RequestProcessingPreference:
     primary_api_key_override: typing.Optional[builtins.str]
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
     non_retryable_status_codes: typing.Set[builtins.int]
-    traceparent: typing.Optional[builtins.str]
-    tracestate: typing.Optional[builtins.str]
+    trace_context: TraceContext | None
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":

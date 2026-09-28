@@ -455,7 +455,7 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 #### RequestProcessingPreference
 
 ```javascript
-new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?, traceparent?, tracestate?)
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?)
 ```
 
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 256)
@@ -473,8 +473,6 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, m
 - `primaryApiKeyOverride` (string, optional): Override API key for requests
 - `extraHeaders` (Record<string, string>, optional): Custom headers to include with all requests
 - `nonRetryableStatusCodes` (number[], optional): Status codes that should not be retried even if the default policy would retry them
-- `traceparent` (string, optional): W3C traceparent of the caller's span; this call's requests join that trace. When unset, the active OpenTelemetry span is used if `@opentelemetry/api` is installed
-- `tracestate` (string, optional): W3C tracestate sent unchanged alongside `traceparent`
 
 ### Methods
 

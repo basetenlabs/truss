@@ -1,6 +1,5 @@
 pub mod cancellation;
 pub mod client;
-pub mod client_spans;
 pub mod constants;
 pub mod customer_request_id;
 pub mod endpoint_routing;
@@ -8,13 +7,11 @@ pub mod errors;
 pub mod http;
 pub mod http_client;
 pub mod split_policy;
-pub mod trace_context;
 pub mod utils;
 
 // JoinSetGuard is internal only - not reexported
 pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
-pub use client_spans::{OTLP_ENDPOINT_ENV_VAR, OTLP_HEADERS_ENV_VAR};
 pub use constants::*;
 pub use endpoint_routing::{
     Endpoint, EndpointConfig, EndpointHealthCheckConfig, EndpointHealthConfig,
@@ -23,8 +20,7 @@ pub use endpoint_routing::{
 };
 pub use errors::ClientError;
 pub use http::*;
-pub use split_policy::RequestProcessingPreference;
-pub use trace_context::TraceParent;
+pub use split_policy::{RequestProcessingPreference, TraceContext};
 pub use utils::*;
 
 /// Initialize tracing with default WARN level

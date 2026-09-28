@@ -926,7 +926,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - Default: `warn`
   - Priority: `PERFORMANCE_CLIENT_LOG_LEVEL` > `RUST_LOG` > default
 - `PERFORMANCE_CLIENT_REQUEST_ID_PREFIX`: Custom prefix for request IDs (default: "perfclient")
-- `BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT` / `BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS`: export client spans over OTLP (see [Tracing](#tracing))
 
 ### Logging Examples
 
@@ -942,22 +941,6 @@ RUST_LOG=debug python your_script.py
 
 # PERFORMANCE_CLIENT_LOG_LEVEL takes precedence
 PERFORMANCE_CLIENT_LOG_LEVEL=error RUST_LOG=trace python your_script.py  # Uses error level
-```
-
-### Tracing
-
-Every request can carry a W3C `traceparent` header, so a server that honors trace context can join it to your trace:
-
-- **Parent:** `RequestProcessingPreference(traceparent="00-<trace id>-<span id>-<flags>", tracestate="...")`, or, when unset, the caller's active OpenTelemetry span with its `tracestate`: in Python when `opentelemetry` is installed, in Node.js when `@opentelemetry/api` is. A `traceparent` (and `tracestate`) in `extra_headers` counts as the parent, the same as setting it on the preference; two different values are rejected. Either way each request sends exactly one `traceparent`, and with span export on it names that attempt's own span. With no parent and no span export, no `traceparent` is sent. `tracestate` travels unchanged with every request.
-- **Sampling:** the parent's decision holds. An unsampled parent (flags `00`) is forwarded unchanged and never recorded as client spans; recorded spans keep the parent's trace flags.
-- **Client spans (opt-in):** set `BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT` to an OTLP/HTTP base URL (`/v1/traces` is appended) and, if the endpoint needs credentials, `BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS` (same format as `OTEL_EXPORTER_OTLP_HEADERS`, e.g. `authorization=Basic%20<base64>`). The client then exports one `perfclient.<operation>` span per call and one CLIENT span per HTTP attempt (retries and hedges included), and each attempt's `traceparent` names its own span. Attempt spans record `http.request.method`, `url.full` (without query string), `server.address`, `server.port`, `http.response.status_code`, `error.type`, `http.request.resend_count`, `b10.customer_request_id`, a `http.response.headers` event at time to first byte, and `b10.perfclient.hedge` / `b10.perfclient.hedge_cancelled` for hedging. `service.name` comes from `OTEL_SERVICE_NAME` (default `baseten-performance-client`).
-
-These are separate from the standard `OTEL_*` variables on purpose: your application's own SDK can keep exporting to your backend (with its own credentials) while client spans go elsewhere. Export runs on a background thread, never blocks requests, and drops spans rather than queueing without bound; spans still buffered when the process exits are lost.
-
-```bash
-export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=https://otlp.example.com
-export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS="authorization=Basic%20$(printf 'user:pass' | base64)"
-python your_script.py
 ```
 
 ## Development
@@ -986,3 +969,32 @@ Feel free to contribute to this repo, tag @michaelfeil for review.
 
 ## License
 MIT License
+
+### Explicit trace context
+
+Supply a caller-owned W3C context to forward it to the inference server (including
+BEI). Every batch, retry, and hedge carries the same headers. The server must be
+configured to extract W3C context and record/export its own spans.
+
+```python
+from baseten_performance_client import RequestProcessingPreference, TraceContext
+
+preference = RequestProcessingPreference(
+    trace_context=TraceContext(
+        traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        tracestate="vendor=value",  # optional
+    )
+)
+client.embed(["hello"], preference=preference)
+```
+
+In Node.js, set `preference.traceContext = { traceparent: "00-…", tracestate: "vendor=value" }`
+on a `RequestProcessingPreference` (use a complete W3C traceparent in real requests).
+Rust callers use `RequestProcessingPreference::with_trace_context(TraceContext { ... })`.
+
+Context is explicit and optional: no OpenTelemetry dependency, ambient context lookup,
+environment flag, client span creation, or exporter. Without context, existing request
+behavior is unchanged. Callers are responsible for valid W3C values; the client checks
+HTTP header safety and forwards values unchanged, including sampling flags. Supplying
+`traceparent` or `tracestate` in both `trace_context` and `extra_headers` is an error.
+Existing callers can continue supplying these headers through `extra_headers` alone.

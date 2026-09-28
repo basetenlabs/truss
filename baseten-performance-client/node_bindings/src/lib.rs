@@ -220,6 +220,13 @@ impl CancellationToken {
   }
 }
 
+/// Caller-owned W3C headers, forwarded unchanged without recording client spans.
+#[napi(object)]
+pub struct TraceContext {
+  pub traceparent: String,
+  pub tracestate: Option<String>,
+}
+
 /// Provides sensible defaults and getters for all properties.
 #[napi]
 pub struct RequestProcessingPreference {
@@ -246,8 +253,7 @@ impl RequestProcessingPreference {
     primary_api_key_override: Option<String>,
     extra_headers: Option<HashMap<String, String>>,
     non_retryable_status_codes: Option<Vec<u16>>,
-    traceparent: Option<String>,
-    tracestate: Option<String>,
+    trace_context: Option<TraceContext>,
   ) -> Self {
     let non_retryable_status_codes: Option<HashSet<u16>> =
       non_retryable_status_codes.map(|codes| codes.into_iter().collect());
@@ -267,14 +273,37 @@ impl RequestProcessingPreference {
       primary_api_key_override,
       extra_headers,
       non_retryable_status_codes,
-      traceparent,
-      tracestate,
+      trace_context: trace_context.map(|context| baseten_performance_client_core::TraceContext {
+        traceparent: context.traceparent,
+        tracestate: context.tracestate,
+      }),
     };
 
     // Apply defaults using the same method as Rust core
     let complete = inner.with_defaults();
 
     RequestProcessingPreference { complete }
+  }
+
+  #[napi(setter)]
+  pub fn set_trace_context(&mut self, context: Option<TraceContext>) {
+    self.complete.trace_context =
+      context.map(|context| baseten_performance_client_core::TraceContext {
+        traceparent: context.traceparent,
+        tracestate: context.tracestate,
+      });
+  }
+
+  #[napi(getter)]
+  pub fn trace_context(&self) -> Option<TraceContext> {
+    self
+      .complete
+      .trace_context
+      .as_ref()
+      .map(|context| TraceContext {
+        traceparent: context.traceparent.clone(),
+        tracestate: context.tracestate.clone(),
+      })
   }
 
   #[napi(getter)]
@@ -365,36 +394,6 @@ impl RequestProcessingPreference {
       .collect();
     status_codes.sort_unstable();
     status_codes
-  }
-
-  #[napi(getter)]
-  pub fn traceparent(&self) -> Option<String> {
-    self.complete.traceparent.clone()
-  }
-
-  #[napi(getter)]
-  pub fn tracestate(&self) -> Option<String> {
-    self.complete.tracestate.clone()
-  }
-
-  /// Whether this preference already names the call's parent, in `traceparent` or in
-  /// `extraHeaders`; the package entry point then leaves the active span alone.
-  #[napi(getter)]
-  pub fn has_explicit_trace_context(&self) -> bool {
-    self.complete.has_explicit_trace_context()
-  }
-
-  /// A copy of this preference whose calls join the given trace context.
-  #[napi]
-  pub fn with_trace_context(
-    &self,
-    traceparent: String,
-    tracestate: Option<String>,
-  ) -> RequestProcessingPreference {
-    let mut complete = self.complete.clone();
-    complete.traceparent = Some(traceparent);
-    complete.tracestate = tracestate;
-    RequestProcessingPreference { complete }
   }
 }
 

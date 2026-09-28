@@ -1,5 +1,4 @@
 use crate::cancellation::JoinSetGuard;
-use crate::client_spans::{self, RecordingSpan};
 use crate::constants::*;
 use crate::endpoint_routing::{normalize_request_suffix, EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
@@ -350,24 +349,6 @@ impl PerformanceClientCore {
         config.with_pinned_initial_endpoint(Some(pinned_selection))
     }
 
-    /// Starts this call's span (when exporting) and points the call's HTTP attempts at it.
-    fn start_call_trace(
-        config: RequestProcessingConfig,
-        operation: &str,
-        request_count: usize,
-    ) -> (RequestProcessingConfig, Option<RecordingSpan>) {
-        let (call_trace, mut call_span) =
-            client_spans::start_call_span(config.parent_trace.as_ref(), operation);
-        if let Some(span) = call_span.as_mut() {
-            span.set_attribute(
-                "b10.customer_request_id",
-                config.customer_request_id.to_string(),
-            );
-            span.set_attribute("b10.perfclient.request_count", request_count as i64);
-        }
-        (config.with_call_trace(call_trace), call_span)
-    }
-
     // Generic batch processing method - handles pre-batched requests for ALL API types
     // Uses JoinSetGuard for automatic cancellation on drop (RAII pattern)
     #[allow(clippy::too_many_arguments)]
@@ -593,13 +574,12 @@ impl PerformanceClientCore {
         let config = self.maybe_pin_initial_endpoint(config);
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
-        let (config, call_span) = Self::start_call_trace(config, "embed", batches.len());
 
         let endpoint_path: Arc<str> = "/v1/embeddings".into();
 
         let total_timeout = config.total_timeout_duration();
 
-        let result = self
+        let (mut response, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -618,9 +598,7 @@ impl PerformanceClientCore {
                 },
                 total_timeout,
             )
-            .await;
-        client_spans::finish_span(call_span, &result);
-        let (mut response, durations, headers, total_time) = result?;
+            .await?;
 
         // Set timing information
         response.total_time = total_time.as_secs_f64();
@@ -656,13 +634,12 @@ impl PerformanceClientCore {
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
-        let (config, call_span) = Self::start_call_trace(config, "rerank", batches.len());
 
         let endpoint_path: Arc<str> = "/rerank".into();
 
         let total_timeout = config.total_timeout_duration();
 
-        let result = self
+        let (results, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -683,9 +660,7 @@ impl PerformanceClientCore {
                 },
                 total_timeout,
             )
-            .await;
-        client_spans::finish_span(call_span, &result);
-        let (results, durations, headers, total_time) = result?;
+            .await?;
 
         // Convert Vec<CoreRerankResult> to CoreRerankResponse
         let mut response = CoreRerankResponse::new(results, None, None);
@@ -729,13 +704,12 @@ impl PerformanceClientCore {
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
-        let (config, call_span) = Self::start_call_trace(config, "classify", batches.len());
 
         let endpoint_path: Arc<str> = "/predict".into();
 
         let total_timeout = config.total_timeout_duration();
 
-        let result = self
+        let (results, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -756,9 +730,7 @@ impl PerformanceClientCore {
                 },
                 total_timeout,
             )
-            .await;
-        client_spans::finish_span(call_span, &result);
-        let (results, durations, headers, total_time) = result?;
+            .await?;
 
         // Convert Vec<Vec<CoreClassificationResult>> to CoreClassificationResponse
         let mut response = CoreClassificationResponse::new(results, None, None);
@@ -780,6 +752,7 @@ impl PerformanceClientCore {
         preference: &RequestProcessingPreference,
         method: crate::http::HttpMethod,
     ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
+        let start_time = std::time::Instant::now();
         let total_payloads = payloads_json.len();
 
         // Create and validate config from preference
@@ -791,24 +764,6 @@ impl PerformanceClientCore {
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
         let config = self.maybe_pin_initial_endpoint(config);
-        let (config, call_span) = Self::start_call_trace(config, "batch_post", total_payloads);
-
-        let result = self
-            .run_batch_post_requests(url_path, payloads_json, &config, method)
-            .await;
-        client_spans::finish_span(call_span, &result);
-        result
-    }
-
-    async fn run_batch_post_requests(
-        &self,
-        url_path: String,
-        payloads_json: Vec<serde_json::Value>,
-        config: &RequestProcessingConfig,
-        method: crate::http::HttpMethod,
-    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
-        let start_time = std::time::Instant::now();
-        let total_payloads = payloads_json.len();
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();

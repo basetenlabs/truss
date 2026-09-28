@@ -1,15 +1,20 @@
 use crate::cancellation::CancellationToken;
-use crate::client_spans::CallTraceContext;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
-use crate::trace_context::{TraceContext, TRACEPARENT_HEADER_NAME, TRACESTATE_HEADER_NAME};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Caller-owned W3C context, forwarded unchanged without recording client spans.
+#[derive(Debug, Clone)]
+pub struct TraceContext {
+    pub traceparent: String,
+    pub tracestate: Option<String>,
+}
 
 /// User-facing configuration for request processing with budget percentages.
 /// This is the public API struct that gets validated and converted to RequestProcessingConfig.
@@ -31,10 +36,7 @@ pub struct RequestProcessingPreference {
     pub primary_api_key_override: Option<String>,
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
     pub non_retryable_status_codes: Option<HashSet<u16>>,
-    /// W3C `traceparent` of the caller's span; this call's requests join that trace.
-    pub traceparent: Option<String>,
-    /// W3C `tracestate` that travels with `traceparent`, forwarded unchanged on every request.
-    pub tracestate: Option<String>,
+    pub trace_context: Option<TraceContext>,
 }
 
 impl RequestProcessingPreference {
@@ -63,8 +65,7 @@ impl RequestProcessingPreference {
             primary_api_key_override: self.primary_api_key_override.clone(),
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes: self.non_retryable_status_codes.clone(),
-            traceparent: self.traceparent.clone(),
-            tracestate: self.tracestate.clone(),
+            trace_context: self.trace_context.clone(),
         }
     }
 }
@@ -147,6 +148,11 @@ impl RequestProcessingPreference {
         self
     }
 
+    pub fn with_trace_context(mut self, context: TraceContext) -> Self {
+        self.trace_context = Some(context);
+        self
+    }
+
     /// Builder pattern: set extra headers
     pub fn with_extra_headers(
         mut self,
@@ -160,29 +166,6 @@ impl RequestProcessingPreference {
     pub fn with_non_retryable_status_codes(mut self, status_codes: HashSet<u16>) -> Self {
         self.non_retryable_status_codes = Some(status_codes);
         self
-    }
-
-    /// Builder pattern: set the caller's W3C traceparent
-    pub fn with_traceparent(mut self, traceparent: String) -> Self {
-        self.traceparent = Some(traceparent);
-        self
-    }
-
-    /// Builder pattern: set the W3C tracestate that accompanies the traceparent
-    pub fn with_tracestate(mut self, tracestate: String) -> Self {
-        self.tracestate = Some(tracestate);
-        self
-    }
-
-    /// Whether the caller already named this call's parent, in `traceparent` or in
-    /// `extra_headers`. Bindings check this before joining the caller's active span.
-    pub fn has_explicit_trace_context(&self) -> bool {
-        self.traceparent.is_some()
-            || self.extra_headers.as_ref().is_some_and(|headers| {
-                headers
-                    .keys()
-                    .any(|key| key.eq_ignore_ascii_case(TRACEPARENT_HEADER_NAME))
-            })
     }
 
     /// Validate and convert to RequestProcessingConfig for a specific request.
@@ -255,11 +238,6 @@ pub struct RequestProcessingConfig {
     /// Client-level endpoint router for single or pooled routing.
     pub(crate) endpoint_router: Arc<EndpointRouter>,
     pub(crate) pinned_initial_endpoint: Option<EndpointSelection>,
-
-    /// Validated `traceparent` and `tracestate` from the preference.
-    pub(crate) parent_trace: Option<TraceContext>,
-    /// What this call's HTTP attempts propagate; set once the call span starts.
-    pub(crate) call_trace: Option<CallTraceContext>,
 }
 
 impl RequestProcessingConfig {
@@ -464,31 +442,6 @@ impl RequestProcessingConfig {
         let non_retryable_status_codes =
             Self::build_non_retryable_status_codes(non_retryable_status_codes);
 
-        let mut extra_headers = pref.extra_headers.clone();
-        let header_traceparent = take_header(&mut extra_headers, TRACEPARENT_HEADER_NAME)?;
-        let header_tracestate = take_header(&mut extra_headers, TRACESTATE_HEADER_NAME)?;
-        let traceparent = one_trace_value(
-            TRACEPARENT_HEADER_NAME,
-            pref.traceparent.as_deref(),
-            header_traceparent.as_deref(),
-        )?;
-        let tracestate = one_trace_value(
-            TRACESTATE_HEADER_NAME,
-            pref.tracestate.as_deref(),
-            header_tracestate.as_deref(),
-        )?;
-        let parent_trace = match (traceparent, tracestate) {
-            (Some(traceparent), tracestate) => Some(TraceContext::parse(traceparent, tracestate)?),
-            (None, Some(_)) => {
-                return Err(ClientError::InvalidParameter(
-                    "tracestate was set without a traceparent; W3C tracestate only accompanies \
-                     a traceparent"
-                        .to_string(),
-                ))
-            }
-            (None, None) => None,
-        };
-
         // Create customer request ID for this batch operation
         let customer_request_id = CustomerRequestId::new_batch();
 
@@ -512,6 +465,31 @@ impl RequestProcessingConfig {
             Arc::new(AtomicUsize::new(0)) // Always present, but set to 0 when unused
         };
 
+        let mut extra_headers = pref.extra_headers.clone();
+        if let Some(context) = &pref.trace_context {
+            let headers = extra_headers.get_or_insert_with(HashMap::new);
+            if headers.keys().any(|key| {
+                key.eq_ignore_ascii_case("traceparent") || key.eq_ignore_ascii_case("tracestate")
+            }) {
+                return Err(ClientError::InvalidParameter(
+                    "trace_context cannot be combined with trace headers in extra_headers".into(),
+                ));
+            }
+            for (name, value) in [
+                ("traceparent", Some(&context.traceparent)),
+                ("tracestate", context.tracestate.as_ref()),
+            ] {
+                if let Some(value) = value {
+                    if value.is_empty() || reqwest::header::HeaderValue::from_str(value).is_err() {
+                        return Err(ClientError::InvalidParameter(format!(
+                            "invalid {name} header"
+                        )));
+                    }
+                    headers.insert(name.into(), value.clone());
+                }
+            }
+        }
+
         Ok(RequestProcessingConfig {
             customer_request_id,
             max_concurrent_requests,
@@ -534,8 +512,6 @@ impl RequestProcessingConfig {
             non_retryable_status_codes,
             endpoint_router: EndpointRouter::single(base_url),
             pinned_initial_endpoint: None,
-            parent_trace,
-            call_trace: None,
         })
     }
 
@@ -579,11 +555,6 @@ impl RequestProcessingConfig {
 
     pub(crate) fn with_endpoint_router(mut self, endpoint_router: Arc<EndpointRouter>) -> Self {
         self.endpoint_router = endpoint_router;
-        self
-    }
-
-    pub(crate) fn with_call_trace(mut self, call_trace: Option<CallTraceContext>) -> Self {
-        self.call_trace = call_trace;
         self
     }
 
@@ -873,49 +844,6 @@ impl Combinable for CoreClassificationResponse {
         let mut combined = CoreClassificationResponse::new(all_data, None, None);
         combined.response_headers = all_response_headers;
         combined
-    }
-}
-
-/// Removes `name` from the caller's extra headers, matching case-insensitively. Trace headers are
-/// sent from the call's trace context instead, so each attempt carries exactly one of each and
-/// its `traceparent` always names the span that was recorded for it.
-fn take_header(
-    headers: &mut Option<HashMap<String, String>>,
-    name: &str,
-) -> Result<Option<String>, ClientError> {
-    let Some(headers) = headers.as_mut() else {
-        return Ok(None);
-    };
-    let keys: Vec<String> = headers
-        .keys()
-        .filter(|key| key.eq_ignore_ascii_case(name))
-        .cloned()
-        .collect();
-    if keys.len() > 1 {
-        return Err(ClientError::InvalidParameter(format!(
-            "extra_headers sets {} more than once ({:?})",
-            name, keys
-        )));
-    }
-    Ok(keys.first().and_then(|key| headers.remove(key)))
-}
-
-/// A trace header's value from the preference or from extra_headers; naming two different
-/// values is ambiguous, so it is rejected rather than silently picking one.
-fn one_trace_value<'a>(
-    name: &str,
-    preference: Option<&'a str>,
-    header: Option<&'a str>,
-) -> Result<Option<&'a str>, ClientError> {
-    match (preference, header) {
-        (Some(preference), Some(header)) if preference.trim() != header.trim() => {
-            Err(ClientError::InvalidParameter(format!(
-                "{} is set both on the preference ({:?}) and in extra_headers ({:?}); set it in \
-                 one place",
-                name, preference, header
-            )))
-        }
-        (preference, header) => Ok(preference.or(header)),
     }
 }
 
