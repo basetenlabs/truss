@@ -9,6 +9,7 @@ use axum::{
 };
 use baseten_performance_client_core::*;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -204,6 +205,41 @@ async fn invalid_traceparent_is_rejected_before_any_request() {
     let err = result.expect_err("invalid traceparent rejected");
     assert!(
         matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("traceparent")),
+        "{err:?}"
+    );
+    assert!(seen.traceparents().is_empty());
+}
+
+#[tokio::test]
+async fn trace_headers_in_extra_headers_are_sent_exactly_once() {
+    let (result, seen) = embed_against_server(
+        0,
+        RequestProcessingPreference::new()
+            .with_traceparent(PARENT.to_string())
+            .with_extra_headers(HashMap::from([
+                ("TraceParent".to_string(), PARENT.to_string()),
+                ("TRACESTATE".to_string(), "vendor=opaque".to_string()),
+            ])),
+    )
+    .await;
+    result.expect("the same parent in both places is not a conflict");
+    assert_eq!(seen.traceparents(), vec![vec![PARENT.to_string()]]);
+    assert_eq!(seen.tracestates(), vec![vec!["vendor=opaque".to_string()]]);
+}
+
+#[tokio::test]
+async fn trace_header_set_twice_in_extra_headers_is_rejected() {
+    let (result, seen) = embed_against_server(
+        0,
+        RequestProcessingPreference::new().with_extra_headers(HashMap::from([
+            ("traceparent".to_string(), PARENT.to_string()),
+            ("Traceparent".to_string(), PARENT.to_string()),
+        ])),
+    )
+    .await;
+    let err = result.expect_err("duplicate header rejected");
+    assert!(
+        matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("more than once")),
         "{err:?}"
     );
     assert!(seen.traceparents().is_empty());

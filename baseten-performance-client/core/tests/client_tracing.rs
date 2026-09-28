@@ -489,23 +489,59 @@ async fn failed_call_marks_call_span_error() {
 }
 
 #[tokio::test]
-async fn traceparent_in_extra_headers_wins() {
+async fn traceparent_in_extra_headers_is_the_parent_of_the_recorded_attempt() {
     otlp();
+    let caller =
+        TraceParent::parse("00-55555555555555555555555555555555-6666666666666666-01").unwrap();
     let server = start_model_server(0, Duration::ZERO).await;
-    let caller_value = "00-55555555555555555555555555555555-6666666666666666-01";
-    let preference = single_request_preference()
-        .with_traceparent("00-99999999999999999999999999999999-aaaaaaaaaaaaaaaa-01".to_string())
-        .with_extra_headers(HashMap::from([(
-            "Traceparent".to_string(),
-            caller_value.to_string(),
-        )]));
+    let preference = single_request_preference().with_extra_headers(HashMap::from([(
+        "Traceparent".to_string(),
+        caller.to_string(),
+    )]));
 
     embed(&client_for(&server), &preference)
         .await
         .expect("request succeeds");
 
-    let seen = server.traceparents.lock().unwrap().clone();
-    assert_eq!(seen, vec![vec![caller_value.to_string()]]);
+    // One traceparent on the wire, naming the exported attempt span, not the caller's value.
+    let attempts = sent(&server);
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0].trace_id, caller.trace_id);
+    assert_ne!(attempts[0].span_id, caller.span_id);
+
+    let spans = wait_for_spans(&hex(&caller.trace_id), 2).await;
+    let attempt = spans
+        .iter()
+        .find(|span| span["spanId"] == hex(&attempts[0].span_id))
+        .expect("the span on the wire was exported");
+    let call = spans
+        .iter()
+        .find(|span| span["name"] == "perfclient.embed")
+        .expect("call span exported");
+    assert_eq!(attempt["parentSpanId"], call["spanId"]);
+    assert_eq!(call["parentSpanId"], hex(&caller.span_id));
+}
+
+#[tokio::test]
+async fn conflicting_traceparents_are_rejected_before_any_request() {
+    otlp();
+    let server = start_model_server(0, Duration::ZERO).await;
+    let preference = single_request_preference()
+        .with_traceparent("00-99999999999999999999999999999999-aaaaaaaaaaaaaaaa-01".to_string())
+        .with_extra_headers(HashMap::from([(
+            "traceparent".to_string(),
+            "00-55555555555555555555555555555555-6666666666666666-01".to_string(),
+        )]));
+
+    let err = embed(&client_for(&server), &preference)
+        .await
+        .expect_err("two different parents are ambiguous");
+
+    assert!(
+        matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("set it in one place")),
+        "{err:?}"
+    );
+    assert!(server.traceparents.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

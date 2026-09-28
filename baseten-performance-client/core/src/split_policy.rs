@@ -5,8 +5,8 @@ use crate::customer_request_id::CustomerRequestId;
 use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
-use crate::trace_context::TraceContext;
-use std::collections::HashSet;
+use crate::trace_context::{TraceContext, TRACEPARENT_HEADER_NAME, TRACESTATE_HEADER_NAME};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -172,6 +172,17 @@ impl RequestProcessingPreference {
     pub fn with_tracestate(mut self, tracestate: String) -> Self {
         self.tracestate = Some(tracestate);
         self
+    }
+
+    /// Whether the caller already named this call's parent, in `traceparent` or in
+    /// `extra_headers`. Bindings check this before joining the caller's active span.
+    pub fn has_explicit_trace_context(&self) -> bool {
+        self.traceparent.is_some()
+            || self.extra_headers.as_ref().is_some_and(|headers| {
+                headers
+                    .keys()
+                    .any(|key| key.eq_ignore_ascii_case(TRACEPARENT_HEADER_NAME))
+            })
     }
 
     /// Validate and convert to RequestProcessingConfig for a specific request.
@@ -453,7 +464,20 @@ impl RequestProcessingConfig {
         let non_retryable_status_codes =
             Self::build_non_retryable_status_codes(non_retryable_status_codes);
 
-        let parent_trace = match (pref.traceparent.as_deref(), pref.tracestate.as_deref()) {
+        let mut extra_headers = pref.extra_headers.clone();
+        let header_traceparent = take_header(&mut extra_headers, TRACEPARENT_HEADER_NAME)?;
+        let header_tracestate = take_header(&mut extra_headers, TRACESTATE_HEADER_NAME)?;
+        let traceparent = one_trace_value(
+            TRACEPARENT_HEADER_NAME,
+            pref.traceparent.as_deref(),
+            header_traceparent.as_deref(),
+        )?;
+        let tracestate = one_trace_value(
+            TRACESTATE_HEADER_NAME,
+            pref.tracestate.as_deref(),
+            header_tracestate.as_deref(),
+        )?;
+        let parent_trace = match (traceparent, tracestate) {
             (Some(traceparent), tracestate) => Some(TraceContext::parse(traceparent, tracestate)?),
             (None, Some(_)) => {
                 return Err(ClientError::InvalidParameter(
@@ -506,7 +530,7 @@ impl RequestProcessingConfig {
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
-            extra_headers: pref.extra_headers.clone(),
+            extra_headers,
             non_retryable_status_codes,
             endpoint_router: EndpointRouter::single(base_url),
             pinned_initial_endpoint: None,
@@ -849,6 +873,49 @@ impl Combinable for CoreClassificationResponse {
         let mut combined = CoreClassificationResponse::new(all_data, None, None);
         combined.response_headers = all_response_headers;
         combined
+    }
+}
+
+/// Removes `name` from the caller's extra headers, matching case-insensitively. Trace headers are
+/// sent from the call's trace context instead, so each attempt carries exactly one of each and
+/// its `traceparent` always names the span that was recorded for it.
+fn take_header(
+    headers: &mut Option<HashMap<String, String>>,
+    name: &str,
+) -> Result<Option<String>, ClientError> {
+    let Some(headers) = headers.as_mut() else {
+        return Ok(None);
+    };
+    let keys: Vec<String> = headers
+        .keys()
+        .filter(|key| key.eq_ignore_ascii_case(name))
+        .cloned()
+        .collect();
+    if keys.len() > 1 {
+        return Err(ClientError::InvalidParameter(format!(
+            "extra_headers sets {} more than once ({:?})",
+            name, keys
+        )));
+    }
+    Ok(keys.first().and_then(|key| headers.remove(key)))
+}
+
+/// A trace header's value from the preference or from extra_headers; naming two different
+/// values is ambiguous, so it is rejected rather than silently picking one.
+fn one_trace_value<'a>(
+    name: &str,
+    preference: Option<&'a str>,
+    header: Option<&'a str>,
+) -> Result<Option<&'a str>, ClientError> {
+    match (preference, header) {
+        (Some(preference), Some(header)) if preference.trim() != header.trim() => {
+            Err(ClientError::InvalidParameter(format!(
+                "{} is set both on the preference ({:?}) and in extra_headers ({:?}); set it in \
+                 one place",
+                name, preference, header
+            )))
+        }
+        (preference, header) => Ok(preference.or(header)),
     }
 }
 

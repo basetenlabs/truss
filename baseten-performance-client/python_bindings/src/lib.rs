@@ -570,8 +570,8 @@ impl RequestProcessingPreference {
     }
 }
 
-/// Converts the call's preference; without an explicit traceparent, the call joins the caller's
-/// active OpenTelemetry span, if any.
+/// Converts the call's preference; unless it already names a parent (explicitly or in
+/// extra_headers), the call joins the caller's active OpenTelemetry span, if any.
 fn rust_preference_from_py(
     py: Python<'_>,
     preference: Option<&RequestProcessingPreference>,
@@ -579,7 +579,7 @@ fn rust_preference_from_py(
     let mut rust_preference = preference
         .map(RequestProcessingPreference::to_rust_preference)
         .unwrap_or_default();
-    if rust_preference.traceparent.is_none() {
+    if !rust_preference.has_explicit_trace_context() {
         if let Some((traceparent, tracestate)) = ambient_trace_context(py) {
             rust_preference.traceparent = Some(traceparent);
             rust_preference.tracestate = tracestate;

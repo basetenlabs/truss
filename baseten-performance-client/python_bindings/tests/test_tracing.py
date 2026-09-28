@@ -155,3 +155,29 @@ def test_active_span_tracestate_and_unsampled_flag_are_forwarded(embeddings_serv
         ["00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"]
     ]
     assert embeddings_server.tracestates == [["vendor=opaque"]]
+
+
+def test_extra_headers_traceparent_beats_active_span(embeddings_server):
+    tracer = _sdk_tracer()
+    with tracer.start_as_current_span("caller"):
+        _client(embeddings_server).embed(
+            ["hello"],
+            model="test-model",
+            preference=RequestProcessingPreference(
+                extra_headers={"Traceparent": PARENT}
+            ),
+        )
+    assert embeddings_server.traceparents == [[PARENT]]
+
+
+def test_conflicting_traceparents_raise_value_error(embeddings_server):
+    other = "00-99999999999999999999999999999999-aaaaaaaaaaaaaaaa-01"
+    with pytest.raises(ValueError, match="set it in one place"):
+        _client(embeddings_server).embed(
+            ["hello"],
+            model="test-model",
+            preference=RequestProcessingPreference(
+                traceparent=PARENT, extra_headers={"traceparent": other}
+            ),
+        )
+    assert embeddings_server.traceparents == []
