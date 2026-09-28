@@ -801,6 +801,61 @@ async fn test_hedge_uses_alternate_endpoint_from_pool() {
 }
 
 #[tokio::test]
+async fn test_hedge_budget_caps_hedges_when_every_request_is_slow() {
+    // A fleet-wide slowdown: every request takes longer than the hedge delay,
+    // so all in-flight requests reach the hedge timer at roughly the same time.
+    let endpoint = start_test_server("slow-endpoint", Duration::from_millis(400), 0, true).await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let total_requests = 200;
+    let hedge_budget_pct = 0.05;
+    // Mirrors RequestProcessingConfig::calculate_budget: max(2, 1 + ceil(n * pct)).
+    let expected_hedges = std::cmp::max(
+        2,
+        1 + (total_requests as f64 * hedge_budget_pct).ceil() as usize,
+    );
+
+    let preference = RequestProcessingPreference::new()
+        .with_max_concurrent_requests(total_requests)
+        .with_batch_size(1)
+        .with_timeout_s(5.0)
+        .with_hedge_delay(0.1)
+        .with_hedge_budget_pct(hedge_budget_pct)
+        .with_max_retries(0);
+
+    let inputs = (0..total_requests)
+        .map(|i| format!("input-{i}"))
+        .collect::<Vec<_>>();
+
+    client
+        .process_embeddings_requests(
+            inputs,
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect("slow requests should still succeed");
+
+    let hedges_sent = endpoint.request_count.load(Ordering::SeqCst) - total_requests;
+    assert_eq!(
+        hedges_sent, expected_hedges,
+        "hedges must stay within the hedge budget even when every request is slow"
+    );
+}
+
+#[tokio::test]
 async fn test_background_health_worker_skips_unhealthy_endpoints() {
     let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, false).await;
