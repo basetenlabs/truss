@@ -6,6 +6,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "binding.js",
+    "binding.d.ts",
     "README.md"
   ],
   "napi": {
@@ -33,8 +35,17 @@
     "url": "https://github.com/basetenlabs/truss"
   },
   "license": "MIT",
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
+    "@opentelemetry/api": "^1.9.0",
     "ava": "^6.0.1"
   },
   "ava": {
@@ -45,8 +56,8 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release --js binding.js --dts binding.d.ts",
+    "build:debug": "napi build --platform --js binding.js --dts binding.d.ts",
     "prepublishOnly": "napi prepublish -t npm --skip-gh-release",
     "test": "ava",
     "test:integration": "node __test__/test_with_key.js",

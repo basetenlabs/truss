@@ -10,7 +10,13 @@ __metadata:
   resolution: "@basetenlabs/performance-client@workspace:."
   dependencies:
     "@napi-rs/cli": "npm:^2.18.4"
+    "@opentelemetry/api": "npm:^1.9.0"
     ava: "npm:^6.0.1"
+  peerDependencies:
+    "@opentelemetry/api": ^1.0.0
+  peerDependenciesMeta:
+    "@opentelemetry/api":
+      optional: true
   languageName: unknown
   linkType: soft
 
@@ -87,6 +93,13 @@ __metadata:
     "@nodelib/fs.scandir": "npm:2.1.5"
     fastq: "npm:^1.6.0"
   checksum: 10c0/db9de047c3bb9b51f9335a7bb46f4fcfb6829fb628318c12115fbaf7d369bfce71c15b103d1fc3b464812d936220ee9bc1c8f762d032c9f6be9acc99249095b1
+  languageName: node
+  linkType: hard
+
+"@opentelemetry/api@npm:^1.9.0":
+  version: 1.9.1
+  resolution: "@opentelemetry/api@npm:1.9.1"
+  checksum: 10c0/c608485fc8b5a91e1f7e05e843b45b509307456b31cd2ad365933d90813e40ebfedf179f1451c762037e82d7c76aa8500e95d2da3609f640a1206cde5322cd14
   languageName: node
   linkType: hard
 
