@@ -14,11 +14,36 @@ use std::sync::{Arc, Mutex};
 
 const PARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00";
 
+/// The trace headers of each request the model server received, in order.
+#[derive(Clone, Default)]
+struct Seen {
+    traceparents: Arc<Mutex<Vec<Vec<String>>>>,
+    tracestates: Arc<Mutex<Vec<Vec<String>>>>,
+}
+
+impl Seen {
+    fn traceparents(&self) -> Vec<Vec<String>> {
+        self.traceparents.lock().unwrap().clone()
+    }
+
+    fn tracestates(&self) -> Vec<Vec<String>> {
+        self.tracestates.lock().unwrap().clone()
+    }
+}
+
 #[derive(Clone)]
 struct ModelState {
-    traceparents: Arc<Mutex<Vec<Vec<String>>>>,
+    seen: Seen,
     requests: Arc<AtomicUsize>,
     failures: usize,
+}
+
+fn header_values(headers: &AxumHeaderMap, name: &str) -> Vec<String> {
+    headers
+        .get_all(name)
+        .iter()
+        .map(|value| value.to_str().unwrap().to_string())
+        .collect()
 }
 
 async fn model_handler(
@@ -27,13 +52,18 @@ async fn model_handler(
     Json(request): Json<CoreOpenAIEmbeddingsRequest>,
 ) -> impl IntoResponse {
     let index = state.requests.fetch_add(1, Ordering::SeqCst);
-    state.traceparents.lock().unwrap().push(
-        headers
-            .get_all("traceparent")
-            .iter()
-            .map(|value| value.to_str().unwrap().to_string())
-            .collect(),
-    );
+    state
+        .seen
+        .traceparents
+        .lock()
+        .unwrap()
+        .push(header_values(&headers, "traceparent"));
+    state
+        .seen
+        .tracestates
+        .lock()
+        .unwrap()
+        .push(header_values(&headers, "tracestate"));
     if index < state.failures {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -59,14 +89,14 @@ async fn model_handler(
 async fn embed_against_server(
     failures: usize,
     preference: RequestProcessingPreference,
-) -> (Result<(), ClientError>, Vec<Vec<String>>) {
+) -> (Result<(), ClientError>, Seen) {
     assert!(
         std::env::var(OTLP_ENDPOINT_ENV_VAR).is_err(),
         "these tests cover export-off behavior"
     );
-    let traceparents = Arc::new(Mutex::new(Vec::new()));
+    let seen = Seen::default();
     let state = ModelState {
-        traceparents: Arc::clone(&traceparents),
+        seen: seen.clone(),
         requests: Arc::new(AtomicUsize::new(0)),
         failures,
     };
@@ -105,7 +135,6 @@ async fn embed_against_server(
         .await
         .map(|_| ());
     handle.abort();
-    let seen = traceparents.lock().unwrap().clone();
     (result, seen)
 }
 
@@ -120,16 +149,49 @@ async fn parent_is_forwarded_unchanged_on_every_attempt() {
     .await;
     result.expect("retry succeeds");
     assert_eq!(
-        seen,
+        seen.traceparents(),
         vec![vec![PARENT.to_string()], vec![PARENT.to_string()]]
     );
+    assert_eq!(seen.tracestates(), vec![Vec::<String>::new(); 2]);
+}
+
+#[tokio::test]
+async fn tracestate_is_forwarded_unchanged_on_every_attempt() {
+    let (result, seen) = embed_against_server(
+        1,
+        RequestProcessingPreference::new()
+            .with_max_retries(1)
+            .with_traceparent(PARENT.to_string())
+            .with_tracestate("congo=t61rcWkgMzE,rojo=00f067aa0ba902b7".to_string()),
+    )
+    .await;
+    result.expect("retry succeeds");
+    assert_eq!(
+        seen.tracestates(),
+        vec![vec!["congo=t61rcWkgMzE,rojo=00f067aa0ba902b7".to_string()]; 2]
+    );
+}
+
+#[tokio::test]
+async fn tracestate_without_traceparent_is_rejected_before_any_request() {
+    let (result, seen) = embed_against_server(
+        0,
+        RequestProcessingPreference::new().with_tracestate("vendor=opaque".to_string()),
+    )
+    .await;
+    let err = result.expect_err("tracestate alone rejected");
+    assert!(
+        matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("tracestate")),
+        "{err:?}"
+    );
+    assert!(seen.traceparents().is_empty());
 }
 
 #[tokio::test]
 async fn no_parent_sends_no_traceparent() {
     let (result, seen) = embed_against_server(0, RequestProcessingPreference::new()).await;
     result.expect("request succeeds");
-    assert_eq!(seen, vec![Vec::<String>::new()]);
+    assert_eq!(seen.traceparents(), vec![Vec::<String>::new()]);
 }
 
 #[tokio::test]
@@ -144,5 +206,5 @@ async fn invalid_traceparent_is_rejected_before_any_request() {
         matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("traceparent")),
         "{err:?}"
     );
-    assert!(seen.is_empty());
+    assert!(seen.traceparents().is_empty());
 }

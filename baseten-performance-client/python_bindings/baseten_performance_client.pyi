@@ -232,6 +232,7 @@ class RequestProcessingPreference:
         extra_headers: Optional dictionary of custom headers to include with all requests.
         traceparent: Optional W3C traceparent of the caller's span. When unset, the active
             OpenTelemetry span (if opentelemetry is installed) is used.
+        tracestate: Optional W3C tracestate sent with the traceparent.
 
     Example:
         >>> # Use all defaults
@@ -282,6 +283,7 @@ class RequestProcessingPreference:
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
         non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
         traceparent: typing.Optional[builtins.str] = None,
+        tracestate: typing.Optional[builtins.str] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -304,8 +306,11 @@ class RequestProcessingPreference:
             non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
             traceparent: Optional W3C traceparent (00-<trace id>-<span id>-<flags>) of the
                 caller's span; this call's requests join that trace. When unset, the active
-                OpenTelemetry span (if opentelemetry is installed) is used. Invalid values raise
-                ValueError when the call is made.
+                OpenTelemetry span (if opentelemetry is installed) is used, with its tracestate.
+                Invalid values raise ValueError when the call is made. An unsampled parent
+                (flags 00) is forwarded but never recorded as client spans.
+            tracestate: Optional W3C tracestate sent unchanged alongside traceparent; setting it
+                without traceparent raises ValueError.
         """
 
     # Property definitions with type hints
@@ -325,6 +330,7 @@ class RequestProcessingPreference:
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
     non_retryable_status_codes: typing.Set[builtins.int]
     traceparent: typing.Optional[builtins.str]
+    tracestate: typing.Optional[builtins.str]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":

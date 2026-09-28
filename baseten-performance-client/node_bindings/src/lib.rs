@@ -266,6 +266,7 @@ impl RequestProcessingPreference {
       extra_headers,
       non_retryable_status_codes,
       traceparent: None,
+      tracestate: None,
     };
 
     // Apply defaults using the same method as Rust core

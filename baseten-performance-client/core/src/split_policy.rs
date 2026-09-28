@@ -5,7 +5,7 @@ use crate::customer_request_id::CustomerRequestId;
 use crate::endpoint_routing::{build_url_for_selected_endpoint, EndpointRouter, EndpointSelection};
 use crate::errors::ClientError;
 use crate::http::*;
-use crate::trace_context::TraceParent;
+use crate::trace_context::TraceContext;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -33,6 +33,8 @@ pub struct RequestProcessingPreference {
     pub non_retryable_status_codes: Option<HashSet<u16>>,
     /// W3C `traceparent` of the caller's span; this call's requests join that trace.
     pub traceparent: Option<String>,
+    /// W3C `tracestate` that travels with `traceparent`, forwarded unchanged on every request.
+    pub tracestate: Option<String>,
 }
 
 impl RequestProcessingPreference {
@@ -62,6 +64,7 @@ impl RequestProcessingPreference {
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes: self.non_retryable_status_codes.clone(),
             traceparent: self.traceparent.clone(),
+            tracestate: self.tracestate.clone(),
         }
     }
 }
@@ -165,6 +168,12 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set the W3C tracestate that accompanies the traceparent
+    pub fn with_tracestate(mut self, tracestate: String) -> Self {
+        self.tracestate = Some(tracestate);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests, api_key)
     /// and returns a validated config ready for processing.
@@ -236,8 +245,8 @@ pub struct RequestProcessingConfig {
     pub(crate) endpoint_router: Arc<EndpointRouter>,
     pub(crate) pinned_initial_endpoint: Option<EndpointSelection>,
 
-    /// Validated `traceparent` from the preference.
-    pub(crate) parent_trace: Option<TraceParent>,
+    /// Validated `traceparent` and `tracestate` from the preference.
+    pub(crate) parent_trace: Option<TraceContext>,
     /// What this call's HTTP attempts propagate; set once the call span starts.
     pub(crate) call_trace: Option<CallTraceContext>,
 }
@@ -444,11 +453,17 @@ impl RequestProcessingConfig {
         let non_retryable_status_codes =
             Self::build_non_retryable_status_codes(non_retryable_status_codes);
 
-        let parent_trace = pref
-            .traceparent
-            .as_deref()
-            .map(TraceParent::parse)
-            .transpose()?;
+        let parent_trace = match (pref.traceparent.as_deref(), pref.tracestate.as_deref()) {
+            (Some(traceparent), tracestate) => Some(TraceContext::parse(traceparent, tracestate)?),
+            (None, Some(_)) => {
+                return Err(ClientError::InvalidParameter(
+                    "tracestate was set without a traceparent; W3C tracestate only accompanies \
+                     a traceparent"
+                        .to_string(),
+                ))
+            }
+            (None, None) => None,
+        };
 
         // Create customer request ID for this batch operation
         let customer_request_id = CustomerRequestId::new_batch();

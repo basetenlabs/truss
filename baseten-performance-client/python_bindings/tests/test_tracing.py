@@ -19,6 +19,7 @@ class _EmbeddingsHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.server.traceparents.append(self.headers.get_all("traceparent") or [])
+        self.server.tracestates.append(self.headers.get_all("tracestate") or [])
         payload = json.dumps(
             {
                 "object": "list",
@@ -44,6 +45,7 @@ class _EmbeddingsHandler(BaseHTTPRequestHandler):
 def embeddings_server():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _EmbeddingsHandler)
     server.traceparents = []
+    server.tracestates = []
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
@@ -114,3 +116,42 @@ def test_explicit_traceparent_beats_active_span(embeddings_server):
             preference=RequestProcessingPreference(traceparent=PARENT),
         )
     assert embeddings_server.traceparents == [[PARENT]]
+
+
+def test_tracestate_preference_is_forwarded(embeddings_server):
+    _client(embeddings_server).embed(
+        ["hello"],
+        model="test-model",
+        preference=RequestProcessingPreference(
+            traceparent=PARENT, tracestate="vendor=opaque"
+        ),
+    )
+    assert embeddings_server.traceparents == [[PARENT]]
+    assert embeddings_server.tracestates == [["vendor=opaque"]]
+
+
+def test_tracestate_without_traceparent_raises_value_error(embeddings_server):
+    with pytest.raises(ValueError, match="tracestate"):
+        _client(embeddings_server).embed(
+            ["hello"],
+            model="test-model",
+            preference=RequestProcessingPreference(tracestate="vendor=opaque"),
+        )
+    assert embeddings_server.traceparents == []
+
+
+def test_active_span_tracestate_and_unsampled_flag_are_forwarded(embeddings_server):
+    trace = pytest.importorskip("opentelemetry.trace")
+    span_context = trace.SpanContext(
+        trace_id=0x4BF92F3577B34DA6A3CE929D0E0E4736,
+        span_id=0x00F067AA0BA902B7,
+        is_remote=True,
+        trace_flags=trace.TraceFlags(0),
+        trace_state=trace.TraceState([("vendor", "opaque")]),
+    )
+    with trace.use_span(trace.NonRecordingSpan(span_context)):
+        _client(embeddings_server).embed(["hello"], model="test-model")
+    assert embeddings_server.traceparents == [
+        ["00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"]
+    ]
+    assert embeddings_server.tracestates == [["vendor=opaque"]]

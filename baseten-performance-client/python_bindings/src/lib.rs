@@ -536,6 +536,8 @@ pub struct RequestProcessingPreference {
     pub non_retryable_status_codes: HashSet<u16>,
     #[pyo3(get, set)]
     pub traceparent: Option<String>,
+    #[pyo3(get, set)]
+    pub tracestate: Option<String>,
 }
 
 impl RequestProcessingPreference {
@@ -563,6 +565,7 @@ impl RequestProcessingPreference {
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes,
             traceparent: self.traceparent.clone(),
+            tracestate: self.tracestate.clone(),
         }
     }
 }
@@ -577,7 +580,10 @@ fn rust_preference_from_py(
         .map(RequestProcessingPreference::to_rust_preference)
         .unwrap_or_default();
     if rust_preference.traceparent.is_none() {
-        rust_preference.traceparent = ambient_traceparent(py);
+        if let Some((traceparent, tracestate)) = ambient_trace_context(py) {
+            rust_preference.traceparent = Some(traceparent);
+            rust_preference.tracestate = tracestate;
+        }
     }
     rust_preference
 }
@@ -586,9 +592,9 @@ fn rust_preference_from_py(
 /// import (a sys.path search) every time.
 static OPENTELEMETRY_MISSING: AtomicBool = AtomicBool::new(false);
 
-/// The caller's active OpenTelemetry span as a traceparent. Never raises: tracing must not break
-/// a request.
-fn ambient_traceparent(py: Python<'_>) -> Option<String> {
+/// The caller's active OpenTelemetry span as a traceparent, with its tracestate. Never raises:
+/// tracing must not break a request.
+fn ambient_trace_context(py: Python<'_>) -> Option<(String, Option<String>)> {
     if OPENTELEMETRY_MISSING.load(Ordering::Relaxed) {
         return None;
     }
@@ -616,9 +622,15 @@ fn ambient_traceparent(py: Python<'_>) -> Option<String> {
     let trace_id: u128 = span_context.getattr("trace_id").ok()?.extract().ok()?;
     let span_id: u64 = span_context.getattr("span_id").ok()?.extract().ok()?;
     let flags: u8 = span_context.getattr("trace_flags").ok()?.extract().ok()?;
-    Some(format!(
-        "00-{:032x}-{:016x}-{:02x}",
-        trace_id, span_id, flags
+    let tracestate = span_context
+        .getattr("trace_state")
+        .and_then(|state| state.call_method0("to_header"))
+        .and_then(|header| header.extract::<String>())
+        .ok()
+        .filter(|header| !header.is_empty());
+    Some((
+        format!("00-{:032x}-{:016x}-{:02x}", trace_id, span_id, flags),
+        tracestate,
     ))
 }
 
@@ -641,7 +653,8 @@ impl RequestProcessingPreference {
         primary_api_key_override = None,
         extra_headers = None,
         non_retryable_status_codes = None,
-        traceparent = None
+        traceparent = None,
+        tracestate = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -660,6 +673,7 @@ impl RequestProcessingPreference {
         extra_headers: Option<std::collections::HashMap<String, String>>,
         non_retryable_status_codes: Option<HashSet<u16>>,
         traceparent: Option<String>,
+        tracestate: Option<String>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -678,6 +692,7 @@ impl RequestProcessingPreference {
             extra_headers,
             non_retryable_status_codes,
             traceparent,
+            tracestate,
         };
 
         // Apply defaults using the same method as Rust core
@@ -702,6 +717,7 @@ impl RequestProcessingPreference {
             extra_headers: complete.extra_headers,
             non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
             traceparent: complete.traceparent,
+            tracestate: complete.tracestate,
         }
     }
 
@@ -710,14 +726,14 @@ impl RequestProcessingPreference {
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None, None,
+            None, None, None,
         ))
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?}, traceparent={:?})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?}, traceparent={:?}, tracestate={:?})",
             self.max_concurrent_requests,
             self.batch_size,
             self.pin_initial_endpoint_once,
@@ -729,7 +745,8 @@ impl RequestProcessingPreference {
             self.max_retries,
             self.initial_backoff_ms,
             self.non_retryable_status_codes,
-            self.traceparent
+            self.traceparent,
+            self.tracestate
         ))
     }
 
@@ -1404,7 +1421,7 @@ mod tests {
     fn request_processing_preference_to_rust_uses_mutated_public_fields() {
         let mut preference = RequestProcessingPreference::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None, None,
+            None, None, None,
         );
 
         preference.max_concurrent_requests = 64;

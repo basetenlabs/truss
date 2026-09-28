@@ -1,12 +1,17 @@
-//! W3C Trace Context (`traceparent`) parsing and formatting.
+//! W3C Trace Context (`traceparent` and `tracestate`) parsing and formatting.
 //!
-//! See https://www.w3.org/TR/trace-context/#traceparent-header.
+//! See https://www.w3.org/TR/trace-context/.
 
 use crate::errors::ClientError;
 use rand::Rng;
 use std::fmt;
+use std::sync::Arc;
 
 pub const TRACEPARENT_HEADER_NAME: &str = "traceparent";
+pub const TRACESTATE_HEADER_NAME: &str = "tracestate";
+
+pub(crate) const SAMPLED_FLAG: u8 = 0x01;
+const MAX_TRACESTATE_MEMBERS: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TraceParent {
@@ -15,7 +20,68 @@ pub struct TraceParent {
     pub flags: u8,
 }
 
+/// The caller's trace context: its span plus the vendor `tracestate` that travels with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TraceContext {
+    pub(crate) parent: TraceParent,
+    /// Forwarded verbatim: this client adds no `tracestate` entry of its own.
+    pub(crate) tracestate: Option<Arc<str>>,
+}
+
+impl TraceContext {
+    pub(crate) fn parse(traceparent: &str, tracestate: Option<&str>) -> Result<Self, ClientError> {
+        Ok(Self {
+            parent: TraceParent::parse(traceparent)?,
+            tracestate: tracestate.map(parse_tracestate).transpose()?.flatten(),
+        })
+    }
+}
+
+/// Validates a `tracestate` header value; an empty value means none. Members stay in order and
+/// unmodified, since vendors own their entries.
+fn parse_tracestate(value: &str) -> Result<Option<Arc<str>>, ClientError> {
+    let invalid = |reason: &str| {
+        ClientError::InvalidParameter(format!(
+            "tracestate {:?} is not a valid W3C tracestate ({}); expected comma-separated \
+             key=value members",
+            value, reason
+        ))
+    };
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if !trimmed
+        .bytes()
+        .all(|byte| byte == b'\t' || (0x20..=0x7e).contains(&byte))
+    {
+        return Err(invalid("non-printable characters"));
+    }
+    let members: Vec<&str> = trimmed
+        .split(',')
+        .map(str::trim)
+        .filter(|member| !member.is_empty())
+        .collect();
+    if members.len() > MAX_TRACESTATE_MEMBERS {
+        return Err(invalid("more than 32 members"));
+    }
+    if !members.iter().all(|member| {
+        member
+            .split_once('=')
+            .is_some_and(|(key, value)| !key.trim().is_empty() && !value.trim().is_empty())
+    }) {
+        return Err(invalid("member is not key=value"));
+    }
+    Ok(Some(trimmed.into()))
+}
+
 impl TraceParent {
+    /// Whether the caller recorded its span, asking downstream participants to record theirs.
+    pub fn sampled(&self) -> bool {
+        self.flags & SAMPLED_FLAG != 0
+    }
+
     /// Parses a `traceparent` header value, rejecting anything a W3C-compliant receiver would.
     pub fn parse(value: &str) -> Result<Self, ClientError> {
         let invalid = |reason: &str| {
@@ -172,6 +238,50 @@ mod tests {
             let err = TraceParent::parse(bad).expect_err(bad);
             assert!(
                 matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("traceparent")),
+                "{bad}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sampled_reads_only_the_sampled_bit() {
+        let with_flags = |flags: &str| {
+            TraceParent::parse(&format!(
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-{flags}"
+            ))
+            .unwrap()
+        };
+        assert!(with_flags("01").sampled());
+        assert!(with_flags("03").sampled());
+        assert!(!with_flags("00").sampled());
+        assert!(!with_flags("02").sampled());
+    }
+
+    #[test]
+    fn trace_context_keeps_tracestate_verbatim_and_drops_an_empty_one() {
+        let context =
+            TraceContext::parse(VALID, Some(" congo=t61rcWkgMzE, rojo=00f067aa0ba902b7 ")).unwrap();
+        assert_eq!(
+            context.tracestate.as_deref(),
+            Some("congo=t61rcWkgMzE, rojo=00f067aa0ba902b7")
+        );
+        assert_eq!(
+            TraceContext::parse(VALID, Some("  ")).unwrap().tracestate,
+            None
+        );
+        assert_eq!(TraceContext::parse(VALID, None).unwrap().tracestate, None);
+    }
+
+    #[test]
+    fn trace_context_rejects_malformed_tracestate() {
+        let too_many = (0..33)
+            .map(|i| format!("k{i}=v"))
+            .collect::<Vec<_>>()
+            .join(",");
+        for bad in ["novalue", "=v", "k=", "k=v\nx=y", too_many.as_str()] {
+            let err = TraceContext::parse(VALID, Some(bad)).expect_err(bad);
+            assert!(
+                matches!(err, ClientError::InvalidParameter(ref msg) if msg.contains("tracestate")),
                 "{bad}: {err:?}"
             );
         }

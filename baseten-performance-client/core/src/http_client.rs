@@ -4,7 +4,7 @@ use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::split_policy::RequestProcessingConfig;
-use crate::trace_context::TRACEPARENT_HEADER_NAME;
+use crate::trace_context::{TRACEPARENT_HEADER_NAME, TRACESTATE_HEADER_NAME};
 
 use rand::Rng;
 use reqwest::{
@@ -289,11 +289,14 @@ fn build_attempt(
     let mut request_builder = build_request(url);
     // A traceparent the caller put in extra_headers wins; reqwest would otherwise send both.
     if !extra_headers_contains(config, TRACEPARENT_HEADER_NAME) {
-        if let Some(traceparent) =
-            client_spans::attempt_traceparent(config.call_trace.as_ref(), span.as_ref())
+        if let Some((traceparent, tracestate)) =
+            client_spans::attempt_trace_headers(config.call_trace.as_ref(), span.as_ref())
         {
             request_builder =
                 request_builder.header(TRACEPARENT_HEADER_NAME, traceparent.to_string());
+            if let Some(tracestate) = tracestate {
+                request_builder = request_builder.header(TRACESTATE_HEADER_NAME, tracestate);
+            }
         }
     }
     (request_builder, span)

@@ -357,7 +357,7 @@ impl PerformanceClientCore {
         request_count: usize,
     ) -> (RequestProcessingConfig, Option<RecordingSpan>) {
         let (call_trace, mut call_span) =
-            client_spans::start_call_span(config.parent_trace, operation);
+            client_spans::start_call_span(config.parent_trace.as_ref(), operation);
         if let Some(span) = call_span.as_mut() {
             span.set_attribute(
                 "b10.customer_request_id",

@@ -9,7 +9,9 @@
 //! counted) when it is full. Export is best effort; spans still queued at process exit are lost.
 
 use crate::errors::ClientError;
-use crate::trace_context::{encode_hex, new_span_id, new_trace_id, TraceParent};
+use crate::trace_context::{
+    encode_hex, new_span_id, new_trace_id, TraceContext, TraceParent, SAMPLED_FLAG,
+};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_ENCODING, CONTENT_TYPE};
@@ -74,6 +76,8 @@ struct SpanData {
     trace_id: [u8; 16],
     span_id: [u8; 8],
     parent_span_id: Option<[u8; 8]>,
+    /// W3C trace flags, inherited from the parent so downstream sampling state is preserved.
+    flags: u8,
     name: String,
     kind: SpanKind,
     start_unix_nano: u64,
@@ -84,14 +88,16 @@ struct SpanData {
 }
 
 /// What every HTTP attempt of one client call propagates.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum CallTraceContext {
-    /// Export off: forward the caller's traceparent unchanged.
-    Propagate(TraceParent),
-    /// Export on: each attempt is a CLIENT span under the call span.
+    /// Forward the caller's context unchanged: export is off, or the caller didn't sample.
+    Propagate(TraceContext),
+    /// Each attempt is a CLIENT span under the call span.
     Record {
         trace_id: [u8; 16],
         call_span_id: [u8; 8],
+        flags: u8,
+        tracestate: Option<Arc<str>>,
     },
 }
 
@@ -109,6 +115,7 @@ impl RecordingSpan {
     fn start(
         trace_id: [u8; 16],
         parent_span_id: Option<[u8; 8]>,
+        flags: u8,
         name: String,
         kind: SpanKind,
     ) -> Self {
@@ -117,6 +124,7 @@ impl RecordingSpan {
                 trace_id,
                 span_id: new_span_id(),
                 parent_span_id,
+                flags,
                 name,
                 kind,
                 start_unix_nano: unix_nanos_now(),
@@ -143,7 +151,7 @@ impl RecordingSpan {
         TraceParent {
             trace_id: data.trace_id,
             span_id: data.span_id,
-            flags: 0x01,
+            flags: data.flags,
         }
     }
 
@@ -204,27 +212,36 @@ impl Drop for RecordingSpan {
 }
 
 /// Starts the span for one client call (embed, rerank, ...) when export is on, and returns what
-/// the call's HTTP attempts should propagate.
+/// the call's HTTP attempts should propagate. A caller that didn't sample its span keeps that
+/// decision: its context is forwarded and nothing is recorded, as a parent-based sampler would.
 pub(crate) fn start_call_span(
-    parent: Option<TraceParent>,
+    parent: Option<&TraceContext>,
     operation: &str,
 ) -> (Option<CallTraceContext>, Option<RecordingSpan>) {
-    if exporter().is_none() {
-        return (parent.map(CallTraceContext::Propagate), None);
+    if exporter().is_none() || parent.is_some_and(|parent| !parent.parent.sampled()) {
+        return (parent.cloned().map(CallTraceContext::Propagate), None);
     }
-    let (trace_id, parent_span_id) = match parent {
-        Some(parent) => (parent.trace_id, Some(parent.span_id)),
-        None => (new_trace_id(), None),
+    let (trace_id, parent_span_id, flags, tracestate) = match parent {
+        Some(parent) => (
+            parent.parent.trace_id,
+            Some(parent.parent.span_id),
+            parent.parent.flags,
+            parent.tracestate.clone(),
+        ),
+        None => (new_trace_id(), None, SAMPLED_FLAG, None),
     };
     let span = RecordingSpan::start(
         trace_id,
         parent_span_id,
+        flags,
         format!("perfclient.{}", operation),
         SpanKind::Internal,
     );
     let context = CallTraceContext::Record {
         trace_id,
         call_span_id: span.traceparent().span_id,
+        flags,
+        tracestate,
     };
     (Some(context), Some(span))
 }
@@ -288,9 +305,12 @@ pub(crate) fn start_attempt_span(
         Some(CallTraceContext::Record {
             trace_id,
             call_span_id,
+            flags,
+            ..
         }) => Some(RecordingSpan::start(
             *trace_id,
             Some(*call_span_id),
+            *flags,
             method.to_string(),
             SpanKind::Client,
         )),
@@ -298,15 +318,17 @@ pub(crate) fn start_attempt_span(
     }
 }
 
-/// The `traceparent` an attempt sends: its own span when recording, else the caller's context.
-pub(crate) fn attempt_traceparent(
-    context: Option<&CallTraceContext>,
+/// The `traceparent` and `tracestate` an attempt sends: its own span when recording, else the
+/// caller's context unchanged.
+pub(crate) fn attempt_trace_headers<'a>(
+    context: Option<&'a CallTraceContext>,
     attempt_span: Option<&RecordingSpan>,
-) -> Option<TraceParent> {
-    match (context, attempt_span) {
-        (_, Some(span)) => Some(span.traceparent()),
-        (Some(CallTraceContext::Propagate(parent)), None) => Some(*parent),
-        (Some(CallTraceContext::Record { .. }), None) | (None, None) => None,
+) -> Option<(TraceParent, Option<&'a str>)> {
+    match context? {
+        CallTraceContext::Propagate(parent) => Some((parent.parent, parent.tracestate.as_deref())),
+        CallTraceContext::Record { tracestate, .. } => {
+            attempt_span.map(|span| (span.traceparent(), tracestate.as_deref()))
+        }
     }
 }
 
@@ -678,6 +700,7 @@ mod tests {
             trace_id: [0x4b; 16],
             span_id: [0x01; 8],
             parent_span_id: Some([0x02; 8]),
+            flags: SAMPLED_FLAG,
             name: "POST".to_string(),
             kind: SpanKind::Client,
             start_unix_nano: 10,
@@ -702,22 +725,31 @@ mod tests {
     }
 
     #[test]
-    fn attempt_traceparent_propagates_parent_only_when_not_recording() {
-        let parent =
-            TraceParent::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00").unwrap();
-        let propagate = CallTraceContext::Propagate(parent);
-        assert_eq!(attempt_traceparent(Some(&propagate), None), Some(parent));
-        assert_eq!(attempt_traceparent(None, None), None);
+    fn attempt_trace_headers_forward_the_parent_only_when_not_recording() {
+        let parent = TraceContext::parse(
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00",
+            Some("vendor=opaque"),
+        )
+        .unwrap();
+        let propagate = CallTraceContext::Propagate(parent.clone());
+        assert_eq!(
+            attempt_trace_headers(Some(&propagate), None),
+            Some((parent.parent, Some("vendor=opaque")))
+        );
+        assert_eq!(attempt_trace_headers(None, None), None);
 
         let record = CallTraceContext::Record {
-            trace_id: parent.trace_id,
+            trace_id: parent.parent.trace_id,
             call_span_id: [7; 8],
+            flags: 0x03,
+            tracestate: parent.tracestate.clone(),
         };
         let span = start_attempt_span(Some(&record), "POST").expect("recording context");
-        let sent = attempt_traceparent(Some(&record), Some(&span)).unwrap();
-        assert_eq!(sent.trace_id, parent.trace_id);
-        assert_eq!(sent.flags, 0x01);
+        let (sent, tracestate) = attempt_trace_headers(Some(&record), Some(&span)).unwrap();
+        assert_eq!(sent.trace_id, parent.parent.trace_id);
+        assert_eq!(sent.flags, 0x03, "recorded spans keep the parent's flags");
         assert_ne!(sent.span_id, [7; 8]);
+        assert_eq!(tracestate, Some("vendor=opaque"));
         assert!(start_attempt_span(Some(&propagate), "POST").is_none());
         // Dropping an unfinished span with export disabled must not panic.
         drop(span);

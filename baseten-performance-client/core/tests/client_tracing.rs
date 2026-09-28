@@ -138,11 +138,12 @@ fn attr<'a>(span: &'a Value, key: &str) -> Option<&'a Value> {
         .map(|attribute| &attribute["value"])
 }
 
-/// Model server: records each request's traceparent header(s), fails the first `failures`
-/// requests with 503, and delays the first request by `first_delay`.
+/// Model server: records each request's traceparent and tracestate header(s), fails the first
+/// `failures` requests with 503, and delays the first request by `first_delay`.
 struct ModelServer {
     base_url: String,
     traceparents: Arc<Mutex<Vec<Vec<String>>>>,
+    tracestates: Arc<Mutex<Vec<Vec<String>>>>,
     handle: tokio::task::JoinHandle<()>,
 }
 
@@ -155,6 +156,7 @@ impl Drop for ModelServer {
 #[derive(Clone)]
 struct ModelState {
     traceparents: Arc<Mutex<Vec<Vec<String>>>>,
+    tracestates: Arc<Mutex<Vec<Vec<String>>>>,
     requests: Arc<AtomicUsize>,
     failures: usize,
     first_delay: Duration,
@@ -162,8 +164,10 @@ struct ModelState {
 
 async fn start_model_server(failures: usize, first_delay: Duration) -> ModelServer {
     let traceparents = Arc::new(Mutex::new(Vec::new()));
+    let tracestates = Arc::new(Mutex::new(Vec::new()));
     let state = ModelState {
         traceparents: Arc::clone(&traceparents),
+        tracestates: Arc::clone(&tracestates),
         requests: Arc::new(AtomicUsize::new(0)),
         failures,
         first_delay,
@@ -181,6 +185,7 @@ async fn start_model_server(failures: usize, first_delay: Duration) -> ModelServ
     ModelServer {
         base_url: format!("http://{}", addr),
         traceparents,
+        tracestates,
         handle,
     }
 }
@@ -191,13 +196,19 @@ async fn model_handler(
     Json(request): Json<CoreOpenAIEmbeddingsRequest>,
 ) -> impl IntoResponse {
     let index = state.requests.fetch_add(1, Ordering::SeqCst);
-    state.traceparents.lock().unwrap().push(
+    let values = |name: &str| -> Vec<String> {
         headers
-            .get_all("traceparent")
+            .get_all(name)
             .iter()
             .map(|value| value.to_str().unwrap().to_string())
-            .collect(),
-    );
+            .collect()
+    };
+    state
+        .traceparents
+        .lock()
+        .unwrap()
+        .push(values("traceparent"));
+    state.tracestates.lock().unwrap().push(values("tracestate"));
     if index == 0 && !state.first_delay.is_zero() {
         tokio::time::sleep(state.first_delay).await;
     }
@@ -495,4 +506,67 @@ async fn traceparent_in_extra_headers_wins() {
 
     let seen = server.traceparents.lock().unwrap().clone();
     assert_eq!(seen, vec![vec![caller_value.to_string()]]);
+}
+
+#[tokio::test]
+async fn unsampled_parent_is_forwarded_and_not_recorded() {
+    otlp();
+    let parent = "00-0123456789abcdef0123456789abcdef-1111111111111111-00";
+    let server = start_model_server(0, Duration::ZERO).await;
+    let preference = single_request_preference().with_traceparent(parent.to_string());
+
+    embed(&client_for(&server), &preference)
+        .await
+        .expect("request succeeds");
+
+    assert_eq!(
+        *server.traceparents.lock().unwrap(),
+        vec![vec![parent.to_string()]]
+    );
+    // Longer than the exporter's 1s flush interval, so a recorded span would have arrived.
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let recorded = otlp()
+        .spans
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|span| span["traceId"] == "0123456789abcdef0123456789abcdef")
+        .count();
+    assert_eq!(
+        recorded, 0,
+        "an unsampled parent's call must not be recorded"
+    );
+}
+
+#[tokio::test]
+async fn recorded_attempt_keeps_parent_flags_and_tracestate() {
+    otlp();
+    let parent =
+        TraceParent::parse("00-fedcba9876543210fedcba9876543210-2222222222222222-03").unwrap();
+    let server = start_model_server(0, Duration::ZERO).await;
+    let preference = single_request_preference()
+        .with_traceparent(parent.to_string())
+        .with_tracestate("vendor=opaque".to_string());
+
+    embed(&client_for(&server), &preference)
+        .await
+        .expect("request succeeds");
+
+    let attempts = sent(&server);
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0].trace_id, parent.trace_id);
+    assert_eq!(attempts[0].flags, 0x03, "the parent's trace flags are kept");
+    assert_ne!(attempts[0].span_id, parent.span_id);
+    assert_eq!(
+        *server.tracestates.lock().unwrap(),
+        vec![vec!["vendor=opaque".to_string()]]
+    );
+
+    let spans = wait_for_spans(&hex(&parent.trace_id), 2).await;
+    assert!(
+        spans
+            .iter()
+            .any(|span| span["spanId"] == hex(&attempts[0].span_id)),
+        "the span on the wire is the exported attempt span: {spans:?}"
+    );
 }
