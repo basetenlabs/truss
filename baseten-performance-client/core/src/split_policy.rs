@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Caller-owned W3C context, forwarded unchanged without recording client spans.
+/// Explicit caller-owned W3C parent context.
 #[derive(Debug, Clone)]
 pub struct TraceContext {
     pub traceparent: String,

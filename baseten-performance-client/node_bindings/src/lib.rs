@@ -220,7 +220,7 @@ impl CancellationToken {
   }
 }
 
-/// Caller-owned W3C headers, forwarded unchanged without recording client spans.
+/// Explicit caller-owned W3C parent context.
 #[napi(object)]
 pub struct TraceContext {
   pub traceparent: String,

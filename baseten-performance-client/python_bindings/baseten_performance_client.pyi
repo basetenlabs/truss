@@ -209,7 +209,7 @@ class ClassificationResponse:
         ...
 
 class TraceContext:
-    """Caller-supplied W3C headers; does not record or export client spans."""
+    """Explicit caller-owned W3C parent context."""
 
     def __init__(self, traceparent: str, tracestate: str | None = None) -> None: ...
     @property

@@ -1,5 +1,6 @@
 pub mod cancellation;
 pub mod client;
+mod client_spans;
 pub mod constants;
 pub mod customer_request_id;
 pub mod endpoint_routing;

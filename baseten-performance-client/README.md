@@ -992,9 +992,29 @@ In Node.js, set `preference.traceContext = { traceparent: "00-…", tracestate: 
 on a `RequestProcessingPreference` (use a complete W3C traceparent in real requests).
 Rust callers use `RequestProcessingPreference::with_trace_context(TraceContext { ... })`.
 
-Context is explicit and optional: no OpenTelemetry dependency, ambient context lookup,
-environment flag, client span creation, or exporter. Without context, existing request
-behavior is unchanged. Callers are responsible for valid W3C values; the client checks
-HTTP header safety and forwards values unchanged, including sampling flags. Supplying
-`traceparent` or `tracestate` in both `trace_context` and `extra_headers` is an error.
+Context is explicit and optional: no OpenTelemetry dependency or ambient context lookup.
+With export disabled, headers are forwarded unchanged, including sampling flags.
+Supplying trace headers in both `trace_context` and `extra_headers` is an error.
 Existing callers can continue supplying these headers through `extra_headers` alone.
+
+To enable client-span export, set these before the first client request:
+
+```sh
+export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=http://localhost:4318
+# Optional, comma-separated literal name=value headers for the collector only:
+export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS='authorization=Bearer collector-token'
+```
+
+The endpoint accepts OTLP/HTTP JSON; `/v1/traces` is appended unless already present.
+Configuration is read once per process. The application's `OTEL_*` variables are ignored.
+Each client call records one span covering all its batches, retries, and hedges, through
+response parsing. Its context is forwarded to the model so server spans join underneath it.
+A supplied sampled parent is preserved as the client span's parent; an unsampled parent
+is forwarded without recording. Without a parent, export creates a new root trace.
+Export requires a valid 55-character W3C traceparent when one is supplied.
+
+Export runs on a separate thread, with a bounded 1,024-span queue and a five-second
+HTTP timeout. It is best effort: failed batches, queue overflow, and spans pending at
+process exit can be lost; there is no shutdown flush or export retry. Export failures
+do not fail inference. Client-call failures/cancellation mark the span as an error.
+Unset the endpoint to disable recording/export; the request loop has no tracing work.

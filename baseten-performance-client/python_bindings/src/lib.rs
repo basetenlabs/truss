@@ -500,7 +500,7 @@ impl CancellationToken {
     }
 }
 
-/// Explicit W3C headers; no OpenTelemetry dependency or client span recording.
+/// Explicit caller-owned W3C parent context.
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct TraceContext {

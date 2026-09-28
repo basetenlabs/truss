@@ -1,4 +1,5 @@
 use crate::cancellation::JoinSetGuard;
+use crate::client_spans::CallSpan;
 use crate::constants::*;
 use crate::endpoint_routing::{normalize_request_suffix, EndpointPool, EndpointRouter};
 use crate::errors::ClientError;
@@ -571,7 +572,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = CallSpan::start(&mut config, "perfclient.embed")?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -605,6 +607,7 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        CallSpan::complete(&mut span);
         Ok((response, durations, headers, total_time))
     }
 
@@ -630,7 +633,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = CallSpan::start(&mut config, "perfclient.rerank")?;
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -670,6 +674,7 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        CallSpan::complete(&mut span);
         Ok((response, durations, headers, total_time))
     }
 
@@ -700,7 +705,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = CallSpan::start(&mut config, "perfclient.classify")?;
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
@@ -740,6 +746,7 @@ impl PerformanceClientCore {
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
         response.response_headers = headers.clone();
 
+        CallSpan::complete(&mut span);
         Ok((response, durations, headers, total_time))
     }
 
@@ -763,7 +770,8 @@ impl PerformanceClientCore {
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
-        let config = self.maybe_pin_initial_endpoint(config);
+        let mut config = self.maybe_pin_initial_endpoint(config);
+        let mut span = CallSpan::start(&mut config, "perfclient.batch_post")?;
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
@@ -873,6 +881,7 @@ impl PerformanceClientCore {
             .collect();
 
         let total_time = start_time.elapsed();
+        CallSpan::complete(&mut span);
         Ok((final_results, total_time))
     }
 }
