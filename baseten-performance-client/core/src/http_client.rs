@@ -534,10 +534,12 @@ pub(crate) async fn send_request_with_hedging(
     config: &RequestProcessingConfig,
 ) -> AttemptResult {
     let (request_builder, mut primary_span) = primary;
-    let hedge_race = Arc::new(AtomicBool::new(false));
-    if let Some(span) = primary_span.as_mut() {
-        span.set_hedge_race(Arc::clone(&hedge_race));
-    }
+    // Only recorded spans read the race state, so the disabled path allocates nothing for it.
+    let hedge_race = primary_span.as_mut().map(|span| {
+        let race = Arc::new(AtomicBool::new(false));
+        span.set_hedge_race(Arc::clone(&race));
+        race
+    });
 
     // Validate that we have hedge budget and hedge delay
     let hedge_budget = &config.hedge_budget;
@@ -585,10 +587,12 @@ pub(crate) async fn send_request_with_hedging(
             // Allow hedging if we had budget before decrement (budget was > 0)
             if budget_before_decrement > 0 {
                 let (request_builder_hedge, mut hedge_span) = build_hedge();
-                if let Some(span) = hedge_span.as_mut() {
-                    span.set_hedge_race(Arc::clone(&hedge_race));
+                if let Some(race) = hedge_race.as_ref() {
+                    if let Some(span) = hedge_span.as_mut() {
+                        span.set_hedge_race(Arc::clone(race));
+                    }
+                    race.store(true, Ordering::SeqCst);
                 }
-                hedge_race.store(true, Ordering::SeqCst);
                 join_set.spawn(async move {
                     let result = send_attempt(request_builder_hedge, hedge_span, ClientError::from).await;
                     tracing::debug!("hedged request faster than original");

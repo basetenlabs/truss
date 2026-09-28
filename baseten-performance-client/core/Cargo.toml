@@ -36,3 +36,7 @@ rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["http2", "tokio"] }
+
+[[bench]]
+name = "disabled_tracing"
+harness = false
