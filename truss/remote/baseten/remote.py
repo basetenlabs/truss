@@ -1051,7 +1051,20 @@ class BasetenRemote(TrussRemote):
     def create_loops_session(self, training_project_id=None):
         return self._api.create_loops_session(training_project_id=training_project_id)
 
-    def create_loops_run(self, session_id, base_model, seed=None, replicas=None):
+    def create_loops_run(
+        self,
+        session_id,
+        base_model,
+        seed=None,
+        replicas=None,
+        sampler_min_replicas=None,
+        sampler_max_replicas=None,
+    ):
         return self._api.create_loops_run(
-            session_id=session_id, base_model=base_model, seed=seed, replicas=replicas
+            session_id=session_id,
+            base_model=base_model,
+            seed=seed,
+            replicas=replicas,
+            sampler_min_replicas=sampler_min_replicas,
+            sampler_max_replicas=sampler_max_replicas,
         )

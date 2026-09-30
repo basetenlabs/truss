@@ -77,12 +77,32 @@ truss_cli.add_command(loops)
         "Must be a positive integer; defaults to 1."
     ),
 )
+@click.option(
+    "--min-sampler-replicas",
+    type=click.IntRange(min=0),
+    required=False,
+    help=(
+        "Minimum replicas for the paired sampler. 0 lets it scale to zero when "
+        "idle. Defaults to the platform default."
+    ),
+)
+@click.option(
+    "--max-sampler-replicas",
+    type=click.IntRange(min=1),
+    required=False,
+    help=(
+        "Maximum replicas for the paired sampler. Defaults to "
+        "--min-sampler-replicas (at least 1) when that is set."
+    ),
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_loops_deployment(
     base_model: str,
     project_id: Optional[str],
     replicas: Optional[int],
+    min_sampler_replicas: Optional[int],
+    max_sampler_replicas: Optional[int],
     remote: Optional[str],
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
@@ -94,6 +114,15 @@ def push_loops_deployment(
     if replicas is not None and replicas < 1:
         raise click.BadParameter(
             "--replicas must be a positive integer.", param_hint="--replicas"
+        )
+    if (
+        min_sampler_replicas is not None
+        and max_sampler_replicas is not None
+        and min_sampler_replicas > max_sampler_replicas
+    ):
+        raise click.BadParameter(
+            "--min-sampler-replicas must be <= --max-sampler-replicas.",
+            param_hint="--min-sampler-replicas",
         )
 
     if not remote:
@@ -112,7 +141,11 @@ def push_loops_deployment(
         spinner="dots",
     ):
         remote_provider.create_loops_run(
-            session_id=session_id, base_model=base_model, replicas=replicas
+            session_id=session_id,
+            base_model=base_model,
+            replicas=replicas,
+            sampler_min_replicas=min_sampler_replicas,
+            sampler_max_replicas=max_sampler_replicas,
         )
 
     # Readiness is now the loops SDK's responsibility — clients block on
