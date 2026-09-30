@@ -50,7 +50,11 @@ def test_push_basic(mock_remote):
     assert result.exit_code == 0, result.output
     mock_remote.create_loops_session.assert_called_once_with(training_project_id=None)
     mock_remote.create_loops_run.assert_called_once_with(
-        session_id="session_abc123", base_model="Qwen/Qwen3-8B", replicas=None
+        session_id="session_abc123",
+        base_model="Qwen/Qwen3-8B",
+        replicas=None,
+        sampler_min_replicas=None,
+        sampler_max_replicas=None,
     )
     assert "Qwen/Qwen3-8B" in result.output
 
@@ -62,7 +66,11 @@ def test_push_with_replicas(mock_remote):
 
     assert result.exit_code == 0, result.output
     mock_remote.create_loops_run.assert_called_once_with(
-        session_id="session_abc123", base_model="Qwen/Qwen3-8B", replicas=4
+        session_id="session_abc123",
+        base_model="Qwen/Qwen3-8B",
+        replicas=4,
+        sampler_min_replicas=None,
+        sampler_max_replicas=None,
     )
 
 
@@ -72,6 +80,44 @@ def test_push_rejects_non_positive_replicas(mock_remote):
     )
 
     assert result.exit_code != 0
+    mock_remote.create_loops_run.assert_not_called()
+
+
+def test_push_with_sampler_replicas(mock_remote):
+    result = _invoke_loops_push(
+        [
+            "Qwen/Qwen3-8B",
+            "--remote",
+            "test_remote",
+            "--min-sampler-replicas",
+            "1",
+            "--max-sampler-replicas",
+            "3",
+        ],
+        mock_remote,
+    )
+
+    assert result.exit_code == 0, result.output
+    call_kwargs = mock_remote.create_loops_run.call_args.kwargs
+    assert call_kwargs["sampler_min_replicas"] == 1
+    assert call_kwargs["sampler_max_replicas"] == 3
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--min-sampler-replicas", "-1"],
+        ["--max-sampler-replicas", "0"],
+        ["--min-sampler-replicas", "3", "--max-sampler-replicas", "2"],
+    ],
+)
+def test_push_rejects_invalid_sampler_replicas(mock_remote, flags):
+    result = _invoke_loops_push(
+        ["Qwen/Qwen3-8B", "--remote", "test_remote", *flags], mock_remote
+    )
+
+    assert result.exit_code != 0
+    mock_remote.create_loops_session.assert_not_called()
     mock_remote.create_loops_run.assert_not_called()
 
 
