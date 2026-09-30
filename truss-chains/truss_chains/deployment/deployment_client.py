@@ -71,12 +71,37 @@ def _get_ordered_dependencies(
 
 def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path:
     # TODO: revisit how chain root is inferred/specified, current might be brittle.
-    chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+    return pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+
+
+def _log_chain_workspace(chain_root: pathlib.Path) -> None:
     logging.info(
         f"Using chain workspace dir: `{chain_root}` (files under this dir will "
         "be included as dependencies in the remote deployments and are importable)."
     )
-    return chain_root
+
+
+def _log_generated_chainlets(
+    chain_root: pathlib.Path,
+    generated: list[tuple[private_types.ChainletAPIDescriptor, pathlib.Path]],
+) -> None:
+    """Log the workspace and shared codegen directory once.
+
+    Chainlet artifacts are siblings under one generated directory, so push
+    should not repeat that path (or the workspace) for every chainlet.
+    """
+    if not generated:
+        return
+    gen_dir = generated[0][1].parent
+    chainlets = "\n".join(
+        f"  {descriptor.chainlet_cls.entity_type} `{descriptor.name}`"
+        for descriptor, _chainlet_dir in generated
+    )
+    logging.info(
+        f"Using chain workspace dir: `{chain_root}` (files under this dir will "
+        "be included as dependencies in the remote deployments and are importable).\n"
+        f"Generated chainlets in `{gen_dir}`:\n{chainlets}"
+    )
 
 
 def _collect_external_package_dirs(
@@ -266,6 +291,9 @@ def _generate_chainlet_artifacts(
         use_local_src = options.use_local_src
 
     has_engine_builder_chainlets = False
+    generated_chainlets: list[
+        tuple[private_types.ChainletAPIDescriptor, pathlib.Path]
+    ] = []
 
     for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
         if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
@@ -292,6 +320,7 @@ def _generate_chainlet_artifacts(
             model_name,
             use_local_src,
         )
+        generated_chainlets.append((chainlet_descriptor, chainlet_dir))
         artifact = b10_types.ChainletArtifact(
             truss_dir=chainlet_dir,
             name=chainlet_descriptor.name,
@@ -307,6 +336,7 @@ def _generate_chainlet_artifacts(
         else:
             dependency_artifacts.append(artifact)
 
+    _log_generated_chainlets(chain_root, generated_chainlets)
     assert entrypoint_artifact is not None
 
     # Find the entrypoint descriptor
@@ -871,6 +901,7 @@ class _Watcher:
                 name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
             )
             self._chain_root = _get_chain_root(entrypoint_cls)
+            _log_chain_workspace(self._chain_root)
             chainlet_descriptors = list(_get_ordered_dependencies([entrypoint_cls]))
             chainlet_names = set(desc.display_name for desc in chainlet_descriptors)
             if included_chainlets:
