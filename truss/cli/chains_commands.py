@@ -78,11 +78,23 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return _build_chains_table(service, service.get_info())
 
 
-def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, List[str]]:
+def _print_chain_status_header(service) -> None:
+    """Print the chain name and status page once, above the live status table.
+
+    A multiline table title is re-rendered on every live refresh. When the
+    terminal wraps that title, Rich under-counts the height and each refresh
+    leaves another copy of the chain name on screen.
+    """
+    console.print(f"⛓️   {service.name} - Chain  ⛓️")
+    console.print(f"🌐 Status page: {common.format_link(service.status_page_url)}")
+
+
+def _build_chains_table(
+    _service, status_iterable
+) -> Tuple[rich.table.Table, List[str]]:
     """Creates a status table similar to:
 
                                           ⛓️   ItestChain - Chain  ⛓️
-
                          🌐 Status page: https://app.baseten.co/chains/p7qrm93v/overview
     ╭──────────────────────┬──────────────────────────────┬─────────────────────────────────────────────╮
     │ Status               │ Chainlet                     │ Logs URL                                   │
@@ -95,15 +107,11 @@ def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, Lis
     │ 🛠️  BUILDING         │ TextToNum (internal)         │ https://app.baseten.co/chains/.../logs/... │
     ╰──────────────────────┴──────────────────────────────┴────────────────────────────────────────────╯
 
+    The header above the table is printed separately by `_print_chain_status_header`.
     """
-    title = (
-        f"⛓️   {service.name} - Chain  ⛓️\n\n "
-        f"🌐 Status page: {common.format_link(service.status_page_url)}"
-    )
     table = rich.table.Table(
         show_header=True,
         header_style="bold yellow",
-        title=title,
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
@@ -395,6 +403,7 @@ def push_chain(
         service.run_remote_url, options.environment, service.is_websocket
     )
 
+    _print_chain_status_header(service)
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
     # Keep early-ready chainlets warm while slower ones still deploy, so they
