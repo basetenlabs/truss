@@ -6,6 +6,7 @@ from truss.base import truss_config
 from truss.base.constants import WORKSTATION_TEMPLATE_DIR
 from truss.base.truss_config import Accelerator
 from truss_train.definitions import (
+    AvailabilityModel,
     BasetenCheckpoint,
     CacheConfig,
     CheckpointingConfig,
@@ -76,6 +77,7 @@ def build_workstation_project(
     checkpoint_path: Optional[str] = None,
     checkpoint_volume_size: Optional[int] = None,
     checkpoint_from_job: Optional[str] = None,
+    spot: bool = False,
 ) -> TrainingProject:
     accel_enum = truss_config.Accelerator(accelerator)
 
@@ -84,6 +86,9 @@ def build_workstation_project(
         accelerator=truss_config.AcceleratorSpec(
             accelerator=accel_enum, count=gpu_count
         ),
+        availability_model=AvailabilityModel.SPOT
+        if spot
+        else AvailabilityModel.DEDICATED,
     )
 
     load_checkpoint_config = None

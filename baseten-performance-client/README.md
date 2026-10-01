@@ -1008,6 +1008,9 @@ export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS='authorization=Bearer collector-t
 
 The endpoint accepts gzip-compressed OTLP/HTTP JSON; `/v1/traces` is appended unless already present.
 Configuration is read once per process. The application's `OTEL_*` variables are ignored.
+Initialization errors emit one warning and disable client-span recording/export for the
+process; inference and explicit context forwarding continue. Restart after correcting
+the configuration.
 Each client call records one span covering all its batches, retries, and hedges, through
 response parsing. Its context is forwarded to the model so server spans join underneath it.
 A supplied sampled parent is preserved as the client span's parent; an unsampled parent

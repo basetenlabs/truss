@@ -133,6 +133,7 @@ def build_exec_project(
     external_dirs: Sequence[str],
     environment_variables: Mapping[str, Union[str, SecretReference]],
     enable_cache: bool,
+    enable_ssh: bool,
 ) -> TrainingProject:
     """Build the training project for an exec job.
 
@@ -170,13 +171,15 @@ def build_exec_project(
         else None,
     )
 
-    # SSH available on demand, rather than a session live from job startup: the
+    # When enabled, SSH is available on demand, rather than from job startup: the
     # session timeout applies once the job ends, so it is not a concern for a
     # long-running job. No timeout is set here; the model default still applies.
-    interactive_session = InteractiveSession(
-        trigger=InteractiveSessionTrigger.ON_DEMAND,
-        session_provider=InteractiveSessionProvider.SSH,
-    )
+    interactive_session = None
+    if enable_ssh:
+        interactive_session = InteractiveSession(
+            trigger=InteractiveSessionTrigger.ON_DEMAND,
+            session_provider=InteractiveSessionProvider.SSH,
+        )
 
     workspace_config = None
     if workspace_root or exclude_dirs or external_dirs:

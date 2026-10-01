@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::OnceLock, time::Duration};
 
 const ENDPOINT: &str = "BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT";
 const HEADERS: &str = "BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS";
-static TRACER: OnceLock<Result<Option<SdkTracer>, String>> = OnceLock::new();
+static TRACER: OnceLock<Option<SdkTracer>> = OnceLock::new();
 
 #[derive(Debug)]
 struct CollectorTransport {
@@ -120,11 +120,13 @@ pub(crate) fn start_call_span(
     config: &mut RequestProcessingConfig,
     name: &'static str,
 ) -> Result<Option<Span>, ClientError> {
-    let Some(tracer) = TRACER
-        .get_or_init(init_tracer)
-        .as_ref()
-        .map_err(|error| ClientError::InvalidParameter(error.clone()))?
-    else {
+    let Some(tracer) = TRACER.get_or_init(|| match init_tracer() {
+        Ok(tracer) => tracer,
+        Err(error) => {
+            tracing::warn!(%error, "Performance client tracing disabled");
+            None
+        }
+    }) else {
         return Ok(None);
     };
     let headers = config.extra_headers.get_or_insert_default();
