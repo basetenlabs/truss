@@ -54,7 +54,6 @@ def test_push_basic(mock_remote):
         base_model="Qwen/Qwen3-8B",
         replicas=None,
         sampler_min_replicas=None,
-        sampler_max_replicas=None,
     )
     assert "Qwen/Qwen3-8B" in result.output
 
@@ -70,7 +69,6 @@ def test_push_with_replicas(mock_remote):
         base_model="Qwen/Qwen3-8B",
         replicas=4,
         sampler_min_replicas=None,
-        sampler_max_replicas=None,
     )
 
 
@@ -90,8 +88,6 @@ def test_push_with_sampler_replicas(mock_remote):
             "--remote",
             "test_remote",
             "--min-sampler-replicas",
-            "1",
-            "--max-sampler-replicas",
             "3",
         ],
         mock_remote,
@@ -99,16 +95,16 @@ def test_push_with_sampler_replicas(mock_remote):
 
     assert result.exit_code == 0, result.output
     call_kwargs = mock_remote.create_loops_run.call_args.kwargs
-    assert call_kwargs["sampler_min_replicas"] == 1
-    assert call_kwargs["sampler_max_replicas"] == 3
+    assert call_kwargs["sampler_min_replicas"] == 3
 
 
 @pytest.mark.parametrize(
     "flags",
     [
         ["--min-sampler-replicas", "-1"],
-        ["--max-sampler-replicas", "0"],
-        ["--min-sampler-replicas", "3", "--max-sampler-replicas", "2"],
+        ["--min-sampler-replicas", "0"],
+        ["--sampler-num-replicas", "1"],
+        ["--max-sampler-replicas", "2"],
     ],
 )
 def test_push_rejects_invalid_sampler_replicas(mock_remote, flags):

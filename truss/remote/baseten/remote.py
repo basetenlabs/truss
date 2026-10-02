@@ -1058,7 +1058,6 @@ class BasetenRemote(TrussRemote):
         seed=None,
         replicas=None,
         sampler_min_replicas=None,
-        sampler_max_replicas=None,
     ):
         return self._api.create_loops_run(
             session_id=session_id,
@@ -1066,5 +1065,4 @@ class BasetenRemote(TrussRemote):
             seed=seed,
             replicas=replicas,
             sampler_min_replicas=sampler_min_replicas,
-            sampler_max_replicas=sampler_max_replicas,
         )
