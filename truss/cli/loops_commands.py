@@ -77,12 +77,22 @@ truss_cli.add_command(loops)
         "Must be a positive integer; defaults to 1."
     ),
 )
+@click.option(
+    "--min-sampler-replicas",
+    type=click.IntRange(min=1),
+    required=False,
+    help=(
+        "Minimum number of paired sampler replicas. The backend also uses this as the "
+        "maximum. Defaults to the platform default."
+    ),
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def push_loops_deployment(
     base_model: str,
     project_id: Optional[str],
     replicas: Optional[int],
+    min_sampler_replicas: Optional[int],
     remote: Optional[str],
 ) -> None:
     """Deploy a Loops run + sampler for a base model.
@@ -112,7 +122,10 @@ def push_loops_deployment(
         spinner="dots",
     ):
         remote_provider.create_loops_run(
-            session_id=session_id, base_model=base_model, replicas=replicas
+            session_id=session_id,
+            base_model=base_model,
+            replicas=replicas,
+            sampler_min_replicas=min_sampler_replicas,
         )
 
     # Readiness is now the loops SDK's responsibility — clients block on
