@@ -8,7 +8,14 @@ import pydantic
 import pytest
 import requests_mock
 
-from truss.base.truss_config import BISLLM, FabricRequirement, Weights, WeightsSource
+from truss.base.truss_config import (
+    BISLLM,
+    FabricRequirement,
+    Runtime,
+    TrussConfig,
+    Weights,
+    WeightsSource,
+)
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -795,6 +802,26 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"
     assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize("egress_restricted", [True, False, None])
+def test_prepare_bis_llm_request_body_forwards_egress_restricted(
+    remote, egress_restricted
+):
+    config = TrussConfig(
+        bis_llm=BISLLM(config={"model": "test-llm"}),
+        runtime=Runtime(egress_restricted=egress_restricted),
+    )
+    config.validate_forbid_extra()
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config, model_name="model_name", model_id=None, labels=None
+    )
+
+    if egress_restricted is None:
+        assert "egress_restricted" not in body
+    else:
+        assert body["egress_restricted"] is egress_restricted
 
 
 @pytest.mark.parametrize(

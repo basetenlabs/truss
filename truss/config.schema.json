@@ -1169,6 +1169,19 @@
           "default": null,
           "description": "Egress network restrictions for the model version. When unset, all egress is allowed (default)."
         },
+        "egress_restricted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "BIS LLM deployments only: opt this deployment in to (true) or out of (false) egress restrictions. When unset, the organization's setting applies.",
+          "title": "Egress Restricted"
+        },
         "truss_server_version_override": {
           "anyOf": [
             {
