@@ -841,18 +841,12 @@ def test_deactivate_loops_run_posts_run_deactivate_endpoint(baseten_api):
 
 @pytest.mark.parametrize(
     ("replicas", "expected_fields"),
-    [
-        ({}, {}),
-        (
-            {"sampler_min_replicas": 1, "sampler_max_replicas": 3},
-            {"sampler_min_replicas": 1, "sampler_max_replicas": 3},
-        ),
-    ],
+    [({}, {}), ({"sampler_min_replicas": 3}, {"sampler_min_replicas": 3})],
 )
 def test_create_loops_run_sends_sampler_replicas_only_when_set(
     baseten_api, replicas, expected_fields
 ):
-    # Unset bounds are left out so the server applies its own defaults.
+    # An unset count are left out so the server applies its own defaults.
     mock_rest_client = mock.Mock()
     mock_rest_client.post.return_value = {"run": {}}
     baseten_api._rest_api_client = mock_rest_client

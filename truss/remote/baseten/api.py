@@ -1369,7 +1369,6 @@ class BasetenApi:
         seed: Optional[int] = None,
         replicas: Optional[int] = None,
         sampler_min_replicas: Optional[int] = None,
-        sampler_max_replicas: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
@@ -1378,8 +1377,6 @@ class BasetenApi:
             body["replicas"] = replicas
         if sampler_min_replicas is not None:
             body["sampler_min_replicas"] = sampler_min_replicas
-        if sampler_max_replicas is not None:
-            body["sampler_max_replicas"] = sampler_max_replicas
         resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
         return resp_json["run"]
 
