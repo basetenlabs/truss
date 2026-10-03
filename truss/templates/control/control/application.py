@@ -50,7 +50,8 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
                 )
             if isinstance(exc, ModelNotReady):
                 return JSONResponse(
-                    {"error": str(exc)}, status_code=http.HTTPStatus.SERVICE_UNAVAILABLE.value
+                    {"error": str(exc)},
+                    status_code=http.HTTPStatus.SERVICE_UNAVAILABLE.value,
                 )
 
             # Defensive: the error handler itself must not crash. _format_error
