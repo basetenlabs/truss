@@ -41,8 +41,9 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as exc:
-            # NB(nikhil): Intentionally bypass error logging for ModelLoadFailed, since health checks
-            # are noisy. The underlying model logs for why the load failed will still be visible.
+            # NB(nikhil): Intentionally bypass error logging for ModelLoadFailed and ModelNotReady,
+            # since health checks are noisy. The underlying model logs for why the load failed
+            # will still be visible.
             if isinstance(exc, ModelLoadFailed):
                 return JSONResponse(
                     {"error": str(exc)}, status_code=http.HTTPStatus.BAD_GATEWAY.value
