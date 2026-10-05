@@ -1057,12 +1057,12 @@ class BasetenRemote(TrussRemote):
         base_model,
         seed=None,
         replicas=None,
-        sampler_min_replicas=None,
+        sampler_num_replicas=None,
     ):
         return self._api.create_loops_run(
             session_id=session_id,
             base_model=base_model,
             seed=seed,
             replicas=replicas,
-            sampler_min_replicas=sampler_min_replicas,
+            sampler_num_replicas=sampler_num_replicas,
         )
