@@ -10,6 +10,7 @@ import requests_mock
 
 from truss.base.truss_config import (
     BISLLM,
+    EgressRestrictions,
     FabricRequirement,
     Runtime,
     TrussConfig,
@@ -822,6 +823,21 @@ def test_prepare_bis_llm_request_body_forwards_egress_restricted(
         assert "egress_restricted" not in body
     else:
         assert body["egress_restricted"] is egress_restricted
+
+
+def test_prepare_bis_llm_request_body_forwards_egress_restrictions(remote):
+    config = TrussConfig(
+        bis_llm=BISLLM(config={"model": "test-llm"}),
+        runtime=Runtime(
+            egress_restrictions=EgressRestrictions(fqdn_allow_list=["*.example.com"])
+        ),
+    )
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config, model_name="model_name", model_id=None, labels=None
+    )
+
+    assert body["egress_restrictions"] == {"fqdn_allow_list": ["*.example.com"]}
 
 
 @pytest.mark.parametrize(
