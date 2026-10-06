@@ -875,6 +875,16 @@ _ENCODER_LLM_CONFIG = {
         (_bis_config(fqdn_allow_list=["*.hf.co"]), ["huggingface.co"]),
         # The exact encoder host, not a wildcard over every model on the Baseten API.
         (_bis_config(llm_config=_ENCODER_LLM_CONFIG), ["model-abc.api.baseten.co"]),
+        # Any Baseten-API URL counts, e.g. an openai_http tokenizer endpoint.
+        (
+            _bis_config(
+                llm_config={
+                    "engine_backend": "openai_http",
+                    "tokenizer_endpoint": "https://model-wxpev45q.api.baseten.co/environments/production/sync",
+                }
+            ),
+            ["model-wxpev45q.api.baseten.co"],
+        ),
     ],
 )
 def test_warn_on_bis_egress_allowlist_gaps_names_missing_hosts(

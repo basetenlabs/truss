@@ -101,16 +101,18 @@ HF_EGRESS_FQDNS = (
 )
 
 
-def _encoder_urls(value: Any) -> Iterator[str]:
+def _baseten_api_urls(value: Any, key: str = "") -> Iterator[tuple[str, str]]:
+    """(key, host) for every URL on the Baseten API, e.g. encoder_url or tokenizer_endpoint."""
     if isinstance(value, dict):
-        for key, item in value.items():
-            if key == "encoder_url" and isinstance(item, str):
-                yield item
-            else:
-                yield from _encoder_urls(item)
+        for k, item in value.items():
+            yield from _baseten_api_urls(item, k)
     elif isinstance(value, list):
         for item in value:
-            yield from _encoder_urls(item)
+            yield from _baseten_api_urls(item, key)
+    elif isinstance(value, str) and value.startswith(("http://", "https://")):
+        host = urlparse(value).hostname or ""
+        if host.endswith(".api.baseten.co"):
+            yield key, host
 
 
 def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
@@ -128,17 +130,16 @@ def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
         hf_hosts = [h for h in HF_EGRESS_FQDNS if not is_allowed(h)]
         reason = "it has no BDN `weights:` mount, so it pulls weights from Hugging Face"
         gaps.append((reason, hf_hosts))
-    # Suggest the exact encoder host: *.api.baseten.co would reach every model there.
-    encoder_hosts = sorted(
-        {
-            urlparse(url).hostname or ""
-            for url in _encoder_urls(config.bis_llm.config or {})
-        }
+    # Suggest exact hosts: *.api.baseten.co would reach every model there.
+    api_urls = sorted(set(_baseten_api_urls(config.bis_llm.config or {})))
+    missing = [(key, host) for key, host in api_urls if not is_allowed(host)]
+    keys = ", ".join(sorted({key for key, _ in missing}))
+    gaps.append(
+        (
+            f"its bis_llm.config calls the Baseten API ({keys})",
+            sorted({host for _, host in missing}),
+        )
     )
-    baseten_api_hosts = [
-        h for h in encoder_hosts if h.endswith(".api.baseten.co") and not is_allowed(h)
-    ]
-    gaps.append(("its encoder_url calls the Baseten API", baseten_api_hosts))
     for reason, hosts in gaps:
         if hosts:
             # Quoted: a leading `*` would start a YAML alias.
