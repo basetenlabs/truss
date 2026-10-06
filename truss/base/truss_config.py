@@ -973,14 +973,6 @@ class Runtime(custom_types.ConfigModel):
             "all egress is allowed (default)."
         ),
     )
-    egress_restricted: Optional[bool] = pydantic.Field(
-        default=None,
-        description=(
-            "Set true to restrict this deployment's egress to its default allowlist; "
-            "setting egress_restrictions also restricts it. Requires the organization "
-            "to have egress restrictions enabled."
-        ),
-    )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
         description="By default, truss servers are built from the same release as the "
