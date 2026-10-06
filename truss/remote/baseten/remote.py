@@ -99,7 +99,6 @@ HF_EGRESS_FQDNS = (
     "cdn-lfs-us-1.hf.co",
     "cdn-lfs-eu-1.hf.co",
 )
-BASETEN_API_EGRESS_FQDN = "*.api.baseten.co"
 
 
 def _encoder_urls(value: Any) -> Iterator[str]:
@@ -129,14 +128,17 @@ def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
         hf_hosts = [h for h in HF_EGRESS_FQDNS if not is_allowed(h)]
         reason = "it has no BDN `weights:` mount, so it pulls weights from Hugging Face"
         gaps.append((reason, hf_hosts))
-    encoder_hosts = {
-        urlparse(url).hostname or ""
-        for url in _encoder_urls(config.bis_llm.config or {})
-    }
-    if any(h.endswith(".api.baseten.co") and not is_allowed(h) for h in encoder_hosts):
-        gaps.append(
-            ("its encoder_url calls the Baseten API", [BASETEN_API_EGRESS_FQDN])
-        )
+    # Suggest the exact encoder host: *.api.baseten.co would reach every model there.
+    encoder_hosts = sorted(
+        {
+            urlparse(url).hostname or ""
+            for url in _encoder_urls(config.bis_llm.config or {})
+        }
+    )
+    baseten_api_hosts = [
+        h for h in encoder_hosts if h.endswith(".api.baseten.co") and not is_allowed(h)
+    ]
+    gaps.append(("its encoder_url calls the Baseten API", baseten_api_hosts))
     for reason, hosts in gaps:
         if hosts:
             # Quoted: a leading `*` would start a YAML alias.
