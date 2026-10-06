@@ -176,8 +176,11 @@ class BasetenEndpoints:
         span: trace.Span,
     ) -> "InputType":
         if self.is_binary(request):
-            with tracing.section_as_event(span, "binary-deserialize"):
-                inputs = serialization.truss_msgpack_deserialize(body_raw)
+            try:
+                with tracing.section_as_event(span, "binary-deserialize"):
+                    inputs = serialization.truss_msgpack_deserialize(body_raw)
+            except ValueError as e:
+                raise errors.InputParsingError(str(e)) from e
             if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):

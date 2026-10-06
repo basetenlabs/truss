@@ -59,6 +59,9 @@ def _truss_msgpack_encoder(
 
 
 def _truss_msgpack_decoder(obj: Any, chain=None):
+    if obj.get(b"nd") is True and obj.get(b"kind") == b"O":
+        raise ValueError("unsupported payload")
+
     try:
         if b"__dt_datetime_iso__" in obj:
             return datetime.fromisoformat(obj[b"data"])

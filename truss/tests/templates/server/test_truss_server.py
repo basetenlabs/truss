@@ -14,6 +14,7 @@ from threading import Event
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import numpy as np
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
@@ -229,6 +230,23 @@ async def test_binary_request_accepts_content_type_variants(app_path, content_ty
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
     assert serialization.truss_msgpack_deserialize(response.body) == {"predictions": []}
+
+
+@pytest.mark.anyio
+async def test_binary_object_array_request_is_rejected(app_path):
+    mock_request = _make_connected_request()
+    mock_request.headers = Headers({"Content-Type": "application/octet-stream"})
+    # An object-dtype array routes into msgpack_numpy's pickle path; the server
+    # must reject it as an input-parsing error rather than deserialize it.
+    body = serialization.truss_msgpack_serialize(np.array([{"a": 1}], dtype=object))
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        endpoints = _get_endpoints(app_path)
+        with pytest.raises(truss_server_module.errors.InputParsingError):
+            await endpoints.predict(
+                model_name="model", request=mock_request, body_raw=body
+            )
 
 
 @pytest.mark.anyio
