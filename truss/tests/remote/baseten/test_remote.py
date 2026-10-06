@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -26,7 +27,13 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
-from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
+from truss.remote.baseten.remote import (
+    HF_EGRESS_FQDNS,
+    PatchResult,
+    PatchStatus,
+    retry_patch,
+    warn_on_bis_egress_allowlist_gaps,
+)
 from truss.remote.baseten.service import URLConfig
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -839,6 +846,72 @@ def test_prepare_bis_llm_request_body_forwards_egress_restrictions(
     )
 
     assert body["egress_restrictions"] == expected
+
+
+def _bis_config(fqdn_allow_list=None, weights=None, llm_config=None, egress=True):
+    return TrussConfig(
+        bis_llm=BISLLM(config=llm_config or {"model": "test-llm"}),
+        weights=Weights(weights or []),
+        runtime=Runtime(
+            egress_restrictions=EgressRestrictions(fqdn_allow_list=fqdn_allow_list)
+            if egress
+            else None
+        ),
+    )
+
+
+_ENCODER_LLM_CONFIG = {
+    "model": "test-llm",
+    "b10_vision_config": {"encoder_url": "https://model-abc.api.baseten.co/v1"},
+}
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_hosts"),
+    [
+        # No BDN mount: weights come from Hugging Face at runtime.
+        (_bis_config(), ["huggingface.co", "us.aws.cdn.hf.co"]),
+        # A wildcard covers the CDN hosts; only the apex is still missing.
+        (_bis_config(fqdn_allow_list=["*.hf.co"]), ["huggingface.co"]),
+        (_bis_config(llm_config=_ENCODER_LLM_CONFIG), ["*.api.baseten.co"]),
+    ],
+)
+def test_warn_on_bis_egress_allowlist_gaps_names_missing_hosts(
+    caplog, config, expected_hosts
+):
+    with caplog.at_level(logging.WARNING):
+        warn_on_bis_egress_allowlist_gaps(config)
+
+    for host in expected_hosts:
+        assert f'      - "{host}"' in caplog.text
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        _bis_config(
+            weights=[
+                WeightsSource(source="hf://model-1", mount_location="/models/base")
+            ]
+        ),
+        _bis_config(
+            fqdn_allow_list=[*HF_EGRESS_FQDNS, "*.api.baseten.co"],
+            llm_config=_ENCODER_LLM_CONFIG,
+        ),
+        _bis_config(
+            fqdn_allow_list=[*HF_EGRESS_FQDNS, "model-abc.api.baseten.co"],
+            llm_config=_ENCODER_LLM_CONFIG,
+        ),
+        # Unrestricted, or not BIS: nothing to warn about.
+        _bis_config(egress=False),
+        TrussConfig(runtime=Runtime(egress_restrictions=EgressRestrictions())),
+    ],
+)
+def test_warn_on_bis_egress_allowlist_gaps_is_quiet_when_covered(caplog, config):
+    with caplog.at_level(logging.WARNING):
+        warn_on_bis_egress_allowlist_gaps(config)
+
+    assert caplog.text == ""
 
 
 def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):

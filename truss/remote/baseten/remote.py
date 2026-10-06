@@ -1,4 +1,5 @@
 import enum
+import fnmatch
 import logging
 import os
 import re
@@ -10,12 +11,14 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     NamedTuple,
     Optional,
     Tuple,
     Type,
 )
+from urllib.parse import urlparse
 
 import yaml
 from requests import ReadTimeout
@@ -79,6 +82,70 @@ class PatchStatus(enum.Enum):
 class PatchResult(NamedTuple):
     status: PatchStatus
     message: str
+
+
+# Hosts a Hugging Face weight pull touches when the model has no BDN `weights:`
+# mount. Hugging Face lists them for firewalled downloads and warns they change
+# as its CDN evolves:
+# https://huggingface.co/docs/hub/main/en/models-downloading#downloading-behind-a-proxy-or-firewall
+HF_EGRESS_FQDNS = (
+    "huggingface.co",
+    "cas-server.xethub.hf.co",
+    "cas-server.xethub-eu.hf.co",
+    "transfer.xethub.hf.co",
+    "transfer.xethub-eu.hf.co",
+    "us.aws.cdn.hf.co",
+    "us.gcp.cdn.hf.co",
+    "cdn-lfs-us-1.hf.co",
+    "cdn-lfs-eu-1.hf.co",
+)
+BASETEN_API_EGRESS_FQDN = "*.api.baseten.co"
+
+
+def _encoder_urls(value: Any) -> Iterator[str]:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "encoder_url" and isinstance(item, str):
+                yield item
+            else:
+                yield from _encoder_urls(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _encoder_urls(item)
+
+
+def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
+    """Warn when a restricted BIS model needs hosts its allowlist lacks."""
+    egress_restrictions = config.runtime.egress_restrictions
+    if config.bis_llm is None or egress_restrictions is None:
+        return
+    allowed = egress_restrictions.fqdn_allow_list or []
+
+    def is_allowed(host: str) -> bool:
+        return any(fnmatch.fnmatchcase(host, entry) for entry in allowed)
+
+    gaps: list[tuple[str, list[str]]] = []
+    if not config.weights.sources:
+        hf_hosts = [h for h in HF_EGRESS_FQDNS if not is_allowed(h)]
+        reason = "it has no BDN `weights:` mount, so it pulls weights from Hugging Face"
+        gaps.append((reason, hf_hosts))
+    encoder_hosts = {
+        urlparse(url).hostname or ""
+        for url in _encoder_urls(config.bis_llm.config or {})
+    }
+    if any(h.endswith(".api.baseten.co") and not is_allowed(h) for h in encoder_hosts):
+        gaps.append(
+            ("its encoder_url calls the Baseten API", [BASETEN_API_EGRESS_FQDN])
+        )
+    for reason, hosts in gaps:
+        if hosts:
+            # Quoted: a leading `*` would start a YAML alias.
+            block = "\n".join(f'      - "{h}"' for h in hosts)
+            logging.warning(
+                f"runtime.egress_restrictions is set, but {reason}. These hosts are "
+                "not in the allowlist, so the deployment cannot reach them. Add:\n"
+                f"runtime:\n  egress_restrictions:\n    fqdn_allow_list:\n{block}"
+            )
 
 
 def retry_patch(
@@ -369,6 +436,7 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle.spec.config
 
+        warn_on_bis_egress_allowlist_gaps(config)
         if config.bis_llm is not None:
             self._validate_bis_llm_push_options(
                 publish=publish,
