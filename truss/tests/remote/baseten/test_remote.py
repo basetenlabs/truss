@@ -805,19 +805,50 @@ def test_push_uses_bis_llm_service_for_bis_llm(
     assert service._url_config == URLConfig.BIS_LLM
 
 
-def test_prepare_bis_llm_request_body_forwards_egress_restrictions(remote):
+@pytest.mark.parametrize(
+    ("egress_restrictions", "expected"),
+    [
+        (
+            EgressRestrictions(
+                fqdn_allow_list=["*.example.com"],
+                ip_allow_list=["1.1.1.1", "8.8.8.0/24"],
+            ),
+            {
+                "fqdn_allow_list": ["*.example.com"],
+                "ip_allow_list": ["1.1.1.1", "8.8.8.0/24"],
+            },
+        ),
+        (
+            EgressRestrictions(ip_allow_list=["1.1.1.1/32"]),
+            {"ip_allow_list": ["1.1.1.1/32"]},
+        ),
+        # An empty block is the BIS opt-in, so it must reach the server, not be dropped.
+        (EgressRestrictions(), {}),
+    ],
+)
+def test_prepare_bis_llm_request_body_forwards_egress_restrictions(
+    remote, egress_restrictions, expected
+):
     config = TrussConfig(
         bis_llm=BISLLM(config={"model": "test-llm"}),
-        runtime=Runtime(
-            egress_restrictions=EgressRestrictions(fqdn_allow_list=["*.example.com"])
-        ),
+        runtime=Runtime(egress_restrictions=egress_restrictions),
     )
 
     body = remote._prepare_bis_llm_request_body(
         config=config, model_name="model_name", model_id=None, labels=None
     )
 
-    assert body["egress_restrictions"] == {"fqdn_allow_list": ["*.example.com"]}
+    assert body["egress_restrictions"] == expected
+
+
+def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):
+    config = TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"}))
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config, model_name="model_name", model_id=None, labels=None
+    )
+
+    assert "egress_restrictions" not in body
 
 
 @pytest.mark.parametrize(
