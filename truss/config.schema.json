@@ -1179,7 +1179,7 @@
             }
           ],
           "default": null,
-          "description": "BIS LLM deployments only. Has effect only when the organization has egress restrictions enabled: false exempts this deployment. For BIS, egress_restrictions lists extend the platform default allowlist.",
+          "description": "BIS LLM deployments only: true restricts this deployment's egress, and requires the organization to have egress restrictions enabled. With it, egress_restrictions lists extend the platform default allowlist.",
           "title": "Egress Restricted"
         },
         "truss_server_version_override": {
