@@ -1601,6 +1601,34 @@ class TestWeightsSource:
         assert source.source == "cw://my-bucket"
         assert source.is_huggingface is False
 
+    @pytest.mark.parametrize(
+        "uri", ["ngc://my-org/my-team/llama-nim:1.0.3", "ngc://my-org/llama-nim:v2"]
+    )
+    def test_ngc_source_basic(self, uri):
+        """NGC source accepts org[/team]/model:version."""
+        source = WeightsSource(
+            source=uri, mount_location="/models/llama", auth_secret_name="ngc_api_key"
+        )
+        assert source.source == uri
+        assert source.is_huggingface is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "ngc://",
+            "ngc://my-org/llama-nim",
+            "ngc://my-org/llama-nim:",
+            "ngc://llama-nim:1.0",
+            "ngc://a/b/c/d:1.0",
+            "ngc://my-org//llama-nim:1.0",
+            "ngc://my-org/llama-nim@main",
+        ],
+    )
+    def test_invalid_ngc_uri_format(self, uri):
+        """NGC URI needs an org, a model and a version."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid NGC URI format"):
+            WeightsSource(source=uri, mount_location="/models/llama")
+
     def test_https_source_basic(self):
         """HTTPS source should work for direct URL downloads."""
         source = WeightsSource(
@@ -2202,6 +2230,7 @@ class TestTrussConfigVolumeMounts:
             "azure://account/container/path",
             "r2://account_id.bucket/path",
             "cw://bucket/path",
+            "ngc://org/model:1.0",
             "https://example.com/model.bin",
         ],
     )

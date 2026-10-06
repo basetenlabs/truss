@@ -419,8 +419,12 @@ _CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://", "cw:
 _HF_PREFIX = "hf://"
 # HTTPS prefix for direct URL downloads
 _HTTPS_PREFIX = "https://"
-# All supported URI schemes (cloud storage + HuggingFace + HTTPS)
-_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
+# NVIDIA NGC private registry prefix
+_NGC_PREFIX = "ngc://"
+# ngc://org[/team]/model:version, with the version required as in the NGC CLI.
+_NGC_SOURCE_RE = re.compile(r"ngc://[^/:@\s]+(/[^/:@\s]+){1,2}:[^/:@\s]+")
+# All supported URI schemes (cloud storage + HuggingFace + HTTPS + NGC)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX, _NGC_PREFIX}
 
 
 class WeightsSource(custom_types.ConfigModel):
@@ -434,6 +438,7 @@ class WeightsSource(custom_types.ConfigModel):
     - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
     - cw:// -> CoreWeave AI Object Storage (e.g., "cw://bucket/path")
     - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
+    - ngc:// -> NVIDIA NGC private registry (e.g., "ngc://org/team/model:1.0"; team optional, version required)
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
     using the @{rev} suffix: "hf://owner/repo@revision"
@@ -454,7 +459,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, cw://, or https://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, cw://, ngc://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
@@ -526,6 +531,13 @@ class WeightsSource(custom_types.ConfigModel):
                     f"Invalid HTTPS URL format: '{v}'. "
                     f"Expected format: https://hostname/path"
                 )
+
+        # Validate ngc:// format
+        if scheme == _NGC_PREFIX and not _NGC_SOURCE_RE.fullmatch(v):
+            raise ValueError(
+                f"Invalid NGC URI format: '{v}'. "
+                f"Expected format: ngc://org[/team]/model:version"
+            )
 
         # Validate hf:// format
         if scheme == _HF_PREFIX:
