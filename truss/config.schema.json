@@ -560,7 +560,7 @@
     },
     "EgressRestrictions": {
       "additionalProperties": true,
-      "description": "Hosts a model version may reach once ``runtime.egress_restricted`` is true.\n\nThe lists extend the default allowlist, which is empty except for BIS LLM\ndeployments. Requires ``runtime.egress_restricted: true``.",
+      "description": "Egress network restrictions for a model version.\n\nSetting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or\n``[]`` blocks all outbound network egress. Omitting the\n``egress_restrictions`` block (or setting it to ``null``) preserves the\ndefault behavior of allowing all egress.",
       "properties": {
         "ip_allow_list": {
           "anyOf": [
@@ -1167,7 +1167,7 @@
             }
           ],
           "default": null,
-          "description": "Hosts the model version may reach on top of the default allowlist. Requires egress_restricted: true."
+          "description": "Egress network restrictions for the model version. When unset, all egress is allowed (default)."
         },
         "egress_restricted": {
           "anyOf": [
@@ -1179,7 +1179,7 @@
             }
           ],
           "default": null,
-          "description": "Set true to restrict this deployment's egress to its default allowlist plus egress_restrictions. Requires the organization to have egress restrictions enabled.",
+          "description": "Set true to restrict this deployment's egress to its default allowlist; setting egress_restrictions also restricts it. Requires the organization to have egress restrictions enabled.",
           "title": "Egress Restricted"
         },
         "truss_server_version_override": {

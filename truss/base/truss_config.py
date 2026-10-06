@@ -885,10 +885,12 @@ def _validate_ip_or_cidr(value: str) -> str:
 
 
 class EgressRestrictions(custom_types.ConfigModel):
-    """Hosts a model version may reach once ``runtime.egress_restricted`` is true.
+    """Egress network restrictions for a model version.
 
-    The lists extend the default allowlist, which is empty except for BIS LLM
-    deployments. Requires ``runtime.egress_restricted: true``.
+    Setting both ``ip_allow_list`` and ``fqdn_allow_list`` to ``null`` or
+    ``[]`` blocks all outbound network egress. Omitting the
+    ``egress_restrictions`` block (or setting it to ``null``) preserves the
+    default behavior of allowing all egress.
     """
 
     ip_allow_list: Optional[list[str]] = pydantic.Field(
@@ -967,16 +969,16 @@ class Runtime(custom_types.ConfigModel):
     egress_restrictions: Optional[EgressRestrictions] = pydantic.Field(
         default=None,
         description=(
-            "Hosts the model version may reach on top of the default allowlist. "
-            "Requires egress_restricted: true."
+            "Egress network restrictions for the model version. When unset, "
+            "all egress is allowed (default)."
         ),
     )
     egress_restricted: Optional[bool] = pydantic.Field(
         default=None,
         description=(
-            "Set true to restrict this deployment's egress to its default allowlist "
-            "plus egress_restrictions. Requires the organization to have egress "
-            "restrictions enabled."
+            "Set true to restrict this deployment's egress to its default allowlist; "
+            "setting egress_restrictions also restricts it. Requires the organization "
+            "to have egress restrictions enabled."
         ),
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
