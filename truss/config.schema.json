@@ -1878,6 +1878,7 @@
             {
               "enum": [
                 "/v1/embeddings",
+                "/v1/systemone",
                 "/rerank",
                 "/predict",
                 "/predict_tokens"

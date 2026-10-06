@@ -1,5 +1,6 @@
 pub mod cancellation;
 pub mod client;
+mod client_spans;
 pub mod constants;
 pub mod customer_request_id;
 pub mod endpoint_routing;
@@ -20,7 +21,7 @@ pub use endpoint_routing::{
 };
 pub use errors::ClientError;
 pub use http::*;
-pub use split_policy::RequestProcessingPreference;
+pub use split_policy::{RequestProcessingPreference, TraceContext};
 pub use utils::*;
 
 /// Initialize tracing with default WARN level

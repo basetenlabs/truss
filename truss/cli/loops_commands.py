@@ -1261,7 +1261,7 @@ def view_loops_logs(
 def _print_exec_json(
     *,
     job_resp: dict,
-    ssh_hostname: str,
+    ssh_hostname: Optional[str],
     start_command: str,
     environment_variables: dict,
     cpu_count: int,
@@ -1395,6 +1395,16 @@ def _print_exec_json(
     ),
 )
 @click.option(
+    "--ssh/--no-ssh",
+    "enable_ssh",
+    default=True,
+    show_default=True,
+    help=(
+        "Enable on-demand SSH access. Pass --no-ssh to run without an interactive "
+        "session."
+    ),
+)
+@click.option(
     "--with-uv",
     is_flag=True,
     default=False,
@@ -1437,6 +1447,7 @@ def exec_loops_command(
     secrets: tuple[str, ...],
     output_format: str,
     api_key: bool,
+    enable_ssh: bool,
     with_uv: bool,
     remote: Optional[str],
     provided_team_name: Optional[str],
@@ -1452,7 +1463,7 @@ def exec_loops_command(
 
     START_COMMAND always runs last and verbatim. BASETEN_API_KEY is provided from a
     per-team secret unless you set it yourself; pass --with-uv to get uv in the job
-    image. SSH into the job is available on demand.
+    image. SSH into the job is available on demand unless --no-ssh is passed.
     """
     as_json = output_format == "json"
 
@@ -1537,6 +1548,7 @@ def exec_loops_command(
         external_dirs=external_dirs,
         environment_variables=environment_variables,
         enable_cache=True,
+        enable_ssh=enable_ssh,
     )
 
     compute_str = (
@@ -1562,7 +1574,7 @@ def exec_loops_command(
 
     job_id = job_resp["id"]
     project_id = job_resp["training_project"]["id"]
-    ssh_hostname = f"training-job-{job_id}-0.ssh.baseten.co"
+    ssh_hostname = f"training-job-{job_id}-0.ssh.baseten.co" if enable_ssh else None
 
     if as_json:
         _print_exec_json(
@@ -1576,17 +1588,20 @@ def exec_loops_command(
             gpu_count=gpu_count,
         )
     else:
+        console.print("\n[green]Job created![/green]")
+        if ssh_hostname:
+            console.print(
+                f"\n"
+                f"SSH is available on demand. Check the interactive session with:\n"
+                f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
+                f"\n"
+                f"Then SSH in with:\n"
+                f"  [cyan]ssh {ssh_hostname}[/cyan]\n"
+                f"\n"
+                f"If you haven't set up SSH yet, run:\n"
+                f"  [cyan]truss ssh setup[/cyan]"
+            )
         console.print(
-            f"\n[green]Job created![/green]\n"
-            f"\n"
-            f"SSH is available on demand. Check the interactive session with:\n"
-            f"  [cyan]truss train isession --job-id {job_id}[/cyan]\n"
-            f"\n"
-            f"Then SSH in with:\n"
-            f"  [cyan]ssh {ssh_hostname}[/cyan]\n"
-            f"\n"
-            f"If you haven't set up SSH yet, run:\n"
-            f"  [cyan]truss ssh setup[/cyan]\n"
             f"\n"
             f"View logs:\n"
             f"  [cyan]truss train logs --job-id {job_id} --tail[/cyan]\n"

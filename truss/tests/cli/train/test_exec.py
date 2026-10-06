@@ -51,6 +51,7 @@ from truss.cli.train.workstation import DEFAULT_BASE_IMAGE
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.remote import BasetenRemote
+from truss_train import deployment
 from truss_train.definitions import (
     CacheConfig,
     InteractiveSessionProvider,
@@ -126,6 +127,7 @@ def _build(**overrides):
         external_dirs=(),
         environment_variables={},
         enable_cache=True,
+        enable_ssh=True,
     )
     kwargs.update(overrides)
     return build_exec_project(**kwargs)
@@ -236,6 +238,35 @@ def test_build_exec_project_enables_ssh_on_demand(tmp_path):
     assert job.interactive_session is not None
     assert job.interactive_session.trigger == InteractiveSessionTrigger.ON_DEMAND
     assert job.interactive_session.session_provider == InteractiveSessionProvider.SSH
+
+
+def test_build_exec_project_disables_ssh():
+    job = _build(enable_ssh=False).job
+
+    assert job.interactive_session is None
+    assert job.runtime.start_commands == ["python my_script.py"]
+
+
+@pytest.mark.parametrize("enable_ssh", [True, False])
+def test_build_exec_project_ssh_setting_reaches_push_payload(enable_ssh, tmp_path):
+    api = Mock(spec=BasetenApi)
+    api.get_blob_credentials.return_value = {
+        "s3_bucket": "test-bucket",
+        "s3_key": "test-key",
+        "creds": {},
+    }
+    job = _build(enable_ssh=enable_ssh).job
+
+    with patch("truss.remote.baseten.utils.transfer.multipart_upload_boto3"):
+        prepared_job = deployment.prepare_push(api, tmp_path, job)
+
+    payload = prepared_job.model_dump()
+    if enable_ssh:
+        assert payload["interactive_session"]["session_provider"] == "ssh"
+        assert payload["interactive_session"]["trigger"] == "on_demand"
+    else:
+        assert payload["interactive_session"] is None
+    assert payload["runtime"]["start_commands"] == ["python my_script.py"]
 
 
 def test_build_exec_project_leaves_checkpointing_disabled(tmp_path):
@@ -645,6 +676,47 @@ def test_exec_defaults_to_cpu_only_job(tmp_path):
     assert job.compute.accelerator is None
     assert job.compute.cpu_count == LOOPS_EXEC_CPU_COUNT
     assert job.compute.memory == LOOPS_EXEC_MEMORY
+
+
+@pytest.mark.parametrize("ssh_args", [[], ["--ssh"]])
+def test_exec_enables_ssh_on_demand(ssh_args, tmp_path):
+    result, mock_push = _invoke_exec(ssh_args + ["--"] + USER_COMMAND, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    session = mock_push.call_args[1]["config"].job.interactive_session
+    assert session.trigger == InteractiveSessionTrigger.ON_DEMAND
+    assert session.session_provider == InteractiveSessionProvider.SSH
+    message = _message_text(result)
+    assert "truss train isession --job-id job123" in message
+    assert "ssh training-job-job123-0.ssh.baseten.co" in message
+    assert "truss ssh setup" in message
+
+
+def test_exec_no_ssh_pushes_without_an_interactive_session(tmp_path):
+    result, mock_push = _invoke_exec(["--no-ssh", "--"] + USER_COMMAND, tmp_path)
+
+    assert result.exit_code == 0, result.output
+    job = mock_push.call_args[1]["config"].job
+    assert job.interactive_session is None
+    assert job.runtime.start_commands == [USER_COMMAND_STR]
+    message = _message_text(result)
+    assert "SSH" not in message
+    assert "ssh.baseten.co" not in message
+    assert "truss ssh" not in message
+    assert "isession" not in message
+    assert "Job created!" in message
+    assert "truss train logs --job-id job123 --tail" in message
+    assert "truss train stop --job-id job123" in message
+
+
+def test_exec_help_documents_ssh_opt_out():
+    result = CliRunner().invoke(truss_cli, ["loops", "exec", "--help"])
+
+    assert result.exit_code == 0, result.output
+    message = _message_text(result)
+    assert "--ssh" in message
+    assert "--no-ssh" in message
+    assert "without an interactive session" in message
 
 
 def test_exec_pushes_current_directory_as_source_dir(tmp_path):
@@ -1319,6 +1391,25 @@ def test_exec_json_output_reports_the_environment_the_job_gets():
     assert "hunter2" not in result.stdout
 
 
+def test_exec_no_ssh_json_has_no_hostname(tmp_path):
+    result, mock_push = _invoke_exec(
+        ["--no-ssh", "-o", "json", "--"] + USER_COMMAND,
+        tmp_path,
+        runner=_split_streams_runner(),
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_strip_ansi(result.stdout))
+    assert payload["job_id"] == "job123"
+    assert payload["ssh_hostname"] is None
+    assert payload["start_command"] == USER_COMMAND_STR
+    assert mock_push.call_args[1]["config"].job.interactive_session is None
+    assert "SSH" not in result.stderr
+    assert "ssh.baseten.co" not in result.stderr
+    assert "truss ssh" not in result.stderr
+    assert "isession" not in result.stderr
+
+
 def test_exec_default_format_prints_prose_not_json(tmp_path):
     result, _ = _invoke_exec(["--"] + USER_COMMAND, tmp_path)
 
@@ -1349,7 +1440,8 @@ def test_exec_tails_when_asked(tmp_path):
     assert mock_watcher.call_args[0][1:] == ("proj123", "job123")
 
 
-def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
+@pytest.mark.parametrize("ssh_args", [[], ["--no-ssh"]])
+def test_exec_exits_nonzero_when_the_job_fails(ssh_args, tmp_path):
     """Otherwise `truss loops exec --tail -- pytest` is green in CI regardless of
     outcome. --tail is passed explicitly: it is opt-in, so this cannot rely on a
     default."""
@@ -1357,7 +1449,7 @@ def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = True
         result, mock_push = _invoke_exec(
-            ["--", "python", "my_script.py"], tmp_path, tail=True
+            ssh_args + ["--", "python", "my_script.py"], tmp_path, tail=True
         )
 
     assert result.exit_code == 1, result.output
@@ -1367,13 +1459,17 @@ def test_exec_exits_nonzero_when_the_job_fails(tmp_path):
     assert "Traceback" not in result.output
 
 
-def test_exec_exits_zero_when_the_job_succeeds(tmp_path):
+@pytest.mark.parametrize("ssh_args", [[], ["--no-ssh"]])
+def test_exec_exits_zero_when_the_job_succeeds(ssh_args, tmp_path):
     with patch("truss.cli.loops_commands.TrainingLogWatcher") as mock_watcher:
         mock_watcher.return_value.watch.return_value = []
         mock_watcher.return_value.failed = False
-        result, _ = _invoke_exec(["--", "python", "my_script.py"], tmp_path, tail=True)
+        result, _ = _invoke_exec(
+            ssh_args + ["--", "python", "my_script.py"], tmp_path, tail=True
+        )
 
     assert result.exit_code == 0, result.output
+    mock_watcher.return_value.watch.assert_called_once()
 
 
 def test_exec_escapes_brackets_in_the_launch_line(tmp_path):

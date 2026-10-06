@@ -535,6 +535,14 @@ class BasetenApi:
             f"v1/chains/{chain_id}/deployments/{chain_deployment_id}"
         )
 
+    def deactivate_chain_deployment(
+        self, chain_id: str, chain_deployment_id: str
+    ) -> Any:
+        return self._rest_api_client.post(
+            f"v1/chains/{chain_id}/deployments/{chain_deployment_id}/deactivate",
+            body={},
+        )
+
     def models(self, team_id: Optional[str] = None):
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
