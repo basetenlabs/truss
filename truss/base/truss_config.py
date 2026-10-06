@@ -976,9 +976,10 @@ class Runtime(custom_types.ConfigModel):
     egress_restricted: Optional[bool] = pydantic.Field(
         default=None,
         description=(
-            "BIS LLM deployments only: true restricts this deployment's egress, and "
-            "requires the organization to have egress restrictions enabled. With it, "
-            "egress_restrictions lists extend the platform default allowlist."
+            "Set true to restrict this deployment's egress; egress_restrictions lists "
+            "then extend the default allowlist. Requires the organization to have "
+            "egress restrictions enabled. BIS LLM deployments need it set to use "
+            "egress_restrictions."
         ),
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
