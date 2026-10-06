@@ -23,6 +23,7 @@ MODEL_RUNNING_STATES = [
     "LOADING_MODEL",
     "ACTIVE",
     "UPDATING",
+    "SCALED_TO_ZERO",
     "WAKING_UP",
 ]
 
