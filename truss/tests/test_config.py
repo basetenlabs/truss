@@ -2029,6 +2029,55 @@ class TestTrussConfigWeights:
 
 
 class TestTrussConfigVolumeMounts:
+    @pytest.mark.parametrize("verbose", [False, True])
+    @pytest.mark.parametrize(
+        "filters",
+        [
+            {},
+            {"include": [], "exclude": []},
+            {"include": ["*.safetensors", "**/*.json", 'quoted"name.json']},
+            {"exclude": ["private/"]},
+            {"include": ["*.json"], "exclude": ["private/"]},
+        ],
+    )
+    def test_bdn_mount_filters_roundtrip(self, tmp_path, filters, verbose):
+        mount = {"source": "bdn:weights/llama:prod", "path": "/models/llama", **filters}
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump({"bdn": {"mounts": [mount]}}))
+        config = TrussConfig.from_yaml(path)
+        assert config.bdn.mounts[0].include == filters.get("include", [])
+        assert config.bdn.mounts[0].exclude == filters.get("exclude", [])
+        config.write_to_yaml_file(path, verbose=verbose)
+        serialized = yaml.safe_load(path.read_text())["bdn"]["mounts"][0]
+        for key in ("include", "exclude"):
+            assert serialized.get(key, []) == filters.get(key, [])
+        assert TrussConfig.from_yaml(path).bdn == config.bdn
+
+    @pytest.mark.parametrize("field", ["include", "exclude"])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            None,
+            "*.json",
+            [1],
+            [None],
+            [""],
+            [" "],
+            ["file "],
+            ["/file"],
+            ["../file"],
+            ["a/./file"],
+            ["a//file"],
+            ["a\\file"],
+            ["file\0"],
+        ],
+    )
+    def test_bdn_mount_rejects_invalid_filters(self, field, value):
+        with pytest.raises(pydantic.ValidationError, match=field):
+            BDNVolumeMount.model_validate(
+                {"source": "bdn:weights/llama", "path": "/models/llama", field: value}
+            )
+
     def test_bdn_from_yaml(self, tmp_path):
         yaml_content = """
         bdn:

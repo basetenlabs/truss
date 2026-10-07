@@ -142,6 +142,22 @@
           "minLength": 1,
           "title": "Path",
           "type": "string"
+        },
+        "include": {
+          "description": "Relative glob patterns selecting files to mount; empty includes all files.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Include",
+          "type": "array"
+        },
+        "exclude": {
+          "description": "Relative glob patterns excluding files from the mount; exclusions win.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude",
+          "type": "array"
         }
       },
       "required": [
