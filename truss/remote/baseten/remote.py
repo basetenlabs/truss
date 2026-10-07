@@ -1,5 +1,6 @@
 import enum
 import fnmatch
+import json
 import logging
 import os
 import re
@@ -11,14 +12,12 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Iterator,
     List,
     NamedTuple,
     Optional,
     Tuple,
     Type,
 )
-from urllib.parse import urlparse
 
 import yaml
 from requests import ReadTimeout
@@ -101,22 +100,19 @@ HF_EGRESS_FQDNS = (
 )
 
 
-def _baseten_api_urls(value: Any, key: str = "") -> Iterator[tuple[str, str]]:
-    """(key, host) for every URL on the Baseten API, e.g. encoder_url or tokenizer_endpoint."""
-    if isinstance(value, dict):
-        for k, item in value.items():
-            yield from _baseten_api_urls(item, k)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _baseten_api_urls(item, key)
-    elif isinstance(value, str) and value.startswith(("http://", "https://")):
-        try:
-            host = urlparse(value).hostname or ""
-        except ValueError:
-            # e.g. a "https://[HOST]" placeholder; an advisory scan must not fail the push.
-            return
-        if host.endswith(".api.baseten.co"):
-            yield key, host
+# The host must end the URL, so model-x.api.baseten.co.example.com is not matched;
+# `"` ends it inside the JSON-encoded config.
+_BASETEN_API_HOST = re.compile(
+    r'https?://([a-z0-9.-]+\.api\.baseten\.co)(?=[:/?#"])', re.IGNORECASE
+)
+
+
+def _baseten_api_hosts(llm_config: dict) -> set[str]:
+    """Hosts of every Baseten-API URL in bis_llm.config, e.g. encoder_url or tokenizer_endpoint."""
+    return {
+        h.lower()
+        for h in _BASETEN_API_HOST.findall(json.dumps(llm_config, default=str))
+    }
 
 
 def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
@@ -135,13 +131,11 @@ def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
         reason = "it has no BDN `weights:` mount, so it pulls weights from Hugging Face"
         gaps.append((reason, hf_hosts))
     # Suggest exact hosts: *.api.baseten.co would reach every model there.
-    api_urls = sorted(set(_baseten_api_urls(config.bis_llm.config or {})))
-    missing = [(key, host) for key, host in api_urls if not is_allowed(host)]
-    keys = ", ".join(sorted({key for key, _ in missing}))
+    api_hosts = _baseten_api_hosts(config.bis_llm.config or {})
     gaps.append(
         (
-            f"its bis_llm.config calls the Baseten API ({keys})",
-            sorted({host for _, host in missing}),
+            "its bis_llm.config has URLs on the Baseten API",
+            sorted(h for h in api_hosts if not is_allowed(h)),
         )
     )
     for reason, hosts in gaps:
