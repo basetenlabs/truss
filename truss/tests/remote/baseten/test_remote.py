@@ -913,6 +913,13 @@ def test_warn_on_bis_egress_allowlist_gaps_names_missing_hosts(
             fqdn_allow_list=[*HF_EGRESS_FQDNS, "model-abc.api.baseten.co"],
             llm_config=_ENCODER_LLM_CONFIG,
         ),
+        # A URL urlparse rejects is skipped rather than failing the push.
+        _bis_config(
+            weights=[
+                WeightsSource(source="hf://model-1", mount_location="/models/base")
+            ],
+            llm_config={"model": "test-llm", "endpoint": "https://[HOST]/v1"},
+        ),
         # Unrestricted, or not BIS: nothing to warn about.
         _bis_config(egress=False),
         TrussConfig(runtime=Runtime(egress_restrictions=EgressRestrictions())),

@@ -110,7 +110,11 @@ def _baseten_api_urls(value: Any, key: str = "") -> Iterator[tuple[str, str]]:
         for item in value:
             yield from _baseten_api_urls(item, key)
     elif isinstance(value, str) and value.startswith(("http://", "https://")):
-        host = urlparse(value).hostname or ""
+        try:
+            host = urlparse(value).hostname or ""
+        except ValueError:
+            # e.g. a "https://[HOST]" placeholder; an advisory scan must not fail the push.
+            return
         if host.endswith(".api.baseten.co"):
             yield key, host
 
