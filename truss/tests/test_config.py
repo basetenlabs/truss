@@ -2068,6 +2068,8 @@ class TestTrussConfigVolumeMounts:
             ["../file"],
             ["a/./file"],
             ["a//file"],
+            ["private//"],
+            ["private///"],
             ["a\\file"],
             ["file\0"],
         ],

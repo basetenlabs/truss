@@ -663,7 +663,8 @@ class BDNVolumeMount(custom_types.ConfigModel):
                 or "\\" in pattern
                 or "\0" in pattern
                 or any(
-                    part in {"", ".", ".."} for part in pattern.rstrip("/").split("/")
+                    part in {"", ".", ".."}
+                    for part in pattern.removesuffix("/").split("/")
                 )
             ):
                 raise ValueError(
