@@ -36,6 +36,7 @@ from truss.cli.train.workstation import (
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
+    gpus_per_node,
     workstation_ssh_hostnames,
 )
 from truss.cli.utils import common
@@ -1275,7 +1276,7 @@ def _print_workstation_json(
     "node_count",
     type=click.IntRange(1, 16),
     default=None,
-    help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
+    help="Number of nodes, each fully allocated (8 GPUs; 4 on GB300). Mutually exclusive with --gpu-count.",
 )
 @click.option(
     "--orchestrator",
@@ -1360,15 +1361,13 @@ def workstation(
     if gpu_count is not None and node_count is not None:
         raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
 
+    accelerator = accelerator.upper()
     if node_count is not None:
-        # SLURM mode: each node gets 8 GPUs
-        gpu_count = 8
+        gpu_count = gpus_per_node(accelerator)
     else:
-        # Single-node mode
         gpu_count = gpu_count or 1
         node_count = 1
 
-    accelerator = accelerator.upper()
     if not project_id:
         project_id = f"workstation-{accelerator}"
 

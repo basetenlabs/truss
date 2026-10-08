@@ -34,6 +34,10 @@ def default_base_image(accelerator: str) -> str:
     return DEFAULT_BASE_IMAGE
 
 
+def gpus_per_node(accelerator: str) -> int:
+    return 4 if accelerator == Accelerator.GB300.value else 8
+
+
 def copy_workstation_templates(target_dir: Path) -> None:
     """Copy workstation SLURM setup scripts to the target directory."""
     for script in WORKSTATION_TEMPLATE_DIR.iterdir():
