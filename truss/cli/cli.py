@@ -23,6 +23,7 @@ from truss.base.constants import (
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer, TransportKind, TrussConfig
+from truss.bis_llm.config_checks import bis_egress_allowlist_warnings
 from truss.cli import remote_cli
 from truss.cli.auth import auth_group, do_login
 from truss.cli.logs import utils as cli_log_utils
@@ -42,7 +43,7 @@ from truss.remote.baseten.core import (
     ModelVersionId,
     get_dev_version_from_versions,
 )
-from truss.remote.baseten.remote import BasetenRemote, bis_egress_allowlist_warnings
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.user_agent import set_client_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory

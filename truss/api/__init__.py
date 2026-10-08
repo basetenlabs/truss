@@ -8,8 +8,9 @@ if TYPE_CHECKING:
 
 from truss.api import definitions
 from truss.base.constants import DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_URL
+from truss.bis_llm.config_checks import bis_egress_allowlist_warnings
 from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
-from truss.remote.baseten.remote import BasetenRemote, bis_egress_allowlist_warnings
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import AuthType, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
