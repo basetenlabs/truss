@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type, cast
@@ -7,12 +8,15 @@ if TYPE_CHECKING:
 
 from truss.api import definitions
 from truss.base.constants import DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_URL
+from truss.bis_llm.config_checks import bis_egress_allowlist_warnings
 from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import AuthType, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 from truss.truss_handle.build import load
+
+logger = logging.getLogger(__name__)
 
 
 def login(api_key: str):
@@ -160,6 +164,9 @@ def push(
         )
 
     team_id = _resolve_team_id(remote_provider, team, remote, model_name)
+
+    for egress_warning in bis_egress_allowlist_warnings(tr.spec.config):
+        logger.warning(egress_warning)
 
     service = remote_provider.push(
         tr,
