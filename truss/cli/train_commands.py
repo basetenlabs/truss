@@ -1363,10 +1363,8 @@ def workstation(
 
     accelerator = accelerator.upper()
     if node_count is not None:
-        # SLURM mode: each node is fully allocated
         gpu_count = gpus_per_node(accelerator)
     else:
-        # Single-node mode
         gpu_count = gpu_count or 1
         node_count = 1
 

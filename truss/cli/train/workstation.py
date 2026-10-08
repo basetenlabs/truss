@@ -35,10 +35,7 @@ def default_base_image(accelerator: str) -> str:
 
 
 def gpus_per_node(accelerator: str) -> int:
-    # GB300 trays expose 4 GPUs per node.
-    if accelerator == Accelerator.GB300.value:
-        return 4
-    return 8
+    return 4 if accelerator == Accelerator.GB300.value else 8
 
 
 def copy_workstation_templates(target_dir: Path) -> None:
