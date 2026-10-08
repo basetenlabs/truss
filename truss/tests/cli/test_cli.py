@@ -9,7 +9,12 @@ import requests
 import yaml
 from click.testing import CliRunner
 
-from truss.cli.cli import _extract_request_data, truss_cli
+from truss.base.truss_config import BISLLM, EgressRestrictions, Runtime, TrussConfig
+from truss.cli.cli import (
+    _confirm_bis_egress_allowlist,
+    _extract_request_data,
+    truss_cli,
+)
 from truss.cli.utils import common
 from truss.remote.baseten.custom_types import AwsAssumeRoleInfo, OidcInfo, OidcTeamInfo
 from truss.remote.baseten.service import BasetenService
@@ -60,6 +65,50 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         "Truss with gRPC transport cannot be used as a development deployment"
         in result.output
     )
+
+
+_BIS_CONFIG_MISSING_HF_HOSTS = TrussConfig(
+    bis_llm=BISLLM(config={"model": "test-llm"}),
+    runtime=Runtime(egress_restrictions=EgressRestrictions()),
+)
+
+
+@pytest.mark.parametrize(
+    ("config", "interactive", "output_format", "prompted"),
+    [
+        (_BIS_CONFIG_MISSING_HF_HOSTS, True, "text", True),
+        # CI and --non-interactive only warn.
+        (_BIS_CONFIG_MISSING_HF_HOSTS, False, "text", False),
+        # JSON output reserves stdout for the result.
+        (_BIS_CONFIG_MISSING_HF_HOSTS, True, "json", False),
+        # Nothing missing: nothing to ask.
+        (
+            TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"})),
+            True,
+            "text",
+            False,
+        ),
+    ],
+)
+def test_confirm_bis_egress_allowlist_prompts_only_when_someone_can_answer(
+    config, interactive, output_format, prompted
+):
+    with (
+        patch.object(common, "check_is_interactive", return_value=interactive),
+        patch("truss.cli.cli.click.confirm") as mock_confirm,
+    ):
+        _confirm_bis_egress_allowlist(config, output_format)
+
+    assert mock_confirm.called == prompted
+
+
+def test_confirm_bis_egress_allowlist_aborts_when_declined():
+    with (
+        patch.object(common, "check_is_interactive", return_value=True),
+        patch("truss.cli.cli.click.confirm", side_effect=click.Abort),
+    ):
+        with pytest.raises(click.Abort):
+            _confirm_bis_egress_allowlist(_BIS_CONFIG_MISSING_HF_HOSTS, "text")
 
 
 # keepalive_loop tests

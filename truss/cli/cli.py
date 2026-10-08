@@ -42,7 +42,7 @@ from truss.remote.baseten.core import (
     ModelVersionId,
     get_dev_version_from_versions,
 )
-from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.baseten.remote import BasetenRemote, bis_egress_allowlist_warnings
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.user_agent import set_client_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -101,6 +101,20 @@ def _get_truss_from_directory(
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir, config_path=config_path)
+
+
+def _confirm_bis_egress_allowlist(config: TrussConfig, output_format: str) -> None:
+    """Print allowlist gaps, and ask before pushing when someone can answer."""
+    egress_warnings = bis_egress_allowlist_warnings(config)
+    for egress_warning in egress_warnings:
+        console.print(egress_warning, style="yellow", markup=False, highlight=False)
+    # JSON output reserves stdout, and CI must never block on a prompt.
+    if egress_warnings and output_format != "json" and common.check_is_interactive():
+        click.confirm(
+            "The deployment may fail to start without these hosts. Push anyway?",
+            default=False,
+            abort=True,
+        )
 
 
 def _start_tail(
@@ -944,6 +958,8 @@ def push(
                 "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
             )
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
+
+    _confirm_bis_egress_allowlist(tr.spec.config, output_format)
 
     source = Path(target_directory)
     working_dir = source.parent if source.is_file() else source.resolve()

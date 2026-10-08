@@ -115,11 +115,11 @@ def _baseten_api_hosts(llm_config: dict) -> set[str]:
     }
 
 
-def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
-    """Warn when a restricted BIS model needs hosts its allowlist lacks."""
+def bis_egress_allowlist_warnings(config: Any) -> list[str]:
+    """One warning per kind of host a restricted BIS model needs but its allowlist lacks."""
     egress_restrictions = config.runtime.egress_restrictions
     if config.bis_llm is None or egress_restrictions is None:
-        return
+        return []
     allowed = egress_restrictions.fqdn_allow_list or []
 
     def is_allowed(host: str) -> bool:
@@ -138,15 +138,15 @@ def warn_on_bis_egress_allowlist_gaps(config: Any) -> None:
             sorted(h for h in api_hosts if not is_allowed(h)),
         )
     )
-    for reason, hosts in gaps:
-        if hosts:
-            # Quoted: a leading `*` would start a YAML alias.
-            block = "\n".join(f'      - "{h}"' for h in hosts)
-            logging.warning(
-                f"runtime.egress_restrictions is set, but {reason}. These hosts are "
-                "not in the allowlist, so the deployment cannot reach them. Add:\n"
-                f"runtime:\n  egress_restrictions:\n    fqdn_allow_list:\n{block}"
-            )
+    # Quoted: a leading `*` would start a YAML alias.
+    return [
+        f"runtime.egress_restrictions is set, but {reason}. These hosts are "
+        "not in the allowlist, so the deployment cannot reach them. Add:\n"
+        "runtime:\n  egress_restrictions:\n    fqdn_allow_list:\n"
+        + "\n".join(f'      - "{h}"' for h in hosts)
+        for reason, hosts in gaps
+        if hosts
+    ]
 
 
 def retry_patch(
@@ -437,7 +437,6 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle.spec.config
 
-        warn_on_bis_egress_allowlist_gaps(config)
         if config.bis_llm is not None:
             self._validate_bis_llm_push_options(
                 publish=publish,

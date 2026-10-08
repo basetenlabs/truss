@@ -1,6 +1,5 @@
 import base64
 import json
-import logging
 import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -31,8 +30,8 @@ from truss.remote.baseten.remote import (
     HF_EGRESS_FQDNS,
     PatchResult,
     PatchStatus,
+    bis_egress_allowlist_warnings,
     retry_patch,
-    warn_on_bis_egress_allowlist_gaps,
 )
 from truss.remote.baseten.service import URLConfig
 from truss.truss_handle.truss_handle import TrussHandle
@@ -887,14 +886,11 @@ _ENCODER_LLM_CONFIG = {
         ),
     ],
 )
-def test_warn_on_bis_egress_allowlist_gaps_names_missing_hosts(
-    caplog, config, expected_hosts
-):
-    with caplog.at_level(logging.WARNING):
-        warn_on_bis_egress_allowlist_gaps(config)
+def test_bis_egress_allowlist_warnings_name_missing_hosts(config, expected_hosts):
+    text = "\n".join(bis_egress_allowlist_warnings(config))
 
     for host in expected_hosts:
-        assert f'      - "{host}"' in caplog.text
+        assert f'      - "{host}"' in text
 
 
 @pytest.mark.parametrize(
@@ -929,11 +925,8 @@ def test_warn_on_bis_egress_allowlist_gaps_names_missing_hosts(
         TrussConfig(runtime=Runtime(egress_restrictions=EgressRestrictions())),
     ],
 )
-def test_warn_on_bis_egress_allowlist_gaps_is_quiet_when_covered(caplog, config):
-    with caplog.at_level(logging.WARNING):
-        warn_on_bis_egress_allowlist_gaps(config)
-
-    assert caplog.text == ""
+def test_bis_egress_allowlist_warnings_are_empty_when_covered(config):
+    assert bis_egress_allowlist_warnings(config) == []
 
 
 def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):
