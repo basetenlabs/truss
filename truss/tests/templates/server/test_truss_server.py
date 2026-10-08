@@ -34,21 +34,22 @@ def anyio_backend():
     "formatter_class",
     [log_config._DefaultJsonFormatter, log_config._AccessJsonFormatter],
 )
-def test_json_formatter_marks_only_cold_start_logs(formatter_class):
+def test_json_formatter_marks_only_startup_logs(formatter_class):
     formatter = formatter_class()
     record = logging.LogRecord("test", logging.INFO, "", 0, "starting", (), None)
 
     try:
-        log_config.disable_cold_start_logging()
+        log_config.disable_startup_logging()
+        assert "startup" not in json.loads(formatter.format(record))
+
+        log_config.enable_startup_logging()
+        assert json.loads(formatter.format(record))["startup"] == "1"
         assert "cold_start" not in json.loads(formatter.format(record))
 
-        log_config.enable_cold_start_logging()
-        assert json.loads(formatter.format(record))["cold_start"] == "1"
-
-        log_config.disable_cold_start_logging()
-        assert "cold_start" not in json.loads(formatter.format(record))
+        log_config.disable_startup_logging()
+        assert "startup" not in json.loads(formatter.format(record))
     finally:
-        log_config.disable_cold_start_logging()
+        log_config.disable_startup_logging()
 
 
 @pytest.fixture
@@ -109,18 +110,18 @@ def _make_connected_request(request_id=None):
     return mock_request
 
 
-def test_prediction_health_check_preserves_cold_start_logging(app_path):
+def test_prediction_health_check_preserves_startup_logging(app_path):
     with _clear_truss_server_modules(), _change_directory(app_path):
         truss_server_module = importlib.import_module("truss_server")
         model = MagicMock(load_failed=False, ready=True)
         endpoints = truss_server_module.BasetenEndpoints(model, sdk_trace.NoOpTracer())
 
         with patch.object(
-            truss_server_module.log_config, "disable_cold_start_logging"
-        ) as disable_cold_start_logging:
+            truss_server_module.log_config, "disable_startup_logging"
+        ) as disable_startup_logging:
             endpoints.check_healthy()
 
-    disable_cold_start_logging.assert_not_called()
+    disable_startup_logging.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -137,7 +138,7 @@ def test_prediction_health_check_preserves_cold_start_logging(app_path):
         ("invocations_ready", False, None, False),
     ],
 )
-async def test_only_successful_readiness_ends_cold_start_logging(
+async def test_only_successful_readiness_ends_startup_logging(
     app_path, endpoint, ready, healthy, succeeds
 ):
     with _clear_truss_server_modules(), _change_directory(app_path):
@@ -150,18 +151,16 @@ async def test_only_successful_readiness_ends_cold_start_logging(
         record = logging.LogRecord("test", logging.INFO, "", 0, "startup", (), None)
         args = () if endpoint == "invocations_ready" else ("model",)
 
-        logging_config.enable_cold_start_logging()
+        logging_config.enable_startup_logging()
         try:
             if succeeds:
                 assert await getattr(endpoints, endpoint)(*args) == {}
             else:
                 with pytest.raises(server_module.errors.ModelNotReady):
                     await getattr(endpoints, endpoint)(*args)
-            assert (
-                "cold_start" in json.loads(formatter.format(record))
-            ) is not succeeds
+            assert ("startup" in json.loads(formatter.format(record))) is not succeeds
         finally:
-            logging_config.disable_cold_start_logging()
+            logging_config.disable_startup_logging()
 
 
 @pytest.mark.anyio

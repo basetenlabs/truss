@@ -71,7 +71,7 @@ def _assert_startup_log(logs: str, message: str, level: str = "INFO"):
         line for line in loglines if _log_contains_line(line, message, level)
     ]
     assert matching_lines, f"Did not find expected startup log: {message}"
-    assert all(line.get("cold_start") == "1" for line in matching_lines)
+    assert all(line.get("startup") == "1" for line in matching_lines)
 
 
 class _PropagatingThread(Thread):
