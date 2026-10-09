@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -17,7 +19,9 @@ def write_pyproject(tmp_path, monkeypatch):
 
     def _write(content: str) -> Path:
         path = tmp_path / "pyproject.toml"
-        path.write_text(content)
+        # A real pyproject.toml on disk is UTF-8; pin it so the fixture does not
+        # write the locale charset and mask a locale-dependent reader.
+        path.write_text(content, encoding="utf-8")
         return path
 
     return _write
@@ -248,3 +252,60 @@ def test_parse_requirement_string_filtered():
     assert parse_requirement_string("") is None
     assert parse_requirement_string("# comment") is None
     assert parse_requirement_string("   ") is None
+
+
+def test_parse_reads_utf8_pyproject_regardless_of_locale(write_pyproject):
+    """pyproject.toml is TOML, and TOML is defined as UTF-8 (toml.io v1.0.0).
+
+    Handing the file to tomlkit through a text stream whose codec came from the
+    locale makes the read fail on any non-ASCII byte the locale charset cannot
+    decode.  On a cp936 box an em dash in the project description is enough.
+    """
+    path = write_pyproject(
+        """
+[project]
+description = "Caf\u00e9 \u2014 a \u4e2d\u6587 service"
+authors = [{ name = "Jos\u00e9" }]
+dependencies = [
+    "requests>=2.28",
+]
+"""
+    )
+    assert parse_requirements_from_pyproject(path) == ["requests>=2.28"]
+
+
+def test_requirements_reader_does_not_use_the_locale_codec():
+    """Guard for the test above, which cannot fail on a UTF-8 CI runner.
+
+    ``-X warn_default_encoding`` makes CPython emit ``EncodingWarning`` for
+    every ``open()`` that leaves the codec to the locale, so promoting that
+    warning to an error detects the defect on every platform.
+    """
+    script = (
+        "import os, tempfile\n"
+        "from pathlib import Path\n"
+        "from truss.util.requirements import parse_requirements_from_pyproject\n"
+        "with tempfile.TemporaryDirectory() as tmp:\n"
+        "    p = Path(tmp) / 'pyproject.toml'\n"
+        "    p.write_text('[project]\\ndependencies = [\"requests\"]\\n', encoding='utf-8')\n"
+        "    assert parse_requirements_from_pyproject(p) == ['requests']\n"
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "warn_default_encoding",
+            "-W",
+            "error::EncodingWarning",
+            "-c",
+            script,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "truss/util/requirements.py relied on the locale encoding to read "
+        f"pyproject.toml:\n{proc.stderr}"
+    )
