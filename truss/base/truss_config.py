@@ -26,7 +26,7 @@ import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
 
-from truss.base import constants, custom_types, trt_llm_config
+from truss.base import constants, custom_types, trt_llm_config, vllm_config
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
@@ -1617,6 +1617,10 @@ class TrussConfig(custom_types.ConfigModel):
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
+    vllm: Optional[vllm_config.VLLMConfiguration] = pydantic.Field(
+        default=None,
+        description="vLLM configuration for serving models with the vLLM inference engine.",
+    )
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
@@ -1823,6 +1827,14 @@ class TrussConfig(custom_types.ConfigModel):
         return CacheInternal([]) if v is None else v
 
     @pydantic.model_validator(mode="after")
+    def _validate_llm_mutual_exclusion(self) -> "TrussConfig":
+        if self.trt_llm is not None and self.vllm is not None:
+            raise ValueError(
+                "vllm and trt_llm cannot both be configured at the same time."
+            )
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
 
@@ -1836,6 +1848,16 @@ class TrussConfig(custom_types.ConfigModel):
             return None
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
+
+    @pydantic.field_serializer("vllm")
+    def _serialize_vllm(
+        self,
+        vllm: Optional[vllm_config.VLLMConfiguration],
+        info: core_schema.FieldSerializationInfo,
+    ) -> Optional[dict[str, Any]]:
+        if not vllm:
+            return None
+        return vllm.model_dump()
 
     def _detect_requirements_file_type(self) -> RequirementsFileType:
         if not self.requirements_file:

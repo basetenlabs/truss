@@ -1295,7 +1295,65 @@
     "TRTLLMRuntimeConfigurationV2": {
       "additionalProperties": true,
       "properties": {
-        "max_seq_len": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model ID or local path, e.g. meta-llama/Llama-2-7b-hf. For trt_llm, this is an alias for build.checkpoint_repository.repo.",
+          "title": "Model"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model revision / branch.",
+          "title": "Revision"
+        },
+        "dtype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data type, e.g. auto, half, float16, bfloat16, float32.",
+          "title": "Dtype"
+        },
+        "quantization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Quantization method, e.g. fp8, fp8_kv, fp4, awq, gptq, squeezellm.",
+          "title": "Quantization"
+        },
+        "tensor_parallel_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Tensor Parallel Size",
+          "type": "integer"
+        },
+        "max_model_len": {
           "anyOf": [
             {
               "maximum": 1048576,
@@ -1307,32 +1365,7 @@
             }
           ],
           "default": null,
-          "title": "Max Seq Len"
-        },
-        "max_batch_size": {
-          "default": 256,
-          "maximum": 2048,
-          "minimum": 1,
-          "title": "Max Batch Size",
-          "type": "integer"
-        },
-        "max_num_tokens": {
-          "default": 8192,
-          "exclusiveMinimum": 64,
-          "maximum": 131072,
-          "title": "Max Num Tokens",
-          "type": "integer"
-        },
-        "tensor_parallel_size": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Tensor Parallel Size",
-          "type": "integer"
-        },
-        "enable_chunked_prefill": {
-          "default": true,
-          "title": "Enable Chunked Prefill",
-          "type": "boolean"
+          "title": "Max Model Len"
         },
         "served_model_name": {
           "anyOf": [
@@ -1345,6 +1378,19 @@
           ],
           "default": null,
           "title": "Served Model Name"
+        },
+        "trust_remote_code": {
+          "default": false,
+          "description": "Trust remote code from HuggingFace.",
+          "title": "Trust Remote Code",
+          "type": "boolean"
+        },
+        "extra_args": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Args",
+          "type": "array"
         },
         "patch_kwargs": {
           "additionalProperties": {
@@ -1373,6 +1419,39 @@
           },
           "title": "Patch Kwargs",
           "type": "object"
+        },
+        "max_seq_len": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Seq Len"
+        },
+        "max_batch_size": {
+          "default": 256,
+          "maximum": 2048,
+          "minimum": 1,
+          "title": "Max Batch Size",
+          "type": "integer"
+        },
+        "max_num_tokens": {
+          "default": 8192,
+          "exclusiveMinimum": 64,
+          "maximum": 131072,
+          "title": "Max Num Tokens",
+          "type": "integer"
+        },
+        "enable_chunked_prefill": {
+          "default": true,
+          "title": "Enable Chunked Prefill",
+          "type": "boolean"
         }
       },
       "title": "TRTLLMRuntimeConfigurationV2",
@@ -1588,6 +1667,32 @@
             }
           ],
           "default": null
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alias for checkpoint_repository.repo, shared with vLLM model field.",
+          "title": "Model"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Alias for checkpoint_repository.revision.",
+          "title": "Revision"
         },
         "gather_all_token_logits": {
           "default": false,
@@ -1933,6 +2038,174 @@
         }
       },
       "title": "TrussTRTQuantizationConfiguration",
+      "type": "object"
+    },
+    "VLLMConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "model": {
+          "description": "Model ID or local path to serve. e.g. meta-llama/Llama-2-7b-hf",
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model revision / branch.",
+          "title": "Revision"
+        },
+        "dtype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data type, e.g. auto, half, float16, bfloat16, float32.",
+          "title": "Dtype"
+        },
+        "quantization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Quantization method, e.g. fp8, fp8_kv, fp4, awq, gptq, squeezellm.",
+          "title": "Quantization"
+        },
+        "tensor_parallel_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of GPUs for tensor parallelism. Defaults to accelerator.count.",
+          "title": "Tensor Parallel Size"
+        },
+        "max_model_len": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum sequence length the model can process.",
+          "title": "Max Model Len"
+        },
+        "served_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name to expose in the OpenAI API.",
+          "title": "Served Model Name"
+        },
+        "trust_remote_code": {
+          "default": false,
+          "description": "Trust remote code from HuggingFace.",
+          "title": "Trust Remote Code",
+          "type": "boolean"
+        },
+        "extra_args": {
+          "description": "Additional CLI arguments (vLLM) or forwarded args for escape hatch.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Args",
+          "type": "array"
+        },
+        "patch_kwargs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": "Escape hatch for engine-specific kwargs not covered by typed fields. For vLLM, these are injected as --kebab-case flags. For TRT-LLM v2, they patch the runtime config.",
+          "title": "Patch Kwargs",
+          "type": "object"
+        },
+        "port": {
+          "default": 8000,
+          "description": "Port for the vLLM OpenAI-compatible server.",
+          "title": "Port",
+          "type": "integer"
+        },
+        "host": {
+          "default": "0.0.0.0",
+          "description": "Host to bind the vLLM server.",
+          "title": "Host",
+          "type": "string"
+        },
+        "gpu_memory_utilization": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fraction of GPU memory to use (0.0 - 1.0].",
+          "title": "Gpu Memory Utilization"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "VLLMConfiguration",
       "type": "object"
     },
     "VersionsOverrides": {
@@ -2458,6 +2731,18 @@
       ],
       "default": null,
       "description": "TensorRT-LLM configuration for optimized LLM inference."
+    },
+    "vllm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VLLMConfiguration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "vLLM configuration for serving models with the vLLM inference engine."
     },
     "training_checkpoints": {
       "anyOf": [

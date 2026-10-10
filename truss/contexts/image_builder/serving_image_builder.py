@@ -61,6 +61,7 @@ from truss.base.trt_llm_config import (
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     K8S_RESERVED_ENVIRONMENT_VARIABLES,
+    BaseImage,
     DockerServer,
     RequirementsFileType,
     TrussConfig,
@@ -688,6 +689,32 @@ class ServingImageBuilder(ImageBuilder):
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
+    def prepare_vllm_build_dir(self, build_dir: Path):
+        config = self._spec.config
+        assert config.vllm is not None, (
+            "prepare_vllm_build_dir should only be called when vllm is configured"
+        )
+
+        if config.base_image is None or not config.base_image.image:
+            config.base_image = BaseImage(
+                image=constants.VLLM_BASE_IMAGE,
+                python_executable_path="/usr/bin/python3",
+            )
+
+        accelerator_count = config.resources.accelerator.count
+        start_command = config.vllm.build_start_command(
+            accelerator_count=accelerator_count
+        )
+
+        config.docker_server = DockerServer(
+            start_command=start_command,
+            server_port=config.vllm.port,
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
     ):
@@ -726,6 +753,9 @@ class ServingImageBuilder(ImageBuilder):
                     self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
+
+        if config.vllm is not None:
+            self.prepare_vllm_build_dir(build_dir=build_dir)
 
         if _is_docker_server_build(config) and not _should_use_docker_server_slim(
             config
