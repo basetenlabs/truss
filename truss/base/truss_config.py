@@ -1797,12 +1797,17 @@ class TrussConfig(custom_types.ConfigModel):
         return v
 
     @pydantic.model_validator(mode="after")
-    def _validate_vllm(self) -> "TrussConfig":
-        if self.vllm is not None:
-            if self.trt_llm is not None:
-                raise ValueError(
-                    "vllm and trt_llm cannot both be configured at the same time."
-                )
+    def _validate_remote_ssh(self) -> "TrussConfig":
+        if (
+            self.runtime.remote_ssh.enabled
+            and self.docker_server is not None
+            and self.docker_server.run_as_user_id is not None
+        ):
+            raise ValueError(
+                "remote_ssh.enabled is not compatible with "
+                "docker_server.run_as_user_id. SSH requires the default "
+                "'app' user (uid 60000)."
+            )
         return self
 
     @pydantic.model_validator(mode="after")
@@ -1853,13 +1858,6 @@ class TrussConfig(custom_types.ConfigModel):
         if not vllm:
             return None
         return vllm.model_dump()
-
-    # NB(nikhil): clear_runtime_fields will remove all runtime specific fields from the config so
-    # we can more optimally detect whether a new image build is needed.
-    def clear_runtime_fields(self) -> None:
-        self.training_checkpoints = None
-        self.environment_variables = {}
-        self.weights = Weights([])
 
     def _detect_requirements_file_type(self) -> RequirementsFileType:
         if not self.requirements_file:

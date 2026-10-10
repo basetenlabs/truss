@@ -37,6 +37,7 @@ try:
 
     PydanticTrTBaseModel = custom_types.ConfigModel
 except ImportError:
+    # fallback for briton
     PydanticTrTBaseModel = BaseModel  # type: ignore[assignment,misc]
 
 try:
@@ -261,11 +262,18 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
 
 class TRTLLMRuntimeConfigurationV2(TrussLLMSharedConfig):
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
+    # alias of max_seq_len, shared with vLLM; same bounds as max_seq_len.
+    max_model_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
+    # how many requests can be batched together in one forward pass
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    # how many tokens can be gbatched together in one forward pass
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=131072)] = 8192
-    tensor_parallel_size: int = Field(default=1, ge=1)
+    tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
+    # whether to enable chunked prefill for generative models (decoder models)
     enable_chunked_prefill: bool = True
+    # only for generative models (e.g. decoder models), name in the json response
     served_model_name: Optional[str] = None
+    # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("patch_kwargs", "gated_features"),
@@ -307,7 +315,10 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    # for BEI/encoder and for generative models without chunked prefill:
+    # This will limit the max context length of input (+output token length for generative models)
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
+    # do not document, only 1 is allowed.
     max_beam_width: Annotated[int, Field(strict=True, ge=1, le=1)] = (
         1  # "max_beam_width greater than 1 is not currently supported"
     )
@@ -659,12 +670,16 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
 
 
 class VersionsOverrides(PydanticTrTBaseModel):
+    # If an override is specified, it takes precedence over the backend's current
+    # default version. The version is used to create a full image ref and should look
+    # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
+    # here and the backend creates the full image tag like
+    # `baseten/briton-server:v0.17.0-fd30ac1`.
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
     bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
-    vllm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
@@ -673,7 +688,6 @@ class VersionsOverrides(PydanticTrTBaseModel):
             "briton_version",
             "bei_version",
             "bei_bert_version",
-            "vllm_version",
         ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
@@ -682,13 +696,17 @@ class VersionsOverrides(PydanticTrTBaseModel):
 
 
 class ImageVersions(PydanticTrTBaseModel):
+    # Required versions for patching truss config during docker build setup.
+    # The schema of this model must be such that it can parse the values serialized
+    # from the backend. The inserted values are full image references, resolved using
+    # backend defaults and `ImageVersionsOverrides` from the pushed config.
+    # INTERNAL
     bei_image: str
     beibert_image: str
     briton_image: str
     v2_llm_image: str
-    vllm_image: str = (
-        "vllm/vllm-openai:cu129-nightly-2c17d33f4291a55b447317640c81eb61077b1b00"
-    )
+    # Falls back to `truss.base.constants.VLLM_BASE_IMAGE` when not sent by the backend.
+    vllm_image: Optional[str] = None
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):

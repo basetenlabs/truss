@@ -82,9 +82,7 @@ def _fill_trt_llm_versions(
                     image_versions.briton_image, constants.TRTLLM_PYTHON_EXECUTABLE
                 )
     elif tr.spec.config.vllm is not None:
-        vllm_img = (
-            getattr(image_versions, "vllm_image", None) or constants.VLLM_BASE_IMAGE
-        )
+        vllm_img = image_versions.vllm_image or constants.VLLM_BASE_IMAGE
         print(f"Using vLLM image: {vllm_img}")
         tr.set_base_image(vllm_img, "/usr/bin/python3")
 

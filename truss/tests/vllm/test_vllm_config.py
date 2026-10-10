@@ -1,3 +1,6 @@
+import json
+import shlex
+
 import pytest
 
 from truss.base.vllm_config import VLLMConfiguration
@@ -52,7 +55,9 @@ def test_vllm_shared_fields_with_trt_llm():
         extra_args=["--foo"],
         patch_kwargs={"bar": 1},
     )
-    vllm_cfg = VLLMConfiguration(model=shared.model, **shared.model_dump(exclude={"model"}))
+    vllm_cfg = VLLMConfiguration(
+        model=shared.model, **shared.model_dump(exclude={"model"})
+    )
     assert vllm_cfg.dtype == "bfloat16"
     assert vllm_cfg.tensor_parallel_size == 2
     assert vllm_cfg.extra_args == ["--foo"]
@@ -95,3 +100,46 @@ def test_vllm_and_trt_llm_mutual_exclusion():
                 }
             ),
         )
+
+
+def test_vllm_start_command_shlex_round_trips_structured_values():
+    hf_overrides = {"text_config": {"sliding_window": 4096}}
+    config = VLLMConfiguration(
+        model="facebook/opt-125m",
+        patch_kwargs={
+            "hf_overrides": hf_overrides,
+            "allowed_origins": ["a", "b"],
+            "chat_template": "{{ messages }} with spaces",
+        },
+    )
+    argv = shlex.split(config.build_start_command())
+    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == hf_overrides
+    assert json.loads(argv[argv.index("--allowed-origins") + 1]) == ["a", "b"]
+    assert argv[argv.index("--chat-template") + 1] == "{{ messages }} with spaces"
+
+
+def test_vllm_patch_kwargs_false_bool_emits_no_flag():
+    config = VLLMConfiguration(
+        model="facebook/opt-125m",
+        patch_kwargs={"enable_prefix_caching": False, "enforce_eager": True},
+    )
+    argv = shlex.split(config.build_start_command())
+    assert "--no-enable-prefix-caching" in argv
+    assert "--enable-prefix-caching" not in argv
+    assert "--enforce-eager" in argv
+
+
+def test_trt_llm_v2_max_model_len_respects_max_seq_len_bound():
+    from truss.base.trt_llm_config import TRTLLMRuntimeConfigurationV2
+
+    runtime = TRTLLMRuntimeConfigurationV2(max_model_len=8192)
+    assert runtime.max_seq_len == 8192
+    with pytest.raises(ValueError, match="max_model_len"):
+        TRTLLMRuntimeConfigurationV2(max_model_len=2_000_000)
+
+
+def test_trt_llm_v2_tensor_parallel_size_is_strict():
+    from truss.base.trt_llm_config import TRTLLMRuntimeConfigurationV2
+
+    with pytest.raises(ValueError, match="tensor_parallel_size"):
+        TRTLLMRuntimeConfigurationV2(tensor_parallel_size="2")

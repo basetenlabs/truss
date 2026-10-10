@@ -742,11 +742,14 @@ class ServingImageBuilder(ImageBuilder):
             and config.trt_llm.build is not None
         ):
             if config.trt_llm.inference_stack == "v2":
+                # Run the specific inference_stack v2 build
                 self.prepare_trtllm_inference_stack_v2_build_dir(build_dir=build_dir)
             elif config.trt_llm.inference_stack == "v1":
                 if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+                    # Run the specific encoder build
                     self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
                 elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT:
+                    # Run the specific encoder_bert build
                     self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
