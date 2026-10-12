@@ -643,6 +643,36 @@ class BDNVolumeMount(custom_types.ConfigModel):
         ..., description="Absolute path where the volume will be mounted at runtime."
     )
 
+    include: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Relative glob patterns selecting files to mount; empty includes all files.",
+    )
+    exclude: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Relative glob patterns excluding files from the mount; exclusions win.",
+    )
+
+    @pydantic.field_validator("include", "exclude")
+    @classmethod
+    def _validate_filter_paths(cls, patterns: list[str]) -> list[str]:
+        for pattern in patterns:
+            if (
+                not pattern
+                or pattern != pattern.strip()
+                or pattern.startswith("/")
+                or "\\" in pattern
+                or "\0" in pattern
+                or any(
+                    part in {"", ".", ".."}
+                    for part in pattern.removesuffix("/").split("/")
+                )
+            ):
+                raise ValueError(
+                    f"Mount filter {pattern!r} must be a non-empty relative glob "
+                    "without dot segments, backslashes, or null bytes"
+                )
+        return patterns
+
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, value: str) -> str:

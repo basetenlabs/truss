@@ -322,6 +322,10 @@ class BasetenRemote(TrussRemote):
             body["model_metadata"] = config.model_metadata
         if labels is not None:
             body["metadata"] = labels
+        if config.runtime.egress_restrictions is not None:
+            body["egress_restrictions"] = config.runtime.egress_restrictions.model_dump(
+                exclude_none=True
+            )
 
         if config.bis_llm:
             if config.bis_llm.version:
