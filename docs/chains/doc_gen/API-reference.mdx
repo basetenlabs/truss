@@ -310,7 +310,7 @@ Configures the usage of a custom image hosted on dockerhub.
 |--------------------------|----------------------------|---------|--------------------------------------------------------------------------------------------------------|
 | `image`                  | *str*                      |         | Reference to image on dockerhub.                                                                       |
 | `python_executable_path` | *str\|None*                | `None`  | Absolute path to python executable (if default `python` is ambiguous).                                 |
-| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](/development/model/base-images#example%3A-docker-hub-authentication). |
+| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](/development/model/dependencies#docker-hub). |
 
 
 ### *class* `truss_chains.Compute`
@@ -335,7 +335,7 @@ or over-provisioned. Refer to the
 | `predict_concurrency` | *int\|Literal['cpu_count']* | `1`     | Number of concurrent requests a single replica of a deployed chainlet handles.                                  |
 
 
-Concurrency concepts are explained in [this guide](/development/model/performance/concurrency#2-predict-concurrency).
+Concurrency concepts are explained in [this guide](/reference/config#runtime).
 It is important to understand the difference between predict_concurrency and
 the concurrency target (used for autoscaling, i.e. adding or removing replicas).
 Furthermore, the `predict_concurrency` of a single instance is implemented in

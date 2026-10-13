@@ -1,5 +1,5 @@
 --- docs/chains/doc_gen/generated-reference.mdx	2026-10-12 21:29:42
-+++ docs/chains/doc_gen/API-reference.mdx	2026-10-12 21:35:51
++++ docs/chains/doc_gen/API-reference.mdx	2026-10-12 21:38:34
 @@ -15,7 +15,7 @@
  Inheriting from this class adds validations to make sure subclasses adhere to the
  chainlet pattern and facilitates remote chainlet deployment.
@@ -426,7 +426,7 @@
 +|--------------------------|----------------------------|---------|--------------------------------------------------------------------------------------------------------|
 +| `image`                  | *str*                      |         | Reference to image on dockerhub.                                                                       |
 +| `python_executable_path` | *str\|None*                | `None`  | Absolute path to python executable (if default `python` is ambiguous).                                 |
-+| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](/development/model/base-images#example%3A-docker-hub-authentication). |
++| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](/development/model/dependencies#docker-hub). |
 
 
 -#### docker_auth *: DockerAuthSettings | None*
@@ -469,7 +469,7 @@
 
 
 -Concurrency concepts are explained in [this guide](https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency). # noqa: E501
-+Concurrency concepts are explained in [this guide](/development/model/performance/concurrency#2-predict-concurrency).
++Concurrency concepts are explained in [this guide](/reference/config#runtime).
  It is important to understand the difference between predict_concurrency and
  the concurrency target (used for autoscaling, i.e. adding or removing replicas).
  Furthermore, the `predict_concurrency` of a single instance is implemented in
