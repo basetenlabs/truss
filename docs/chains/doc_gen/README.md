@@ -28,10 +28,12 @@ To check the committed output without replacing either file, run:
 uv run python docs/chains/doc_gen/generate_reference.py --check
 ```
 
-Run the adapter and failure-handling regression tests:
+Run the adapter and failure-handling regression tests in the documentation
+environment. These require the Sphinx dependencies above, which the application
+test environment does not install:
 
 ```sh
-uv run python -m unittest discover -s docs/chains/doc_gen -p 'test_*.py'
+uv run python -m unittest discover -s docs/chains/doc_gen -p 'regression_*.py'
 ```
 
 When source docstrings or signatures change, export the uncurated output:
