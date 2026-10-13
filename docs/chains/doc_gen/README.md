@@ -19,9 +19,10 @@ parameter types. Verify the package or source version before regenerating.
 The MDX adapter normalizes the extra type argument that Python 3.13 renders
 for annotations like `typing.ContextManager[None]` (`[None, bool | None]` on
 3.13, `[None]` earlier), so regenerated output is byte-identical on Python
-3.9 through 3.13. If a future Python version changes generic-rendering
-defaults again, `--check` reports the drift; extend the normalization in
-`mdx_adapter.py` rather than regenerating with different output.
+3.12 and 3.13, the versions on either side of the rendering change. If a
+future Python version changes generic-rendering defaults again, `--check`
+reports the drift; extend the normalization in `mdx_adapter.py` rather than
+regenerating with different output.
 
 To regenerate both reference files, run:
 

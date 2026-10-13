@@ -196,8 +196,7 @@ def extract_and_format_parameters_section(content: str) -> str:
             )
         ):
             # Sphinx emits one signature per overload; keep the section with
-            # content and drop the empty duplicates, whatever order Sphinx
-            # emits them in.
+            # content and drop the empty duplicates in any order.
             continue
         field_defaults: dict[str, Any] = {}
         annotations: dict[str, str] = {}
