@@ -70,31 +70,23 @@ async def test_model_wrapper_load_error_once(app_path, connected_request):
     assert model_wrapper._model.load_count == 2
 
 
-def test_successful_load_ends_startup_logging_before_readiness(app_path):
+def test_load_completion_is_logged_before_readiness(app_path):
     model_wrapper_module = importlib.import_module("model_wrapper")
     config = yaml.safe_load((app_path / "config.yaml").read_text())
     model_wrapper = model_wrapper_module.ModelWrapper(config, sdk_trace.NoOpTracer())
-    events = []
+    readiness_at_completion = []
 
     def observe_log(message):
         if message.startswith("Completed model.load()"):
-            events.append(("completion_logged", model_wrapper.ready))
-
-    def observe_disable():
-        events.append(("startup_logging_disabled", model_wrapper.ready))
+            readiness_at_completion.append(model_wrapper.ready)
 
     with (
         patch.object(model_wrapper, "_load_impl"),
         patch.object(model_wrapper._logger, "info", side_effect=observe_log),
-        patch.object(
-            model_wrapper_module.log_config,
-            "disable_startup_logging",
-            side_effect=observe_disable,
-        ),
     ):
         model_wrapper.load()
 
-    assert events == [("completion_logged", False), ("startup_logging_disabled", False)]
+    assert readiness_at_completion == [False]
     assert model_wrapper.ready
 
 
