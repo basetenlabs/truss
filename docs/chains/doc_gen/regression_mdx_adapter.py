@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from generate_reference import _apply_patch  # type: ignore[attr-defined]
-from mdx_adapter import (
-    extract_and_format_parameters_section,  # type: ignore[attr-defined]
+from mdx_adapter import (  # type: ignore[attr-defined]
+    extract_and_format_parameters_section,
 )
 
 
