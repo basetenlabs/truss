@@ -27,7 +27,7 @@ from _truss_common import errors, tracing
 from _truss_common.patches import apply_patches
 from _truss_common.retry import retry
 from _truss_common.schema import TrussSchema
-from _truss_shared import dynamic_config_resolver, serialization
+from _truss_shared import dynamic_config_resolver, log_config, serialization
 from _truss_shared.lazy_data_resolver import LazyDataResolverV2
 from _truss_shared.secrets_resolver import SecretsResolver
 from anyio import Semaphore, to_thread
@@ -465,7 +465,7 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-                # Finish startup logging before a readiness probe can succeed.
+                log_config.disable_startup_logging()
                 self._status = ModelWrapper.Status.READY
             except Exception:
                 self._logger.exception("Exception while loading model")
