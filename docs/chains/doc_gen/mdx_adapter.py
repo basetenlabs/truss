@@ -2,17 +2,20 @@
 """Super hacky plugin to make the generated markdown more suitable for
 rendering in mintlify as an mdx doc."""
 
+from __future__ import annotations
+
 import importlib
 import inspect
 import os
 import re
-from typing import Any, Dict
+from typing import Any
 
 import pydantic
 from docutils import nodes
 from docutils.io import StringOutput
 from pydantic.fields import PydanticUndefined
 from sphinx.util.osutil import ensuredir, os_path
+from sphinx.util.typing import stringify_annotation
 from sphinx_markdown_builder import MarkdownBuilder
 from sphinx_markdown_builder.translator import MarkdownTranslator
 from tabulate import tabulate
@@ -50,10 +53,7 @@ def _format_default(obj: Any) -> str:
     if isinstance(obj, (int, float, str, bool, type(None))):
         return repr(obj)
     if isinstance(obj, (list, dict, set, tuple)):
-        try:
-            return repr(obj)
-        except Exception:
-            pass
+        return repr(obj)
     cls = obj.__class__
     cls_md = f"{cls.__module__}.{cls.__qualname__}()"
     return cls_md.replace("truss_chains.public_types", "truss_chains")
@@ -93,7 +93,7 @@ def _get_model_field_defaults(full_class_path: str) -> dict[str, Any]:
         raise
 
 
-def _get_function_defaults(full_func_path: str) -> dict[str, Any]:
+def _get_function_details(full_func_path: str) -> tuple[dict[str, Any], dict[str, str]]:
     # For methods or functions, parse signature to extract defaults.
     try:
         module_path, func_name = full_func_path.rsplit(".", 1)
@@ -101,16 +101,25 @@ def _get_function_defaults(full_func_path: str) -> dict[str, Any]:
         func = getattr(mod, func_name)
         sig = inspect.signature(func)
         defaults = {}
+        annotations = {}
         for param_name, param in sig.parameters.items():
             if param.default is not param.empty:
                 defaults[param_name] = _format_default(param.default)
-        return defaults
+            if param.annotation is not param.empty:
+                annotations[param_name] = stringify_annotation(
+                    param.annotation, "smart"
+                )
+        if sig.return_annotation is not sig.empty:
+            annotations["return"] = stringify_annotation(sig.return_annotation, "smart")
+        return defaults, annotations
     except Exception as e:
         print(f"Could not load function defaults for {full_func_path}: {e}")
         raise
 
 
-def _format_and_inject_parameters(section: str, field_defaults: dict[str, Any]) -> str:
+def _format_and_inject_parameters(
+    section: str, field_defaults: dict[str, Any], annotations: dict[str, str]
+) -> str:
     pattern = r"(\* \*\*Parameters:\*\*\n((?: {2}\* .+(?:\n {2,}.+)*\n?)+))"
     matches = re.findall(pattern, section)
 
@@ -118,7 +127,7 @@ def _format_and_inject_parameters(section: str, field_defaults: dict[str, Any]) 
         list_items = re.findall(r"( {2}\* .+(?:\n {4}.+)*)", list_block)
         extracted_items = []
         for item in list_items:
-            parsed = _parse_param_item(item, field_defaults)
+            parsed = _parse_param_item(item, field_defaults, annotations)
             extracted_items.append(parsed)
 
         table = _format_as_table(extracted_items)
@@ -129,7 +138,7 @@ def _format_and_inject_parameters(section: str, field_defaults: dict[str, Any]) 
 
 
 def _parse_param_item(
-    item: str, field_defaults: dict[str, Any]
+    item: str, field_defaults: dict[str, Any], annotations: dict[str, str]
 ) -> tuple[str, str, str, str]:
     # parse lines like:
     #   "  * **param_name** (str) – Description of param."
@@ -142,7 +151,7 @@ def _parse_param_item(
     type_match = re.search(r"\((.+?)\)", name_type)
 
     name = name_match.group(1) if name_match else ""
-    typ = type_match.group(1) if type_match else ""
+    typ = type_match.group(1) if type_match else annotations.get(name, "")
     # handle table-breaking chars
     typ = typ.replace("*", "").replace(" ", "").replace("|", r"\|")
 
@@ -173,16 +182,31 @@ def extract_and_format_parameters_section(content: str) -> str:
     sections = _split_sections_by_heading(content)
     updated_sections = []
 
-    for section in sections:
+    for index, section in enumerate(sections):
         kind, full_name = _extract_section_header(section) or (None, None)
+        if (
+            full_name
+            and len(section.strip().splitlines()) == 1
+            and index + 1 < len(sections)
+            and _extract_section_header(sections[index + 1]) == (kind, full_name)
+        ):
+            # Sphinx emits one signature per overload; keep the section with content.
+            continue
         field_defaults: dict[str, Any] = {}
+        annotations: dict[str, str] = {}
 
         if kind == "class" and full_name:
             field_defaults = _get_model_field_defaults(full_name)
         elif kind in ("function", "method") and full_name:
-            field_defaults = _get_function_defaults(full_name)
+            field_defaults, annotations = _get_function_details(full_name)
 
-        section = _format_and_inject_parameters(section, field_defaults)
+        section = _format_and_inject_parameters(section, field_defaults, annotations)
+        if (
+            annotations.get("return")
+            and "* **Returns:**" in section
+            and "* **Return type:**" not in section
+        ):
+            section += "\n* **Return type:**\n  *" + annotations["return"] + "*\n"
         updated_sections.append(section)
 
     return "".join(updated_sections)
@@ -247,7 +271,7 @@ class MDXAdapterBuilder(MarkdownBuilder):
     def get_translator_class(self):
         return MDXAdapterTranslator
 
-    def get_target_uri(self, docname: str, typ: str = None) -> str:
+    def get_target_uri(self, docname: str, typ: str | None = None) -> str:
         return f"{docname}.mdx"
 
     def write_doc(self, docname: str, doctree: nodes.document):
@@ -263,6 +287,6 @@ class MDXAdapterBuilder(MarkdownBuilder):
             file.write(AUTOGEN_NOTE + "\n" + content)
 
 
-def setup(app: Any) -> Dict[str, Any]:
+def setup(app: Any) -> dict[str, Any]:
     app.add_builder(MDXAdapterBuilder)
     return {"version": "0.1", "parallel_read_safe": True, "parallel_write_safe": True}

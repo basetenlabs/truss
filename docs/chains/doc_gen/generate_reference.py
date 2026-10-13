@@ -1,6 +1,7 @@
 # type: ignore  # This tool is only for Marius.
-"""Script to auot-generate the API reference for Truss Chains."""
+"""Script to auto-generate the API reference for Truss Chains."""
 
+import argparse
 import inspect
 import pathlib
 import shutil
@@ -153,6 +154,7 @@ def _apply_patch(
         subprocess.run(
             [
                 "patch",
+                "--batch",
                 str(original_file),
                 "-o",
                 str(temp_output_file_path),
@@ -166,28 +168,19 @@ def _apply_patch(
         # Copy temp file to final output if no errors
         shutil.copy(temp_output_file_path, output_file)
 
-    except subprocess.CalledProcessError as e:
-        reject_file = temp_output_file_path.with_suffix(".rej")
-        if reject_file.exists():
-            print(f"Conflicts found, saved to {reject_file}")
-            subprocess.run(
-                [
-                    "meld",
-                    str(original_file_path),
-                    str(output_file),
-                    str(temp_output_file_path),
-                ],
-                check=True,
-            )
-        else:
-            print(f"Patch failed: {e.stderr}")
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "Chains reference curation failed; update reference.patch before regenerating."
+        ) from error
 
     finally:
         if temp_output_file_path.exists():
             temp_output_file_path.unlink()
 
 
-def generate_sphinx_docs(output_dir: pathlib.Path) -> None:
+def generate_sphinx_docs(
+    output_dir: pathlib.Path, *, check: bool = False, raw_out: Path | None = None
+) -> None:
     _clean_build_directory(output_dir)
     config_file = pathlib.Path(__file__).parent / "sphinx_config.py"
     docs_dir = output_dir / "docs"
@@ -208,21 +201,55 @@ def generate_sphinx_docs(output_dir: pathlib.Path) -> None:
     )
     app.build()
     if BUILDER == "mdx_adapter":
+        if raw_out is not None:
+            if raw_out.resolve() in {
+                Path(__file__).with_name(name).resolve()
+                for name in ["generated-reference.mdx", "API-reference.mdx"]
+            }:
+                raise ValueError("--raw-out must point to a scratch file")
+            shutil.copy(output_dir / "modules.mdx", raw_out)
+            return
         dog_gen_dir = pathlib.Path(__file__).parent.absolute()
-        generated_reference_path = dog_gen_dir / "generated-reference.mdx"
-        shutil.copy(output_dir / "modules.mdx", generated_reference_path)
-        patch_file_path = dog_gen_dir / "reference.patch"
-        # Apply patch to generated_reference_path
-        patched_reference_path = dog_gen_dir / "API-reference.mdx"
-        _apply_patch(
-            str(generated_reference_path),
-            str(patch_file_path),
-            str(patched_reference_path),
-        )
+        with tempfile.TemporaryDirectory(prefix="chains-reference-") as directory:
+            staged = Path(directory)
+            generated_reference_path = staged / "generated-reference.mdx"
+            shutil.copy(output_dir / "modules.mdx", generated_reference_path)
+            patched_reference_path = staged / "API-reference.mdx"
+            _apply_patch(
+                str(generated_reference_path),
+                str(dog_gen_dir / "reference.patch"),
+                str(patched_reference_path),
+            )
+            references = [generated_reference_path, patched_reference_path]
+            if check:
+                drift = [
+                    path.name
+                    for path in references
+                    if not (dog_gen_dir / path.name).exists()
+                    or path.read_bytes() != (dog_gen_dir / path.name).read_bytes()
+                ]
+                if drift:
+                    raise RuntimeError("Chains reference differs: " + ", ".join(drift))
+            else:
+                for path in references:
+                    shutil.copy(path, dog_gen_dir / path.name)
 
 
 if __name__ == "__main__":
     # The mdx_adapter sphinx extension lives next to this script; make it
     # importable regardless of the CWD the script is invoked from.
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
-    generate_sphinx_docs(output_dir=pathlib.Path("/tmp/doc_gen"))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check", action="store_true", help="Compare without writing references"
+    )
+    parser.add_argument(
+        "--raw-out", type=Path, help="Export uncurated MDX without replacing references"
+    )
+    args = parser.parse_args()
+    if args.check and args.raw_out:
+        parser.error("--check and --raw-out are mutually exclusive")
+    with tempfile.TemporaryDirectory(prefix="chains-docgen-") as directory:
+        generate_sphinx_docs(
+            output_dir=pathlib.Path(directory), check=args.check, raw_out=args.raw_out
+        )

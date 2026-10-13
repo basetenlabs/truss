@@ -1,23 +1,54 @@
-This generation process of the documentation is *extremely* scrappy and just
-an interim solution. It requires significant manual oversight and the code
-quality in this directory is non-existent.
+# Generate the Chains reference
 
-Extra deps required (newer sphinx/sphinx-markdown-builder versions silently
-fall back to `.md` output and drop types from parameter tables):
-`pip install "sphinx==7.4.7" sphinx_rtd_theme "sphinx-markdown-builder==0.6.6" sphinx-pydantic`
+The generator reads the installed `truss_chains` API, renders MDX with Sphinx,
+and applies `reference.patch` to preserve curated descriptions and links.
 
+Install the documentation dependencies in your project environment:
 
-The general process is:
-1. Document as much as possible in the code, including usage examples, links
-   etc.
-2. Auto-generate `generated-API-reference.mdx` with
-   `uv run python docs/chains/doc_gen/generate_reference.py`.
-   This applies the patch file and launches meld to resolve conflicts.
-4. Proofread `docs/chains/doc_gen/API-reference.mdx`.
-5. If proofreading leads to edits or the upstream docstrings changed lot,
-   update the patch file: `diff -u \
-   docs/chains/doc_gen/generated-reference.mdx \
-   docs/chains/doc_gen/API-reference.mdx > \
-   docs/chains/doc_gen/reference.patch`
+```sh
+uv pip install "sphinx==7.4.7" sphinx_rtd_theme "sphinx-markdown-builder==0.6.6" sphinx-pydantic
+```
 
-For questions, please reach out to @marius-baseten.
+Use these Sphinx and Markdown builder versions to preserve MDX output and
+parameter types. Verify the package or source version before regenerating.
+
+To regenerate both reference files, run:
+
+```sh
+uv run python docs/chains/doc_gen/generate_reference.py
+```
+
+The generator writes `generated-reference.mdx` and `API-reference.mdx` only
+after the curation patch applies. A stale patch fails without opening an
+interactive editor or replacing the existing reference files.
+
+To check the committed output without replacing either file, run:
+
+```sh
+uv run python docs/chains/doc_gen/generate_reference.py --check
+```
+
+Run the adapter and failure-handling regression tests:
+
+```sh
+uv run python -m unittest discover -s docs/chains/doc_gen -p 'test_*.py'
+```
+
+When source docstrings or signatures change, export the uncurated output:
+
+```sh
+uv run python docs/chains/doc_gen/generate_reference.py --raw-out /tmp/chains-reference.mdx
+```
+
+Review that output against `API-reference.mdx` and preserve its curated prose.
+After updating the curated file, replace `generated-reference.mdx` with the
+reviewed raw output.
+Refresh the patch after reviewing the complete output:
+
+```sh
+diff -u docs/chains/doc_gen/generated-reference.mdx \
+  docs/chains/doc_gen/API-reference.mdx > docs/chains/doc_gen/reference.patch
+```
+
+`diff` exits with status 1 when the files differ. Regenerate and run `--check`
+after refreshing the patch. Questions about curation: @marius-baseten.
