@@ -513,10 +513,16 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
+            # Register the module before executing it, as `importlib` does for a
+            # regular import. Libraries that resolve `sys.modules[cls.__module__]`
+            # while the module body runs (e.g. pydantic generics) fail otherwise.
+            sys.modules[module_name] = module
             try:
                 spec.loader.exec_module(module)
-            except ImportError as e:
-                if "attempted relative import" in str(e):
+            except Exception as e:
+                # Don't leave a half-initialized module registered.
+                sys.modules.pop(module_name, None)
+                if isinstance(e, ImportError) and "attempted relative import" in str(e):
                     raise ImportError(
                         f"During import of `{model_class_file_path}`. "
                         f"Since Truss v0.9.36 relative imports (starting with '.') in "
