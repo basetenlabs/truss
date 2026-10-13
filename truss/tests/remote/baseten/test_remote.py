@@ -892,22 +892,21 @@ def test_push_forwards_fabric_requirement_for_non_bis_deployments(
             {"publish": False},
             "Development deployment is not supported for BIS LLM models.",
         ),
-        ({"promote": True}, "Promotion is not supported for BIS LLM models "),
         (
             {"environment": "staging"},
             "Environment is not supported for BIS LLM models.",
         ),
         (
             {"preserve_previous_prod_deployment": True},
-            "Preserve previous production deployment is not supported for BIS LLM models.",
+            "preserve-previous-production-deployment can only be used with the '--promote' option",
         ),
         (
             {"disable_truss_download": True},
             "Disable truss download is not supported for BIS LLM models.",
         ),
         (
-            {"deployment_name": "v1"},
-            "Deployment name is not supported for BIS LLM models.",
+            {"deployment_name": "invalid name"},
+            "Deployment name must only contain alphanumeric, -, _ and . characters",
         ),
         (
             {"origin": b10_types.ModelOrigin.BASETEN},
@@ -928,6 +927,55 @@ def test_push_bis_llm_rejects_disallowed_options(
         remote.push(
             mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
         )
+
+
+@pytest.mark.parametrize("model_id", [None, "bis-model-id"])
+@pytest.mark.parametrize(
+    "promote,environment",
+    [(False, None), (True, None), (True, "production"), (False, "production")],
+)
+@pytest.mark.parametrize("deployment_name", [None, "candidate-v1"])
+def test_push_bis_llm_forwards_deployment_options(
+    remote,
+    mock_upload_truss,
+    mock_truss_handle,
+    model_id,
+    promote,
+    environment,
+    deployment_name,
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "test-llm"})
+    handle = mock.Mock(
+        model_id="bis-model-id",
+        version_id="bis-deployment-id",
+        hostname="hostname",
+        instance_type_name=None,
+    )
+    with patch("truss.remote.baseten.remote.exists_model", return_value=model_id):
+        with patch(
+            "truss.remote.baseten.remote.create_bis_llm_service", return_value=handle
+        ) as create_service:
+            remote.push(
+                mock_truss_handle,
+                "model_name",
+                mock_truss_handle.truss_dir,
+                deployment_name=deployment_name,
+                promote=promote,
+                environment=environment,
+                preserve_env_instance_type=False,
+                preserve_previous_prod_deployment=promote,
+            )
+    body = create_service.call_args.kwargs["body"]
+    assert body.get("deployment_name") == deployment_name
+    should_promote = promote or environment == "production"
+    assert body.get("promote", False) == should_promote
+    assert body.get("name") == ("model_name" if model_id is None else None)
+    if should_promote:
+        assert body["preserve_previous_prod_deployment"] is promote
+        assert body["preserve_env_instance_type"] is False
+    else:
+        assert "preserve_previous_prod_deployment" not in body
+        assert "preserve_env_instance_type" not in body
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
