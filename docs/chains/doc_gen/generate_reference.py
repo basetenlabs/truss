@@ -56,7 +56,7 @@ SECTION_CONFIG = (
     "Remote Configuration",
     (
         "These data structures specify for each chainlet how it gets deployed "
-        "remotely, e.g. dependencies and compute resources."
+        "remotely, for example, dependencies and compute resources."
     ),
     [
         "truss_chains.RemoteConfig",

@@ -93,7 +93,7 @@ def depends(
     Args:
         chainlet_cls: The chainlet class of the dependency.
         retries: The number of times to retry the remote chainlet in case of failures
-          (e.g. due to transient network issues). For streaming, retries are only made
+          (for example, due to transient network issues). For streaming, retries are only made
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
