@@ -329,9 +329,9 @@ def test_model_module_registered_in_sys_modules(generic_pydantic_app_path):
         model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
         model_wrapper._load_impl()
 
-        assert "model.model" in sys.modules
-        assert sys.modules["model.model"].Model is type(model_wrapper._model)
-        assert not hasattr(sys.modules["model.model"], "__path__")
+        assert type(model_wrapper._model).__module__ == "model"
+        assert sys.modules["model"].Model is type(model_wrapper._model)
+        assert sys.modules["model"].__path__
 
 
 @pytest.fixture
@@ -341,6 +341,7 @@ def package_import_app_path(truss_container_fs: Path, helpers: Any):
     helper_path.write_text('TOKEN = "pkg"\n')
     model_file_content = """
 from model.helper import TOKEN
+from model import model as imported
 
 
 class Model:
@@ -368,7 +369,10 @@ def test_model_package_import_during_load(package_import_app_path):
         model_wrapper._load_impl()
 
         assert model_wrapper._model.predict(None) == "pkg"
-        assert hasattr(sys.modules["model"], "__path__")
+        assert type(model_wrapper._model).__module__ == "model"
+        imported = sys.modules["model"].imported
+        assert imported.__name__ == "model.model"
+        assert imported is not sys.modules["model"]
     sys.modules.pop("model.helper", None)
 
 
@@ -382,7 +386,7 @@ def test_failed_model_load_leaves_no_sys_modules_entry(failing_import_app_path):
         with pytest.raises(RuntimeError, match="Simulated import error"):
             model_wrapper._load_impl()
 
-        assert "model.model" not in sys.modules
+        assert "model" not in sys.modules
 
 
 @contextmanager

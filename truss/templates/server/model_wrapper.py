@@ -500,10 +500,7 @@ class ModelWrapper:
         if model_class_file_path.exists():
             self._logger.info("Loading truss model from file.")
             module_path = pathlib.Path(model_class_file_path).resolve()
-            stem = module_path.stem
-            parent_name = module_path.parent.name
-            # model/model.py must not occupy sys.modules["model"]: that name is the package.
-            module_name = f"{parent_name}.{stem}" if parent_name == stem else stem
+            module_name = module_path.stem  # Use the file's name as the module name
             if not os.path.isfile(module_path):
                 raise ImportError(
                     f"`{module_path}` is not a file. You must point to a python file where "
@@ -516,8 +513,10 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
-            if "." in module_name:
-                module.__package__ = None  # keep top-level relative imports unsupported
+            # model/model.py is named "model", same as the package. __path__ lets
+            # `import model.<sub>` resolve without renaming the module.
+            if module_path.parent.name == module_name:
+                module.__path__ = [str(module_path.parent)]
             # Register before exec so sys.modules[cls.__module__] resolves during import.
             sys.modules[module_name] = module
             try:
