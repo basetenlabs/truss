@@ -180,17 +180,24 @@ def _format_as_table(items: list[tuple[str, str, str, str]]) -> str:
 
 def extract_and_format_parameters_section(content: str) -> str:
     sections = _split_sections_by_heading(content)
+    headers = [_extract_section_header(section) or (None, None) for section in sections]
     updated_sections = []
 
     for index, section in enumerate(sections):
-        kind, full_name = _extract_section_header(section) or (None, None)
+        kind, full_name = headers[index]
         if (
             full_name
             and len(section.strip().splitlines()) == 1
-            and index + 1 < len(sections)
-            and _extract_section_header(sections[index + 1]) == (kind, full_name)
+            and any(
+                other != index
+                and headers[other] == (kind, full_name)
+                and len(sections[other].strip().splitlines()) > 1
+                for other in range(len(sections))
+            )
         ):
-            # Sphinx emits one signature per overload; keep the section with content.
+            # Sphinx emits one signature per overload; keep the section with
+            # content and drop the empty duplicates, whatever order Sphinx
+            # emits them in.
             continue
         field_defaults: dict[str, Any] = {}
         annotations: dict[str, str] = {}
@@ -243,6 +250,15 @@ def _raw_text_replacements(doc_text: str) -> str:
     doc_text = doc_text.replace("Bases: `SafeModel`", "Bases: `pydantic.BaseModel`")
     doc_text = doc_text.replace(
         "Bases: `SafeModelNonSerializable`", "Bases: `pydantic.BaseModel`"
+    )
+    # Python 3.13 gives typing.ContextManager a default second parameter, so
+    # Sphinx renders ``ContextManager[X]`` as ``ContextManager[X, bool | None]``.
+    # Normalize to the pre-3.13 rendering so the output does not depend on the
+    # minor Python version it was generated with.
+    doc_text = re.sub(
+        r"((?:Async)?ContextManager)\*\[([^\]]+), bool \| None\]",
+        r"\1*[\2]",
+        doc_text,
     )
     doc_text = doc_text.replace("<", "&lt;").replace(">", "&gt;")
 

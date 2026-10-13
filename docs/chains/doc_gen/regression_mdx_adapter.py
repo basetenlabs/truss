@@ -4,8 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from generate_reference import _apply_patch  # type: ignore[attr-defined]
+from generate_reference import (  # type: ignore[attr-defined]
+    _apply_patch,
+    _resolve_raw_out,
+    generate_sphinx_docs,
+)
 from mdx_adapter import (  # type: ignore[attr-defined]
+    _raw_text_replacements,
     extract_and_format_parameters_section,
 )
 
@@ -33,6 +38,39 @@ Sets a dependency.
 """
         result = extract_and_format_parameters_section(content)
         self.assertEqual(result.count("### `truss_chains.depends`"), 1)
+
+    def test_empty_overload_heading_is_dropped_in_any_order(self):
+        content = """
+### `truss_chains.depends`
+
+Sets a dependency.
+
+### `truss_chains.depends`
+"""
+        result = extract_and_format_parameters_section(content)
+        self.assertEqual(result.count("### `truss_chains.depends`"), 1)
+        self.assertIn("Sets a dependency.", result)
+
+    def test_context_manager_type_argument_is_normalized(self):
+        content = "* **Return type:**\n  *ContextManager*[None, bool | None]\n"
+        result = _raw_text_replacements(content)
+        self.assertIn("*ContextManager*[None]", result)
+        self.assertNotIn("bool | None", result)
+
+    def test_raw_out_stages_missing_parent_and_rejects_committed_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = Path(directory) / "nested" / "chains-reference.mdx"
+            self.assertEqual(_resolve_raw_out(scratch), scratch.resolve())
+            self.assertTrue(scratch.parent.is_dir())
+        for name in ["generated-reference.mdx", "API-reference.mdx"]:
+            with self.assertRaises(ValueError):
+                _resolve_raw_out(Path(__file__).with_name(name))
+
+    def test_check_and_raw_out_are_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = Path(directory) / "chains-reference.mdx"
+            with self.assertRaises(ValueError):
+                generate_sphinx_docs(Path(directory), check=True, raw_out=scratch)
 
     def test_failed_curation_preserves_output_and_fails(self):
         with tempfile.TemporaryDirectory() as directory:

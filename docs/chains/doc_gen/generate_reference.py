@@ -176,11 +176,30 @@ def _apply_patch(
     finally:
         if temp_output_file_path.exists():
             temp_output_file_path.unlink()
+        reject_file_path = Path(str(temp_output_file_path) + ".rej")
+        if reject_file_path.exists():
+            reject_file_path.unlink()
+
+
+def _resolve_raw_out(raw_out: pathlib.Path | None) -> pathlib.Path | None:
+    if raw_out is None:
+        return None
+    raw_out = raw_out.resolve()
+    if raw_out in {
+        Path(__file__).with_name(name).resolve()
+        for name in ["generated-reference.mdx", "API-reference.mdx"]
+    }:
+        raise ValueError("--raw-out must point to a scratch file")
+    raw_out.parent.mkdir(parents=True, exist_ok=True)
+    return raw_out
 
 
 def generate_sphinx_docs(
     output_dir: pathlib.Path, *, check: bool = False, raw_out: Path | None = None
 ) -> None:
+    if check and raw_out is not None:
+        raise ValueError("--check and --raw-out are mutually exclusive")
+    raw_out = _resolve_raw_out(raw_out)
     _clean_build_directory(output_dir)
     config_file = pathlib.Path(__file__).parent / "sphinx_config.py"
     docs_dir = output_dir / "docs"
@@ -202,11 +221,6 @@ def generate_sphinx_docs(
     app.build()
     if BUILDER == "mdx_adapter":
         if raw_out is not None:
-            if raw_out.resolve() in {
-                Path(__file__).with_name(name).resolve()
-                for name in ["generated-reference.mdx", "API-reference.mdx"]
-            }:
-                raise ValueError("--raw-out must point to a scratch file")
             shutil.copy(output_dir / "modules.mdx", raw_out)
             return
         dog_gen_dir = pathlib.Path(__file__).parent.absolute()
