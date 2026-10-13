@@ -335,7 +335,7 @@ or over-provisioned. Refer to the
 | `predict_concurrency` | *int\|Literal['cpu_count']* | `1`     | Number of concurrent requests a single replica of a deployed chainlet handles.                                  |
 
 
-Concurrency concepts are explained in [this guide](/reference/config#runtime).
+Concurrency concepts are explained in [this guide](/reference/truss-configuration#runtime).
 It is important to understand the difference between predict_concurrency and
 the concurrency target (used for autoscaling, i.e. adding or removing replicas).
 Furthermore, the `predict_concurrency` of a single instance is implemented in
