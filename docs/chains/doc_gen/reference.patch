@@ -1,5 +1,5 @@
 --- docs/chains/doc_gen/generated-reference.mdx	2026-10-12 21:29:42
-+++ docs/chains/doc_gen/API-reference.mdx	2026-10-12 21:34:26
++++ docs/chains/doc_gen/API-reference.mdx	2026-10-12 21:35:51
 @@ -15,7 +15,7 @@
  Inheriting from this class adds validations to make sure subclasses adhere to the
  chainlet pattern and facilitates remote chainlet deployment.
@@ -26,7 +26,7 @@
 -[`truss_chains.remote_chainlet.truss_chainlet.TrussHandle`](#truss_chains.remote_chainlet.truss_chainlet.TrussHandle) to the caller.
 +TrussChainlets cannot be entrypoints and cannot declare deps — they are only
 +depended on by `ChainletBase` chainlets via `chains.depends(...)`, which yields
-+a [`TrussHandle`](#class-truss_chains-remote-chainlet-truss-chainlet-trusshandle) to the caller.
++a [`TrussHandle`](#class-truss_chains-remote_chainlet-truss_chainlet-trusshandle) to the caller.
 
  #### truss_dir *: ClassVar[str]*
 
@@ -601,7 +601,7 @@
 -  A chain service handle to the deployed chain.
 -* **Return type:**
 -  *BasetenChainService*
-+  [*ChainService*](#class-truss_chains-remote-chainservice): A chain service
++  [*ChainService*](#class-truss_chains-deployment-deployment_client-chainservice): A chain service
 +  handle to the deployed chain.
 
 

@@ -30,7 +30,7 @@ implementation or a `docker_server` Truss) is deployed as-is.
 
 TrussChainlets cannot be entrypoints and cannot declare deps — they are only
 depended on by `ChainletBase` chainlets via `chains.depends(...)`, which yields
-a [`TrussHandle`](#class-truss_chains-remote-chainlet-truss-chainlet-trusshandle) to the caller.
+a [`TrussHandle`](#class-truss_chains-remote_chainlet-truss_chainlet-trusshandle) to the caller.
 
 #### truss_dir *: ClassVar[str]*
 
@@ -399,7 +399,7 @@ Deploys a chain remotely (with all dependent chainlets).
 | `include_git_info`      | *bool*                          | `False`     | Whether to attach git versioning info (sha, branch, tag) to deployments made from within a git repo. If set to True in .trussrc, it will always be attached. |
 
 * **Returns:**
-  [*ChainService*](#class-truss_chains-remote-chainservice): A chain service
+  [*ChainService*](#class-truss_chains-deployment-deployment_client-chainservice): A chain service
   handle to the deployed chain.
 
 
