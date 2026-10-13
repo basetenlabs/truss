@@ -20,6 +20,7 @@ from truss.cli.train.workstation import (
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
+    AvailabilityModel,
     InteractiveSessionProvider,
     InteractiveSessionTrigger,
 )
@@ -240,6 +241,28 @@ class TestWorkstationJsonOutput:
                 "json",
                 *extra_args,
             ],
+        )
+
+    @pytest.mark.parametrize(
+        ("args", "availability"),
+        [([], AvailabilityModel.DEDICATED), (["--spot"], AvailabilityModel.SPOT)],
+    )
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_spot_sets_workstation_availability(
+        self, mock_remote_factory, mock_get_remote_team, mock_push, args, availability
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(*args)
+
+        assert result.exit_code == 0, result.output
+        assert (
+            mock_push.call_args.kwargs["config"].job.compute.availability_model
+            == availability
         )
 
     @patch("truss_train.public_api.push")

@@ -1,5 +1,19 @@
 use crate::constants::{HEDGE_BUDGET_PERCENTAGE, RETRY_BUDGET_PERCENTAGE};
 use crate::errors::ClientError;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Atomically take one unit from a shared budget, returning whether a unit was available.
+///
+/// Budgets are shared by every concurrent request in an operation. A plain `fetch_sub`
+/// wraps an exhausted budget around to `usize::MAX`, which silently removes the cap for
+/// all later callers; this never decrements below zero.
+pub(crate) fn try_consume_budget(budget: &AtomicUsize) -> bool {
+    budget
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+            remaining.checked_sub(1)
+        })
+        .is_ok()
+}
 
 /// Calculate retry timeout budget based on total requests
 pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {

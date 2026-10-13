@@ -47,8 +47,10 @@ def _external_data_curl_lines(dockerfile: str) -> list[str]:
 
 @patch("platform.machine", return_value="amd")
 def test_serving_image_dockerfile_from_user_base_image(
-    mock_machine, test_data_path, custom_model_truss_dir
+    mock_machine, test_data_path, custom_model_truss_dir, monkeypatch
 ):
+    # Golden file records the default mirror. CI sets BT_APT_MIRROR_URL.
+    monkeypatch.delenv("BT_APT_MIRROR_URL", raising=False)
     th = TrussHandle(custom_model_truss_dir)
     # The test fixture python varies with host version, need to pin here.
     th.update_python_version("py313")

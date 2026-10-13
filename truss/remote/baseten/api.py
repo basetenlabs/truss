@@ -535,6 +535,14 @@ class BasetenApi:
             f"v1/chains/{chain_id}/deployments/{chain_deployment_id}"
         )
 
+    def deactivate_chain_deployment(
+        self, chain_id: str, chain_deployment_id: str
+    ) -> Any:
+        return self._rest_api_client.post(
+            f"v1/chains/{chain_id}/deployments/{chain_deployment_id}/deactivate",
+            body={},
+        )
+
     def models(self, team_id: Optional[str] = None):
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
@@ -803,12 +811,43 @@ class BasetenApi:
     def get_all_secrets(self) -> Any:
         return self._rest_api_client.get("v1/secrets")
 
+    def get_team_secrets(self, team_id: str) -> Any:
+        """Every secret belonging to one team.
+
+        `get_all_secrets` spans every team the caller belongs to, so it cannot answer
+        whether a given team has a secret -- which is the scope the server validates
+        a `SecretReference` against.
+
+        The response is complete rather than paged, which callers rely on to read an
+        absent name as "does not exist".
+        """
+        return self._rest_api_client.get(f"v1/teams/{team_id}/secrets")
+
+    def upsert_team_secret(self, team_id: str, name: str, value: str) -> Any:
+        """Create or replace a secret in one team.
+
+        `upsert_secret` writes to the caller's primary team, which is not necessarily
+        the team a given workload resolves its secrets against.
+        """
+        return self._rest_api_client.post(
+            f"v1/teams/{team_id}/secrets", body={"name": name, "value": value}
+        )
+
     # NOTE(Tyron): `name` is required because all official
     # Baseten API keys should have a descriptive name.
-    def create_api_key(self, api_key_type: APIKeyCategory, name: str) -> Any:
-        return self._rest_api_client.post(
-            "v1/api_keys", body={"type": api_key_type.value, "name": name}
-        )
+    def create_api_key(
+        self, api_key_type: APIKeyCategory, name: str, team_id: Optional[str] = None
+    ) -> Any:
+        """Create an API key, returning its plaintext value.
+
+        The value is returned only here; listing keys exposes their prefix alone. A
+        `team_id` confines the key to that team, and is rejected for key types that
+        cannot be team-scoped.
+        """
+        body: Dict[str, Any] = {"type": api_key_type.value, "name": name}
+        if team_id is not None:
+            body["team_id"] = team_id
+        return self._rest_api_client.post("v1/api_keys", body=body)
 
     def upsert_training_project(self, training_project, team_id: Optional[str] = None):
         if team_id:
@@ -1329,12 +1368,15 @@ class BasetenApi:
         base_model: str,
         seed: Optional[int] = None,
         replicas: Optional[int] = None,
+        sampler_num_replicas: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
             body["seed"] = seed
         if replicas is not None:
             body["replicas"] = replicas
+        if sampler_num_replicas is not None:
+            body["sampler_num_replicas"] = sampler_num_replicas
         resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
         return resp_json["run"]
 

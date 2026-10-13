@@ -231,6 +231,7 @@ fn test_send_request_config_hedge_timeout_validation() {
 struct TestServerState {
     name: &'static str,
     request_count: Arc<AtomicUsize>,
+    request_headers: Arc<Mutex<Vec<AxumHeaderMap>>>,
     remaining_failures: Arc<Mutex<usize>>,
     response_delay: Duration,
     healthy: bool,
@@ -240,6 +241,7 @@ struct TestServerState {
 struct TestServer {
     base_url: String,
     request_count: Arc<AtomicUsize>,
+    request_headers: Arc<Mutex<Vec<AxumHeaderMap>>>,
     handle: tokio::task::JoinHandle<()>,
 }
 
@@ -273,9 +275,11 @@ async fn start_test_server_with_failure_status(
     failure_status: StatusCode,
 ) -> TestServer {
     let request_count = Arc::new(AtomicUsize::new(0));
+    let request_headers = Arc::new(Mutex::new(Vec::new()));
     let state = TestServerState {
         name,
         request_count: Arc::clone(&request_count),
+        request_headers: request_headers.clone(),
         remaining_failures: Arc::new(Mutex::new(remaining_failures)),
         response_delay,
         healthy,
@@ -305,6 +309,7 @@ async fn start_test_server_with_failure_status(
     TestServer {
         base_url: format!("http://{}", addr),
         request_count,
+        request_headers,
         handle,
     }
 }
@@ -323,8 +328,10 @@ async fn test_health_handler(State(state): State<TestServerState>) -> impl IntoR
 
 async fn test_embeddings_handler(
     State(state): State<TestServerState>,
+    headers: AxumHeaderMap,
     Json(request): Json<CoreOpenAIEmbeddingsRequest>,
 ) -> impl IntoResponse {
+    state.request_headers.lock().await.push(headers);
     state.request_count.fetch_add(1, Ordering::SeqCst);
 
     if !state.response_delay.is_zero() {
@@ -794,6 +801,61 @@ async fn test_hedge_uses_alternate_endpoint_from_pool() {
 }
 
 #[tokio::test]
+async fn test_hedge_budget_caps_hedges_when_every_request_is_slow() {
+    // A fleet-wide slowdown: every request takes longer than the hedge delay,
+    // so all in-flight requests reach the hedge timer at roughly the same time.
+    let endpoint = start_test_server("slow-endpoint", Duration::from_millis(400), 0, true).await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let total_requests = 200;
+    let hedge_budget_pct = 0.05;
+    // Mirrors RequestProcessingConfig::calculate_budget: max(2, 1 + ceil(n * pct)).
+    let expected_hedges = std::cmp::max(
+        2,
+        1 + (total_requests as f64 * hedge_budget_pct).ceil() as usize,
+    );
+
+    let preference = RequestProcessingPreference::new()
+        .with_max_concurrent_requests(total_requests)
+        .with_batch_size(1)
+        .with_timeout_s(5.0)
+        .with_hedge_delay(0.1)
+        .with_hedge_budget_pct(hedge_budget_pct)
+        .with_max_retries(0);
+
+    let inputs = (0..total_requests)
+        .map(|i| format!("input-{i}"))
+        .collect::<Vec<_>>();
+
+    client
+        .process_embeddings_requests(
+            inputs,
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect("slow requests should still succeed");
+
+    let hedges_sent = endpoint.request_count.load(Ordering::SeqCst) - total_requests;
+    assert_eq!(
+        hedges_sent, expected_hedges,
+        "hedges must stay within the hedge budget even when every request is slow"
+    );
+}
+
+#[tokio::test]
 async fn test_background_health_worker_skips_unhealthy_endpoints() {
     let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
     let endpoint_b = start_test_server("endpoint-b", Duration::ZERO, 0, false).await;
@@ -883,4 +945,113 @@ async fn test_background_health_worker_skips_unhealthy_endpoints() {
         Some("endpoint-b")
     );
     assert_eq!(endpoint_b.request_count.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn test_explicit_trace_context() {
+    const PARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-03";
+    for (enabled, retry, hedge, state) in [
+        (false, false, false, None),
+        (true, false, false, None),
+        (true, true, false, Some("vendor=value")),
+        (true, false, true, Some("vendor=value")),
+    ] {
+        let delay = if hedge {
+            Duration::from_millis(100)
+        } else {
+            Duration::ZERO
+        };
+        let server = start_test_server("tracing", delay, usize::from(retry), true).await;
+        let client = PerformanceClientCore::new(
+            server.base_url.clone(),
+            Some("test-key".into()),
+            1,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let mut preference = single_request_preference()
+            .with_max_retries(1)
+            .with_retry_budget_pct(1.0);
+        if enabled {
+            preference = preference.with_trace_context(TraceContext {
+                traceparent: PARENT.into(),
+                tracestate: state.map(str::to_string),
+            });
+        }
+        if hedge {
+            preference = preference.with_hedge_delay(0.05).with_hedge_budget_pct(1.0);
+        }
+        client
+            .process_embeddings_requests(
+                vec!["first batch".into(), "second batch".into()],
+                "test-model".into(),
+                None,
+                None,
+                None,
+                &preference,
+            )
+            .await
+            .unwrap();
+        let headers = server.request_headers.lock().await;
+        assert!(headers.len() >= if retry || hedge { 3 } else { 2 });
+        for request in headers.iter() {
+            assert_eq!(
+                request.get_all("traceparent").iter().count(),
+                usize::from(enabled)
+            );
+            assert_eq!(
+                request.get("traceparent").map(|v| v.to_str().unwrap()),
+                enabled.then_some(PARENT)
+            );
+            assert_eq!(
+                request.get("tracestate").map(|v| v.to_str().unwrap()),
+                state
+            );
+        }
+        assert!(
+            preference.extra_headers.is_none(),
+            "caller preference must stay unchanged"
+        );
+    }
+}
+
+#[test]
+fn test_trace_context_rejects_conflicting_or_unsafe_headers() {
+    use baseten_performance_client_core::split_policy::RequestProcessingConfig;
+    let context = TraceContext {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".into(),
+        tracestate: None,
+    };
+    for header in ["TraceParent", "TRACEstate"] {
+        let preference = single_request_preference()
+            .with_trace_context(context.clone())
+            .with_extra_headers([(header.into(), "duplicate".into())].into());
+        let error = RequestProcessingConfig::new_from_preference(
+            &preference,
+            "http://localhost".into(),
+            1,
+            "test-key".into(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("cannot be combined"));
+    }
+    for (parent, state) in [
+        ("", None),
+        ("bad\r\nheader", None),
+        (context.traceparent.as_str(), Some("bad\nstate")),
+    ] {
+        let preference = single_request_preference().with_trace_context(TraceContext {
+            traceparent: parent.into(),
+            tracestate: state.map(str::to_string),
+        });
+        assert!(RequestProcessingConfig::new_from_preference(
+            &preference,
+            "http://localhost".into(),
+            1,
+            "test-key".into(),
+        )
+        .is_err());
+    }
 }

@@ -1,3 +1,4 @@
+import { createServer } from "node:http"
 import test from 'ava'
 
 import { PerformanceClient, HttpClientWrapper, RequestProcessingPreference } from '../index.js'
@@ -100,4 +101,27 @@ test('HttpClientWrapper from one client can be used in another', (t) => {
 
   const client2 = new PerformanceClient('https://api2.example.com', 'test-api-key-2', 1, wrapper)
   t.truthy(client2, 'Second client should be initialized with wrapper from first client')
+})
+
+test('explicit trace context reaches the server and can be disabled', async (t) => {
+  const parent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push(req.headers)
+    req.resume()
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ok: true}))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.teardown(() => server.close())
+  const client = new PerformanceClient(`http://127.0.0.1:${server.address().port}`, 'test-key')
+  const preference = new RequestProcessingPreference()
+  preference.traceContext = {traceparent: parent, tracestate: 'vendor=value'}
+  await client.batchPost('/echo', [{}], preference)
+  preference.traceContext = undefined
+  await client.batchPost('/echo', [{}], preference)
+  t.is(seen[0].traceparent, parent)
+  t.is(seen[0].tracestate, 'vendor=value')
+  t.is(seen[1].traceparent, undefined)
+  t.is(seen[1].tracestate, undefined)
 })

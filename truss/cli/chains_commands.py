@@ -1,7 +1,7 @@
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, cast
 
 import rich
 import rich.live
@@ -24,6 +24,9 @@ from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import RemoteFactory
 from truss.util import user_config
 from truss.util.log_utils import LogInterceptor
+
+if TYPE_CHECKING:
+    from truss_chains.deployment import deployment_client
 
 # Chains Stuff #########################################################################
 
@@ -78,11 +81,23 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return _build_chains_table(service, service.get_info())
 
 
-def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, List[str]]:
+def _print_chain_status_header(service) -> None:
+    """Print the chain name and status page once, above the live status table.
+
+    A multiline table title is re-rendered on every live refresh. When the
+    terminal wraps that title, Rich under-counts the height and each refresh
+    leaves another copy of the chain name on screen.
+    """
+    console.print(f"⛓️   {service.name} - Chain  ⛓️")
+    console.print(f"🌐 Status page: {common.format_link(service.status_page_url)}")
+
+
+def _build_chains_table(
+    _service, status_iterable
+) -> Tuple[rich.table.Table, List[str]]:
     """Creates a status table similar to:
 
                                           ⛓️   ItestChain - Chain  ⛓️
-
                          🌐 Status page: https://app.baseten.co/chains/p7qrm93v/overview
     ╭──────────────────────┬──────────────────────────────┬─────────────────────────────────────────────╮
     │ Status               │ Chainlet                     │ Logs URL                                   │
@@ -95,15 +110,11 @@ def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, Lis
     │ 🛠️  BUILDING         │ TextToNum (internal)         │ https://app.baseten.co/chains/.../logs/... │
     ╰──────────────────────┴──────────────────────────────┴────────────────────────────────────────────╯
 
+    The header above the table is printed separately by `_print_chain_status_header`.
     """
-    title = (
-        f"⛓️   {service.name} - Chain  ⛓️\n\n "
-        f"🌐 Status page: {common.format_link(service.status_page_url)}"
-    )
     table = rich.table.Table(
         show_header=True,
         header_style="bold yellow",
-        title=title,
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
@@ -143,6 +154,32 @@ def _build_chains_table(service, status_iterable) -> Tuple[rich.table.Table, Lis
             table.add_section()
         statuses.append(displayable_status)
     return table, statuses
+
+
+def _abort_chain_deployment(
+    service: "deployment_client.BasetenChainService",
+    started_keepalives: dict[str, threading.Event],
+) -> None:
+    """Stops keepalives and deactivates the chain deployment after a user abort."""
+    for stop_event in started_keepalives.values():
+        stop_event.set()
+    console.print(
+        f"Push aborted. Deactivating chain deployment "
+        f"`{service.chain_deployment_id}`...",
+        style="yellow",
+    )
+    try:
+        service.deactivate()
+    except Exception as e:
+        output.error_console.print(
+            f"Failed to deactivate chain deployment `{service.chain_deployment_id}`: "
+            f"{e}\nIt may still be deploying, check the status page: "
+            f"{service.status_page_url}"
+        )
+        return
+    console.print(
+        f"Chain deployment `{service.chain_deployment_id}` deactivated.", style="yellow"
+    )
 
 
 @chains.command(name="push")  # type: ignore
@@ -395,6 +432,7 @@ def push_chain(
         service.run_remote_url, options.environment, service.is_websocket
     )
 
+    _print_chain_status_header(service)
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
     # Keep early-ready chainlets warm while slower ones still deploy, so they
@@ -413,31 +451,35 @@ def push_chain(
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
         # -> capture logs and print later.
-        with (
-            LogInterceptor() as log_interceptor,
-            rich.live.Live(table, refresh_per_second=4) as live,
-        ):
-            while True:
-                chainlets = service.get_info()
-                table, statuses = _build_chains_table(service, chainlets)
-                live.update(table)
-                if keep_warm_during_push and remote_provider is not None:
-                    deployment_client._start_keepalives_for_ready_chainlets(
-                        chainlets,
-                        remote_provider,
-                        started_keepalives,
-                        ping_paths=service.keepalive_ping_paths,
-                    )
-                num_active = sum(s == ACTIVE_STATUS for s in statuses)
-                num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
-                if num_active == num_services:
-                    success = True
-                    break
-                elif num_failed := num_services - num_active - num_deploying:
-                    break
-                time.sleep(status_check_wait_sec)
+        try:
+            with (
+                LogInterceptor() as log_interceptor,
+                rich.live.Live(table, refresh_per_second=4) as live,
+            ):
+                while True:
+                    chainlets = service.get_info()
+                    table, statuses = _build_chains_table(service, chainlets)
+                    live.update(table)
+                    if keep_warm_during_push and remote_provider is not None:
+                        deployment_client._start_keepalives_for_ready_chainlets(
+                            chainlets,
+                            remote_provider,
+                            started_keepalives,
+                            ping_paths=service.keepalive_ping_paths,
+                        )
+                    num_active = sum(s == ACTIVE_STATUS for s in statuses)
+                    num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
+                    if num_active == num_services:
+                        success = True
+                        break
+                    elif num_failed := num_services - num_active - num_deploying:
+                        break
+                    time.sleep(status_check_wait_sec)
 
-            intercepted_logs = log_interceptor.get_logs()
+                intercepted_logs = log_interceptor.get_logs()
+        except KeyboardInterrupt:
+            _abort_chain_deployment(service, started_keepalives)
+            raise
 
         # Prints must be outside `Live` context.
         if intercepted_logs:

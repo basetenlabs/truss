@@ -2,11 +2,14 @@
 
 import os
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import rich.console
 import rich.table
 from click.testing import CliRunner
 
+from truss.cli.chains_commands import _build_chains_table, _print_chain_status_header
 from truss.cli.cli import truss_cli
 from truss.remote.baseten import custom_types as b10_types
 from truss_chains.deployment.deployment_client import BasetenChainService
@@ -31,9 +34,11 @@ def _mock_baseten_chain_service() -> BasetenChainService:
     service._name = "test_chain"
     service._entrypoint_descriptor = None
     service._keepalive_ping_paths = {}
+    service._remote = Mock(remote_url="https://app.baseten.co")
     service._chain_deployment_handle = Mock(
         hostname="chain.api.baseten.co",
         chain_deployment_id="deployment_id",
+        chain_id="chain_id",
         is_draft=True,
     )
     # The push wait loop polls `get_info()` to drive both the status table and
@@ -93,6 +98,24 @@ def _patch_chains_push_watch_flow(mock_watch):
                                             _mock_baseten_chain_service()
                                         )
                                         yield mock_watch
+
+
+def test_chain_status_header_is_printed_once_outside_the_table():
+    service = SimpleNamespace(
+        name="Voice Agent",
+        status_page_url="https://app.baseten.co/chains/5qek42qo/overview",
+    )
+    recording = rich.console.Console(width=120, force_terminal=False, record=True)
+    with patch("truss.cli.chains_commands.console", recording):
+        _print_chain_status_header(service)
+        table, statuses = _build_chains_table(service, [_active_chainlet()])
+        recording.print(table)
+
+    text = recording.export_text()
+    assert table.title is None
+    assert statuses == ["ACTIVE"]
+    assert text.count("Voice Agent - Chain") == 1
+    assert text.count(service.status_page_url) == 1
 
 
 def test_chains_push_with_disable_chain_download_flag():
@@ -646,3 +669,50 @@ def test_chains_push_watch_watch_no_sleep_false_disables_keepalive():
     assert result.exit_code == 0
     mock_watch.assert_called_once()
     assert mock_watch.call_args.kwargs["no_sleep"] is False
+
+
+def test_chains_push_ctrl_c_during_wait_deactivates_deployment():
+    """Ctrl-C while waiting for the chain to deploy deactivates the deployment."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        with patch(
+            "truss.cli.chains_commands._build_chains_table",
+            # The initial table renders, then Ctrl-C hits inside the wait loop.
+            side_effect=[(rich.table.Table(), ["DEPLOYING"]), KeyboardInterrupt],
+        ):
+            with patch.object(BasetenChainService, "deactivate") as mock_deactivate:
+                result = runner.invoke(
+                    truss_cli,
+                    ["chains", "push", "test_chain.py", "--remote", "test_remote"],
+                )
+
+    assert result.exit_code == 1
+    assert "Aborted." in result.output
+    mock_deactivate.assert_called_once_with()
+    mock_watch.assert_not_called()
+
+
+def test_chains_push_ctrl_c_deactivate_failure_still_aborts():
+    """If deactivation fails after Ctrl-C, the push still aborts and says so."""
+    runner = CliRunner()
+    mock_watch = Mock()
+
+    with _patch_chains_push_watch_flow(mock_watch):
+        with patch(
+            "truss.cli.chains_commands._build_chains_table",
+            # The initial table renders, then Ctrl-C hits inside the wait loop.
+            side_effect=[(rich.table.Table(), ["DEPLOYING"]), KeyboardInterrupt],
+        ):
+            with patch.object(
+                BasetenChainService, "deactivate", side_effect=RuntimeError("boom")
+            ):
+                result = runner.invoke(
+                    truss_cli,
+                    ["chains", "push", "test_chain.py", "--remote", "test_remote"],
+                )
+
+    assert result.exit_code == 1
+    assert "Aborted." in result.output
+    mock_watch.assert_not_called()

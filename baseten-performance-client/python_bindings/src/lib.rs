@@ -500,6 +500,37 @@ impl CancellationToken {
     }
 }
 
+/// Explicit caller-owned W3C parent context.
+#[derive(Debug, Clone)]
+#[pyclass]
+pub struct TraceContext {
+    #[pyo3(get)]
+    pub traceparent: String,
+    #[pyo3(get)]
+    pub tracestate: Option<String>,
+}
+
+#[pymethods]
+impl TraceContext {
+    #[new]
+    #[pyo3(signature = (traceparent, tracestate=None))]
+    fn new(traceparent: String, tracestate: Option<String>) -> Self {
+        Self {
+            traceparent,
+            tracestate,
+        }
+    }
+}
+
+impl From<&TraceContext> for baseten_performance_client_core::TraceContext {
+    fn from(context: &TraceContext) -> Self {
+        Self {
+            traceparent: context.traceparent.clone(),
+            tracestate: context.tracestate.clone(),
+        }
+    }
+}
+
 /// Provides sensible defaults and getters for all properties.
 #[derive(Debug, Clone)]
 #[pyclass]
@@ -534,6 +565,8 @@ pub struct RequestProcessingPreference {
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
     #[pyo3(get, set)]
     pub non_retryable_status_codes: HashSet<u16>,
+    #[pyo3(get, set)]
+    pub trace_context: Option<TraceContext>,
 }
 
 impl RequestProcessingPreference {
@@ -560,6 +593,7 @@ impl RequestProcessingPreference {
             primary_api_key_override: self.primary_api_key_override.clone(),
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes,
+            trace_context: self.trace_context.as_ref().map(Into::into),
         }
     }
 }
@@ -590,7 +624,8 @@ impl RequestProcessingPreference {
         cancel_token = None,
         primary_api_key_override = None,
         extra_headers = None,
-        non_retryable_status_codes = None
+        non_retryable_status_codes = None,
+        trace_context = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -608,6 +643,7 @@ impl RequestProcessingPreference {
         primary_api_key_override: Option<String>,
         extra_headers: Option<std::collections::HashMap<String, String>>,
         non_retryable_status_codes: Option<HashSet<u16>>,
+        trace_context: Option<TraceContext>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -625,6 +661,7 @@ impl RequestProcessingPreference {
             primary_api_key_override,
             extra_headers,
             non_retryable_status_codes,
+            trace_context: trace_context.as_ref().map(Into::into),
         };
 
         // Apply defaults using the same method as Rust core
@@ -648,6 +685,7 @@ impl RequestProcessingPreference {
             primary_api_key_override: complete.primary_api_key_override,
             extra_headers: complete.extra_headers,
             non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
+            trace_context,
         }
     }
 
@@ -656,7 +694,7 @@ impl RequestProcessingPreference {
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None,
+            None, None,
         ))
     }
 
@@ -1326,6 +1364,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<PyEndpoint>()?;
     m.add_class::<PyEndpointPool>()?;
     m.add_class::<RequestProcessingPreference>()?;
+    m.add_class::<TraceContext>()?;
     m.add_class::<CancellationToken>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
@@ -1349,7 +1388,7 @@ mod tests {
     fn request_processing_preference_to_rust_uses_mutated_public_fields() {
         let mut preference = RequestProcessingPreference::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None,
+            None, None,
         );
 
         preference.max_concurrent_requests = 64;

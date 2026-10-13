@@ -34,9 +34,17 @@ export declare class PerformanceClient {
   batchPost(urlPath: string, payloads: Array<JsonValue>, preference?: RequestProcessingPreference | undefined | null, method?: string | undefined | null): Promise<any>
 }
 
+/** Explicit caller-owned W3C context. */
+export interface TraceContext {
+  traceparent: string
+  tracestate?: string
+}
+
 /** Provides sensible defaults and getters for all properties. */
 export declare class RequestProcessingPreference {
-  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, pinInitialEndpointOnce?: boolean | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null, nonRetryableStatusCodes?: Array<number> | undefined | null)
+  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, pinInitialEndpointOnce?: boolean | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null, extraHeaders?: Record<string, string> | undefined | null, nonRetryableStatusCodes?: Array<number> | undefined | null, traceContext?: TraceContext | undefined | null)
+  set traceContext(context: TraceContext | undefined | null)
+  get traceContext(): TraceContext | null
   get maxConcurrentRequests(): number
   get batchSize(): number
   get timeoutS(): number

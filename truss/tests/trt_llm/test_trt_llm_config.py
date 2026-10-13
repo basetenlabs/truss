@@ -12,6 +12,7 @@ from truss.base.trt_llm_config import (
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
+from truss.base.truss_config import TrussConfig
 
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
@@ -295,3 +296,14 @@ def test_trt_llm_config_additional_fields(trtllm_config_v2):
 
     assert config.inference_stack == "v2"
     assert isinstance(config.build, TrussTRTLLMBuildConfiguration)
+
+
+def test_encoder_data_parallel_deployment(trtllm_config_encoder):
+    trtllm_config_encoder["resources"]["accelerator"] = "H100:8"
+    trtllm_config_encoder["trt_llm"]["build"].update(
+        tensor_parallel_count=8, num_builder_gpus=8
+    )
+    config = TrussConfig.from_dict(trtllm_config_encoder)
+    assert config.resources.accelerator.count == 8
+    assert config.trt_llm.build.tensor_parallel_count == 1
+    assert config.trt_llm.build.num_builder_gpus == 8

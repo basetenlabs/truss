@@ -5,7 +5,7 @@ import socket
 import sys
 from contextlib import contextmanager
 from typing import Dict, List
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -15,6 +15,8 @@ from truss.tests.templates.control.control.conftest import setup_control_imports
 setup_control_imports()
 
 from truss.templates.control.control.application import create_app  # noqa
+from truss.templates.control.control.endpoints import WS_MAX_MSG_SZ_BYTES  # noqa
+from truss.templates.control.control.server import ControlServer  # noqa
 from truss.templates.control.control.helpers.custom_types import (  # noqa
     Action,
     ModelCodePatch,
@@ -91,6 +93,29 @@ async def client(app, ports):
         transport=transport, base_url=f"http://localhost:{ports['control_server_port']}"
     ) as async_client:
         yield async_client
+
+
+def test_run_sets_websocket_max_message_size(tmp_path):
+    inf_home = tmp_path / "app"
+    inf_home.mkdir()
+    (inf_home / "config.yaml").write_text("{}\n")
+
+    app = MagicMock()
+    app.state.logger = MagicMock()
+    with (
+        patch("truss.templates.control.control.server.create_app", return_value=app),
+        patch("truss.templates.control.control.server.uvicorn.Server") as server_cls,
+        patch("truss.templates.control.control.server.asyncio.run"),
+    ):
+        ControlServer(
+            python_executable_path=sys.executable,
+            inf_serv_home=str(inf_home),
+            control_server_port=8080,
+            inference_server_port=8090,
+        ).run()
+
+    cfg = server_cls.call_args.args[0]
+    assert cfg.ws_max_size == WS_MAX_MSG_SZ_BYTES == 100 * (1 << 20)
 
 
 @pytest.mark.anyio

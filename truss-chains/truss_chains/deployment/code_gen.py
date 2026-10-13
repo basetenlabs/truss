@@ -987,9 +987,11 @@ def gen_truss_chainlet(
         )
     gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
-    logging.info(
-        f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
-        f"in `{chainlet_dir}`."
+    logging.debug(
+        "Code generation for %s `%s` in `%s`.",
+        chainlet_descriptor.chainlet_cls.entity_type,
+        chainlet_descriptor.name,
+        chainlet_dir,
     )
     if chainlet_descriptor.is_truss_chainlet:
         return _prepare_truss_chainlet_artifact(
