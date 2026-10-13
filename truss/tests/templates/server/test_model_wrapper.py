@@ -277,20 +277,25 @@ def generic_pydantic_app_path(truss_container_fs: Path, helpers: Any):
 from typing import Generic, TypeVar
 
 import pydantic
+from typing_extensions import TypeAlias
 
 T = TypeVar("T")
 
 
+class Options(pydantic.BaseModel):
+    value: int
+
+
 class Request(pydantic.BaseModel, Generic[T]):
-    value: T
+    options: T
 
 
-IntRequest = Request[int]
+Alias: TypeAlias = Request[Options]
 
 
 class Model:
-    def predict(self, request: IntRequest) -> int:
-        return request.value
+    def predict(self, request: Alias) -> int:
+        return request.options.value
     """
     with (
         helpers.file_content(
