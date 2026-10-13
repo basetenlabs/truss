@@ -837,3 +837,25 @@ def test_deactivate_loops_run_posts_run_deactivate_endpoint(baseten_api):
     assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs/run-1/deactivate"
     assert mock_rest_client.post.call_args[1]["body"] == {}
     mock_rest_client.get.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("replicas", "expected_fields"),
+    [({}, {}), ({"sampler_num_replicas": 3}, {"sampler_num_replicas": 3})],
+)
+def test_create_loops_run_sends_sampler_num_replicas_only_when_set(
+    baseten_api, replicas, expected_fields
+):
+    # An unset count are left out so the server applies its own defaults.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"run": {}}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.create_loops_run("session-1", "Qwen/Qwen3-8B", **replicas)
+
+    assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs"
+    assert mock_rest_client.post.call_args[1]["body"] == {
+        "session_id": "session-1",
+        "base_model": "Qwen/Qwen3-8B",
+        **expected_fields,
+    }
