@@ -256,9 +256,7 @@ def _raw_text_replacements(doc_text: str) -> str:
     # Normalize to the pre-3.13 rendering so the output does not depend on the
     # minor Python version it was generated with.
     doc_text = re.sub(
-        r"((?:Async)?ContextManager)\*\[([^\]]+), bool \| None\]",
-        r"\1*[\2]",
-        doc_text,
+        r"((?:Async)?ContextManager)\*\[([^\]]+), bool \| None\]", r"\1*[\2]", doc_text
     )
     doc_text = doc_text.replace("<", "&lt;").replace(">", "&gt;")
 
