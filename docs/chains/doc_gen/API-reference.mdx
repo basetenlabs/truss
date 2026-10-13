@@ -229,7 +229,7 @@ Bases: `pydantic.BaseModel`
 
 Bundles config values needed to deploy a chainlet remotely.
 
-This is specified as a class variable for each chainlet class, for example,:
+Define `remote_config` as a class variable on the chainlet:
 
 ```python
 import truss_chains as chains
@@ -261,7 +261,7 @@ class MyChainlet(chains.ChainletBase):
 
 Bases: `pydantic.BaseModel`
 
-Configures the docker image in which a remoted chainlet is deployed.
+Configures the Docker image for a remotely deployed chainlet.
 
 <Note>
 Any paths are relative to the source file where `DockerImage` is
@@ -295,7 +295,7 @@ uses GPUs, drivers will be included in the image.
 |-------------|---------|
 | `PY39`      | *py39*  |
 | `PY310`     | *py310* |
-| `PY311 `    | *py311* |
+| `PY311`    | *py311* |
 
 
 ### *class* `truss_chains.CustomImage`
@@ -332,6 +332,7 @@ or over-provisioned. Refer to the
 | `memory`              | *str*                       | `'2Gi'` | Minimum memory to allocate, for example, “2Gi” (2 gibibytes).                                                           |
 | `gpu`                 | *str\|Accelerator\|None*    | `None`  | GPU accelerator type, for example, “A10G”, “A100”, refer to the [truss config](/deployment/resources) for more choices. |
 | `gpu_count`           | *int*                       | `1`     | Number of GPUs to allocate.                                                                                     |
+| `instance_type` | *str\|None* | `None` | Baseten instance type; overrides CPU, memory, and GPU settings. |
 | `predict_concurrency` | *int\|Literal['cpu_count']* | `1`     | Number of concurrent requests a single replica of a deployed chainlet handles.                                  |
 
 
@@ -372,6 +373,7 @@ chains.Assets(cached=[mistral_cache], ...)
 | `cached`        | *Iterable[ModelRepo]*        | `()`    | One or more `truss_config.ModelRepo` objects.                                                                                                                   |
 | `secret_keys`   | *Iterable[str]*              | `()`    | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets). |
 | `external_data` | *Iterable[ExternalDataItem]* | `()`    | Data to be downloaded from public URLs and made available in the deployment (via `context.data_dir`).                                                           |
+| `weights` | *Iterable[WeightsSource]* | `()` | Weight sources downloaded during deployment and mounted at each configured `mount_location`. |
 
 
 # Core
@@ -392,11 +394,12 @@ Deploys a chain remotely (with all dependent chainlets).
 | `chain_name`            | *str*                           |             | The name of the chain.                                                                                                                                       |
 | `publish`               | *bool*                          | `True`      | Whether to publish the chain as a published deployment (it is a draft deployment otherwise)                                                                  |
 | `promote`               | *bool*                          | `True`      | Whether to promote the chain to be the production deployment (this implies publishing as well).                                                              |
-| `only_generate_trusses` | *bool*                          | `False`     | Used for debugging purposes. If set to True, only the the underlying truss models for the chainlets are generated in `/tmp/.chains_generated`.               |
+| `only_generate_trusses` | *bool*                          | `False`     | Used for debugging purposes. If set to True, only the underlying Truss models for the chainlets are generated in `/tmp/.chains_generated`.               |
 | `remote`                | *str*                           | `'baseten'` | name of a remote config in .trussrc. If not provided, it will be inquired.                                                                                   |
 | `environment`           | *str\|None*                     | `None`      | The name of an environment to promote deployment into.                                                                                                       |
 | `progress_bar`          | *Type[progress.Progress]\|None* | `None`      | Optional rich.progress.Progress if output is desired.                                                                                                        |
 | `include_git_info`      | *bool*                          | `False`     | Whether to attach git versioning info (sha, branch, tag) to deployments made from within a git repo. If set to True in .trussrc, it will always be attached. |
+| `disable_chain_download` | *bool* | `False` | Disables downloading the pushed chain source from the dashboard. |
 
 * **Returns:**
   [*ChainService*](#class-truss_chains-deployment-deployment_client-chainservice): A chain service
@@ -449,7 +452,7 @@ Link to status page on Baseten.
 
 Helper to specify file paths relative to the *immediately calling* module.
 
-E.g. in you have a project structure like this:
+For example, if your project has this structure:
 
 ```default
 root/
@@ -570,7 +573,7 @@ specifically with `StubBase`.
 | `display_name` | *str*                                          |         |
 | `options`      | *[RPCOptions](#class-truss_chains-rpcoptions)* |         |
 | `predict_url`  | *str\|None*                                    | `None`  |
-| `internal_url` | *InternalURL*                                  | `None`  |
+| `internal_url` | *InternalURL\|None*                                  | `None`  |
 
 
 ### *class* `truss_chains.StubBase`

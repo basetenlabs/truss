@@ -254,7 +254,7 @@ Bases: `pydantic.BaseModel`
 
 Bundles config values needed to deploy a chainlet remotely.
 
-This is specified as a class variable for each chainlet class, for example,:
+Define `remote_config` as a class variable on the chainlet:
 
 ```default
 import truss_chains as chains
@@ -309,7 +309,7 @@ class MyChainlet(chains.ChainletBase):
 
 Bases: `pydantic.BaseModel`
 
-Configures the docker image in which a remoted chainlet is deployed.
+Configures the Docker image for a remotely deployed chainlet.
 
 #### NOTE
 Any paths are relative to the source file where `DockerImage` is
@@ -532,7 +532,7 @@ Deploys a chain remotely (with all dependent chainlets).
 | `chain_name`             | *str*                           |             | The name of the chain.                                                                                                                                       |
 | `publish`                | *bool*                          | `True`      | Whether to publish the chain as a published deployment (it is a draft deployment otherwise)                                                                  |
 | `promote`                | *bool*                          | `True`      | Whether to promote the chain to be the production deployment (this implies publishing as well).                                                              |
-| `only_generate_trusses`  | *bool*                          | `False`     | Used for debugging purposes. If set to True, only the the underlying truss models for the chainlets are generated in `/tmp/.chains_generated`.               |
+| `only_generate_trusses`  | *bool*                          | `False`     | Used for debugging purposes. If set to True, only the underlying Truss models for the chainlets are generated in `/tmp/.chains_generated`.                   |
 | `remote`                 | *str*                           | `'baseten'` | name of a remote config in .trussrc. If not provided, it will be inquired.                                                                                   |
 | `environment`            | *str\|None*                     | `None`      | The name of an environment to promote deployment into.                                                                                                       |
 | `progress_bar`           | *Type[progress.Progress]\|None* | `None`      | Optional rich.progress.Progress if output is desired.                                                                                                        |
@@ -601,7 +601,7 @@ Link to status page on Baseten.
 
 Helper to specify file paths relative to the *immediately calling* module.
 
-E.g. in you have a project structure like this:
+For example, if your project has this structure:
 
 ```default
 root/

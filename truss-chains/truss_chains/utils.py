@@ -17,7 +17,7 @@ T = TypeVar("T")
 def make_abs_path_here(file_path: str) -> "public_types.AbsPath":
     """Helper to specify file paths relative to the *immediately calling* module.
 
-    E.g. in you have a project structure like this::
+    For example, if your project has this structure::
 
         root/
             chain.py

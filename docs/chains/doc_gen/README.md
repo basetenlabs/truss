@@ -3,6 +3,10 @@
 The generator reads the installed `truss_chains` API, renders MDX with Sphinx,
 and applies `reference.patch` to preserve curated descriptions and links.
 
+Run the commands from this checkout's root so `uv` uses its package source.
+The curation patch tracks this checkout's docstrings; an installed release
+with different docstrings can fail to apply the patch.
+
 Install the documentation dependencies in your project environment:
 
 ```sh

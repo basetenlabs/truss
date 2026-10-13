@@ -183,7 +183,7 @@ class CustomImage(custom_types.SafeModel):
 
 
 class DockerImage(custom_types.SafeModelNonSerializable):
-    """Configures the docker image in which a remoted chainlet is deployed.
+    """Configures the Docker image for a remotely deployed chainlet.
 
     Note:
         Any paths are relative to the source file where ``DockerImage`` is
@@ -473,7 +473,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
 class RemoteConfig(custom_types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
-    This is specified as a class variable for each chainlet class, for example,::
+    Define ``remote_config`` as a class variable on the chainlet::
 
             import truss_chains as chains
 
