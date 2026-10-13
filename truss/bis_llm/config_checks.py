@@ -1,4 +1,3 @@
-import fnmatch
 import json
 import re
 from typing import Any
@@ -35,6 +34,16 @@ def _baseten_api_hosts(llm_config: dict) -> set[str]:
     }
 
 
+def _fqdn_pattern_matches(pattern: str, host: str) -> bool:
+    """Match an fqdn_allow_list entry as the workload plane's Cilium FQDN policy
+    does: `*` spans one DNS label, so *.hf.co allows cdn-lfs-us-1.hf.co but not
+    us.aws.cdn.hf.co; a bare `*` allows every host."""
+    if pattern == "*":
+        return True
+    regex = "[^.]*".join(re.escape(part) for part in pattern.split("*"))
+    return re.fullmatch(regex, host, re.IGNORECASE) is not None
+
+
 def bis_egress_allowlist_warnings(config: Any) -> list[str]:
     """One warning per kind of host a restricted BIS model needs but its allowlist lacks."""
     egress_restrictions = config.runtime.egress_restrictions
@@ -43,7 +52,7 @@ def bis_egress_allowlist_warnings(config: Any) -> list[str]:
     allowed = egress_restrictions.fqdn_allow_list or []
 
     def is_allowed(host: str) -> bool:
-        return any(fnmatch.fnmatchcase(host, entry) for entry in allowed)
+        return any(_fqdn_pattern_matches(entry, host) for entry in allowed)
 
     gaps: list[tuple[str, list[str]]] = []
     if not config.weights.sources:
