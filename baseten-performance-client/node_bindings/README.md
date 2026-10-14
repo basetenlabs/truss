@@ -594,3 +594,32 @@ MIT License
 ## Acknowledgements:
 Venkatesh Narayan (Clay.com) for the prototpe of this here https://github.com/basetenlabs/truss/pull/1778
 and Suren (Baseten) for getting a PoC and protyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package
+
+## System One decisions
+
+`batchSystemOne()` sends independent requests to `POST /v1/systemone` using the
+existing concurrency, retry, timeout, hedging, and cancellation preferences.
+Each request contains a state and its named questions, plus an optional model.
+Use a one-element array for a single request. Questions within one request are
+never split or merged. Empty arrays are rejected.
+
+```javascript
+const response = await client.batchSystemOne([{
+  state: "My invoice was charged twice.",
+  model: "your-served-model",
+  questions: {
+    department: {
+      type: "choice",
+      instructions: "Which team should handle this?",
+      criteria: { billing: null, technical: null },
+    },
+  },
+}]);
+console.log(response.data[0].answers.department);
+```
+
+`data`, `individual_request_times`, and `response_headers` follow input order;
+`total_time` measures the full batch. Backend-specific request and response fields
+are retained, including confidence and diagnostics. Question support (`choice`,
+`score`, `noul`) and limits are controlled by the deployed backend. Set `baseUrl`
+to the API root before `/v1` and use the client’s existing authentication settings.
