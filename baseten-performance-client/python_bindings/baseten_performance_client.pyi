@@ -869,6 +869,18 @@ class PerformanceClient:
         """
         ...
 
+    # One POST per state/questions request; ordered backend responses are in .data.
+    # Model and provider extensions pass through. Empty lists raise ValueError.
+    def batch_system_one(
+        self,
+        requests: builtins.list[builtins.dict[builtins.str, typing.Any]],
+        preference: RequestProcessingPreference | None = None,
+    ) -> BatchPostResponse: ...
+    async def async_batch_system_one(
+        self,
+        requests: builtins.list[builtins.dict[builtins.str, typing.Any]],
+        preference: RequestProcessingPreference | None = None,
+    ) -> BatchPostResponse: ...
     async def async_batch_post(
         self,
         url_path: builtins.str,

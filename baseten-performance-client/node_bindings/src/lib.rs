@@ -647,6 +647,23 @@ impl PerformanceClient {
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
   }
 
+  /// Send one System One POST per request, preserving response order and backend fields.
+  #[napi(js_name = "batchSystemOne")]
+  pub async fn batch_system_one(
+    &self,
+    requests: Vec<JsonValue>,
+    preference: Option<&RequestProcessingPreference>,
+  ) -> napi::Result<serde_json::Value> {
+    self
+      .batch_post(
+        baseten_performance_client_core::SYSTEM_ONE_PATH.into(),
+        requests,
+        preference,
+        None,
+      )
+      .await
+  }
+
   // TODO: This JSON-compatible return type cannot preserve MessagePack binary, invalid UTF-8
   // strings, or maps with non-string keys. The API return type is subject to change when those
   // values are exposed through native JavaScript types.
