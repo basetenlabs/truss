@@ -501,7 +501,10 @@ class ModelWrapper:
         if model_class_file_path.exists():
             self._logger.info("Loading truss model from file.")
             module_path = pathlib.Path(model_class_file_path).resolve()
-            module_name = module_path.stem  # Use the file's name as the module name
+            stem = module_path.stem
+            parent_name = module_path.parent.name
+            # model/model.py must not occupy sys.modules["model"]: that name is the package.
+            module_name = f"{parent_name}.{stem}" if parent_name == stem else stem
             if not os.path.isfile(module_path):
                 raise ImportError(
                     f"`{module_path}` is not a file. You must point to a python file where "
@@ -514,10 +517,15 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
+            if "." in module_name:
+                module.__package__ = None  # keep top-level relative imports unsupported
+            # Register before exec so sys.modules[cls.__module__] resolves during import.
+            sys.modules[module_name] = module
             try:
                 spec.loader.exec_module(module)
-            except ImportError as e:
-                if "attempted relative import" in str(e):
+            except Exception as e:
+                sys.modules.pop(module_name, None)
+                if isinstance(e, ImportError) and "attempted relative import" in str(e):
                     raise ImportError(
                         f"During import of `{model_class_file_path}`. "
                         f"Since Truss v0.9.36 relative imports (starting with '.') in "
