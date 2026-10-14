@@ -37,6 +37,10 @@ uv run pytest truss/tests/test_config.py::test_name -v
 
 **Test fixtures:** Use `test_data_path` fixture (from `conftest.py`) for config files in `truss/tests/test_data/`.
 
+Rich table assertions in the CLI tests truncate when the terminal is 80 columns wide. Export `COLUMNS=240` before `uv run pytest` so those checks see the full rendered output.
+
+Linux BPTR tests write under `/bptr`, `/static-bptr`, and `/cache`. Those directories must exist and be writable by the current user.
+
 ## Key Code Locations
 
 | Area | Location |
