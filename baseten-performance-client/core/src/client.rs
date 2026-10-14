@@ -757,6 +757,27 @@ impl PerformanceClientCore {
         Ok((response, durations, headers, total_time))
     }
 
+    /// Submit independent System One requests, retaining backend fields and input order.
+    /// Each payload contains a state and a question map; questions are not split.
+    pub async fn process_batch_system_one_requests(
+        &self,
+        requests: Vec<serde_json::Value>,
+        preference: &RequestProcessingPreference,
+    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
+        if requests.is_empty() {
+            return Err(ClientError::InvalidParameter(
+                "Requests list cannot be empty".into(),
+            ));
+        }
+        self.process_batch_post_requests(
+            crate::constants::SYSTEM_ONE_PATH.into(),
+            requests,
+            preference,
+            crate::http::HttpMethod::POST,
+        )
+        .await
+    }
+
     // Core batch post processing - optimized with JoinSetGuard
     // Cancellation: dropping this future will automatically abort all in-flight requests
     pub async fn process_batch_post_requests(
