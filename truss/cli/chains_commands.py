@@ -1,7 +1,7 @@
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, cast
 
 import rich
 import rich.live
@@ -24,6 +24,9 @@ from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import RemoteFactory
 from truss.util import user_config
 from truss.util.log_utils import LogInterceptor
+
+if TYPE_CHECKING:
+    from truss_chains.deployment import deployment_client
 
 # Chains Stuff #########################################################################
 
@@ -151,6 +154,32 @@ def _build_chains_table(
             table.add_section()
         statuses.append(displayable_status)
     return table, statuses
+
+
+def _abort_chain_deployment(
+    service: "deployment_client.BasetenChainService",
+    started_keepalives: dict[str, threading.Event],
+) -> None:
+    """Stops keepalives and deactivates the chain deployment after a user abort."""
+    for stop_event in started_keepalives.values():
+        stop_event.set()
+    console.print(
+        f"Push aborted. Deactivating chain deployment "
+        f"`{service.chain_deployment_id}`...",
+        style="yellow",
+    )
+    try:
+        service.deactivate()
+    except Exception as e:
+        output.error_console.print(
+            f"Failed to deactivate chain deployment `{service.chain_deployment_id}`: "
+            f"{e}\nIt may still be deploying, check the status page: "
+            f"{service.status_page_url}"
+        )
+        return
+    console.print(
+        f"Chain deployment `{service.chain_deployment_id}` deactivated.", style="yellow"
+    )
 
 
 @chains.command(name="push")  # type: ignore
@@ -422,31 +451,35 @@ def push_chain(
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
         # -> capture logs and print later.
-        with (
-            LogInterceptor() as log_interceptor,
-            rich.live.Live(table, refresh_per_second=4) as live,
-        ):
-            while True:
-                chainlets = service.get_info()
-                table, statuses = _build_chains_table(service, chainlets)
-                live.update(table)
-                if keep_warm_during_push and remote_provider is not None:
-                    deployment_client._start_keepalives_for_ready_chainlets(
-                        chainlets,
-                        remote_provider,
-                        started_keepalives,
-                        ping_paths=service.keepalive_ping_paths,
-                    )
-                num_active = sum(s == ACTIVE_STATUS for s in statuses)
-                num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
-                if num_active == num_services:
-                    success = True
-                    break
-                elif num_failed := num_services - num_active - num_deploying:
-                    break
-                time.sleep(status_check_wait_sec)
+        try:
+            with (
+                LogInterceptor() as log_interceptor,
+                rich.live.Live(table, refresh_per_second=4) as live,
+            ):
+                while True:
+                    chainlets = service.get_info()
+                    table, statuses = _build_chains_table(service, chainlets)
+                    live.update(table)
+                    if keep_warm_during_push and remote_provider is not None:
+                        deployment_client._start_keepalives_for_ready_chainlets(
+                            chainlets,
+                            remote_provider,
+                            started_keepalives,
+                            ping_paths=service.keepalive_ping_paths,
+                        )
+                    num_active = sum(s == ACTIVE_STATUS for s in statuses)
+                    num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
+                    if num_active == num_services:
+                        success = True
+                        break
+                    elif num_failed := num_services - num_active - num_deploying:
+                        break
+                    time.sleep(status_check_wait_sec)
 
-            intercepted_logs = log_interceptor.get_logs()
+                intercepted_logs = log_interceptor.get_logs()
+        except KeyboardInterrupt:
+            _abort_chain_deployment(service, started_keepalives)
+            raise
 
         # Prints must be outside `Live` context.
         if intercepted_logs:

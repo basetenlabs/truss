@@ -574,6 +574,17 @@ class BasetenChainService(ChainService):
         self._keepalive_ping_paths = keepalive_ping_paths or {}
 
     @property
+    def chain_deployment_id(self) -> str:
+        return self._chain_deployment_handle.chain_deployment_id
+
+    def deactivate(self) -> None:
+        """Deactivates this chain deployment, stopping any in-progress build/deploy."""
+        handle = self._chain_deployment_handle
+        self._remote.api.deactivate_chain_deployment(
+            handle.chain_id, handle.chain_deployment_id
+        )
+
+    @property
     def keepalive_ping_paths(self) -> Mapping[str, str]:
         """Chainlet display name -> keepalive path (see `_keepalive_ping_paths`)."""
         return self._keepalive_ping_paths

@@ -183,7 +183,7 @@ class CustomImage(custom_types.SafeModel):
 
 
 class DockerImage(custom_types.SafeModelNonSerializable):
-    """Configures the docker image in which a remoted chainlet is deployed.
+    """Configures the Docker image for a remotely deployed chainlet.
 
     Note:
         Any paths are relative to the source file where ``DockerImage`` is
@@ -194,9 +194,9 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     Args:
         base_image: The base image used by the chainlet. Other dependencies and
           assets are included as additional layers on top of that image. You can choose
-          a Baseten default image for a supported python version (e.g.
+          a Baseten default image for a supported python version (for example,
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
-          provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
+          provide a custom image (for example, ``CustomImage(image="python:3.11-slim")``).
         pip_requirements_file: **Deprecated.** Use ``requirements_file`` instead.
           Path to a file containing pip requirements. The file content is naively
           concatenated with ``pip_requirements``.
@@ -212,13 +212,13 @@ class DockerImage(custom_types.SafeModelNonSerializable):
         data_dir: Data from this directory is copied into the docker image and
           accessible to the remote chainlet at runtime.
         external_package_dirs: A list of directories containing additional python
-          packages outside the chain's workspace dir, e.g. a shared library. This code
+          packages outside the chain's workspace dir, for example, a shared library. This code
           is copied into the docker image and importable at runtime.
         truss_server_version_override: By default, deployed Chainlets use the truss
           server implementation corresponding to the truss version of the user's CLI.
-          To use a specific version, e.g. pinning it for exact reproducibility, the
+          To use a specific version, for example, pinning it for exact reproducibility, the
           version can be overridden here. Valid versions correspond to truss releases
-          on PyPi: https://pypi.org/project/truss/#history, e.g. `"0.9.80"`.
+          on PyPi: https://pypi.org/project/truss/#history, for example, `"0.9.80"`.
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
@@ -302,8 +302,8 @@ class Compute:
         """
         Args:
             cpu_count: Minimum number of CPUs to allocate.
-            memory: Minimum memory to allocate, e.g. "2Gi" (2 gibibytes).
-            gpu: GPU accelerator type, e.g. "A10G", "A100", refer to the
+            memory: Minimum memory to allocate, for example, "2Gi" (2 gibibytes).
+            gpu: GPU accelerator type, for example, "A10G", "A100", refer to the
               `truss config <https://docs.baseten.co/reference/config#resources-accelerator>`_
               for more choices.
             gpu_count: Number of GPUs to allocate.
@@ -314,7 +314,7 @@ class Compute:
 
         Concurrency concepts are explained in `this guide <https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency>`_. # noqa: E501
         It is important to understand the difference between `predict_concurrency` and
-        the concurrency target (used for autoscaling, i.e. adding or removing replicas).
+        the concurrency target (used for autoscaling, that is, adding or removing replicas).
         Furthermore, the ``predict_concurrency`` of a single instance is implemented in
         two ways:
 
@@ -458,7 +458,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
         health_checks: Configures health checks for the chainlet. See `guide <https://docs.baseten.co/truss/guides/custom-health-checks#chains>`_.
         metadata: Arbitrary JSON object to describe chainlet.
         streaming_read_timeout: Amount of time (in seconds) between each streamed chunk before a timeout is triggered.
-        transport: Allows to customize certain transport protocols, e.g. websocket pings.
+        transport: Allows to customize certain transport protocols, for example, websocket pings.
     """
 
     enable_b10_tracing: bool = False
@@ -473,7 +473,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
 class RemoteConfig(custom_types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
-    This is specified as a class variable for each chainlet class, e.g.::
+    Define ``remote_config`` as a class variable on the chainlet::
 
             import truss_chains as chains
 
@@ -512,7 +512,7 @@ class RPCOptions(custom_types.SafeModel):
 
     Args:
         retries: The number of times to retry the remote chainlet in case of failures
-          (e.g. due to transient network issues). For streaming, retries are only made
+          (for example, due to transient network issues). For streaming, retries are only made
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
@@ -777,7 +777,7 @@ class DeploymentContext(custom_types.SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally be added as a trailing argument in a Chainlet's
-    ``__init__`` method and then used to set up the chainlet (e.g. using a secret as
+    ``__init__`` method and then used to set up the chainlet (for example, using a secret as
     an access token for downloading model weights).
 
     Args:
@@ -788,7 +788,7 @@ class DeploymentContext(custom_types.SafeModelNonSerializable):
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
         data_dir: The directory where the chainlet can store and access data,
-          e.g. for downloading model weights.
+          for example, for downloading model weights.
         environment: The environment that the chainlet is deployed in.
           None if the chainlet is not associated with an environment.
     """
