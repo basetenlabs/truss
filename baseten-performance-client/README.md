@@ -1026,67 +1026,10 @@ Unset the endpoint to disable recording/export; the request loop has no tracing 
 
 ## System One decisions
 
-Use `batch_system_one()` or `async_batch_system_one()` to send independent requests
-to `POST /v1/systemone`. Each request contains one `state`, a `questions` map, and
-an optional `model`. A single request is a one-element list; multiple questions
-about the same state stay together in that request.
+Python: `batch_system_one()` / `async_batch_system_one()`. Node: `batchSystemOne()`.
+Each sends a list of independent `state`/`questions` requests to `/v1/systemone`,
+with an optional `model`. Results are in `.data`, in input order, with batch timings
+and response headers. Existing request preferences apply.
 
-```python
-requests = [{
-    "state": "My invoice was charged twice.",
-    "model": "your-served-model",
-    "questions": {
-        "department": {
-            "type": "choice",
-            "instructions": "Which team should handle this?",
-            "criteria": {"billing": None, "technical": None},
-        },
-    },
-}]
-
-response = client.batch_system_one(requests=requests)
-print(response.data[0]["answers"]["department"])
-
-# In async code:
-response = await client.async_batch_system_one(requests=requests)
-```
-
-The result is a `BatchPostResponse`: `.data`, `.individual_request_times`, and
-`.response_headers` follow input order, with `.total_time` for the full batch.
-Requests share the existing `RequestProcessingPreference` concurrency, timeout,
-retry, hedging, and cancellation settings. Empty lists are rejected.
-
-Questions and backend-specific fields are passed through unchanged. Jev supports
-`choice`, `score`, and `noul`; Infinity and vLLM support depends on the deployed
-model/server version. The client preserves provider response fields, including
-confidence and diagnostics, without recalculating them. Set `base_url` to the API
-root before `/v1`, using the client’s existing authentication configuration.
-
-### Node.js
-
-`batchSystemOne()` sends independent requests to `POST /v1/systemone` using the
-existing concurrency, retry, timeout, hedging, and cancellation preferences.
-Each request contains a state and its named questions, plus an optional model.
-Use a one-element array for a single request. Questions within one request are
-never split or merged. Empty arrays are rejected.
-
-```javascript
-const response = await client.batchSystemOne([{
-  state: "My invoice was charged twice.",
-  model: "your-served-model",
-  questions: {
-    department: {
-      type: "choice",
-      instructions: "Which team should handle this?",
-      criteria: { billing: null, technical: null },
-    },
-  },
-}]);
-console.log(response.data[0].answers.department);
-```
-
-`data`, `individual_request_times`, and `response_headers` follow input order;
-`total_time` measures the full batch. Backend-specific request and response fields
-are retained, including confidence and diagnostics. Question support (`choice`,
-`score`, `noul`) and limits are controlled by the deployed backend. Set `baseUrl`
-to the API root before `/v1` and use the client’s existing authentication settings.
+See the [Python example](python_bindings/README.md#system-one-decisions) or
+[Node example](node_bindings/README.md#system-one-decisions).

@@ -597,29 +597,20 @@ and Suren (Baseten) for getting a PoC and protyping the release pipeline. https:
 
 ## System One decisions
 
-`batchSystemOne()` sends independent requests to `POST /v1/systemone` using the
-existing concurrency, retry, timeout, hedging, and cancellation preferences.
-Each request contains a state and its named questions, plus an optional model.
-Use a one-element array for a single request. Questions within one request are
-never split or merged. Empty arrays are rejected.
+Send independent requests to `/v1/systemone`; use a one-element array for one request.
 
 ```javascript
 const response = await client.batchSystemOne([{
   state: "My invoice was charged twice.",
-  model: "your-served-model",
-  questions: {
-    department: {
-      type: "choice",
-      instructions: "Which team should handle this?",
-      criteria: { billing: null, technical: null },
-    },
-  },
+  questions: { route: {
+    type: "choice",
+    instructions: "Which team should handle this?",
+    criteria: { billing: null, support: null },
+  } },
 }]);
-console.log(response.data[0].answers.department);
+console.log(response.data[0].answers.route);
 ```
 
-`data`, `individual_request_times`, and `response_headers` follow input order;
-`total_time` measures the full batch. Backend-specific request and response fields
-are retained, including confidence and diagnostics. Question support (`choice`,
-`score`, `noul`) and limits are controlled by the deployed backend. Set `baseUrl`
-to the API root before `/v1` and use the client’s existing authentication settings.
+Add `model` or backend-specific fields to each request as needed. `data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.

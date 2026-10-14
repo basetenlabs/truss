@@ -581,38 +581,22 @@ MIT License
 
 ## System One decisions
 
-Use `batch_system_one()` or `async_batch_system_one()` to send independent requests
-to `POST /v1/systemone`. Each request contains one `state`, a `questions` map, and
-an optional `model`. A single request is a one-element list; multiple questions
-about the same state stay together in that request.
+Send independent requests to `/v1/systemone`; use a one-element list for one request.
 
 ```python
 requests = [{
     "state": "My invoice was charged twice.",
-    "model": "your-served-model",
-    "questions": {
-        "department": {
-            "type": "choice",
-            "instructions": "Which team should handle this?",
-            "criteria": {"billing": None, "technical": None},
-        },
-    },
+    "questions": {"route": {
+        "type": "choice",
+        "instructions": "Which team should handle this?",
+        "criteria": {"billing": None, "support": None},
+    }},
 }]
-
 response = client.batch_system_one(requests=requests)
-print(response.data[0]["answers"]["department"])
-
-# In async code:
-response = await client.async_batch_system_one(requests=requests)
+print(response.data[0]["answers"]["route"])
+# Async: await client.async_batch_system_one(requests=requests)
 ```
 
-The result is a `BatchPostResponse`: `.data`, `.individual_request_times`, and
-`.response_headers` follow input order, with `.total_time` for the full batch.
-Requests share the existing `RequestProcessingPreference` concurrency, timeout,
-retry, hedging, and cancellation settings. Empty lists are rejected.
-
-Questions and backend-specific fields are passed through unchanged. Jev supports
-`choice`, `score`, and `noul`; Infinity and vLLM support depends on the deployed
-model/server version. The client preserves provider response fields, including
-confidence and diagnostics, without recalculating them. Set `base_url` to the API
-root before `/v1`, using the client’s existing authentication configuration.
+Add `model` or backend-specific fields to each request as needed. `.data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.
