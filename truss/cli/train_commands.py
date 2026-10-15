@@ -98,6 +98,10 @@ def _handle_post_create_logic(
             f"Check status: 'truss train view --job-id={job_id}'.",
             style="yellow",
         )
+        # A pending job's message is advice about the queue (for example, that spot
+        # capacity would start it now), not a failure.
+        if pending_message := job_resp.get("error_message"):
+            console.print(pending_message, style="yellow")
     elif job_resp.get("current_status") == "TRAINING_JOB_QUEUED":
         console.print(
             f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",

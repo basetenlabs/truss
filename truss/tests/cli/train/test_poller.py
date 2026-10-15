@@ -130,3 +130,26 @@ def test_handle_post_create_logic_queue_messages(status, expected_fragment, caps
     _handle_post_create_logic(job_resp, mock_remote, tail=False)
     captured = capsys.readouterr()
     assert expected_fragment in captured.out.lower()
+
+
+@pytest.mark.parametrize(
+    "error_message", ["Spot capacity is available for this job.", None]
+)
+def test_handle_post_create_logic_prints_pending_message(error_message, capsys):
+    """A pending job's message (for example, a spot hint) is shown at submit time."""
+    from truss.cli.train_commands import _handle_post_create_logic
+
+    mock_remote = Mock()
+    mock_remote.remote_url = "https://app.baseten.co"
+    job_resp = {
+        "id": "job123",
+        "current_status": "TRAINING_JOB_PENDING",
+        "error_message": error_message,
+        "training_project": {"id": "proj456", "name": "my-project"},
+    }
+    _handle_post_create_logic(job_resp, mock_remote, tail=False)
+    out = " ".join(capsys.readouterr().out.split())
+    assert "pending" in out.lower()
+    assert ("Spot capacity is available for this job." in out) is (
+        error_message is not None
+    )
