@@ -131,8 +131,16 @@ class TestRecreateTrainingJob:
 class TestUpdateTrainingJob:
     """Test cases for the update_training_job function."""
 
-    def test_update_training_job_success(self, mock_remote):
-        """Test updating a training job with a specific job ID."""
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"priority": 42},
+            {"availability_model": "spot"},
+            {"priority": 42, "availability_model": "spot"},
+        ],
+    )
+    def test_update_training_job_success(self, mock_remote, kwargs):
+        """Test updating a training job's priority, availability model, or both."""
         mock_remote.api.search_training_jobs.return_value = [
             {
                 "id": "test_job_123",
@@ -146,17 +154,19 @@ class TestUpdateTrainingJob:
         }
 
         result = train_cli.update_training_job(
-            remote_provider=mock_remote, job_id="test_job_123", priority=42
+            remote_provider=mock_remote, job_id="test_job_123", **kwargs
         )
 
         assert result["id"] == "test_job_123"
-        assert result["priority"] == 42
 
         mock_remote.api.search_training_jobs.assert_called_once_with(
             job_id="test_job_123"
         )
         mock_remote.api.update_training_job.assert_called_once_with(
-            "project_456", "test_job_123", priority=42
+            "project_456",
+            "test_job_123",
+            priority=kwargs.get("priority"),
+            availability_model=kwargs.get("availability_model"),
         )
 
     def test_update_training_job_no_job_found(self, mock_remote):
