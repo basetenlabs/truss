@@ -34,8 +34,12 @@ _ENCODER_LLM_CONFIG = {
     [
         # No BDN mount: weights come from Hugging Face at runtime.
         (_bis_config(), ["huggingface.co", "us.aws.cdn.hf.co"]),
-        # A wildcard covers the CDN hosts; only the apex is still missing.
-        (_bis_config(fqdn_allow_list=["*.hf.co"]), ["huggingface.co"]),
+        # `*` spans one DNS label, as in the Cilium policy: *.hf.co covers
+        # cdn-lfs-us-1.hf.co but not the deeper CDN and Xet hosts.
+        (
+            _bis_config(fqdn_allow_list=["*.hf.co"]),
+            ["huggingface.co", "us.aws.cdn.hf.co", "cas-server.xethub.hf.co"],
+        ),
         # The exact encoder host, not a wildcard over every model on the Baseten API.
         (_bis_config(llm_config=_ENCODER_LLM_CONFIG), ["model-abc.api.baseten.co"]),
         # Any Baseten-API URL counts, e.g. an openai_http tokenizer endpoint.
@@ -55,6 +59,15 @@ def test_bis_egress_allowlist_warnings_name_missing_hosts(config, expected_hosts
 
     for host in expected_hosts:
         assert f'      - "{host}"' in text
+
+
+def test_bis_egress_allowlist_wildcard_spans_one_label():
+    text = "\n".join(
+        bis_egress_allowlist_warnings(_bis_config(fqdn_allow_list=["*.hf.co"]))
+    )
+
+    assert '      - "cdn-lfs-us-1.hf.co"' not in text
+    assert '      - "us.aws.cdn.hf.co"' in text
 
 
 @pytest.mark.parametrize(
@@ -84,6 +97,8 @@ def test_bis_egress_allowlist_warnings_name_missing_hosts(config, expected_hosts
                 "other": "https://model-abc.api.baseten.co.example.com/v1",
             },
         ),
+        # A bare `*` allows every host.
+        _bis_config(fqdn_allow_list=["*"], llm_config=_ENCODER_LLM_CONFIG),
         # Unrestricted, or not BIS: nothing to warn about.
         _bis_config(egress=False),
         TrussConfig(runtime=Runtime(egress_restrictions=EgressRestrictions())),
