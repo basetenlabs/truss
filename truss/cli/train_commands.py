@@ -936,12 +936,23 @@ def update_session(
     required=False,
     help="New queue priority. Higher values are dequeued first. Only PENDING jobs can have their priority changed.",
 )
+@click.option(
+    "--availability-model",
+    type=click.Choice(["dedicated", "spot"]),
+    required=False,
+    help="New capacity type. 'spot' can be preempted; checkpointing your progress is up to you. Only PENDING jobs can have their capacity type changed.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def update(job_id: str, priority: Optional[int], remote: Optional[str]):
+def update(
+    job_id: str,
+    priority: Optional[int],
+    availability_model: Optional[str],
+    remote: Optional[str],
+):
     """Update a training job. At least one field to update must be provided."""
 
-    if priority is None:
+    if priority is None and availability_model is None:
         raise click.UsageError("At least one field to update must be provided.")
 
     if not remote:
@@ -953,7 +964,10 @@ def update(job_id: str, priority: Optional[int], remote: Optional[str]):
 
     try:
         job = train_cli.update_training_job(
-            remote_provider=remote_provider, job_id=job_id, priority=priority
+            remote_provider=remote_provider,
+            job_id=job_id,
+            priority=priority,
+            availability_model=availability_model,
         )
     except Exception as e:
         error_console.print(f"Failed to update training job: {str(e)}")

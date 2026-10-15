@@ -14,6 +14,7 @@ from truss.cli.train.core import (
     display_training_capacity,
     display_training_jobs,
     update_team_training_gpu_capacity,
+    update_training_job,
     view_training_job_metrics,
 )
 from truss.remote.baseten.custom_types import FileSummary, TeamType
@@ -599,6 +600,35 @@ def test_display_training_capacity_empty(capsys):
     display_training_capacity(mock_remote)
 
     assert "No Training GPU capacity limits." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"priority": 5},
+        {"availability_model": "spot"},
+        {"priority": 5, "availability_model": "spot"},
+    ],
+)
+def test_update_training_job_forwards_each_field(kwargs):
+    """Priority and availability model can each be updated alone or together."""
+    remote = Mock()
+    with patch(
+        "truss.cli.train.core._get_job_by_job_id",
+        return_value={"id": "job1", "training_project": {"id": "proj1"}},
+    ):
+        update_training_job(remote, "job1", **kwargs)
+    remote.api.update_training_job.assert_called_once_with(
+        "proj1",
+        "job1",
+        priority=kwargs.get("priority"),
+        availability_model=kwargs.get("availability_model"),
+    )
+
+
+def test_update_training_job_requires_a_field():
+    with pytest.raises(ValueError, match="At least one field"):
+        update_training_job(Mock(), "job1")
 
 
 def test_update_team_training_gpu_capacity_resolves_team_and_calls_api():
