@@ -1057,6 +1057,103 @@ def test_secret_to_path_mapping_incorrect_type(default_config):
             TrussConfig.from_yaml(yaml_path)
 
 
+@pytest.mark.parametrize(
+    "config_fixture", ["trtllm_config", "trtllm_config_v2", "trtllm_config_encoder"]
+)
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        None,
+        {},
+        {"health_checks": {}},
+        {
+            "health_checks": {
+                "stop_traffic_threshold_seconds": None,
+                "restart_threshold_seconds": None,
+            }
+        },
+    ],
+)
+def test_trt_llm_health_check_defaults(config_fixture, runtime, request, tmp_path):
+    data = request.getfixturevalue(config_fixture)
+    if runtime is None:
+        data.pop("runtime", None)
+    else:
+        data["runtime"] = runtime
+    config = TrussConfig.from_dict(data)
+
+    path = tmp_path / "config.yaml"
+    config.write_to_yaml_file(path, verbose=False)
+    serialized = yaml.safe_load(path.read_text())
+    assert serialized["runtime"]["health_checks"] == {
+        "stop_traffic_threshold_seconds": 30,
+        "restart_threshold_seconds": 60,
+    }
+    assert (
+        TrussConfig.from_yaml(path).runtime.health_checks
+        == config.runtime.health_checks
+    )
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "stop_traffic, restart", [(10, 10), (30, 60), (None, 20), (20, None)]
+)
+def test_trt_llm_health_check_overrides(config_fixture, stop_traffic, restart, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {
+        "predict_concurrency": 8,
+        "health_checks": {
+            "stop_traffic_threshold_seconds": stop_traffic,
+            "restart_threshold_seconds": restart,
+            "startup_threshold_seconds": 2400,
+        },
+    }
+    config = TrussConfig.model_validate(data)
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == (
+        stop_traffic if stop_traffic is not None else 30
+    )
+    assert config.runtime.health_checks.restart_threshold_seconds == (
+        restart if restart is not None else 60
+    )
+    assert config.runtime.health_checks.startup_threshold_seconds == 2400
+    assert config.runtime.predict_concurrency == 8
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "field, value, limit",
+    [
+        ("stop_traffic_threshold_seconds", 31, 30),
+        ("restart_threshold_seconds", 61, 60),
+        ("stop_traffic_threshold_seconds", 1800, 30),
+        ("restart_threshold_seconds", 1800, 60),
+    ],
+)
+def test_trt_llm_health_check_limits(config_fixture, field, value, limit, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {"health_checks": {field: value}}
+    with pytest.raises(
+        ValueError,
+        match=rf"runtime\.health_checks\.{field} must be <= {limit} seconds when trt_llm is configured",
+    ):
+        TrussConfig.model_validate(data)
+
+
+@pytest.mark.parametrize("threshold", [None, 1800])
+def test_health_check_limits_without_trt_llm(threshold):
+    config = TrussConfig(
+        runtime={
+            "health_checks": {
+                "stop_traffic_threshold_seconds": threshold,
+                "restart_threshold_seconds": threshold,
+            }
+        }
+    )
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == threshold
+    assert config.runtime.health_checks.restart_threshold_seconds == threshold
+
+
 def test_max_beam_width_check(trtllm_config):
     trtllm_config["trt_llm"]["build"]["max_beam_width"] = 2
     with pytest.raises(ValueError):
@@ -1122,9 +1219,17 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
+    expected = {
+        **trtllm_config,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
-        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose)
-        == trtllm_config
+        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose) == expected
     ) == expect_equal
 
 
@@ -1132,11 +1237,20 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
 def test_to_dict_trtllm_spec_dec(
     verbose, expect_equal, trtllm_spec_dec_config_lookahead_v1
 ):
+    expected = {
+        **trtllm_spec_dec_config_lookahead_v1,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
         TrussConfig.model_validate(trtllm_spec_dec_config_lookahead_v1).to_dict(
             verbose=verbose
         )
-        == trtllm_spec_dec_config_lookahead_v1
+        == expected
     ) == expect_equal
 
 

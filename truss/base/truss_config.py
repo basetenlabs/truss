@@ -831,11 +831,11 @@ class HealthChecks(custom_types.ConfigModel):
     )
     restart_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which an unhealthy instance is restarted. With trt_llm, defaults to 60 and must be <= 60. Otherwise defaults to platform-determined value when not set.",
     )
     stop_traffic_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which traffic is stopped to an unhealthy instance. With trt_llm, defaults to 30 and must be <= 30. Otherwise defaults to platform-determined value when not set.",
     )
     startup_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
@@ -1825,6 +1825,26 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_trt_llm_health_checks(self) -> "TrussConfig":
+        if self.trt_llm is None:
+            return self
+
+        health_checks = self.runtime.health_checks
+        for field, limit in (
+            ("stop_traffic_threshold_seconds", 30),
+            ("restart_threshold_seconds", 60),
+        ):
+            threshold = getattr(health_checks, field)
+            if threshold is None:
+                setattr(health_checks, field, limit)
+            elif threshold > limit:
+                raise ValueError(
+                    f"runtime.health_checks.{field} must be <= {limit} seconds "
+                    "when trt_llm is configured."
+                )
+        return self
 
     @pydantic.field_serializer("trt_llm")
     def _serialize_trt_llm(
