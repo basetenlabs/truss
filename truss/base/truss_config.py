@@ -97,6 +97,7 @@ class Accelerator(str, enum.Enum):
     RTX_PRO_6000 = "RTX_PRO_6000"
     B300 = "B300"
     GB300 = "GB300"
+    TPU_V6E = "TPU_V6E"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -1170,7 +1171,7 @@ class Resources(custom_types.ConfigModel):
     )
     accelerator: AcceleratorSpec = pydantic.Field(
         default_factory=AcceleratorSpec,
-        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        description="The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
         examples=["A100", "T4:2", "H100:8"],
     )
     instance_type: Optional[str] = pydantic.Field(
@@ -1206,7 +1207,12 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.computed_field(return_type=bool)
     def use_gpu(self) -> bool:
+        # The legacy wire flag represents any accelerator, including TPUs.
         return self.accelerator.accelerator is not None
+
+    @property
+    def is_tpu(self) -> bool:
+        return self.accelerator.accelerator == Accelerator.TPU_V6E
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1808,6 +1814,26 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
+        if self.resources.is_tpu:
+            if self.trt_llm is not None:
+                raise ValueError(
+                    "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
+                )
+            if not self.base_image or not self.base_image.image:
+                raise ValueError(
+                    "TPU accelerators require a TPU-compatible custom base_image."
+                )
+            fabric = self.resources.fabric
+            if (self.resources.node_count or 1) > 1 or (
+                fabric is not None and (fabric.use_rdma or fabric.preferences)
+            ):
+                raise ValueError(
+                    "TPU deployments support a single node without fabric requirements."
+                )
+            if self.model_framework != "custom":
+                raise ValueError(
+                    "TPU accelerators require a custom model or docker_server."
+                )
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
