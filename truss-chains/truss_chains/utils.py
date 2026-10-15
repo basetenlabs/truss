@@ -17,7 +17,7 @@ T = TypeVar("T")
 def make_abs_path_here(file_path: str) -> "public_types.AbsPath":
     """Helper to specify file paths relative to the *immediately calling* module.
 
-    E.g. in you have a project structure like this::
+    For example, if your project has this structure::
 
         root/
             chain.py
@@ -37,7 +37,7 @@ def make_abs_path_here(file_path: str) -> "public_types.AbsPath":
         This helper uses the directory of the immediately calling module as an
         absolute reference point for resolving the file location. Therefore,
         you MUST NOT wrap the instantiation of ``make_abs_path_here`` into a
-        function (e.g. applying decorators) or use dynamic code execution.
+        function (for example, applying decorators) or use dynamic code execution.
 
         Ok::
 

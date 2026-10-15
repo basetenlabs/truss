@@ -93,7 +93,7 @@ def depends(
     Args:
         chainlet_cls: The chainlet class of the dependency.
         retries: The number of times to retry the remote chainlet in case of failures
-          (e.g. due to transient network issues). For streaming, retries are only made
+          (for example, due to transient network issues). For streaming, retries are only made
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
@@ -188,7 +188,7 @@ def push(
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
         only_generate_trusses: Used for debugging purposes. If set to True, only the
-          the underlying truss models for the chainlets are generated in
+          underlying Truss models for the chainlets are generated in
           ``/tmp/.chains_generated``.
         remote: name of a remote config in `.trussrc`. If not provided, it will be
           inquired.

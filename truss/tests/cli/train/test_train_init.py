@@ -5,12 +5,21 @@ import pytest
 import requests
 
 from truss.cli.train.core import (
+    _fetch_examples_index,
     _get_all_train_init_example_options,
     _get_train_init_example_info,
     download_git_directory,
 )
 
 
+@pytest.fixture
+def no_examples_index():
+    """Exercise the legacy directory-listing path: the repo has no examples index."""
+    with patch("truss.cli.train.core._fetch_examples_index", return_value=None):
+        yield
+
+
+@pytest.mark.usefixtures("no_examples_index")
 class TestGetTrainInitExampleOptions:
     """Test cases for _get_train_init_example_options function"""
 
@@ -157,6 +166,7 @@ class TestGetTrainInitExampleOptions:
         assert "config.json" not in result
 
 
+@pytest.mark.usefixtures("no_examples_index")
 class TestGetTrainInitExampleInfo:
     """Test cases for _get_train_init_example_info function"""
 
@@ -504,3 +514,73 @@ class TestDownloadGitDirectory:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+INDEX = {
+    "version": 1,
+    "examples": {
+        "qwen3-8b-lora-dpo-trl": {
+            "path": "training-jobs/examples/qwen3-8b-lora-dpo-trl/training"
+        },
+        "isaac-lab": {"path": "training-jobs/recipes/isaac-lab"},
+    },
+}
+
+
+def _json_response(payload):
+    response = Mock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return response
+
+
+class TestFetchExamplesIndex:
+    @patch("requests.get")
+    def test_returns_examples_from_index(self, mock_get):
+        mock_get.return_value = _json_response(INDEX)
+
+        assert _fetch_examples_index() == INDEX["examples"]
+        mock_get.assert_called_once_with(
+            "https://raw.githubusercontent.com/basetenlabs/ml-cookbook/main/.examples-index.json",
+            headers={},
+        )
+
+    @patch("requests.get")
+    def test_missing_index_returns_none(self, mock_get):
+        response = Mock()
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
+        mock_get.return_value = response
+
+        assert _fetch_examples_index() is None
+
+    @pytest.mark.parametrize(
+        "payload", [[], {"version": 2, "examples": {}}, {"version": 1}]
+    )
+    @patch("requests.get")
+    def test_unusable_index_returns_none(self, mock_get, payload):
+        mock_get.return_value = _json_response(payload)
+
+        assert _fetch_examples_index() is None
+
+
+class TestExamplesFromIndex:
+    @patch("truss.cli.train.core._fetch_examples_index", return_value=INDEX["examples"])
+    def test_options_list_index_names(self, _):
+        assert _get_all_train_init_example_options() == [
+            "isaac-lab",
+            "qwen3-8b-lora-dpo-trl",
+        ]
+
+    @patch("truss.cli.train.core._fetch_examples_index", return_value=INDEX["examples"])
+    def test_info_points_at_indexed_path(self, _):
+        assert _get_train_init_example_info(example_name="qwen3-8b-lora-dpo-trl") == [
+            {
+                "name": "training",
+                "type": "dir",
+                "url": "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/training-jobs/examples/qwen3-8b-lora-dpo-trl/training",
+            }
+        ]
+
+    @patch("truss.cli.train.core._fetch_examples_index", return_value=INDEX["examples"])
+    def test_info_unknown_example_returns_empty(self, _):
+        assert _get_train_init_example_info(example_name="nonexistent") == []

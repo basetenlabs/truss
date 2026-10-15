@@ -594,3 +594,23 @@ MIT License
 ## Acknowledgements:
 Venkatesh Narayan (Clay.com) for the prototpe of this here https://github.com/basetenlabs/truss/pull/1778
 and Suren (Baseten) for getting a PoC and protyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package
+
+## System One decisions
+
+Send independent requests to `/v1/systemone`; use a one-element array for one request.
+
+```javascript
+const response = await client.batchSystemOne([{
+  state: "My invoice was charged twice.",
+  questions: { route: {
+    type: "choice",
+    instructions: "Which team should handle this?",
+    criteria: { billing: null, support: null },
+  } },
+}]);
+console.log(response.data[0].answers.route);
+```
+
+Add `model` or backend-specific fields to each request as needed. `data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.

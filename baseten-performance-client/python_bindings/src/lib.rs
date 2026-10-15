@@ -1178,6 +1178,40 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
+    /// Send one System One POST per request and return responses in input order.
+    #[pyo3(signature = (requests, preference = None))]
+    fn batch_system_one(
+        &self,
+        py: Python,
+        requests: Vec<PyObject>,
+        preference: Option<&RequestProcessingPreference>,
+    ) -> PyResult<BatchPostResponse> {
+        self.batch_post(
+            py,
+            baseten_performance_client_core::SYSTEM_ONE_PATH.into(),
+            requests,
+            preference,
+            None,
+        )
+    }
+
+    /// Async variant of batch_system_one, with the same cancellation and retry policy.
+    #[pyo3(signature = (requests, preference = None))]
+    fn async_batch_system_one<'py>(
+        &self,
+        py: Python<'py>,
+        requests: Vec<PyObject>,
+        preference: Option<&RequestProcessingPreference>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.async_batch_post(
+            py,
+            baseten_performance_client_core::SYSTEM_ONE_PATH.into(),
+            requests,
+            preference,
+            None,
+        )
+    }
+
     #[pyo3(signature = (url_path, payloads, preference = None, method = None))]
     fn batch_post(
         &self,
