@@ -47,6 +47,75 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
+def test_tpu_resources_roundtrip():
+    resources = Resources.model_validate({"accelerator": "TPU_V6E:8"})
+    assert resources.is_tpu
+    assert resources.use_gpu
+    assert resources.accelerator.count == 8
+    assert resources.model_dump()["accelerator"] == "TPU_V6E:8"
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:0", "TPU_V6E:-1", "TPU_V6E:abc"])
+def test_tpu_rejects_invalid_accelerator_count(accelerator):
+    with pytest.raises(ValueError, match="Invalid count"):
+        Resources.model_validate({"accelerator": accelerator})
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"base_image": None}, "custom base_image"),
+        ({"base_image": {"image": ""}}, "custom base_image"),
+        ({"resources": {"accelerator": "TPU_V6E:8", "node_count": 2}}, "single node"),
+        (
+            {"resources": {"accelerator": "TPU_V6E:8", "fabric": {"use_rdma": True}}},
+            "single node",
+        ),
+        ({"model_framework": "huggingface_transformer"}, "custom model"),
+    ],
+)
+def test_tpu_rejects_unsupported_config(overrides, message):
+    config = {
+        "resources": {"accelerator": "TPU_V6E:8"},
+        "base_image": {"image": "example.com/tpu-runtime:preview"},
+        **overrides,
+    }
+    with pytest.raises(ValueError, match=message):
+        TrussConfig.model_validate(config)
+
+
+@pytest.mark.parametrize(
+    "docker_server",
+    [
+        None,
+        {
+            "start_command": "python server.py",
+            "server_port": 9000,
+            "predict_endpoint": "/predict",
+            "readiness_endpoint": "/ready",
+            "liveness_endpoint": "/health",
+        },
+    ],
+)
+def test_tpu_custom_image_config_roundtrip(docker_server):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8"},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+            "docker_server": docker_server,
+        }
+    )
+    assert TrussConfig.model_validate(config.model_dump()) == config
+
+
+def test_tpu_rejects_nvidia_inference_engine(trtllm_config):
+    trtllm_config["resources"]["accelerator"] = "TPU_V6E:8"
+    trtllm_config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    with pytest.raises(ValueError, match="NVIDIA inference engines"):
+        TrussConfig.model_validate(trtllm_config)
+
+
 @pytest.mark.parametrize(
     "input_dict, expect_resources, output_dict",
     [
