@@ -184,15 +184,22 @@ def recreate_training_job(
 
 
 def update_training_job(
-    remote_provider: BasetenRemote, job_id: str, *, priority: Optional[int] = None
+    remote_provider: BasetenRemote,
+    job_id: str,
+    *,
+    priority: Optional[int] = None,
+    availability_model: Optional[AvailabilityModel] = None,
 ) -> Dict[str, Any]:
-    if priority is None:
+    if priority is None and availability_model is None:
         raise ValueError("At least one field to update must be provided.")
     job = _get_job_by_job_id(remote_provider, job_id)
     project_id = job["training_project"]["id"]
     job_id = job["id"]
     return remote_provider.api.update_training_job(
-        project_id, job_id, priority=priority
+        project_id,
+        job_id,
+        priority=priority,
+        availability_model=availability_model.value if availability_model else None,
     )
 
 

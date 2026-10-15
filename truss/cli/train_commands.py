@@ -45,7 +45,7 @@ from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
-from truss_train import TrainingJob
+from truss_train import AvailabilityModel, TrainingJob
 
 
 @click.group()
@@ -936,12 +936,25 @@ def update_session(
     required=False,
     help="New queue priority. Higher values are dequeued first. Only PENDING jobs can have their priority changed.",
 )
+@click.option(
+    "--availability-model",
+    type=click.Choice([m.value for m in AvailabilityModel], case_sensitive=False),
+    required=False,
+    help="New capacity guarantee. 'dedicated' runs on on-demand capacity that is not preempted; "
+    "'spot' runs on interruptible capacity that may be preempted, and you are responsible for "
+    "checkpointing your own progress. Only PENDING jobs can have their availability model changed.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
-def update(job_id: str, priority: Optional[int], remote: Optional[str]):
+def update(
+    job_id: str,
+    priority: Optional[int],
+    availability_model: Optional[str],
+    remote: Optional[str],
+):
     """Update a training job. At least one field to update must be provided."""
 
-    if priority is None:
+    if priority is None and availability_model is None:
         raise click.UsageError("At least one field to update must be provided.")
 
     if not remote:
@@ -953,7 +966,12 @@ def update(job_id: str, priority: Optional[int], remote: Optional[str]):
 
     try:
         job = train_cli.update_training_job(
-            remote_provider=remote_provider, job_id=job_id, priority=priority
+            remote_provider=remote_provider,
+            job_id=job_id,
+            priority=priority,
+            availability_model=AvailabilityModel(availability_model.lower())
+            if availability_model
+            else None,
         )
     except Exception as e:
         error_console.print(f"Failed to update training job: {str(e)}")
