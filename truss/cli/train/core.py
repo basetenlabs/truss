@@ -610,6 +610,39 @@ def status_page_url(remote_url: str, project_id: str, training_job_id: str) -> s
     return f"{remote_url}/training/{project_id}/logs/{training_job_id}"
 
 
+EXAMPLES_INDEX_FILE = ".examples-index.json"
+
+
+def _fetch_examples_index(
+    repo_id: str = "ml-cookbook", token: Optional[str] = None
+) -> Optional[Dict[str, Dict[str, str]]]:
+    """
+    Fetch the repository's examples index, which maps each example name to the
+    directory to download (``{"examples": {name: {"path": ...}}}``). Returns None
+    when the repository has no usable index, so callers fall back to listing
+    the examples directory.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = f"https://raw.githubusercontent.com/basetenlabs/{repo_id}/main/{EXAMPLES_INDEX_FILE}"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        index = response.json()
+    except (requests.exceptions.RequestException, ValueError):
+        return None
+
+    if (
+        not isinstance(index, dict)
+        or index.get("version") != 1
+        or not isinstance(index.get("examples"), dict)
+    ):
+        return None
+    return index["examples"]
+
+
 def _get_all_train_init_example_options(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
@@ -620,6 +653,10 @@ def _get_all_train_init_example_options(
     copy locally for training initialization. This method generates a list
     of examples and URL paths to show the user for selection.
     """
+    index = _fetch_examples_index(repo_id=repo_id, token=token)
+    if index is not None:
+        return sorted(index)
+
     headers = {}
     if token:
         headers["Authorization"] = f"token {token}"
@@ -655,6 +692,20 @@ def _get_train_init_example_info(
     Retrieve directory download links for the example from the ml-cookbook repository to
     copy locally for training initialization.
     """
+    index = _fetch_examples_index(repo_id=repo_id, token=token)
+    if index is not None:
+        entry = index.get(example_name) if example_name else None
+        if not entry or not entry.get("path"):
+            return []
+        path = entry["path"].strip("/")
+        return [
+            {
+                "name": path.rsplit("/", 1)[-1],
+                "type": "dir",
+                "url": f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{path}",
+            }
+        ]
+
     headers = {}
     if token:
         headers["Authorization"] = f"token {token}"
