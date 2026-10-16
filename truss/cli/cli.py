@@ -898,7 +898,8 @@ def push(
         # to only print the warning above when the flag was specified by the user.
         preserve_env_instance_type = True
 
-    if environment:
+    # BIS LLM deployments always take resources from the config.
+    if environment and tr.spec.config.bis_llm is None:
         if preserve_env_instance_type:
             preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
             console.print(preserve_env_info)
