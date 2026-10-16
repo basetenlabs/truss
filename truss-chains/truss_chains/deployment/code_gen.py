@@ -312,13 +312,13 @@ def _stub_endpoint_body_src(
 
     else:
         if endpoint.is_async:
-            parts.append(
-                f"async for data in await self.predict_async_stream({inputs}):"
-            )
+            stream_src = f"await self.predict_async_stream({inputs})"
             if endpoint.streaming_type.is_string:
-                parts.append(_indent("yield data.decode()"))
-            else:
-                parts.append(_indent("yield data"))
+                # Network chunks can split multi-byte UTF-8 characters.
+                imports.add("from truss_chains.remote_chainlet import utils")
+                stream_src = f"utils.decode_str_stream({stream_src})"
+            parts.append(f"async for data in {stream_src}:")
+            parts.append(_indent("yield data"))
         else:
             raise NotImplementedError(
                 "`Streaming endpoints (containing `yield` statements) are only "
