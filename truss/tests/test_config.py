@@ -1516,6 +1516,41 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
         assert docker_server.run_as_user_id == expected
 
 
+@pytest.mark.parametrize(
+    "remote_ssh_enabled,run_as_user_id,raises",
+    [
+        pytest.param(False, 1000, does_not_raise(), id="ssh_disabled"),
+        pytest.param(True, None, does_not_raise(), id="default_user"),
+        pytest.param(
+            True,
+            1000,
+            pytest.raises(
+                pydantic.ValidationError,
+                match="remote_ssh.enabled is not compatible with docker_server.run_as_user_id",
+            ),
+            id="ssh_with_custom_user_rejected",
+        ),
+    ],
+)
+def test_remote_ssh_incompatible_with_run_as_user_id(
+    remote_ssh_enabled, run_as_user_id, raises
+):
+    with raises:
+        TrussConfig.model_validate(
+            {
+                "runtime": {"remote_ssh": {"enabled": remote_ssh_enabled}},
+                "docker_server": {
+                    "start_command": "python main.py",
+                    "server_port": 8000,
+                    "predict_endpoint": "/predict",
+                    "readiness_endpoint": "/health",
+                    "liveness_endpoint": "/health",
+                    "run_as_user_id": run_as_user_id,
+                },
+            }
+        )
+
+
 # =============================================================================
 # Weights Configuration Tests
 # =============================================================================
