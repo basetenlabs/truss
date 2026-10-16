@@ -587,15 +587,26 @@ def mock_update_training_job_response():
     return response
 
 
+@pytest.mark.parametrize(
+    "kwargs,expected_body",
+    [
+        ({"priority": 42}, {"priority": 42}),
+        ({"availability_model": "spot"}, {"availability_model": "spot"}),
+        (
+            {"priority": 42, "availability_model": "spot"},
+            {"priority": 42, "availability_model": "spot"},
+        ),
+    ],
+)
 @mock.patch("requests.patch", return_value=mock_update_training_job_response())
-def test_update_training_job(mock_patch, baseten_api):
-    result = baseten_api.update_training_job("project_id", "job_id", priority=42)
+def test_update_training_job(mock_patch, baseten_api, kwargs, expected_body):
+    result = baseten_api.update_training_job("project_id", "job_id", **kwargs)
 
     assert result == {"id": "job_id", "priority": 42}
 
     called_url = mock_patch.call_args[0][0]
     assert called_url.endswith("/v1/training_projects/project_id/jobs/job_id")
-    assert mock_patch.call_args[1]["json"] == {"priority": 42}
+    assert mock_patch.call_args[1]["json"] == expected_body
 
 
 # Mock responses for training job logs pagination tests
