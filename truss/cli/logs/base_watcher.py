@@ -17,13 +17,14 @@ class LogWatcher(ABC):
     api: BasetenApi
     # NB(nikhil): we add buffer for clock skew, so this helps us detect duplicates.
     # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
-    _log_hashes: set[str] = set()
+    _log_hashes: set[str]
 
     _last_poll_time_ms: Optional[int] = None
     _last_log_time_ms: Optional[int] = None
 
     def __init__(self, api: BasetenApi):
         self.api = api
+        self._log_hashes = set()
 
     def _hash_log(self, log: ParsedLog) -> str:
         log_str = f"{log.timestamp}-{log.message}-{log.replica}"
