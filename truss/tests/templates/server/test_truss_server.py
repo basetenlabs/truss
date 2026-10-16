@@ -15,6 +15,7 @@ from threading import Event
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import msgpack
 import numpy as np
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
@@ -22,6 +23,7 @@ import yaml
 from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.testclient import TestClient
 
 from truss.templates.shared import log_config, serialization
 
@@ -323,6 +325,173 @@ async def test_binary_object_array_request_is_rejected(app_path):
             await endpoints.predict(
                 model_name="model", request=mock_request, body_raw=body
             )
+
+
+_UNTYPED_MODEL = """
+class Model:
+    def __init__(self, **kwargs):
+        pass
+
+    def load(self):
+        pass
+
+    def predict(self, request):
+        return {"ok": True}
+"""
+
+# A type-annotated `predict` makes the server parse bodies with a pydantic schema.
+_TYPED_MODEL = """
+import pydantic
+
+
+class Input(pydantic.BaseModel):
+    a: str = ""
+
+
+class Model:
+    def __init__(self, **kwargs):
+        pass
+
+    def load(self):
+        pass
+
+    def predict(self, request: Input) -> dict:
+        return {"ok": True}
+"""
+
+_BINARY_HEADERS = {"Content-Type": "application/octet-stream"}
+_JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+def _post_predict(
+    app_path: Path, model_source: str, body: bytes, headers: dict[str, str]
+) -> httpx.Response:
+    """POST to `/v1/models/model:predict` of the real FastAPI app (routes + handlers)."""
+    (app_path / "model" / "model.py").write_text(model_source)
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        server = truss_server_module.TrussServer(
+            http_port=0, config_or_path=app_path / "config.yaml"
+        )
+        # `create_application` unregisters global prometheus collectors, which can
+        # only succeed once per process.
+        with (
+            patch.object(truss_server_module.REGISTRY, "unregister"),
+            # Report unhandled exceptions as responses, like a real server would.
+            TestClient(
+                server.create_application(), raise_server_exceptions=False
+            ) as client,
+        ):
+            assert _wait_for(
+                lambda: client.get("/v1/models/model").status_code == 200,
+                timeout_sec=10,
+                poll_sec=0.1,
+            ), "model never became ready"
+            return client.post(
+                "/v1/models/model:predict", content=body, headers=headers
+            )
+
+
+@pytest.mark.parametrize(
+    "model_source", [_UNTYPED_MODEL, _TYPED_MODEL], ids=["untyped", "typed"]
+)
+@pytest.mark.parametrize(
+    "body, headers",
+    [
+        # `decimal.InvalidOperation` (an `ArithmeticError`).
+        pytest.param(
+            msgpack.packb({b"__decimal__": True, b"data": "abc"}),
+            _BINARY_HEADERS,
+            id="msgpack-invalid-decimal",
+        ),
+        # `AttributeError` from `uuid.UUID(1)`.
+        pytest.param(
+            msgpack.packb({b"__uuid__": True, b"data": 1}),
+            _BINARY_HEADERS,
+            id="msgpack-uuid-not-a-string",
+        ),
+        # `TypeError` from `datetime.fromisoformat(1)`.
+        pytest.param(
+            msgpack.packb({b"__dt_datetime_iso__": True, b"data": 1}),
+            _BINARY_HEADERS,
+            id="msgpack-datetime-not-a-string",
+        ),
+        # `TypeError` from numpy: buffer smaller than the declared shape.
+        pytest.param(
+            msgpack.packb(
+                {b"nd": True, b"type": "<f8", b"shape": [3], b"data": b"\x00"}
+            ),
+            _BINARY_HEADERS,
+            id="msgpack-ndarray-short-buffer",
+        ),
+        # `UnicodeDecodeError` (a `ValueError`, but not a `JSONDecodeError`).
+        pytest.param(b'{"a": "\xff\xfe"}', _JSON_HEADERS, id="json-invalid-utf8"),
+        # `RecursionError`.
+        pytest.param(
+            b"[" * 100_000 + b"]" * 100_000, _JSON_HEADERS, id="json-deeply-nested"
+        ),
+    ],
+)
+def test_malformed_request_body_is_a_client_error(
+    app_path, model_source, body, headers
+):
+    response = _post_predict(app_path, model_source, body, headers)
+
+    assert response.status_code == 400, response.text
+    # Error code Baseten uses for client errors raised by the model server.
+    assert response.headers["x-baseten-error-code"] == "700"
+    assert "Unhandled exception" not in response.json()["error"]
+
+
+@pytest.mark.parametrize(
+    "model_source", [_UNTYPED_MODEL, _TYPED_MODEL], ids=["untyped", "typed"]
+)
+@pytest.mark.parametrize(
+    "body, headers",
+    [
+        pytest.param(b'{"a": "x"}', _JSON_HEADERS, id="json"),
+        pytest.param(msgpack.packb({"a": "x"}), _BINARY_HEADERS, id="msgpack"),
+    ],
+)
+def test_well_formed_request_body_still_succeeds(app_path, model_source, body, headers):
+    response = _post_predict(app_path, model_source, body, headers)
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("exception_type", ["AttributeError", "TypeError"])
+def test_bug_in_user_validator_is_not_reported_as_a_client_error(
+    app_path, exception_type
+):
+    # Pydantic v2 only turns `ValueError`/`AssertionError` raised in validators into
+    # validation errors; other exceptions are bugs in user code and must stay 500s.
+    model_source = f"""
+import pydantic
+
+
+class Input(pydantic.BaseModel):
+    a: str = ""
+
+    @pydantic.field_validator("a")
+    @classmethod
+    def _buggy(cls, value):
+        raise {exception_type}("bug in user validator")
+
+
+class Model:
+    def __init__(self, **kwargs):
+        pass
+
+    def load(self):
+        pass
+
+    def predict(self, request: Input) -> dict:
+        return {{"ok": True}}
+"""
+    response = _post_predict(app_path, model_source, b'{"a": "x"}', _JSON_HEADERS)
+
+    assert response.status_code == 500, response.text
+    assert f"Unhandled exception: {exception_type}" in response.json()["error"]
 
 
 @pytest.mark.anyio

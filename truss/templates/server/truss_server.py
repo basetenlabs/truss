@@ -61,6 +61,20 @@ if TYPE_CHECKING:
     from model_wrapper import InputType, OutputType
 
 
+# Exceptions that decoding an untrusted request body can raise, all meaning the client
+# sent a malformed body. Binary: msgpack/numpy/datetime/uuid/decimal payload errors.
+# JSON: bad encoding (ValueError) and deep nesting (RecursionError). The JSON tuple is
+# narrow because `parse_raw` also runs user validators, whose bugs must stay 500s.
+_BINARY_DECODE_ERRORS = (
+    ValueError,
+    TypeError,
+    AttributeError,
+    ArithmeticError,
+    RecursionError,
+)
+_JSON_DECODE_ERRORS = (ValueError, RecursionError)
+
+
 async def parse_body(request: Request) -> bytes:
     """
     Used by FastAPI to read body in an asynchronous manner
@@ -181,8 +195,10 @@ class BasetenEndpoints:
             try:
                 with tracing.section_as_event(span, "binary-deserialize"):
                     inputs = serialization.truss_msgpack_deserialize(body_raw)
-            except ValueError as e:
-                raise errors.InputParsingError(str(e)) from e
+            except _BINARY_DECODE_ERRORS as e:
+                raise errors.InputParsingError(
+                    f"Invalid binary payload: {type(e).__name__}: {e}"
+                ) from e
             if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):
@@ -200,14 +216,14 @@ class BasetenEndpoints:
                     raise errors.InputParsingError(
                         errors.format_pydantic_validation_error(e)
                     ) from e
+                except _JSON_DECODE_ERRORS as e:
+                    raise errors.InputParsingError(f"Invalid JSON payload: {e}") from e
             else:
                 try:
                     with tracing.section_as_event(span, "json-deserialize"):
                         inputs = json.loads(body_raw)
-                except json.JSONDecodeError as e:
-                    raise errors.InputParsingError(
-                        f"Invalid JSON payload: {str(e)}"
-                    ) from e
+                except _JSON_DECODE_ERRORS as e:
+                    raise errors.InputParsingError(f"Invalid JSON payload: {e}") from e
 
         return inputs
 
