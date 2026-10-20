@@ -156,3 +156,33 @@ def test_num_frames_zero_disables_frames(middleware):
     assert "RuntimeError: outer" in out
     assert "OSError: protocol error" in out
     assert "ConnectionError: dns failed" in out
+
+
+@pytest.mark.asyncio
+async def test_model_not_ready_returns_503(middleware):
+    import json
+
+    from helpers.errors import ModelNotReady
+
+    async def call_next(request):
+        raise ModelNotReady("Model is not ready")
+
+    response = await middleware.dispatch(_request(), call_next)
+
+    assert response.status_code == 503
+    assert json.loads(response.body) == {"error": "Model is not ready"}
+
+
+@pytest.mark.asyncio
+async def test_model_load_failed_returns_502(middleware):
+    import json
+
+    from helpers.errors import ModelLoadFailed
+
+    async def call_next(request):
+        raise ModelLoadFailed("Model failed to load")
+
+    response = await middleware.dispatch(_request(), call_next)
+
+    assert response.status_code == 502
+    assert json.loads(response.body) == {"error": "Model failed to load"}
