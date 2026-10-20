@@ -563,6 +563,19 @@
           "default": null,
           "description": "Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
           "title": "No Build"
+        },
+        "rebuild_free": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reject requirements, requirements_file, system_packages, and build_commands. The base image must already contain them.",
+          "title": "Rebuild Free"
         }
       },
       "required": [
