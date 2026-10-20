@@ -160,8 +160,9 @@ def test_num_frames_zero_disables_frames(middleware):
 
 @pytest.mark.asyncio
 async def test_model_not_ready_returns_503(middleware):
-    from helpers.errors import ModelNotReady
     import json
+
+    from helpers.errors import ModelNotReady
 
     async def call_next(request):
         raise ModelNotReady("Model is not ready")
@@ -174,8 +175,9 @@ async def test_model_not_ready_returns_503(middleware):
 
 @pytest.mark.asyncio
 async def test_model_load_failed_returns_502(middleware):
-    from helpers.errors import ModelLoadFailed
     import json
+
+    from helpers.errors import ModelLoadFailed
 
     async def call_next(request):
         raise ModelLoadFailed("Model failed to load")
