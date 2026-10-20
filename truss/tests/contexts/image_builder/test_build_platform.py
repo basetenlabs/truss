@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
@@ -75,10 +76,15 @@ def platform_api(monkeypatch):
     client.close()
 
 
-def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys, caplog):
+def test_publish_context_and_dual_exports(
+    tmp_path, platform_api, capsys, caplog, monkeypatch
+):
     calls, uploads, _ = platform_api
     caplog.set_level(logging.DEBUG, logger="httpx")
     caplog.set_level(logging.DEBUG, logger="httpcore")
+    summary_path = tmp_path / "summary.md"
+    summary_path.write_text("Existing summary\n")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
     context_dir = tmp_path / "context"
     context_dir.mkdir()
     (context_dir / "Dockerfile").write_text("FROM python:3.13\n")
@@ -96,6 +102,7 @@ def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys, caplog
         "dockerfile_path": "Dockerfile",
         "platforms": ["linux/arm64", "linux/amd64"],
         "image_format": "estargz",
+        "builder_affinity_key": REPOSITORY,
         "enable_proxy_for_build_runs": True,
         "exports": [
             {"destination": "ecr", "repository": REPOSITORY, "tags": [TAG]},
@@ -108,6 +115,23 @@ def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys, caplog
     assert API_URL not in output
     assert ECR_REF not in output
     assert "signature=private" not in output
+    logs_url = next(
+        line.removeprefix("Build Platform logs: ")
+        for line in output.splitlines()
+        if line.startswith("Build Platform logs: ")
+    )
+    parsed = urlsplit(logs_url)
+    assert parsed.netloc == "grafana.baseten.co"
+    assert parsed.path == "/d/build-platform-workflow-logs"
+    query = parse_qs(parsed.query)
+    assert query["var-workflow_id"] == ["build-1"]
+    assert query["to"] == ["now"]
+    assert query["refresh"] == ["5s"]
+    assert int(query["from"][0]) > 0
+    assert (
+        summary_path.read_text()
+        == f"Existing summary\n[Build logs for {REPOSITORY}:{TAG}]({logs_url})\n\n"
+    )
     assert not any(
         record.name.startswith(("httpx", "httpcore")) for record in caplog.records
     )

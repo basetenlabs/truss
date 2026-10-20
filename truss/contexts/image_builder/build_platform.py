@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -189,6 +189,7 @@ def build_and_push(
             "dockerfile_path": "Dockerfile",
             "platforms": ["linux/arm64", "linux/amd64"],
             "image_format": "estargz",
+            "builder_affinity_key": repository,
             "enable_proxy_for_build_runs": True,
             "exports": [
                 {"destination": destination, "repository": repository, "tags": [tag]}
@@ -199,10 +200,22 @@ def build_and_push(
     workflow_id = build.get("workflow_id")
     if not isinstance(workflow_id, str) or not workflow_id:
         raise BuildPlatformError("Build Platform did not return a workflow ID")
+    logs_url = "https://grafana.baseten.co/d/build-platform-workflow-logs?" + urlencode(
+        {
+            "var-workflow_id": workflow_id,
+            "from": int((time.time() - 60) * 1000),
+            "to": "now",
+            "refresh": "5s",
+        }
+    )
+    print(f"Build Platform logs: {logs_url}", flush=True)
     path = f"image-builds/{quote(workflow_id, safe='')}"
     deadline = time.monotonic() + timeout_sec
     terminal = False
     try:
+        if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
+            with Path(summary_path).open("a") as summary:
+                summary.write(f"[Build logs for {repository}:{tag}]({logs_url})\n\n")
         while time.monotonic() < deadline:
             result = _api_request(api_base_url, f"{path}/wait")
             status = result.get("status")
