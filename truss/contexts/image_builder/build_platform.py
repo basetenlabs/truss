@@ -1,0 +1,210 @@
+import os
+import re
+import tarfile
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+from urllib.parse import quote
+
+import httpx
+
+
+class BuildPlatformError(RuntimeError):
+    pass
+
+
+def _request_json(
+    url: str,
+    *,
+    method: str = "GET",
+    headers: Optional[Dict[str, str]] = None,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    for attempt in range(4):
+        try:
+            response = httpx.request(
+                method, url, headers=headers, json=payload, timeout=60
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = f"HTTP {exc.response.status_code}"
+            retryable = (
+                exc.response.status_code == 429 or exc.response.status_code >= 500
+            )
+        except httpx.RequestError:
+            detail = "connection error"
+            retryable = True
+        except httpx.InvalidURL:
+            raise BuildPlatformError("Invalid Build Platform request URL") from None
+        else:
+            try:
+                result = response.json()
+            except ValueError:
+                raise BuildPlatformError("Invalid JSON response") from None
+            if not isinstance(result, dict):
+                raise BuildPlatformError("Expected a JSON object")
+            return result
+        if method != "GET" or not retryable or attempt == 3:
+            raise BuildPlatformError(
+                f"Build Platform request failed ({detail})"
+            ) from None
+        time.sleep(2**attempt)
+    raise AssertionError("Request retry loop exhausted")
+
+
+def _authorization_header() -> Dict[str, str]:
+    request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
+    request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    if not request_url or not request_token:
+        raise BuildPlatformError(
+            "Build Platform requires GitHub Actions id-token: write"
+        )
+    separator = "&" if "?" in request_url else "?"
+    result = _request_json(
+        f"{request_url}{separator}audience=build-control",
+        headers={"Authorization": f"Bearer {request_token}"},
+    )
+    token = result.get("value")
+    if not isinstance(token, str) or not token or "\n" in token or "\r" in token:
+        raise BuildPlatformError("GitHub returned an invalid OIDC token")
+    print(f"::add-mask::{token}", flush=True)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _api_request(
+    api_base_url: str,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        f"{api_base_url.rstrip('/')}/{path}",
+        method=method,
+        headers=_authorization_header(),
+        payload=payload,
+    )
+
+
+def _validate_result(result: Dict[str, Any], repository: str, tag: str) -> None:
+    digest = result.get("digest")
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise BuildPlatformError("Build Platform did not return an image digest")
+    refs = result.get("final_image_refs")
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+        raise BuildPlatformError("Build Platform did not return image references")
+    image = f"{repository}:{tag}"
+    if not any(
+        ref in refs
+        for ref in (
+            image,
+            f"docker.io/{image}",
+            f"index.docker.io/{image}",
+            f"registry-1.docker.io/{image}",
+        )
+    ):
+        raise BuildPlatformError("Build Platform did not return the Docker Hub export")
+    if not any(
+        ref.endswith(f"/{image}") and ".dkr.ecr." in ref.split("/", 1)[0]
+        for ref in refs
+    ):
+        raise BuildPlatformError("Build Platform did not return the ECR export")
+
+
+def build_and_push(
+    api_base_url: str,
+    context_dir: Path,
+    repository: str,
+    tag: str,
+    *,
+    timeout_sec: float = 7200,
+) -> None:
+    started = time.monotonic()
+    print(f"Build Platform: publishing {repository}:{tag}", flush=True)
+    prepared = _api_request(
+        api_base_url,
+        "dockerfiles/prepare",
+        method="POST",
+        payload={
+            "dockerfile": (context_dir / "Dockerfile").read_text(),
+            "enable_proxy_for_build_runs": True,
+        },
+    )
+    if (
+        not isinstance(prepared.get("dockerfile"), str)
+        or prepared.get("enable_proxy_for_build_runs") is not True
+    ):
+        raise BuildPlatformError("Invalid Dockerfile preparation response")
+    (context_dir / "Dockerfile").write_text(prepared["dockerfile"])
+    archive_path = context_dir.parent / f"{context_dir.name}.tar.gz"
+    try:
+        with tarfile.open(archive_path, "w:gz") as archive:
+            for child in sorted(context_dir.iterdir()):
+                archive.add(child, arcname=child.name)
+        context = _api_request(
+            api_base_url, "image-build-contexts", method="POST", payload={}
+        )
+        if (
+            not isinstance(context.get("context_id"), str)
+            or not context["context_id"]
+            or not isinstance(context.get("upload_url"), str)
+            or not context["upload_url"].startswith("https://")
+        ):
+            raise BuildPlatformError("Invalid context upload response")
+        try:
+            response = httpx.put(
+                context["upload_url"], content=archive_path.read_bytes(), timeout=300
+            )
+            response.raise_for_status()
+        except (httpx.HTTPError, httpx.InvalidURL):
+            raise BuildPlatformError("Build Platform context upload failed") from None
+    finally:
+        archive_path.unlink(missing_ok=True)
+
+    build = _api_request(
+        api_base_url,
+        "image-builds",
+        method="POST",
+        payload={
+            "context_id": context["context_id"],
+            "dockerfile_path": "Dockerfile",
+            "platforms": ["linux/arm64", "linux/amd64"],
+            "image_format": "estargz",
+            "enable_proxy_for_build_runs": True,
+            "exports": [
+                {"destination": destination, "repository": repository, "tags": [tag]}
+                for destination in ("ecr", "dockerhub")
+            ],
+        },
+    )
+    workflow_id = build.get("workflow_id")
+    if not isinstance(workflow_id, str) or not workflow_id:
+        raise BuildPlatformError("Build Platform did not return a workflow ID")
+    path = f"image-builds/{quote(workflow_id, safe='')}"
+    deadline = time.monotonic() + timeout_sec
+    terminal = False
+    try:
+        while time.monotonic() < deadline:
+            result = _api_request(api_base_url, f"{path}/wait")
+            status = result.get("status")
+            if status == "running":
+                continue
+            if status == "succeeded":
+                terminal = True
+                _validate_result(result, repository, tag)
+                print(
+                    f"Build Platform: published {repository}:{tag} in {time.monotonic() - started:.1f}s",
+                    flush=True,
+                )
+                return
+            if status in ("failed", "canceled", "terminated", "timed_out"):
+                terminal = True
+                raise BuildPlatformError(f"Build Platform build {status}")
+            raise BuildPlatformError("Build Platform returned an unknown build status")
+        raise BuildPlatformError("Timed out waiting for Build Platform publication")
+    finally:
+        if not terminal:
+            try:
+                _api_request(api_base_url, f"{path}/cancel", method="POST", payload={})
+            except BuildPlatformError:
+                print("Build Platform: could not cancel the build", flush=True)

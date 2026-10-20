@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import getpass
+import os
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,10 @@ from typing import Iterable, List, Optional
 from jinja2 import Environment, FileSystemLoader
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS, TRUSS_BASE_IMAGE_NAME
+from truss.contexts.image_builder.build_platform import (
+    BuildPlatformError,
+    build_and_push,
+)
 from truss.contexts.image_builder.util import truss_base_image_tag
 
 base_path = Path(__file__).parent.parent
@@ -52,6 +57,7 @@ def _build(
     push: bool = False,
     version_tag: Optional[str] = None,
     dry_run: bool = True,
+    build_platform_api_url: Optional[str] = None,
 ):
     tag = truss_base_image_tag(
         python_version=python_version, use_gpu=use_gpu, version_tag=version_tag
@@ -74,6 +80,12 @@ def _build(
         shutil.copytree(
             str(templates_path / "control"), str(build_ctx_path / "control")
         )
+
+        if build_platform_api_url:
+            build_and_push(
+                build_platform_api_url, build_ctx_path, TRUSS_BASE_IMAGE_NAME, tag
+            )
+            return
 
         output_params = f"type=image,name={image_with_tag},compression=estargz,force-compression=true,oci-mediatypes=true"
         if push:
@@ -101,6 +113,7 @@ def _build_all(
     push: bool = False,
     version_tag: Optional[str] = None,
     dry_run: bool = False,
+    build_platform_api_url: Optional[str] = None,
 ):
     for python_version in python_versions:
         for use_gpu in use_gpu_values:
@@ -110,11 +123,17 @@ def _build_all(
                 push=push,
                 version_tag=version_tag,
                 dry_run=dry_run,
+                build_platform_api_url=build_platform_api_url,
             )
 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Publish truss base images")
+    parser.add_argument(
+        "--build-platform",
+        action="store_true",
+        help="Publish to ECR and Docker Hub through Build Platform; requires --push and BUILD_PLATFORM_API_BASE_URL",
+    )
     parser.add_argument(
         "--push",
         action=BooleanOptionalAction,
@@ -155,6 +174,17 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    build_platform_api_url = None
+    if args.build_platform:
+        if not args.push:
+            parser.error("--build-platform requires --push")
+        build_platform_api_url = os.environ.get(
+            "BUILD_PLATFORM_API_BASE_URL", ""
+        ).strip()
+        if not build_platform_api_url.startswith("https://"):
+            parser.error(
+                "--build-platform requires an HTTPS BUILD_PLATFORM_API_BASE_URL"
+            )
     if args.python_version == "all":
         python_versions = SUPPORTED_PYTHON_VERSIONS
     else:
@@ -162,13 +192,23 @@ if __name__ == "__main__":
 
     use_gpu_values = _bool_arg_str_to_values(args.use_gpu)
 
-    if args.push and not args.skip_login:
+    if (
+        args.push
+        and not args.skip_login
+        and not args.build_platform
+        and not args.dry_run
+    ):
         _docker_login()
 
-    _build_all(
-        python_versions=python_versions,
-        use_gpu_values=use_gpu_values,
-        push=args.push,
-        version_tag=args.version_tag,
-        dry_run=args.dry_run,
-    )
+    try:
+        _build_all(
+            python_versions=python_versions,
+            use_gpu_values=use_gpu_values,
+            push=args.push,
+            version_tag=args.version_tag,
+            dry_run=args.dry_run,
+            build_platform_api_url=build_platform_api_url,
+        )
+    except BuildPlatformError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)

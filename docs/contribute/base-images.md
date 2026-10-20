@@ -10,6 +10,11 @@ For a general background on base images, [learn more in Docker's official docume
 
 ## Generating base images for Truss
 
+CI publishes base images to ECR and Docker Hub through Build Platform, preserving
+the Python, CPU/GPU, architecture, and tag variants. Local builds use Docker by
+default; `--build-platform --push` selects Build Platform with GitHub Actions OIDC
+and `BUILD_PLATFORM_API_BASE_URL` configured.
+
 [This script](https://github.com/basetenlabs/truss/blob/main/bin/generate_base_images.py) can be used to generate and push
 base images to Docker Hub. The script allows a lot of control over which images
 to generate. To learn about all options, run:
