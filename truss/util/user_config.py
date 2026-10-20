@@ -214,6 +214,7 @@ class VersionInfo(pydantic.BaseModel):
 
 class State(pydantic.BaseModel):
     version_info: VersionInfo = VersionInfo()
+    last_baseten_cli_banner: datetime.datetime = datetime.datetime.min
 
 
 class UpdateInfo(pydantic.BaseModel):
@@ -312,6 +313,15 @@ class _StateWrapper:
             return None
 
         return update_info
+
+    def should_notify_baseten_cli_banner(self) -> bool:
+        now = datetime.datetime.now()
+        if self._state.last_baseten_cli_banner >= now - datetime.timedelta(days=14):
+            return False
+
+        self._state.last_baseten_cli_banner = now
+        self._write()
+        return True
 
 
 @functools.cache

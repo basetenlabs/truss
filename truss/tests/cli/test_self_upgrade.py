@@ -358,3 +358,93 @@ class TestShouldNotifyUpgrade:
             result = wrapper.should_notify_upgrade("0.12.3")
 
         assert result is None
+
+
+class TestNotifyBasetenCli:
+    def test_notifies_when_due(self, monkeypatch, capsys):
+        mock_state = mock.Mock()
+        mock_state.should_notify_baseten_cli_banner.return_value = True
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = True
+
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
+
+        self_upgrade.notify_baseten_cli()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Baseten CLI" in captured.err
+        assert "docs.baseten.co/reference/cli/baseten/overview" in captured.err
+        assert "check_for_updates" in captured.err
+
+    def test_no_notification_when_not_due(self, monkeypatch, capsys):
+        mock_state = mock.Mock()
+        mock_state.should_notify_baseten_cli_banner.return_value = False
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = True
+
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
+
+        self_upgrade.notify_baseten_cli()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_skips_when_check_for_updates_is_false(self, monkeypatch, capsys):
+        mock_state = mock.Mock()
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = False
+
+        monkeypatch.setattr(user_config, "get_state", lambda: mock_state)
+        monkeypatch.setattr(user_config, "get_settings", lambda: mock_settings)
+
+        self_upgrade.notify_baseten_cli()
+
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        mock_state.should_notify_baseten_cli_banner.assert_not_called()
+
+
+class TestShouldNotifyBasetenCliBanner:
+    def test_notifies_once_then_waits_14_days(self, monkeypatch, tmp_path):
+        state_path = tmp_path / "state.json"
+        monkeypatch.setattr(
+            user_config._StateWrapper, "_path", staticmethod(lambda: state_path)
+        )
+        wrapper = user_config._StateWrapper(user_config.State())
+
+        assert wrapper.should_notify_baseten_cli_banner() is True
+        assert wrapper.should_notify_baseten_cli_banner() is False
+        persisted = user_config.State.model_validate_json(state_path.read_text())
+        assert persisted.last_baseten_cli_banner > datetime.datetime.min
+
+    def test_notifies_after_14_days(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            user_config._StateWrapper,
+            "_path",
+            staticmethod(lambda: tmp_path / "state.json"),
+        )
+        state = user_config.State(
+            last_baseten_cli_banner=datetime.datetime.now()
+            - datetime.timedelta(days=15)
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        assert wrapper.should_notify_baseten_cli_banner() is True
+
+    def test_skips_within_14_days(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            user_config._StateWrapper,
+            "_path",
+            staticmethod(lambda: tmp_path / "state.json"),
+        )
+        state = user_config.State(
+            last_baseten_cli_banner=datetime.datetime.now()
+            - datetime.timedelta(days=13)
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        assert wrapper.should_notify_baseten_cli_banner() is False
