@@ -1,9 +1,11 @@
+import logging
 import os
 import re
 import tarfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 from urllib.parse import quote
 
 import httpx
@@ -11,6 +13,19 @@ import httpx
 
 class BuildPlatformError(RuntimeError):
     pass
+
+
+@contextmanager
+def _quiet_http_logs() -> Iterator[None]:
+    loggers = [logging.getLogger(name) for name in ("httpx", "httpcore")]
+    levels = [logger.level for logger in loggers]
+    try:
+        for logger in loggers:
+            logger.setLevel(logging.CRITICAL + 1)
+        yield
+    finally:
+        for logger, level in zip(loggers, levels):
+            logger.setLevel(level)
 
 
 def _request_json(
@@ -22,9 +37,10 @@ def _request_json(
 ) -> Dict[str, Any]:
     for attempt in range(4):
         try:
-            response = httpx.request(
-                method, url, headers=headers, json=payload, timeout=60
-            )
+            with _quiet_http_logs():
+                response = httpx.request(
+                    method, url, headers=headers, json=payload, timeout=60
+                )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = f"HTTP {exc.response.status_code}"
@@ -135,7 +151,7 @@ def build_and_push(
         or prepared.get("enable_proxy_for_build_runs") is not True
     ):
         raise BuildPlatformError("Invalid Dockerfile preparation response")
-    (context_dir / "Dockerfile").write_text(prepared["dockerfile"])
+    (context_dir / "Dockerfile").write_bytes(prepared["dockerfile"].encode())
     archive_path = context_dir.parent / f"{context_dir.name}.tar.gz"
     try:
         with tarfile.open(archive_path, "w:gz") as archive:
@@ -152,9 +168,12 @@ def build_and_push(
         ):
             raise BuildPlatformError("Invalid context upload response")
         try:
-            response = httpx.put(
-                context["upload_url"], content=archive_path.read_bytes(), timeout=300
-            )
+            with _quiet_http_logs():
+                response = httpx.put(
+                    context["upload_url"],
+                    content=archive_path.read_bytes(),
+                    timeout=300,
+                )
             response.raise_for_status()
         except (httpx.HTTPError, httpx.InvalidURL):
             raise BuildPlatformError("Build Platform context upload failed") from None

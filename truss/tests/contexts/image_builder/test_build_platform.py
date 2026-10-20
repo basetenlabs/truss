@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 import sys
 import tarfile
@@ -74,12 +75,14 @@ def platform_api(monkeypatch):
     client.close()
 
 
-def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys):
+def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys, caplog):
     calls, uploads, _ = platform_api
+    caplog.set_level(logging.DEBUG, logger="httpx")
+    caplog.set_level(logging.DEBUG, logger="httpcore")
     context_dir = tmp_path / "context"
     context_dir.mkdir()
     (context_dir / "Dockerfile").write_text("FROM python:3.13\n")
-    (context_dir / "requirements.txt").write_text("example==1.0\n")
+    (context_dir / "requirements.txt").write_bytes(b"example==1.0\n")
     build_platform.build_and_push(API_URL, context_dir, REPOSITORY, TAG)
     archive_path = tmp_path / "uploaded.tar.gz"
     archive_path.write_bytes(uploads[0])
@@ -105,6 +108,11 @@ def test_publish_context_and_dual_exports(tmp_path, platform_api, capsys):
     assert API_URL not in output
     assert ECR_REF not in output
     assert "signature=private" not in output
+    assert not any(
+        record.name.startswith(("httpx", "httpcore")) for record in caplog.records
+    )
+    assert logging.getLogger("httpx").level == logging.DEBUG
+    assert logging.getLogger("httpcore").level == logging.DEBUG
 
 
 @pytest.mark.parametrize(
