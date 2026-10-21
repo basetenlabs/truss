@@ -1023,3 +1023,13 @@ HTTP timeout. It is best effort: failed batches, queue overflow, and spans pendi
 process exit can be lost; there is no shutdown flush or export retry. Export failures
 do not fail inference. Client-call failures/cancellation mark the span as an error.
 Unset the endpoint to disable recording/export; the request loop has no tracing work.
+
+## System One decisions
+
+Python: `batch_system_one()` / `async_batch_system_one()`. Node: `batchSystemOne()`.
+Each sends a list of independent `state`/`questions` requests to `/v1/systemone`,
+with an optional `model`. Results are in `.data`, in input order, with batch timings
+and response headers. Existing request preferences apply.
+
+See the [Python example](python_bindings/README.md#system-one-decisions) or
+[Node example](node_bindings/README.md#system-one-decisions).

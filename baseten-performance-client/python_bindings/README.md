@@ -578,3 +578,25 @@ Feel free to contribute to this repo, tag @michaelfeil for review.
 
 ## License
 MIT License
+
+## System One decisions
+
+Send independent requests to `/v1/systemone`; use a one-element list for one request.
+
+```python
+requests = [{
+    "state": "My invoice was charged twice.",
+    "questions": {"route": {
+        "type": "choice",
+        "instructions": "Which team should handle this?",
+        "criteria": {"billing": None, "support": None},
+    }},
+}]
+response = client.batch_system_one(requests=requests)
+print(response.data[0]["answers"]["route"])
+# Async: await client.async_batch_system_one(requests=requests)
+```
+
+Add `model` or backend-specific fields to each request as needed. `.data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.

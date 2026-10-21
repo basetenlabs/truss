@@ -1,3 +1,6 @@
+/// Typed-decision endpoint shared by Jev, Infinity, and vLLM.
+pub const SYSTEM_ONE_PATH: &str = "/v1/systemone";
+
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;

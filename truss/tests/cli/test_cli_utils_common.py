@@ -54,20 +54,52 @@ class TestCheckIsInteractive:
             assert common.check_is_interactive() is True
 
 
+@patch("truss.cli.utils.common.check_is_interactive", return_value=True)
+@patch("truss.cli.utils.common.self_upgrade.notify_baseten_cli")
+@patch("truss.cli.utils.common.self_upgrade.notify_if_outdated")
 class TestUpgradeDialogue:
-    @patch("truss.cli.utils.common.self_upgrade.notify_if_outdated")
-    def test_skips_check_when_opted_out(self, mock_notify):
+    def test_skips_check_when_opted_out(
+        self, mock_notify, mock_notify_cli, mock_interactive
+    ):
         for value in ("1", "true", "TRUE"):
             with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": value}):
                 common.maybe_upgrade_dialogue()
         mock_notify.assert_not_called()
+        mock_notify_cli.assert_not_called()
 
-    @patch("truss.cli.utils.common.self_upgrade.notify_if_outdated")
-    def test_runs_check_when_not_opted_out(self, mock_notify):
+    def test_runs_check_when_not_opted_out(
+        self, mock_notify, mock_notify_cli, mock_interactive
+    ):
         for value in ("", "0", "false"):
             with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": value}):
                 common.maybe_upgrade_dialogue()
         assert mock_notify.call_count == 3
+        assert mock_notify_cli.call_count == 3
+
+    def test_skips_baseten_cli_banner_when_disabled(
+        self, mock_notify, mock_notify_cli, mock_interactive
+    ):
+        with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": ""}):
+            common.maybe_upgrade_dialogue(baseten_cli_banner=False)
+        mock_notify.assert_called_once()
+        mock_notify_cli.assert_not_called()
+
+    def test_skips_baseten_cli_banner_when_not_interactive(
+        self, mock_notify, mock_notify_cli, mock_interactive
+    ):
+        mock_interactive.return_value = False
+        with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": ""}):
+            common.maybe_upgrade_dialogue()
+        mock_notify.assert_called_once()
+        mock_notify_cli.assert_not_called()
+
+    def test_baseten_cli_banner_runs_when_upgrade_check_fails(
+        self, mock_notify, mock_notify_cli, mock_interactive
+    ):
+        mock_notify.side_effect = Exception("Network error")
+        with patch.dict(os.environ, {"TRUSS_NO_UPDATE_CHECK": ""}):
+            common.maybe_upgrade_dialogue()
+        mock_notify_cli.assert_called_once()
 
 
 def test_keepalive_ping_path_truss_server_default():
