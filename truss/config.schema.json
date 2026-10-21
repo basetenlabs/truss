@@ -1046,7 +1046,7 @@
         },
         "accelerator": {
           "$ref": "#/$defs/AcceleratorSpec",
-          "description": "The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+          "description": "The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
           "examples": [
             "A100",
             "T4:2",
