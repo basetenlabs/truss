@@ -3,6 +3,11 @@ name: Build and Push Truss Base Images (if needed)
 on:
   workflow_dispatch:
     inputs:
+      use_build_platform:
+        description: "Use Build Platform to publish images"
+        required: false
+        type: boolean
+        default: true
       new_base_image_version:
         required: true
         type: string
@@ -13,6 +18,10 @@ on:
         description: "Build base images flag"
   workflow_call:
     inputs:
+      use_build_platform:
+        required: false
+        type: boolean
+        default: true
       new_base_image_version:
         required: true
         type: string
@@ -20,14 +29,18 @@ on:
         required: true
         type: string
     secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
       BUILD_PLATFORM_API_BASE_URL:
-        required: true
+        required: false
       BUILD_PLATFORM_TAILSCALE_CLIENT_ID:
-        required: true
+        required: false
       BUILD_PLATFORM_TAILSCALE_AUDIENCE:
-        required: true
+        required: false
       BUILD_PLATFORM_TAILSCALE_TAGS:
-        required: true
+        required: false
 
 jobs:
   build-and-push-truss-base-images-if-needed:
@@ -46,7 +59,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: uv sync
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.use_build_platform }}
+      - uses: docker/login-action@v3
+        if: ${{ !inputs.use_build_platform }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Connect to Build Platform
+        if: ${{ inputs.use_build_platform }}
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8
         with:
           oauth-client-id: ${{ secrets.BUILD_PLATFORM_TAILSCALE_CLIENT_ID }}
@@ -57,14 +78,19 @@ jobs:
           BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
           BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows
           BASE_IMAGE_VERSION: ${{ inputs.new_base_image_version }}
+          USE_BUILD_PLATFORM: ${{ inputs.use_build_platform }}
         run: |
+          flags=(--skip-login --push)
+          if [[ "$USE_BUILD_PLATFORM" == "true" ]]; then
+            flags+=(--build-platform)
+          fi
           uv run bin/generate_base_images.py \
             --use-gpu ${{ matrix.use_gpu }}  \
             --python-version ${{ matrix.python_version }} \
             --version-tag "$BASE_IMAGE_VERSION" \
-            --build-platform --push
+            "${flags[@]}"
       - name: Cancel Build Platform builds
-        if: cancelled()
+        if: ${{ inputs.use_build_platform && cancelled() }}
         env:
           BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
           BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows
