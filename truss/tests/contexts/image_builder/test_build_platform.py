@@ -42,12 +42,6 @@ def platform_api(monkeypatch):
             uploads.append(request.content)
             return httpx.Response(200)
         assert request.headers["Authorization"] == "Bearer oidc-token"
-        if request.url.path.endswith("/dockerfiles/prepare"):
-            data = json.loads(request.content)
-            assert data["enable_proxy_for_build_runs"] is False
-            return httpx.Response(
-                200, json={**data, "dockerfile": "FROM prepared:latest\n"}
-            )
         if request.url.path.endswith("/image-build-contexts"):
             return httpx.Response(
                 200,
@@ -90,15 +84,17 @@ def test_publish_context_and_dual_exports(
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
     context_dir = tmp_path / "context"
     context_dir.mkdir()
-    (context_dir / "Dockerfile").write_text("FROM python:3.13\n")
+    dockerfile = b"FROM python:3.13\r\n"
+    (context_dir / "Dockerfile").write_bytes(dockerfile)
     (context_dir / "requirements.txt").write_bytes(b"example==1.0\n")
     build_platform.build_and_push(API_URL, context_dir, REPOSITORY, TAG)
     archive_path = tmp_path / "uploaded.tar.gz"
     archive_path.write_bytes(uploads[0])
     with tarfile.open(archive_path) as archive:
         assert set(archive.getnames()) == {"Dockerfile", "requirements.txt"}
-        assert archive.extractfile("Dockerfile").read() == b"FROM prepared:latest\n"
+        assert archive.extractfile("Dockerfile").read() == dockerfile
         assert archive.extractfile("requirements.txt").read() == b"example==1.0\n"
+    assert (context_dir / "Dockerfile").read_bytes() == dockerfile
     request = next(call for call in calls if call.url.path.endswith("/image-builds"))
     assert json.loads(request.content) == {
         "context_id": "00000000-0000-4000-8000-000000000001",
@@ -479,29 +475,3 @@ def test_invalid_submission_id_does_not_cancel(
     with pytest.raises(build_platform.BuildPlatformError, match="workflow ID"):
         build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
     assert not any(call.url.path.endswith("/cancel") for call in calls)
-
-
-@pytest.mark.parametrize("proxy_setting", [True, None])
-def test_proxy_preparation_response_rejected(
-    tmp_path, platform_api, monkeypatch, proxy_setting
-):
-    calls, _, _ = platform_api
-    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
-    original_request = build_platform.httpx.request
-
-    def request(method, url, **kwargs):
-        if url.endswith("/dockerfiles/prepare"):
-            return httpx.Response(
-                200,
-                json={
-                    "dockerfile": "FROM python:3.13\n",
-                    "enable_proxy_for_build_runs": proxy_setting,
-                },
-                request=httpx.Request(method, url),
-            )
-        return original_request(method, url, **kwargs)
-
-    monkeypatch.setattr(build_platform.httpx, "request", request)
-    with pytest.raises(build_platform.BuildPlatformError, match="preparation response"):
-        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
-    assert not any(call.url.path.endswith("/image-builds") for call in calls)

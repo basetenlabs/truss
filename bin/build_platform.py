@@ -176,21 +176,6 @@ def build_and_push(
 ) -> None:
     started = time.monotonic()
     print(f"Build Platform: publishing {repository}:{tag}", flush=True)
-    prepared = _api_request(
-        api_base_url,
-        "dockerfiles/prepare",
-        method="POST",
-        payload={
-            "dockerfile": (context_dir / "Dockerfile").read_text(),
-            "enable_proxy_for_build_runs": False,
-        },
-    )
-    if (
-        not isinstance(prepared.get("dockerfile"), str)
-        or prepared.get("enable_proxy_for_build_runs") is not False
-    ):
-        raise BuildPlatformError("Invalid Dockerfile preparation response")
-    (context_dir / "Dockerfile").write_bytes(prepared["dockerfile"].encode())
     archive_path = context_dir.parent / f"{context_dir.name}.tar.gz"
     try:
         with tarfile.open(archive_path, "w:gz") as archive:
