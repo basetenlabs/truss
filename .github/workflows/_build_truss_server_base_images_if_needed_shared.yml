@@ -84,6 +84,7 @@ jobs:
       - shell: bash
         env:
           BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
+          BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows
           BASE_IMAGE_VERSION: ${{ inputs.new_base_image_version }}
         run: |
           uv run bin/generate_base_images.py \
@@ -91,3 +92,9 @@ jobs:
             --python-version ${{ matrix.python_version }} \
             --version-tag "$BASE_IMAGE_VERSION" \
             --build-platform --push
+      - name: Cancel Build Platform builds
+        if: cancelled()
+        env:
+          BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
+          BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows
+        run: uv run python -m truss.contexts.image_builder.build_platform --cancel

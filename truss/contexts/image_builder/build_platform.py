@@ -1,6 +1,9 @@
+import argparse
+import json
 import logging
 import os
 import re
+import signal
 import tarfile
 import time
 from contextlib import contextmanager
@@ -34,12 +37,14 @@ def _request_json(
     method: str = "GET",
     headers: Optional[Dict[str, str]] = None,
     payload: Optional[Dict[str, Any]] = None,
+    timeout_sec: float = 60,
+    max_attempts: int = 4,
 ) -> Dict[str, Any]:
-    for attempt in range(4):
+    for attempt in range(max_attempts):
         try:
             with _quiet_http_logs():
                 response = httpx.request(
-                    method, url, headers=headers, json=payload, timeout=60
+                    method, url, headers=headers, json=payload, timeout=timeout_sec
                 )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -60,7 +65,7 @@ def _request_json(
             if not isinstance(result, dict):
                 raise BuildPlatformError("Expected a JSON object")
             return result
-        if method != "GET" or not retryable or attempt == 3:
+        if method != "GET" or not retryable or attempt == max_attempts - 1:
             raise BuildPlatformError(
                 f"Build Platform request failed ({detail})"
             ) from None
@@ -68,7 +73,9 @@ def _request_json(
     raise AssertionError("Request retry loop exhausted")
 
 
-def _authorization_header() -> Dict[str, str]:
+def _authorization_header(
+    *, timeout_sec: float = 60, max_attempts: int = 4
+) -> Dict[str, str]:
     request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
     request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
     if not request_url or not request_token:
@@ -79,6 +86,8 @@ def _authorization_header() -> Dict[str, str]:
     result = _request_json(
         f"{request_url}{separator}audience=build-control",
         headers={"Authorization": f"Bearer {request_token}"},
+        timeout_sec=timeout_sec,
+        max_attempts=max_attempts,
     )
     token = result.get("value")
     if not isinstance(token, str) or not token or "\n" in token or "\r" in token:
@@ -100,6 +109,36 @@ def _api_request(
         headers=_authorization_header(),
         payload=payload,
     )
+
+
+def cancel_build(api_base_url: str, workflow_id: str) -> None:
+    print("Build Platform: requesting build cancellation", flush=True)
+    try:
+        _request_json(
+            f"{api_base_url.rstrip('/')}/image-builds/{quote(workflow_id, safe='')}/cancel",
+            method="POST",
+            headers=_authorization_header(timeout_sec=2, max_attempts=1),
+            payload={},
+            timeout_sec=3,
+            max_attempts=1,
+        )
+    except BuildPlatformError:
+        print("Build Platform: could not cancel the build", flush=True)
+    else:
+        print("Build Platform: build cancellation requested", flush=True)
+
+
+def cancel_pending_builds(api_base_url: str, directory: Path) -> None:
+    for record in sorted(directory.glob("*.json")):
+        try:
+            data = json.loads(record.read_text())
+            workflow_id = data["workflow_id"]
+            if not isinstance(workflow_id, str) or not workflow_id:
+                raise ValueError("Invalid workflow ID")
+        except (OSError, ValueError, TypeError, KeyError):
+            print("Build Platform: could not read a build record", flush=True)
+            continue
+        cancel_build(api_base_url, workflow_id)
 
 
 def _validate_result(result: Dict[str, Any], repository: str, tag: str) -> None:
@@ -212,7 +251,19 @@ def build_and_push(
     path = f"image-builds/{quote(workflow_id, safe='')}"
     deadline = time.monotonic() + timeout_sec
     terminal = False
+    workflow_record = None
+    previous_handlers = {}
+
+    def interrupted(signum, frame):
+        raise SystemExit(128 + signum)
+
     try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.signal(signum, interrupted)
+        if directory := os.environ.get("BUILD_PLATFORM_WORKFLOW_DIR"):
+            workflow_record = Path(directory) / f"{quote(workflow_id, safe='')}.json"
+            workflow_record.parent.mkdir(parents=True, exist_ok=True)
+            workflow_record.write_text(json.dumps({"workflow_id": workflow_id}))
         if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
             with Path(summary_path).open("a") as summary:
                 summary.write(f"[Build logs for {repository}:{tag}]({logs_url})\n\n")
@@ -235,8 +286,24 @@ def build_and_push(
             raise BuildPlatformError("Build Platform returned an unknown build status")
         raise BuildPlatformError("Timed out waiting for Build Platform publication")
     finally:
-        if not terminal:
-            try:
-                _api_request(api_base_url, f"{path}/cancel", method="POST", payload={})
-            except BuildPlatformError:
-                print("Build Platform: could not cancel the build", flush=True)
+        try:
+            if terminal:
+                if workflow_record is not None:
+                    workflow_record.unlink(missing_ok=True)
+            else:
+                for signum in previous_handlers:
+                    signal.signal(signum, signal.SIG_IGN)
+                cancel_build(api_base_url, workflow_id)
+        finally:
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cancel", action="store_true", required=True)
+    parser.parse_args()
+    cancel_pending_builds(
+        os.environ["BUILD_PLATFORM_API_BASE_URL"],
+        Path(os.environ["BUILD_PLATFORM_WORKFLOW_DIR"]),
+    )

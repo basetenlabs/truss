@@ -1,5 +1,6 @@
 import json
 import logging
+import signal
 import subprocess
 import sys
 import tarfile
@@ -80,6 +81,8 @@ def test_publish_context_and_dual_exports(
     tmp_path, platform_api, capsys, caplog, monkeypatch
 ):
     calls, uploads, _ = platform_api
+    records = tmp_path / "workflows"
+    monkeypatch.setenv("BUILD_PLATFORM_WORKFLOW_DIR", str(records))
     caplog.set_level(logging.DEBUG, logger="httpx")
     caplog.set_level(logging.DEBUG, logger="httpcore")
     summary_path = tmp_path / "summary.md"
@@ -110,6 +113,7 @@ def test_publish_context_and_dual_exports(
         ],
     }
     assert not any(call.url.path.endswith("/cancel") for call in calls)
+    assert list(records.iterdir()) == []
     output = capsys.readouterr().out
     assert "published baseten/truss-server-base" in output
     assert API_URL not in output
@@ -290,3 +294,90 @@ def test_cli_requires_push():
     )
     assert result.returncode == 2
     assert "--build-platform requires --push" in result.stderr
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize("cancel_fails", [False, True])
+def test_signal_cancels_build_and_restores_handlers(
+    tmp_path, platform_api, monkeypatch, signum, cancel_fails, capsys
+):
+    calls, _, _ = platform_api
+    records = tmp_path / "workflows"
+    monkeypatch.setenv("BUILD_PLATFORM_WORKFLOW_DIR", str(records))
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    original_request = build_platform.httpx.request
+    cancellation_timeouts = []
+
+    def request(method, url, **kwargs):
+        if url.endswith("/wait"):
+            assert json.loads((records / "build-1.json").read_text()) == {
+                "workflow_id": "build-1"
+            }
+            signal.raise_signal(signum)
+            pytest.fail("Signal did not interrupt the wait")
+        if url.endswith("/cancel"):
+            cancellation_timeouts.append(kwargs["timeout"])
+            if cancel_fails:
+                return httpx.Response(503, request=httpx.Request(method, url))
+        return original_request(method, url, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    with pytest.raises(SystemExit) as exc:
+        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
+    assert exc.value.code == 128 + signum
+    assert cancellation_timeouts == [3]
+    assert {sig: signal.getsignal(sig) for sig in previous} == previous
+    assert (records / "build-1.json").exists()
+    assert any(call.url.path.endswith("/cancel") for call in calls) == (
+        not cancel_fails
+    )
+    assert API_URL not in capsys.readouterr().out
+
+
+def test_cancellation_uses_short_auth_timeout(platform_api, monkeypatch):
+    original_request = build_platform.httpx.request
+    timeouts = []
+
+    def request(method, url, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        return original_request(method, url, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    build_platform.cancel_build(API_URL, "build-1")
+    assert timeouts == [2, 3]
+
+
+def test_cancellation_auth_failure_is_redacted(monkeypatch, capsys):
+    attempts = []
+
+    def request(method, url, **kwargs):
+        attempts.append(kwargs["timeout"])
+        raise httpx.ConnectError("private connection details")
+
+    monkeypatch.setenv("ACTIONS_ID_TOKEN_REQUEST_URL", API_URL)
+    monkeypatch.setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    build_platform.cancel_build(API_URL, "build-1")
+    assert attempts == [2]
+    output = capsys.readouterr().out
+    assert "could not cancel" in output
+    assert "private" not in output
+    assert API_URL not in output
+
+
+@pytest.mark.parametrize("damaged", ["{", "[]", "{}", '{"workflow_id": null}'])
+def test_cleanup_skips_damaged_records(tmp_path, platform_api, damaged):
+    calls, _, _ = platform_api
+    (tmp_path / "00-broken.json").write_text(damaged)
+    (tmp_path / "build.json").write_text('{"workflow_id": "workflow/id"}')
+    build_platform.cancel_pending_builds(API_URL, tmp_path)
+    cancellations = [call for call in calls if call.url.path.endswith("/cancel")]
+    assert len(cancellations) == 1
+    assert cancellations[0].url.raw_path.endswith(b"/workflow%2Fid/cancel")
+
+
+def test_cleanup_before_submission_is_noop(tmp_path, platform_api):
+    calls, _, _ = platform_api
+    build_platform.cancel_pending_builds(API_URL, tmp_path / "missing")
+    assert calls == []
