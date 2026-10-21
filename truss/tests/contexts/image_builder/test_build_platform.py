@@ -381,3 +381,101 @@ def test_cleanup_before_submission_is_noop(tmp_path, platform_api):
     calls, _, _ = platform_api
     build_platform.cancel_pending_builds(API_URL, tmp_path / "missing")
     assert calls == []
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize("phase", ["submission", "response", "record"])
+def test_submission_interruption_records_and_cancels_build(
+    tmp_path, platform_api, monkeypatch, signum, phase
+):
+    calls, _, _ = platform_api
+    records = tmp_path / "workflows"
+    monkeypatch.setenv("BUILD_PLATFORM_WORKFLOW_DIR", str(records))
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    original_request = build_platform.httpx.request
+    original_json = build_platform._request_json
+    original_write = Path.write_text
+
+    def request(method, url, **kwargs):
+        response = original_request(method, url, **kwargs)
+        if url.endswith("/image-builds"):
+            assert kwargs["timeout"] == 3
+            if phase == "submission":
+                signal.raise_signal(signum)
+        return response
+
+    def request_json(url, **kwargs):
+        response = original_json(url, **kwargs)
+        if url.endswith("/image-builds") and phase == "response":
+            signal.raise_signal(signum)
+        return response
+
+    def write_text(path, *args, **kwargs):
+        if path.name == "build-1.json" and phase == "record":
+            signal.raise_signal(signum)
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    monkeypatch.setattr(build_platform, "_request_json", request_json)
+    monkeypatch.setattr(Path, "write_text", write_text)
+    with pytest.raises(SystemExit) as exc:
+        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
+    assert exc.value.code == 128 + signum
+    assert json.loads((records / "build-1.json").read_text()) == {
+        "workflow_id": "build-1"
+    }
+    assert sum(call.url.path.endswith("/image-builds") for call in calls) == 1
+    assert sum(call.url.path.endswith("/cancel") for call in calls) == 1
+    assert not any(call.url.path.endswith("/wait") for call in calls)
+    assert {sig: signal.getsignal(sig) for sig in previous} == previous
+
+
+def test_polling_failure_retains_record_for_cleanup_retry(
+    tmp_path, platform_api, monkeypatch
+):
+    records = tmp_path / "workflows"
+    monkeypatch.setenv("BUILD_PLATFORM_WORKFLOW_DIR", str(records))
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
+    original_request = build_platform.httpx.request
+    cancellations = []
+
+    def request(method, url, **kwargs):
+        if url.endswith("/wait"):
+            raise httpx.ConnectError("private connection details")
+        if url.endswith("/cancel"):
+            cancellations.append(url)
+            if len(cancellations) == 1:
+                return httpx.Response(503, request=httpx.Request(method, url))
+        return original_request(method, url, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    monkeypatch.setattr(build_platform.time, "sleep", lambda _: None)
+    with pytest.raises(build_platform.BuildPlatformError, match="connection error"):
+        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
+    assert (records / "build-1.json").exists()
+    build_platform.cancel_pending_builds(API_URL, records)
+    assert len(cancellations) == 2
+
+
+@pytest.mark.parametrize("workflow_id", [None, "", 123])
+def test_invalid_submission_id_does_not_cancel(
+    tmp_path, platform_api, monkeypatch, workflow_id
+):
+    calls, _, _ = platform_api
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
+    original_request = build_platform.httpx.request
+
+    def request(method, url, **kwargs):
+        if url.endswith("/image-builds"):
+            return httpx.Response(
+                202,
+                json={"workflow_id": workflow_id},
+                request=httpx.Request(method, url),
+            )
+        return original_request(method, url, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    with pytest.raises(build_platform.BuildPlatformError, match="workflow ID"):
+        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
+    assert not any(call.url.path.endswith("/cancel") for call in calls)

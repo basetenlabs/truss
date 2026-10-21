@@ -90,7 +90,7 @@ jobs:
             --version-tag "$BASE_IMAGE_VERSION" \
             "${flags[@]}"
       - name: Cancel Build Platform builds
-        if: ${{ inputs.use_build_platform && cancelled() }}
+        if: ${{ inputs.use_build_platform && (failure() || cancelled()) }}
         env:
           BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
           BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows

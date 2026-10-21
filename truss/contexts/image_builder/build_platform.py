@@ -219,51 +219,73 @@ def build_and_push(
     finally:
         archive_path.unlink(missing_ok=True)
 
-    build = _api_request(
-        api_base_url,
-        "image-builds",
-        method="POST",
-        payload={
-            "context_id": context["context_id"],
-            "dockerfile_path": "Dockerfile",
-            "platforms": ["linux/arm64", "linux/amd64"],
-            "image_format": "estargz",
-            "builder_affinity_key": repository,
-            "enable_proxy_for_build_runs": True,
-            "exports": [
-                {"destination": destination, "repository": repository, "tags": [tag]}
-                for destination in ("ecr", "dockerhub")
-            ],
-        },
-    )
-    workflow_id = build.get("workflow_id")
-    if not isinstance(workflow_id, str) or not workflow_id:
-        raise BuildPlatformError("Build Platform did not return a workflow ID")
-    logs_url = "https://grafana.baseten.co/d/build-platform-workflow-logs?" + urlencode(
-        {
-            "var-workflow_id": workflow_id,
-            "from": int((time.time() - 60) * 1000),
-            "to": "now",
-            "refresh": "5s",
-        }
-    )
-    print(f"Build Platform logs: {logs_url}", flush=True)
-    path = f"image-builds/{quote(workflow_id, safe='')}"
-    deadline = time.monotonic() + timeout_sec
     terminal = False
+    workflow_id = None
     workflow_record = None
     previous_handlers = {}
+    tracking_submission = False
+    pending_signal = None
 
     def interrupted(signum, frame):
-        raise SystemExit(128 + signum)
+        nonlocal pending_signal
+        if tracking_submission:
+            pending_signal = signum
+        else:
+            raise SystemExit(128 + signum)
 
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = signal.signal(signum, interrupted)
+        headers = _authorization_header(timeout_sec=2, max_attempts=1)
+        tracking_submission = True
+        build = _request_json(
+            f"{api_base_url.rstrip('/')}/image-builds",
+            method="POST",
+            headers=headers,
+            timeout_sec=3,
+            max_attempts=1,
+            payload={
+                "context_id": context["context_id"],
+                "dockerfile_path": "Dockerfile",
+                "platforms": ["linux/arm64", "linux/amd64"],
+                "image_format": "estargz",
+                "builder_affinity_key": repository,
+                "enable_proxy_for_build_runs": True,
+                "exports": [
+                    {
+                        "destination": destination,
+                        "repository": repository,
+                        "tags": [tag],
+                    }
+                    for destination in ("ecr", "dockerhub")
+                ],
+            },
+        )
+        submitted_id = build.get("workflow_id")
+        if not isinstance(submitted_id, str) or not submitted_id:
+            raise BuildPlatformError("Build Platform did not return a workflow ID")
+        workflow_id = submitted_id
         if directory := os.environ.get("BUILD_PLATFORM_WORKFLOW_DIR"):
             workflow_record = Path(directory) / f"{quote(workflow_id, safe='')}.json"
             workflow_record.parent.mkdir(parents=True, exist_ok=True)
             workflow_record.write_text(json.dumps({"workflow_id": workflow_id}))
+        tracking_submission = False
+        if pending_signal is not None:
+            raise SystemExit(128 + pending_signal)
+        logs_url = (
+            "https://grafana.baseten.co/d/build-platform-workflow-logs?"
+            + urlencode(
+                {
+                    "var-workflow_id": workflow_id,
+                    "from": int((time.time() - 60) * 1000),
+                    "to": "now",
+                    "refresh": "5s",
+                }
+            )
+        )
+        print(f"Build Platform logs: {logs_url}", flush=True)
+        path = f"image-builds/{quote(workflow_id, safe='')}"
+        deadline = time.monotonic() + timeout_sec
         if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
             with Path(summary_path).open("a") as summary:
                 summary.write(f"[Build logs for {repository}:{tag}]({logs_url})\n\n")
@@ -290,7 +312,7 @@ def build_and_push(
             if terminal:
                 if workflow_record is not None:
                     workflow_record.unlink(missing_ok=True)
-            else:
+            elif workflow_id is not None:
                 for signum in previous_handlers:
                     signal.signal(signum, signal.SIG_IGN)
                 cancel_build(api_base_url, workflow_id)
