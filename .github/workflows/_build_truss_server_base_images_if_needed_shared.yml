@@ -3,11 +3,6 @@ name: Build and Push Truss Base Images (if needed)
 on:
   workflow_dispatch:
     inputs:
-      use_test_identity:
-        description: "Use the test publishing identity"
-        required: false
-        type: boolean
-        default: false
       new_base_image_version:
         required: true
         type: string
@@ -18,10 +13,6 @@ on:
         description: "Build base images flag"
   workflow_call:
     inputs:
-      use_test_identity:
-        required: false
-        type: boolean
-        default: false
       new_base_image_version:
         required: true
         type: string
@@ -37,10 +28,6 @@ on:
         required: true
       BUILD_PLATFORM_TAILSCALE_TAGS:
         required: true
-      BUILD_PLATFORM_TEST_TAILSCALE_CLIENT_ID:
-        required: false
-      BUILD_PLATFORM_TEST_TAILSCALE_AUDIENCE:
-        required: false
 
 jobs:
   build-and-push-truss-base-images-if-needed:
@@ -56,30 +43,14 @@ jobs:
         python_version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         use_gpu: ["y", "n"]
     steps:
-      - name: Validate publishing identity
-        shell: bash
-        env:
-          USE_TEST_IDENTITY: ${{ inputs.use_test_identity }}
-          TEST_CLIENT_ID: ${{ secrets.BUILD_PLATFORM_TEST_TAILSCALE_CLIENT_ID }}
-          TEST_AUDIENCE: ${{ secrets.BUILD_PLATFORM_TEST_TAILSCALE_AUDIENCE }}
-          BASE_IMAGE_VERSION: ${{ inputs.new_base_image_version }}
-        run: |
-          if [[ "$USE_TEST_IDENTITY" == "true" && ( -z "$TEST_CLIENT_ID" || -z "$TEST_AUDIENCE" ) ]]; then
-            echo "::error::Test publishing identity is not configured"
-            exit 1
-          fi
-          if [[ "$USE_TEST_IDENTITY" == "true" && "$BASE_IMAGE_VERSION" != test-* ]]; then
-            echo "::error::Test publishing requires a version beginning with test-"
-            exit 1
-          fi
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: uv sync
       - name: Connect to Build Platform
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8
         with:
-          oauth-client-id: ${{ inputs.use_test_identity && secrets.BUILD_PLATFORM_TEST_TAILSCALE_CLIENT_ID || secrets.BUILD_PLATFORM_TAILSCALE_CLIENT_ID }}
-          audience: ${{ inputs.use_test_identity && secrets.BUILD_PLATFORM_TEST_TAILSCALE_AUDIENCE || secrets.BUILD_PLATFORM_TAILSCALE_AUDIENCE }}
+          oauth-client-id: ${{ secrets.BUILD_PLATFORM_TAILSCALE_CLIENT_ID }}
+          audience: ${{ secrets.BUILD_PLATFORM_TAILSCALE_AUDIENCE }}
           tags: ${{ secrets.BUILD_PLATFORM_TAILSCALE_TAGS }}
       - shell: bash
         env:
