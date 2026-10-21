@@ -11,11 +11,8 @@ from typing import Iterable, List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
+from bin.build_platform import BuildPlatformError, build_and_push
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS, TRUSS_BASE_IMAGE_NAME
-from truss.contexts.image_builder.build_platform import (
-    BuildPlatformError,
-    build_and_push,
-)
 from truss.contexts.image_builder.util import truss_base_image_tag
 
 base_path = Path(__file__).parent.parent

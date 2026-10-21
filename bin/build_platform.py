@@ -182,12 +182,12 @@ def build_and_push(
         method="POST",
         payload={
             "dockerfile": (context_dir / "Dockerfile").read_text(),
-            "enable_proxy_for_build_runs": True,
+            "enable_proxy_for_build_runs": False,
         },
     )
     if (
         not isinstance(prepared.get("dockerfile"), str)
-        or prepared.get("enable_proxy_for_build_runs") is not True
+        or prepared.get("enable_proxy_for_build_runs") is not False
     ):
         raise BuildPlatformError("Invalid Dockerfile preparation response")
     (context_dir / "Dockerfile").write_bytes(prepared["dockerfile"].encode())
@@ -250,7 +250,7 @@ def build_and_push(
                 "platforms": ["linux/arm64", "linux/amd64"],
                 "image_format": "estargz",
                 "builder_affinity_key": repository,
-                "enable_proxy_for_build_runs": True,
+                "enable_proxy_for_build_runs": False,
                 "exports": [
                     {
                         "destination": destination,
@@ -283,12 +283,14 @@ def build_and_push(
                 }
             )
         )
-        print(f"Build Platform logs: {logs_url}", flush=True)
+        print(f"Internal build logs (Grafana): {logs_url}", flush=True)
         path = f"image-builds/{quote(workflow_id, safe='')}"
         deadline = time.monotonic() + timeout_sec
         if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
             with Path(summary_path).open("a") as summary:
-                summary.write(f"[Build logs for {repository}:{tag}]({logs_url})\n\n")
+                summary.write(
+                    f"[Internal build logs (Grafana) for {repository}:{tag}]({logs_url})\n\n"
+                )
         while time.monotonic() < deadline:
             result = _api_request(api_base_url, f"{path}/wait")
             status = result.get("status")

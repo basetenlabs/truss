@@ -10,9 +10,8 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 
-from bin import generate_base_images
+from bin import build_platform, generate_base_images
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.contexts.image_builder import build_platform
 
 API_URL = "https://build.example.invalid/api/internal"
 REPOSITORY = "baseten/truss-server-base"
@@ -45,6 +44,7 @@ def platform_api(monkeypatch):
         assert request.headers["Authorization"] == "Bearer oidc-token"
         if request.url.path.endswith("/dockerfiles/prepare"):
             data = json.loads(request.content)
+            assert data["enable_proxy_for_build_runs"] is False
             return httpx.Response(
                 200, json={**data, "dockerfile": "FROM prepared:latest\n"}
             )
@@ -106,7 +106,7 @@ def test_publish_context_and_dual_exports(
         "platforms": ["linux/arm64", "linux/amd64"],
         "image_format": "estargz",
         "builder_affinity_key": REPOSITORY,
-        "enable_proxy_for_build_runs": True,
+        "enable_proxy_for_build_runs": False,
         "exports": [
             {"destination": "ecr", "repository": REPOSITORY, "tags": [TAG]},
             {"destination": "dockerhub", "repository": REPOSITORY, "tags": [TAG]},
@@ -120,9 +120,9 @@ def test_publish_context_and_dual_exports(
     assert ECR_REF not in output
     assert "signature=private" not in output
     logs_url = next(
-        line.removeprefix("Build Platform logs: ")
+        line.removeprefix("Internal build logs (Grafana): ")
         for line in output.splitlines()
-        if line.startswith("Build Platform logs: ")
+        if line.startswith("Internal build logs (Grafana): ")
     )
     parsed = urlsplit(logs_url)
     assert parsed.netloc == "grafana.baseten.co"
@@ -134,7 +134,7 @@ def test_publish_context_and_dual_exports(
     assert int(query["from"][0]) > 0
     assert (
         summary_path.read_text()
-        == f"Existing summary\n[Build logs for {REPOSITORY}:{TAG}]({logs_url})\n\n"
+        == f"Existing summary\n[Internal build logs (Grafana) for {REPOSITORY}:{TAG}]({logs_url})\n\n"
     )
     assert not any(
         record.name.startswith(("httpx", "httpcore")) for record in caplog.records
@@ -479,3 +479,29 @@ def test_invalid_submission_id_does_not_cancel(
     with pytest.raises(build_platform.BuildPlatformError, match="workflow ID"):
         build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
     assert not any(call.url.path.endswith("/cancel") for call in calls)
+
+
+@pytest.mark.parametrize("proxy_setting", [True, None])
+def test_proxy_preparation_response_rejected(
+    tmp_path, platform_api, monkeypatch, proxy_setting
+):
+    calls, _, _ = platform_api
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
+    original_request = build_platform.httpx.request
+
+    def request(method, url, **kwargs):
+        if url.endswith("/dockerfiles/prepare"):
+            return httpx.Response(
+                200,
+                json={
+                    "dockerfile": "FROM python:3.13\n",
+                    "enable_proxy_for_build_runs": proxy_setting,
+                },
+                request=httpx.Request(method, url),
+            )
+        return original_request(method, url, **kwargs)
+
+    monkeypatch.setattr(build_platform.httpx, "request", request)
+    with pytest.raises(build_platform.BuildPlatformError, match="preparation response"):
+        build_platform.build_and_push(API_URL, tmp_path, REPOSITORY, TAG)
+    assert not any(call.url.path.endswith("/image-builds") for call in calls)

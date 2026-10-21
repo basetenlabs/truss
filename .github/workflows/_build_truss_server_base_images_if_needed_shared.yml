@@ -94,4 +94,4 @@ jobs:
         env:
           BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
           BUILD_PLATFORM_WORKFLOW_DIR: ${{ runner.temp }}/build-platform-workflows
-        run: uv run python -m truss.contexts.image_builder.build_platform --cancel
+        run: uv run python -m bin.build_platform --cancel
