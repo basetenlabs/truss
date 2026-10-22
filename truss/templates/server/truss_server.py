@@ -50,6 +50,10 @@ PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
 TIMEOUT_GRACEFUL_SHUTDOWN = 3600
+# Must exceed queue-proxy's 90s idle-connection timeout so the proxy always closes
+# idle connections first. Otherwise a request can land on a connection uvicorn is
+# closing, which surfaces as a connection reset (502).
+DEFAULT_KEEPALIVE_TIMEOUT_SECONDS = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 
 # Hardcoded 100MiB message maximum on websocket connections.
@@ -593,8 +597,6 @@ class TrussServer:
             .get("ping_timeout_seconds")
         ):
             extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
-        if keepalive_env := os.environ.get("TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS"):
-            extra_kwargs["timeout_keep_alive"] = int(keepalive_env)
 
         cfg = uvicorn.Config(
             self.create_application(),
@@ -609,6 +611,12 @@ class TrussServer:
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
             loop="uvloop",
+            timeout_keep_alive=int(
+                os.environ.get(
+                    "TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS",
+                    DEFAULT_KEEPALIVE_TIMEOUT_SECONDS,
+                )
+            ),
             **extra_kwargs,
         )
         server = uvicorn.Server(config=cfg)

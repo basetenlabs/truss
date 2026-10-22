@@ -127,7 +127,7 @@ def test_prediction_health_check_preserves_startup_logging(app_path):
 
 
 @pytest.mark.parametrize(
-    "keepalive_env, expected_timeout_keep_alive", [(None, None), ("120", 120)]
+    "keepalive_env, expected_timeout_keep_alive", [(None, 120), ("30", 30)]
 )
 def test_start_passes_keepalive_timeout_from_env(
     app_path, monkeypatch, keepalive_env, expected_timeout_keep_alive
@@ -150,12 +150,10 @@ def test_start_passes_keepalive_timeout_from_env(
         ):
             server.start()
 
-    config_kwargs = uvicorn_config.call_args.kwargs
-    if expected_timeout_keep_alive is None:
-        # Absent, not None, so uvicorn's own default applies.
-        assert "timeout_keep_alive" not in config_kwargs
-    else:
-        assert config_kwargs["timeout_keep_alive"] == expected_timeout_keep_alive
+    assert (
+        uvicorn_config.call_args.kwargs["timeout_keep_alive"]
+        == expected_timeout_keep_alive
+    )
 
 
 @pytest.mark.anyio
