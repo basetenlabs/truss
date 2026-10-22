@@ -985,7 +985,7 @@ class ServingImageBuilder(ImageBuilder):
         min_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[0])
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
-        hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
+        hf_access_token = config.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY)
         passthrough_environment_variables = self._filter_reserved_environment_variables(
             config
         )

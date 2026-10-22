@@ -891,8 +891,22 @@ def test_from_yaml_secrets_as_list():
         yaml_path = Path(yaml_file.name)
         yaml.safe_dump(data, yaml_file)
 
-        with pytest.raises(ValueError):
-            TrussConfig.from_yaml(yaml_path)
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.secrets == ["foo", "bar"]
+    assert config.secret_defaults() == {"foo": None, "bar": None}
+    assert config.to_dict(verbose=False)["secrets"] == ["foo", "bar"]
+
+
+def test_from_yaml_secrets_as_dict():
+    data = {"description": "this is a test", "secrets": {"foo": None, "bar": "baz"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.secrets == {"foo": None, "bar": "baz"}
+    assert config.secret_defaults() == {"foo": None, "bar": "baz"}
+    assert config.to_dict(verbose=False)["secrets"] == {"foo": None, "bar": "baz"}
 
 
 def test_from_yaml_python_version():
