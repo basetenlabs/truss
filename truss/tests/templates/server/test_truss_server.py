@@ -126,6 +126,38 @@ def test_prediction_health_check_preserves_startup_logging(app_path):
     disable_startup_logging.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "keepalive_env, expected_timeout_keep_alive", [(None, None), ("120", 120)]
+)
+def test_start_passes_keepalive_timeout_from_env(
+    app_path, monkeypatch, keepalive_env, expected_timeout_keep_alive
+):
+    if keepalive_env is None:
+        monkeypatch.delenv("TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("TRUSS_UVICORN_KEEPALIVE_TIMEOUT_SECONDS", keepalive_env)
+
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        truss_server_module = importlib.import_module("truss_server")
+        server = truss_server_module.TrussServer(
+            http_port=10124, config_or_path=app_path / "config.yaml"
+        )
+        with (
+            patch.object(server, "create_application"),
+            patch.object(truss_server_module.uvicorn, "Config") as uvicorn_config,
+            patch.object(truss_server_module.uvicorn, "Server"),
+            patch.object(truss_server_module.asyncio, "run"),
+        ):
+            server.start()
+
+    config_kwargs = uvicorn_config.call_args.kwargs
+    if expected_timeout_keep_alive is None:
+        # Absent, not None, so uvicorn's own default applies.
+        assert "timeout_keep_alive" not in config_kwargs
+    else:
+        assert config_kwargs["timeout_keep_alive"] == expected_timeout_keep_alive
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     "endpoint, ready, healthy, succeeds",
