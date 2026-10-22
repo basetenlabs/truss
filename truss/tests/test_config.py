@@ -1140,6 +1140,57 @@ def test_to_dict_trtllm_spec_dec(
     ) == expect_equal
 
 
+_DOCKER_SERVER = {
+    "start_command": "python main.py",
+    "server_port": 8000,
+    "predict_endpoint": "/predict",
+    "readiness_endpoint": "/ready",
+    "liveness_endpoint": "/health",
+}
+
+
+def test_docker_server_without_install_fields_is_valid():
+    TrussConfig.model_validate({"docker_server": _DOCKER_SERVER})
+    TrussConfig.model_validate(
+        {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}}
+    )
+
+
+def test_docker_server_allows_install_fields_without_rebuild_free():
+    TrussConfig.model_validate(
+        {"docker_server": _DOCKER_SERVER, "requirements": ["numpy"]}
+    )
+
+
+def test_docker_server_no_build_allows_install_fields():
+    TrussConfig.model_validate(
+        {
+            "docker_server": {**_DOCKER_SERVER, "no_build": True, "rebuild_free": True},
+            "requirements": ["numpy"],
+            "system_packages": ["curl"],
+            "build_commands": ["echo hi"],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("requirements", ["numpy"]),
+        ("requirements_file", "requirements.txt"),
+        ("requirements_file", "pyproject.toml"),
+        ("requirements_file", "uv.lock"),
+        ("system_packages", ["curl"]),
+        ("build_commands", ["echo hi"]),
+    ],
+)
+def test_docker_server_rebuild_free_rejects_install_fields(field, value):
+    with pytest.raises(ValueError, match=field):
+        TrussConfig.model_validate(
+            {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}, field: value}
+        )
+
+
 def test_from_yaml_invalid_requirements_configuration():
     invalid_requirements = {
         "requirements_file": "requirements.txt",

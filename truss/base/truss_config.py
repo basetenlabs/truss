@@ -1450,6 +1450,10 @@ class DockerServer(custom_types.ConfigModel):
         default=None,
         description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
     )
+    rebuild_free: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Reject requirements, requirements_file, system_packages, and build_commands. The base image must already contain them.",
+    )
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
@@ -1815,6 +1819,29 @@ class TrussConfig(custom_types.ConfigModel):
         if self.model_cache.models and self.weights.sources:
             raise ValueError(
                 "Please ensure that only one of `model_cache` and `weights` is specified"
+            )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_docker_server_install_fields(self) -> "TrussConfig":
+        server = self.docker_server
+        if server is None or server.no_build is True or server.rebuild_free is not True:
+            return self
+        rejected: list[str] = []
+        if self.requirements:
+            rejected.append("requirements")
+        if self.requirements_file:
+            rejected.append("requirements_file")
+        if self.system_packages:
+            rejected.append("system_packages")
+        if self.build_commands:
+            rejected.append("build_commands")
+        if rejected:
+            names = ", ".join(rejected)
+            raise ValueError(
+                f"docker_server does not install {names}. "
+                "This applies only on rebuild-free docker server deployments. "
+                "Include them in the base image."
             )
         return self
 
