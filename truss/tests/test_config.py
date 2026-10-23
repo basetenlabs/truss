@@ -1166,8 +1166,18 @@ _DOCKER_SERVER = {
 def test_docker_server_without_install_fields_is_valid():
     TrussConfig.model_validate({"docker_server": _DOCKER_SERVER})
     TrussConfig.model_validate(
-        {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}}
+        {
+            "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
+            "base_image": {"image": "python:3.11-slim"},
+        }
     )
+
+
+def test_docker_server_rebuild_free_requires_base_image():
+    with pytest.raises(ValueError, match="base_image"):
+        TrussConfig.model_validate(
+            {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}}
+        )
 
 
 def test_docker_server_allows_install_fields_without_rebuild_free():
@@ -1201,7 +1211,11 @@ def test_docker_server_no_build_allows_install_fields():
 def test_docker_server_rebuild_free_rejects_install_fields(field, value):
     with pytest.raises(ValueError, match=field):
         TrussConfig.model_validate(
-            {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}, field: value}
+            {
+                "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
+                "base_image": {"image": "python:3.11-slim"},
+                field: value,
+            }
         )
 
 

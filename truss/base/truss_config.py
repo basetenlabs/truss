@@ -1452,7 +1452,11 @@ class DockerServer(custom_types.ConfigModel):
     )
     rebuild_free: Optional[bool] = pydantic.Field(
         default=None,
-        description="Reject requirements, requirements_file, system_packages, and build_commands. The base image must already contain them.",
+        description=(
+            "Do not install packages or rewrite the image entrypoint. "
+            "Rejects requirements, requirements_file, system_packages, and "
+            "build_commands. The base image must already contain them."
+        ),
     )
 
     @pydantic.field_validator("run_as_user_id")
@@ -1833,6 +1837,8 @@ class TrussConfig(custom_types.ConfigModel):
         server = self.docker_server
         if server is None or server.no_build is True or server.rebuild_free is not True:
             return self
+        if self.base_image is None or not self.base_image.image:
+            raise ValueError("docker_server.rebuild_free requires base_image.")
         rejected: list[str] = []
         if self.requirements:
             rejected.append("requirements")

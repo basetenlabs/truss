@@ -574,7 +574,7 @@
             }
           ],
           "default": null,
-          "description": "Reject requirements, requirements_file, system_packages, and build_commands. The base image must already contain them.",
+          "description": "Do not install packages or rewrite the image entrypoint. Rejects requirements, requirements_file, system_packages, and build_commands. The base image must already contain them.",
           "title": "Rebuild Free"
         }
       },
