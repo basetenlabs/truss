@@ -37,6 +37,7 @@ from truss.base.constants import (
     MODEL_DOCKERFILE_NAME,
     NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
     PYPROJECT_TOML_FILENAME,
+    REBUILD_FREE_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -179,7 +180,12 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
 
 
 def _is_docker_server_build(config: TrussConfig) -> bool:
-    return config.docker_server is not None and not config.docker_server.no_build
+    server = config.docker_server
+    return (
+        server is not None
+        and server.no_build is not True
+        and server.rebuild_free is not True
+    )
 
 
 def _docker_server_slim_enabled() -> bool:
@@ -960,6 +966,10 @@ class ServingImageBuilder(ImageBuilder):
         if config.docker_server and config.docker_server.no_build:
             dockerfile_template = read_template_from_fs(
                 TEMPLATES_DIR, NO_BUILD_DOCKERFILE_TEMPLATE_NAME
+            )
+        elif config.docker_server and config.docker_server.rebuild_free is True:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, REBUILD_FREE_DOCKERFILE_TEMPLATE_NAME
             )
         else:
             dockerfile_template = read_template_from_fs(
