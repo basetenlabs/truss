@@ -1581,9 +1581,9 @@ class TrussConfig(custom_types.ConfigModel):
         default_factory=dict,
         description="Key-value pairs exposed to the environment that the model executes in. Do not store secret values here.",
     )
-    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(
+    secrets: Union[list[str], MutableMapping[str, Optional[str]]] = pydantic.Field(
         default_factory=dict,
-        description="Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
+        description="Declare names of secrets your model needs at runtime, such as API keys or access tokens. Store actual values in your organization settings.",
     )
 
     resources: Resources = pydantic.Field(
@@ -1670,6 +1670,12 @@ class TrussConfig(custom_types.ConfigModel):
     @property
     def canonical_python_version(self) -> str:
         return to_dotted_python_version(self.python_version)
+
+    def secret_defaults(self) -> dict[str, Optional[str]]:
+        """Secret names mapped to their config default values, None for list form."""
+        if isinstance(self.secrets, list):
+            return {name: None for name in self.secrets}
+        return dict(self.secrets)
 
     def to_dict(self, verbose: bool = True) -> dict:
         self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.

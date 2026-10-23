@@ -2405,19 +2405,29 @@
       "type": "object"
     },
     "secrets": {
-      "additionalProperties": {
-        "anyOf": [
-          {
+      "anyOf": [
+        {
+          "items": {
             "type": "string"
           },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "description": "Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
-      "title": "Secrets",
-      "type": "object"
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Declare names of secrets your model needs at runtime, such as API keys or access tokens. Store actual values in your organization settings.",
+      "title": "Secrets"
     },
     "resources": {
       "$ref": "#/$defs/Resources"
