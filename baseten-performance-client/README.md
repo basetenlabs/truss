@@ -1004,6 +1004,8 @@ To enable client-span export, set these before the first client request:
 export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=http://localhost:4318
 # Optional, comma-separated literal name=value headers for the collector only:
 export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS='authorization=Bearer collector-token'
+# Optional, `parent` (default) or `link`; see below:
+export BASETEN_PERFORMANCE_CLIENT_OTLP_CALLER_CONTEXT=parent
 ```
 
 The endpoint accepts gzip-compressed OTLP/HTTP JSON; `/v1/traces` is appended unless already present.
@@ -1015,6 +1017,11 @@ Each client call records one span covering all its batches, retries, and hedges,
 response parsing. Its context is forwarded to the model so server spans join underneath it.
 A supplied sampled parent is preserved as the client span's parent; an unsampled parent
 is forwarded without recording. Without a parent, export creates a new root trace.
+If the collector never receives the application's own spans, set the caller context to
+`link`: each recorded span then roots a new trace, so the collector receives complete
+traces. A supplied sampled context becomes a span link (with its tracestate) instead of the
+parent, and only the new trace's context is forwarded; an unsampled context is still
+forwarded unchanged.
 The SDK validates and propagates W3C context when recording; an invalid traceparent is an error.
 
 The SDK exports on a separate thread, batching up to 256 spans every second,
