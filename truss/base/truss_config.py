@@ -98,6 +98,8 @@ class Accelerator(str, enum.Enum):
     B300 = "B300"
     GB300 = "GB300"
     TPU_V6E = "TPU_V6E"
+    # TPU7x (Ironwood); only the single-host 2x2x1 slice (TPU_V7:4) is served for now.
+    TPU_V7 = "TPU_V7"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -1212,7 +1214,7 @@ class Resources(custom_types.ConfigModel):
 
     @property
     def is_tpu(self) -> bool:
-        return self.accelerator.accelerator == Accelerator.TPU_V6E
+        return self.accelerator.accelerator in (Accelerator.TPU_V6E, Accelerator.TPU_V7)
 
     @property
     def memory_in_bytes(self) -> int:
