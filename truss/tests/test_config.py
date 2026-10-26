@@ -47,12 +47,13 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-def test_tpu_resources_roundtrip():
-    resources = Resources.model_validate({"accelerator": "TPU_V6E:8"})
+@pytest.mark.parametrize("accelerator, count", [("TPU_V6E", 8), ("TPU_V7", 4)])
+def test_tpu_resources_roundtrip(accelerator, count):
+    resources = Resources.model_validate({"accelerator": f"{accelerator}:{count}"})
     assert resources.is_tpu
     assert resources.use_gpu
-    assert resources.accelerator.count == 8
-    assert resources.model_dump()["accelerator"] == "TPU_V6E:8"
+    assert resources.accelerator.count == count
+    assert resources.model_dump()["accelerator"] == f"{accelerator}:{count}"
     assert Resources.model_validate(resources.model_dump()) == resources
 
 
@@ -73,6 +74,14 @@ def test_tpu_rejects_invalid_accelerator_count(accelerator):
             "single node",
         ),
         ({"model_framework": "huggingface_transformer"}, "custom model"),
+        ({"resources": {"accelerator": "TPU_V7:4", "node_count": 2}}, "single node"),
+        (
+            {
+                "resources": {"accelerator": "TPU_V7:4"},
+                "model_framework": "huggingface_transformer",
+            },
+            "custom model",
+        ),
     ],
 )
 def test_tpu_rejects_unsupported_config(overrides, message):
