@@ -530,8 +530,17 @@ class TrussHandle:
         )
 
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
+        secrets = self._spec.config.secrets
+        if isinstance(secrets, list) and not default_secret_value:
+            if secret_name not in secrets:
+                self._update_config(secrets=[*secrets, secret_name])
+            return
+        # A default value can only be carried by the mapping form.
         self._update_config(
-            secrets={**self._spec.config.secrets, secret_name: default_secret_value}
+            secrets={
+                **self._spec.config.secret_defaults(),
+                secret_name: default_secret_value,
+            }
         )
 
     def add_external_data_item(

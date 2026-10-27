@@ -969,8 +969,22 @@ def test_from_yaml_secrets_as_list():
         yaml_path = Path(yaml_file.name)
         yaml.safe_dump(data, yaml_file)
 
-        with pytest.raises(ValueError):
-            TrussConfig.from_yaml(yaml_path)
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.secrets == ["foo", "bar"]
+    assert config.secret_defaults() == {"foo": None, "bar": None}
+    assert config.to_dict(verbose=False)["secrets"] == ["foo", "bar"]
+
+
+def test_from_yaml_secrets_as_dict():
+    data = {"description": "this is a test", "secrets": {"foo": None, "bar": "baz"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.secrets == {"foo": None, "bar": "baz"}
+    assert config.secret_defaults() == {"foo": None, "bar": "baz"}
+    assert config.to_dict(verbose=False)["secrets"] == {"foo": None, "bar": "baz"}
 
 
 def test_from_yaml_python_version():
@@ -1216,6 +1230,71 @@ def test_to_dict_trtllm_spec_dec(
         )
         == trtllm_spec_dec_config_lookahead_v1
     ) == expect_equal
+
+
+_DOCKER_SERVER = {
+    "start_command": "python main.py",
+    "server_port": 8000,
+    "predict_endpoint": "/predict",
+    "readiness_endpoint": "/ready",
+    "liveness_endpoint": "/health",
+}
+
+
+def test_docker_server_without_install_fields_is_valid():
+    TrussConfig.model_validate({"docker_server": _DOCKER_SERVER})
+    TrussConfig.model_validate(
+        {
+            "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
+            "base_image": {"image": "python:3.11-slim"},
+        }
+    )
+
+
+def test_docker_server_rebuild_free_requires_base_image():
+    with pytest.raises(ValueError, match="base_image"):
+        TrussConfig.model_validate(
+            {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}}
+        )
+
+
+def test_docker_server_allows_install_fields_without_rebuild_free():
+    TrussConfig.model_validate(
+        {"docker_server": _DOCKER_SERVER, "requirements": ["numpy"]}
+    )
+
+
+def test_docker_server_no_build_allows_install_fields():
+    TrussConfig.model_validate(
+        {
+            "docker_server": {**_DOCKER_SERVER, "no_build": True, "rebuild_free": True},
+            "requirements": ["numpy"],
+            "system_packages": ["curl"],
+            "build_commands": ["echo hi"],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("requirements", ["numpy"]),
+        ("requirements_file", "requirements.txt"),
+        ("requirements_file", "pyproject.toml"),
+        ("requirements_file", "uv.lock"),
+        ("system_packages", ["curl"]),
+        ("build_commands", ["echo hi"]),
+    ],
+)
+def test_docker_server_rebuild_free_rejects_install_fields(field, value):
+    with pytest.raises(ValueError, match=field):
+        TrussConfig.model_validate(
+            {
+                "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
+                "base_image": {"image": "python:3.11-slim"},
+                field: value,
+            }
+        )
 
 
 def test_from_yaml_invalid_requirements_configuration():
