@@ -3632,7 +3632,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.18.35"
+version = "0.18.37rc0"
 source = { editable = "." }
 default-groups = ["dev", "dev-server"]
 dependencies = [
