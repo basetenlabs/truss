@@ -23,6 +23,9 @@ jobs:
 
   build-truss-server-base-images-if-needed:
     needs: detect-version-changed
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/_build_truss_server_base_images_if_needed_shared.yml
     with:
       new_base_image_version: ${{ needs.detect-version-changed.outputs.new_base_image_version }}

@@ -1241,6 +1241,8 @@ class TestDockerServerSlimBuild:
         tmp_path,
         transport_kind="http",
         start_command="python main.py --port 8000",
+        rebuild_free=None,
+        no_build=None,
     ):
         truss_dir = tmp_path / f"docker_server_truss_{transport_kind}"
         th = TrussHandle(init_directory(truss_dir))
@@ -1253,6 +1255,8 @@ class TestDockerServerSlimBuild:
             predict_endpoint="/predict",
             readiness_endpoint="/health",
             liveness_endpoint="/health",
+            rebuild_free=rebuild_free,
+            no_build=no_build,
         )
         config.runtime.transport = {"kind": transport_kind}
         with (truss_dir / "config.yaml").open("w") as f:
@@ -1353,3 +1357,31 @@ class TestDockerServerSlimBuild:
         assert "SERVER_START_CMD" not in dockerfile
         assert "nginx" not in dockerfile.lower()
         assert "supervisord" not in dockerfile.lower()
+
+    @pytest.mark.parametrize("slim", ["true", "false"])
+    def test_rebuild_free_dockerfile_is_from_base_image(self, tmp_path, slim):
+        truss_dir = self._make_docker_server_truss(tmp_path, rebuild_free=True)
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": slim}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / f"build_{slim}"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert dockerfile == "FROM python:3.11-slim"
+        assert not (build_dir / "proxy.conf").exists()
+        assert not (build_dir / "supervisord.conf").exists()
+        assert not (build_dir / "docker_server_requirements.txt").exists()
+
+    def test_no_build_dockerfile_when_rebuild_free_also_set(self, tmp_path):
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, rebuild_free=True, no_build=True
+        )
+        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
+            builder = ServingImageBuilderContext.run(truss_dir)
+            build_dir = tmp_path / "build_no_build_rebuild_free"
+            builder.prepare_image_build_dir(build_dir)
+
+        dockerfile = (build_dir / "Dockerfile").read_text()
+        assert dockerfile.startswith("FROM python:3.11-slim")
+        assert 'ENTRYPOINT ["sh", "-c"]' in dockerfile
+        assert dockerfile != "FROM python:3.11-slim"

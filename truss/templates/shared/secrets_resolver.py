@@ -16,7 +16,10 @@ class SecretsResolver:
 
     @staticmethod
     def get_secrets(config: dict):
-        return Secrets(config.get("secrets", {}))
+        secrets = config.get("secrets", {})
+        if isinstance(secrets, list):
+            secrets = {name: None for name in secrets}
+        return Secrets(secrets)
 
     @staticmethod
     def _resolve_secret(secret_name: str, default_value: Optional[str]):
