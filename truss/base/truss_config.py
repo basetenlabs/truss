@@ -98,7 +98,7 @@ class Accelerator(str, enum.Enum):
     B300 = "B300"
     GB300 = "GB300"
     TPU_V6E = "TPU_V6E"
-    # TPU7x (Ironwood); only the single-host 2x2x1 slice (TPU_V7:4) is served for now.
+    # TPU7x (Ironwood); only single-host TPU_V7:4 (one 4-chip host) is served for now.
     TPU_V7 = "TPU_V7"
 
 
