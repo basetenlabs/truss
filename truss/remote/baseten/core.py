@@ -3,6 +3,7 @@ import json
 import logging
 import pathlib
 import textwrap
+import time
 from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import requests
@@ -35,6 +36,11 @@ NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
 # Maximum number of iterations to prevent infinite loops when paginating logs
 MAX_ITERATIONS = 10_000
 MIN_BATCH_SIZE = 100
+
+# Wall-clock bound on the whole forward scan. A chatty job needs one request per
+# MAX_BATCH_SIZE lines, so without a deadline the scan outlives any CI step
+# timeout and the caller reports its own timeout instead of the job's logs.
+DEFAULT_LOG_FETCH_TIMEOUT_SEC = 60.0
 
 # LIMIT for the number of logs to fetch per request defined by the server
 MAX_BATCH_SIZE = 1000
@@ -625,14 +631,11 @@ def _process_batch_logs(
         Tuple of (should_continue, next_start_time, next_end_time)
     """
 
-    # If no logs returned, we're done
+    # An empty window ends the scan. A short-but-non-empty batch does not: the
+    # window is capped at 2h, so a job that outlives one window still has logs
+    # past its end.
     if not batch_logs:
         logging.info(f"No logs returned for job {job_id} at iteration {iteration}")
-        return False, None, None
-
-    # If we got fewer logs than the batch size, we've reached the end
-    if len(batch_logs) == 0:
-        logging.info(f"Reached end of logs for job {job_id} at iteration {iteration}")
         return False, None, None
 
     # Timestamp returned in nanoseconds for the last log in this batch converted
@@ -662,6 +665,7 @@ class BatchedTrainingLogsFetcher:
         project_id: str,
         job_id: str,
         batch_size: int = MAX_BATCH_SIZE,
+        timeout_sec: float = DEFAULT_LOG_FETCH_TIMEOUT_SEC,
     ):
         self.api = api
         self.project_id = project_id
@@ -670,6 +674,8 @@ class BatchedTrainingLogsFetcher:
         self.iteration = 0
         self.current_start_time = None
         self.current_end_time = None
+        self.truncated = False
+        self._deadline = time.monotonic() + timeout_sec
         self._initialize_time_window()
 
     def _initialize_time_window(self):
@@ -684,9 +690,19 @@ class BatchedTrainingLogsFetcher:
 
     def __next__(self) -> List[Any]:
         if self.iteration >= MAX_ITERATIONS:
+            self.truncated = True
             logging.warning(
                 f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
                 f"training job logs for project_id={self.project_id}, job_id={self.job_id}."
+            )
+            raise StopIteration
+
+        if time.monotonic() >= self._deadline:
+            self.truncated = True
+            logging.warning(
+                f"Timed out after {self.iteration} batches while paginating training job "
+                f"logs for project_id={self.project_id}, job_id={self.job_id}. "
+                "Returning the logs fetched so far."
             )
             raise StopIteration
 
@@ -741,23 +757,39 @@ class BatchedTrainingLogsFetcher:
 
 
 def get_training_job_logs_with_pagination(
-    api: BasetenApi, project_id: str, job_id: str, batch_size: int = MAX_BATCH_SIZE
+    api: BasetenApi,
+    project_id: str,
+    job_id: str,
+    batch_size: int = MAX_BATCH_SIZE,
+    timeout_sec: float = DEFAULT_LOG_FETCH_TIMEOUT_SEC,
 ) -> List[Any]:
     """
     This method implements forward time-based pagination by starting from the earliest
     available log and working forward in time. It uses the timestamp of the newest log in
     each batch as the start time for the next request.
 
+    The scan is bounded by ``timeout_sec``; on expiry it returns the logs fetched so far
+    and warns, rather than blocking the caller indefinitely.
+
     Returns:
         List of all logs in chronological order (oldest first)
     """
     all_logs = []
 
-    logs_iterator = BatchedTrainingLogsFetcher(api, project_id, job_id, batch_size)
+    logs_iterator = BatchedTrainingLogsFetcher(
+        api, project_id, job_id, batch_size, timeout_sec=timeout_sec
+    )
 
     for batch_logs in logs_iterator:
         all_logs.extend(batch_logs)
 
     logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
+
+    if logs_iterator.truncated:
+        console.print(
+            f"Warning: stopped fetching logs early; showing the first "
+            f"{len(all_logs)} lines only.",
+            style="yellow",
+        )
 
     return all_logs
