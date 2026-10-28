@@ -265,6 +265,24 @@ class TestWorkstationJsonOutput:
             == availability
         )
 
+    @pytest.mark.parametrize(("accelerator", "gpus"), [("H100", 8), ("gb300", 4)])
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_multinode_allocates_full_nodes(
+        self, mock_remote_factory, mock_get_remote_team, mock_push, accelerator, gpus
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke("--accelerator", accelerator, "--node-count", "2")
+
+        assert result.exit_code == 0, result.output
+        compute = mock_push.call_args.kwargs["config"].job.compute
+        assert compute.accelerator.count == gpus
+        assert compute.node_count == 2
+
     @patch("truss_train.public_api.push")
     @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
     @patch("truss.cli.train_commands.RemoteFactory.create")
