@@ -26,6 +26,7 @@ from truss.templates.control.control.helpers.custom_types import (  # noqa
     PythonRequirementPatch,
 )
 from truss.truss_handle.patch.custom_types import PatchRequest
+from shared.util import kill_child_processes  # noqa
 
 
 @pytest.fixture
@@ -45,6 +46,10 @@ def ports():
         "control_server_port": _get_free_port(),
         "inference_server_port": _get_free_port(),
     }
+
+
+def _kill_child_processes_fast(parent_pid, timeout_seconds=None):
+    kill_child_processes(parent_pid, timeout_seconds=2)
 
 
 @pytest.fixture
@@ -67,7 +72,15 @@ def app(truss_container_fs, truss_original_hash, ports):
             inference_server_controller.start()
             yield control_app
         finally:
-            inference_server_controller.stop()
+            # The controller waits up to 30 s for children to exit after SIGTERM
+            # before sending SIGKILL. On macOS a child of the test inference
+            # server can outlive SIGTERM, so each teardown took ~30 s. Tests
+            # don't need the grace period; SIGKILL still follows.
+            with patch(
+                "helpers.inference_server_process_controller.kill_child_processes",
+                _kill_child_processes_fast,
+            ):
+                inference_server_controller.stop()
 
 
 @pytest.fixture(
