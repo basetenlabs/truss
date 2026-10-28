@@ -3,7 +3,6 @@ import threading
 from typing import List, Optional
 
 
-# TODO: add test.
 class LogInterceptor(logging.Handler):
     """This context manager intercepts logs at root level and allows to retrieve them
     later. It uses the formatter of the first root handler (if present).
@@ -29,10 +28,10 @@ class LogInterceptor(logging.Handler):
             LogInterceptor._thread_local.handlers = []
         LogInterceptor._thread_local.handlers.append(self)
         self._original_handlers = logging.root.handlers[:]
-        logging.root.handlers = [self]
         self._formatter = (
-            logging.root.handlers[0].formatter if logging.root.handlers else None
+            self._original_handlers[0].formatter if self._original_handlers else None
         )
+        logging.root.handlers = [self]
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
