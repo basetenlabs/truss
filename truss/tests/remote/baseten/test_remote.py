@@ -994,7 +994,7 @@ def test_push_bis_llm_sends_deployment_options_to_rest_api(
     assert body.get("deployment_name") == deployment_name
     if deployment_name is None:
         assert "deployment_name" not in body
-    if environment and environment != "production":
+    if not promote and environment and environment != "production":
         assert body["environment_name"] == environment
     else:
         assert "environment_name" not in body
@@ -1018,7 +1018,7 @@ def test_push_bis_llm_sends_deployment_options_to_rest_api(
     [
         (True, None, "production"),
         (True, "production", "production"),
-        (True, "staging", "staging"),
+        (True, "staging", "production"),
         (False, "staging", "staging"),
     ],
 )

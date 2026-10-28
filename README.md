@@ -130,8 +130,8 @@ uvx truss push
 
 Use `uvx truss push --promote` to promote the new deployment to production after
 deployment completes. To target a named environment instead, use
-`uvx truss push --promote --environment staging`; `--environment staging` also works
-without `--promote`. Add `--deployment-name candidate-v1` to name the new deployment,
+`uvx truss push --environment staging`. Do not combine `--environment` with
+`--promote`. Add `--deployment-name candidate-v1` to name the new deployment,
 with or without an environment target. These flags also work with Baseten
 Inference Stack models.
 

@@ -597,13 +597,45 @@ def test_keepalive_loop_continues_before_max_duration():
 
 
 @pytest.mark.parametrize("bis_llm", [False, True])
+@pytest.mark.parametrize("environment", ["production", "staging"])
+def test_cli_push_rejects_promote_with_environment(
+    remote, mock_truss_handle, mock_baseten_requests, bis_llm, environment
+):
+    if bis_llm:
+        mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "test-llm"})
+        mock_truss_handle.spec.config.write_to_yaml_file(
+            mock_truss_handle.spec.config_path, verbose=False
+        )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=remote),
+        patch.object(remote.api, "get_teams", return_value={}),
+        patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)),
+    ):
+        result = CliRunner().invoke(
+            truss_cli,
+            [
+                "push",
+                str(mock_truss_handle.truss_dir),
+                "--remote",
+                "baseten",
+                "--model-name",
+                "model_name",
+                "--promote",
+                "--environment",
+                environment,
+            ],
+            standalone_mode=False,
+        )
+
+    assert isinstance(result.exception, click.UsageError), result.output
+
+
+@pytest.mark.parametrize("bis_llm", [False, True])
 @pytest.mark.parametrize(
     "flags,environment",
     [
         ([], None),
         (["--promote"], "production"),
-        (["--promote", "--environment", "production"], "production"),
-        (["--promote", "--environment", "staging"], "staging"),
         (["--environment", "production"], "production"),
         (["--environment", "staging"], "staging"),
     ],

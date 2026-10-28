@@ -380,7 +380,7 @@ class BasetenRemote(TrussRemote):
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
 
-        if promote and not environment:
+        if promote:
             environment = PRODUCTION_ENVIRONMENT_NAME
 
         # If there is a target environment, it must be published.
