@@ -567,6 +567,8 @@ pub struct RequestProcessingPreference {
     pub non_retryable_status_codes: HashSet<u16>,
     #[pyo3(get, set)]
     pub trace_context: Option<TraceContext>,
+    #[pyo3(get, set)]
+    pub send_batch_key: bool,
 }
 
 impl RequestProcessingPreference {
@@ -594,6 +596,7 @@ impl RequestProcessingPreference {
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes,
             trace_context: self.trace_context.as_ref().map(Into::into),
+            send_batch_key: Some(self.send_batch_key),
         }
     }
 }
@@ -625,7 +628,8 @@ impl RequestProcessingPreference {
         primary_api_key_override = None,
         extra_headers = None,
         non_retryable_status_codes = None,
-        trace_context = None
+        trace_context = None,
+        send_batch_key = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -644,6 +648,7 @@ impl RequestProcessingPreference {
         extra_headers: Option<std::collections::HashMap<String, String>>,
         non_retryable_status_codes: Option<HashSet<u16>>,
         trace_context: Option<TraceContext>,
+        send_batch_key: Option<bool>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -662,6 +667,7 @@ impl RequestProcessingPreference {
             extra_headers,
             non_retryable_status_codes,
             trace_context: trace_context.as_ref().map(Into::into),
+            send_batch_key,
         };
 
         // Apply defaults using the same method as Rust core
@@ -686,6 +692,7 @@ impl RequestProcessingPreference {
             extra_headers: complete.extra_headers,
             non_retryable_status_codes: complete.non_retryable_status_codes.unwrap_or_default(),
             trace_context,
+            send_batch_key: complete.send_batch_key.unwrap_or(false),
         }
     }
 
@@ -694,14 +701,14 @@ impl RequestProcessingPreference {
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            None, None,
+            None, None, None,
         ))
     }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, pin_initial_endpoint_once={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={}, non_retryable_status_codes={:?}, send_batch_key={})",
             self.max_concurrent_requests,
             self.batch_size,
             self.pin_initial_endpoint_once,
@@ -712,7 +719,8 @@ impl RequestProcessingPreference {
             self.retry_budget_pct,
             self.max_retries,
             self.initial_backoff_ms,
-            self.non_retryable_status_codes
+            self.non_retryable_status_codes,
+            self.send_batch_key
         ))
     }
 

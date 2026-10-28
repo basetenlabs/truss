@@ -263,7 +263,8 @@ def test_get_wrapper_from_client_and_reuse():
     assert client2 is not None
 
 
-def test_trace_context_forwarding():
+def _record_request_headers(run):
+    """Runs run(client) against a local server and returns each request's headers."""
     seen = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -279,19 +280,46 @@ def test_trace_context_forwarding():
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            client = PerformanceClient(
-                f"http://127.0.0.1:{server.server_port}", "test-key", http_version=1
+            run(
+                PerformanceClient(
+                    f"http://127.0.0.1:{server.server_port}", "test-key", http_version=1
+                )
             )
-            parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-            preference = RequestProcessingPreference(
-                trace_context=TraceContext(parent, "vendor=value")
-            )
-            client.batch_post("/echo", [{}], preference=preference)
-            client.batch_post("/echo", [{}])
         finally:
             server.shutdown()
             thread.join()
+    return seen
+
+
+def test_trace_context_forwarding():
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+    def run(client):
+        preference = RequestProcessingPreference(
+            trace_context=TraceContext(parent, "vendor=value")
+        )
+        client.batch_post("/echo", [{}], preference=preference)
+        client.batch_post("/echo", [{}])
+
+    seen = _record_request_headers(run)
     assert seen[0]["traceparent"] == parent
     assert seen[0]["tracestate"] == "vendor=value"
     assert "traceparent" not in seen[1]
     assert "tracestate" not in seen[1]
+
+
+def test_send_batch_key():
+    assert RequestProcessingPreference().send_batch_key is False
+    preference = RequestProcessingPreference(send_batch_key=True)
+    assert preference.send_batch_key is True
+
+    def run(client):
+        client.batch_post("/echo", [{}, {}, {}], preference=preference)
+        client.batch_post("/echo", [{}])
+
+    seen = _record_request_headers(run)
+    keyed, unkeyed = seen[:3], seen[3]
+    (key,) = {headers["x-baseten-batch-key"] for headers in keyed}
+    for headers in keyed:
+        assert headers["x-baseten-customer-request-id"].startswith(f"{key}-")
+    assert "x-baseten-batch-key" not in unkeyed

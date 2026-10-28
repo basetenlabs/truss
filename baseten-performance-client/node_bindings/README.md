@@ -455,7 +455,7 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 #### RequestProcessingPreference
 
 ```javascript
-new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?)
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?, traceContext?, sendBatchKey?)
 ```
 
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 256)
@@ -473,6 +473,8 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, m
 - `primaryApiKeyOverride` (string, optional): Override API key for requests
 - `extraHeaders` (Record<string, string>, optional): Custom headers to include with all requests
 - `nonRetryableStatusCodes` (number[], optional): Status codes that should not be retried even if the default policy would retry them
+- `traceContext` (TraceContext, optional): W3C trace context to forward to the model
+- `sendBatchKey` (boolean, optional): Send the call's request ID as `x-baseten-batch-key` on every request, so a deployment running active-active across clusters serves the whole call from one cluster (default: false). Cannot be combined with `x-baseten-batch-key` in `extraHeaders`. Also settable as `preference.sendBatchKey = true`
 
 ### Methods
 
