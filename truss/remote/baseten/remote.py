@@ -269,32 +269,18 @@ class BasetenRemote(TrussRemote):
     def _validate_bis_llm_push_options(
         self,
         publish: bool,
-        promote: bool,
-        preserve_previous_prod_deployment: bool,
         disable_truss_download: bool,
-        deployment_name: Optional[str],
         origin: Optional[custom_types.ModelOrigin],
-        environment: Optional[str],
         deploy_timeout_minutes: Optional[int],
     ) -> None:
         if not publish:
             raise ValueError(
                 "Development deployment is not supported for BIS LLM models."
             )
-        if promote:
-            raise ValueError("Promotion is not supported for BIS LLM models ")
-        if environment:
-            raise ValueError("Environment is not supported for BIS LLM models.")
-        if preserve_previous_prod_deployment:
-            raise ValueError(
-                "Preserve previous production deployment is not supported for BIS LLM models."
-            )
         if disable_truss_download:
             raise ValueError(
                 "Disable truss download is not supported for BIS LLM models."
             )
-        if deployment_name:
-            raise ValueError("Deployment name is not supported for BIS LLM models.")
         if origin:
             raise ValueError("Origin is not supported for BIS LLM models.")
         if deploy_timeout_minutes is not None:
@@ -308,12 +294,26 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
+        deployment_name: Optional[str] = None,
+        preserve_previous_prod_deployment: bool = False,
+        preserve_env_instance_type: bool = True,
+        environment: Optional[str] = None,
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True)
         }
         if model_id is None:
             body["name"] = model_name
+        if deployment_name:
+            body["deployment_name"] = deployment_name
+        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+            body["environment_name"] = environment
+        if environment:
+            body["promote"] = True
+            body["preserve_previous_prod_deployment"] = (
+                preserve_previous_prod_deployment
+            )
+            body["preserve_env_instance_type"] = preserve_env_instance_type
         if config.environment_variables:
             body["environment_variables"] = config.environment_variables
         if config.weights:
@@ -372,12 +372,8 @@ class BasetenRemote(TrussRemote):
         if config.bis_llm is not None:
             self._validate_bis_llm_push_options(
                 publish=publish,
-                promote=promote,
-                preserve_previous_prod_deployment=preserve_previous_prod_deployment,
                 disable_truss_download=disable_truss_download,
-                deployment_name=deployment_name,
                 origin=origin,
-                environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
 
@@ -519,6 +515,10 @@ class BasetenRemote(TrussRemote):
                     model_name=model_name,
                     model_id=push_data.model_id,
                     labels=push_data.labels,
+                    deployment_name=push_data.version_name,
+                    environment=push_data.environment,
+                    preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
+                    preserve_env_instance_type=preserve_env_instance_type,
                 ),
                 model_id=push_data.model_id,
                 team_id=push_data.team_id,

@@ -596,6 +596,121 @@ def test_keepalive_loop_continues_before_max_duration():
     mock_exit.assert_called_once_with(0)
 
 
+@pytest.mark.parametrize("bis_llm", [False, True])
+@pytest.mark.parametrize("environment", ["production", "staging"])
+def test_cli_push_rejects_promote_with_environment(
+    remote, mock_truss_handle, mock_baseten_requests, bis_llm, environment
+):
+    if bis_llm:
+        mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "test-llm"})
+        mock_truss_handle.spec.config.write_to_yaml_file(
+            mock_truss_handle.spec.config_path, verbose=False
+        )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=remote),
+        patch.object(remote.api, "get_teams", return_value={}),
+        patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)),
+    ):
+        result = CliRunner().invoke(
+            truss_cli,
+            [
+                "push",
+                str(mock_truss_handle.truss_dir),
+                "--remote",
+                "baseten",
+                "--model-name",
+                "model_name",
+                "--promote",
+                "--environment",
+                environment,
+            ],
+            standalone_mode=False,
+        )
+
+    assert isinstance(result.exception, click.UsageError), result.output
+
+
+@pytest.mark.parametrize("bis_llm", [False, True])
+@pytest.mark.parametrize(
+    "flags,environment",
+    [
+        ([], None),
+        (["--promote"], "production"),
+        (["--environment", "production"], "production"),
+        (["--environment", "staging"], "staging"),
+    ],
+)
+def test_cli_push_targets_selected_environment(
+    remote,
+    mock_truss_handle,
+    mock_baseten_requests,
+    mock_upload_truss,
+    bis_llm,
+    flags,
+    environment,
+):
+    if bis_llm:
+        mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "test-llm"})
+        mock_truss_handle.spec.config.write_to_yaml_file(
+            mock_truss_handle.spec.config_path, verbose=False
+        )
+        bis_request = mock_baseten_requests.post(
+            f"{remote.api.rest_api_url}/v1/llm_models/model_id/deployments",
+            json={
+                "model_id": "model_id",
+                "version_id": "version_id",
+                "hostname": "hostname",
+                "instance_type_name": None,
+            },
+        )
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=remote),
+        patch.object(remote.api, "get_teams", return_value={}),
+        patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)),
+    ):
+        result = CliRunner().invoke(
+            truss_cli,
+            [
+                "push",
+                str(mock_truss_handle.truss_dir),
+                "--remote",
+                "baseten",
+                "--model-name",
+                "model_name",
+                "--deployment-name",
+                "candidate-v1",
+                "--no-preserve-env-instance-type",
+                *flags,
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    if bis_llm:
+        body = bis_request.last_request.json()
+        assert body["deployment_name"] == "candidate-v1"
+        assert body.get("promote", False) is bool(environment)
+        assert body.get("environment_name") == (
+            environment if environment and environment != "production" else None
+        )
+        if environment:
+            assert body["preserve_env_instance_type"] is False
+            assert body["preserve_previous_prod_deployment"] is False
+    else:
+        queries = [
+            request.json()["query"]
+            for request in mock_baseten_requests.request_history
+            if "create_model_version_from_truss" in request.json()["query"]
+        ]
+        assert len(queries) == 1
+        query = queries[0]
+        assert 'name: "candidate-v1"' in query
+        assert "preserve_env_instance_type: false" in query
+        if environment:
+            assert f'environment_name: "{environment}"' in query
+        else:
+            assert "environment_name:" not in query
+
+
 def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
     remote,
