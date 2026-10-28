@@ -606,9 +606,8 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
-        "Push the truss as a published deployment. Even if a production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
+        "Push the truss as a published deployment and promote it after deploy "
+        "completes. Targets production unless --environment is specified."
     ),
 )
 @click.option(
@@ -616,8 +615,8 @@ def run_python(script, target_directory):
     type=str,
     required=False,
     help=(
-        "Push the truss as a published deployment to the specified environment."
-        "If specified, publish is implied and the supplied value of --promote will be ignored."
+        "Push the truss as a published deployment to the specified environment. "
+        "Can be used alone or with --promote."
     ),
 )
 @click.option(
@@ -883,10 +882,6 @@ def push(
             remote_name=remote,
         )
 
-    if promote and environment:
-        raise click.UsageError(
-            "'promote' flag and 'environment' flag cannot both be specified."
-        )
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 

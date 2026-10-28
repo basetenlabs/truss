@@ -271,15 +271,12 @@ class BasetenRemote(TrussRemote):
         publish: bool,
         disable_truss_download: bool,
         origin: Optional[custom_types.ModelOrigin],
-        environment: Optional[str],
         deploy_timeout_minutes: Optional[int],
     ) -> None:
         if not publish:
             raise ValueError(
                 "Development deployment is not supported for BIS LLM models."
             )
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError("Environment is not supported for BIS LLM models.")
         if disable_truss_download:
             raise ValueError(
                 "Disable truss download is not supported for BIS LLM models."
@@ -298,9 +295,9 @@ class BasetenRemote(TrussRemote):
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
         deployment_name: Optional[str] = None,
-        promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         preserve_env_instance_type: bool = True,
+        environment: Optional[str] = None,
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True)
@@ -309,7 +306,9 @@ class BasetenRemote(TrussRemote):
             body["name"] = model_name
         if deployment_name:
             body["deployment_name"] = deployment_name
-        if promote:
+        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+            body["environment_name"] = environment
+        if environment:
             body["promote"] = True
             body["preserve_previous_prod_deployment"] = (
                 preserve_previous_prod_deployment
@@ -375,14 +374,13 @@ class BasetenRemote(TrussRemote):
                 publish=publish,
                 disable_truss_download=disable_truss_download,
                 origin=origin,
-                environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
 
-        if promote:
+        if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
 
         # If there is a target environment, it must be published.
@@ -518,7 +516,7 @@ class BasetenRemote(TrussRemote):
                     model_id=push_data.model_id,
                     labels=push_data.labels,
                     deployment_name=push_data.version_name,
-                    promote=push_data.environment == PRODUCTION_ENVIRONMENT_NAME,
+                    environment=push_data.environment,
                     preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
                     preserve_env_instance_type=preserve_env_instance_type,
                 ),

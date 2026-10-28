@@ -12,6 +12,7 @@ from truss.base.truss_config import (
     BISLLM,
     EgressRestrictions,
     FabricRequirement,
+    ModelServer,
     Runtime,
     TrussConfig,
     Weights,
@@ -893,10 +894,6 @@ def test_push_forwards_fabric_requirement_for_non_bis_deployments(
             "Development deployment is not supported for BIS LLM models.",
         ),
         (
-            {"environment": "staging"},
-            "Environment is not supported for BIS LLM models.",
-        ),
-        (
             {"preserve_previous_prod_deployment": True},
             "preserve-previous-production-deployment can only be used with the '--promote' option",
         ),
@@ -929,61 +926,36 @@ def test_push_bis_llm_rejects_disallowed_options(
         )
 
 
-@pytest.mark.parametrize("model_id", [None, "bis-model-id"])
 @pytest.mark.parametrize(
-    "promote,environment",
-    [(False, None), (True, None), (True, "production"), (False, "production")],
+    "model_id,team_id", [(None, None), (None, "team-id"), ("bis-model-id", None)]
+)
+@pytest.mark.parametrize(
+    "promote,environment,preserve_previous,preserve_env_instance_type",
+    [
+        (False, None, False, True),
+        (True, None, False, True),
+        (True, None, True, False),
+        (True, "production", False, False),
+        (True, "production", True, True),
+        (True, "staging", False, False),
+        (True, "staging", True, True),
+        (False, "production", False, True),
+        (False, "staging", False, True),
+        (False, "staging", False, False),
+    ],
 )
 @pytest.mark.parametrize("deployment_name", [None, "candidate-v1"])
-def test_push_bis_llm_forwards_deployment_options(
+def test_push_bis_llm_sends_deployment_options_to_rest_api(
     remote,
     mock_upload_truss,
     mock_truss_handle,
     model_id,
+    team_id,
+    preserve_previous,
     promote,
     environment,
     deployment_name,
-):
-    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "test-llm"})
-    handle = mock.Mock(
-        model_id="bis-model-id",
-        version_id="bis-deployment-id",
-        hostname="hostname",
-        instance_type_name=None,
-    )
-    with patch("truss.remote.baseten.remote.exists_model", return_value=model_id):
-        with patch(
-            "truss.remote.baseten.remote.create_bis_llm_service", return_value=handle
-        ) as create_service:
-            remote.push(
-                mock_truss_handle,
-                "model_name",
-                mock_truss_handle.truss_dir,
-                deployment_name=deployment_name,
-                promote=promote,
-                environment=environment,
-                preserve_env_instance_type=False,
-                preserve_previous_prod_deployment=promote,
-            )
-    body = create_service.call_args.kwargs["body"]
-    assert body.get("deployment_name") == deployment_name
-    should_promote = promote or environment == "production"
-    assert body.get("promote", False) == should_promote
-    assert body.get("name") == ("model_name" if model_id is None else None)
-    if should_promote:
-        assert body["preserve_previous_prod_deployment"] is promote
-        assert body["preserve_env_instance_type"] is False
-    else:
-        assert "preserve_previous_prod_deployment" not in body
-        assert "preserve_env_instance_type" not in body
-
-
-@pytest.mark.parametrize(
-    "model_id,team_id", [(None, None), (None, "team-id"), ("bis-model-id", None)]
-)
-@pytest.mark.parametrize("preserve_previous", [False, True])
-def test_push_bis_llm_sends_deployment_options_to_rest_api(
-    remote, mock_upload_truss, mock_truss_handle, model_id, team_id, preserve_previous
+    preserve_env_instance_type,
 ):
     mock_truss_handle.spec.config.bis_llm = BISLLM(
         config={"model_name": "test-llm", "checkpoint_name": "test-checkpoint"}
@@ -1011,22 +983,75 @@ def test_push_bis_llm_sends_deployment_options_to_rest_api(
             mock_truss_handle,
             "model_name",
             mock_truss_handle.truss_dir,
-            deployment_name="candidate-v1",
-            promote=True,
-            environment="production",
+            deployment_name=deployment_name,
+            promote=promote,
+            environment=environment,
             preserve_previous_prod_deployment=preserve_previous,
-            preserve_env_instance_type=False,
+            preserve_env_instance_type=preserve_env_instance_type,
             team_id=team_id,
         )
     body = request.last_request.json()
-    assert body["deployment_name"] == "candidate-v1"
-    assert body["promote"] is True
-    assert body["preserve_previous_prod_deployment"] is preserve_previous
-    assert body["preserve_env_instance_type"] is False
+    assert body.get("deployment_name") == deployment_name
+    if deployment_name is None:
+        assert "deployment_name" not in body
+    if environment and environment != "production":
+        assert body["environment_name"] == environment
+    else:
+        assert "environment_name" not in body
+    if promote or environment:
+        assert body["promote"] is True
+        assert body["preserve_previous_prod_deployment"] is preserve_previous
+        assert body["preserve_env_instance_type"] is preserve_env_instance_type
+    else:
+        assert "promote" not in body
+        assert "preserve_previous_prod_deployment" not in body
+        assert "preserve_env_instance_type" not in body
     assert body.get("name") == ("model_name" if model_id is None else None)
     assert service.model_id == "bis-model-id"
     assert service.model_version_id == "bis-deployment-id"
     assert service._url_config == URLConfig.BIS_LLM
+
+
+@pytest.mark.parametrize("model_server", [ModelServer.TrussServer, ModelServer.TRT_LLM])
+@pytest.mark.parametrize(
+    "promote,environment,expected_environment",
+    [
+        (True, None, "production"),
+        (True, "production", "production"),
+        (True, "staging", "staging"),
+        (False, "staging", "staging"),
+    ],
+)
+def test_push_normalizes_target_for_model_servers(
+    remote,
+    mock_truss_handle,
+    mock_baseten_requests,
+    mock_upload_truss,
+    model_server,
+    promote,
+    environment,
+    expected_environment,
+):
+    mock_truss_handle.spec.config.build.model_server = model_server
+
+    remote.push(
+        mock_truss_handle,
+        "model_name",
+        mock_truss_handle.truss_dir,
+        publish=False,
+        promote=promote,
+        environment=environment,
+        deployment_name="candidate-v1",
+    )
+
+    queries = [
+        request.json()["query"]
+        for request in mock_baseten_requests.request_history
+        if "create_model_version_from_truss" in request.json()["query"]
+    ]
+    assert len(queries) == 1
+    assert f'environment_name: "{expected_environment}"' in queries[0]
+    assert 'name: "candidate-v1"' in queries[0]
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
