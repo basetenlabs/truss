@@ -18,6 +18,7 @@ opentelemetry-http = { version = "0.31", default-features = false, features = ["
 async-trait = "0.1"
 bytes = "1"
 http = "1"
+httpdate = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
