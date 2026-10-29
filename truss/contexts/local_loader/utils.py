@@ -1,4 +1,3 @@
-import copy
 import inspect
 from typing import Mapping, Optional
 
@@ -7,7 +6,7 @@ from truss.local.local_config_handler import LocalConfigHandler
 
 
 def prepare_secrets(spec: TrussSpec) -> Mapping[str, Optional[str]]:
-    secrets = copy.deepcopy(spec.secrets)
+    secrets = spec.config.secret_defaults()
     local_secrets = LocalConfigHandler.get_config().secrets
     for secret_name in secrets:
         if secret_name in local_secrets:
