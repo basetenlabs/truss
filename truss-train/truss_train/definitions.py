@@ -139,6 +139,10 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
+    require_team_cache_affinity: bool = False
+    team_cache_affinity_gpu_type: Optional[
+        Annotated[truss_config.Accelerator, pydantic.Field(strict=False)]
+    ] = None
     mount_base_path: str = "/root/.cache"
 
 

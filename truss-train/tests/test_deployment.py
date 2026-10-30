@@ -21,6 +21,7 @@ from truss_train.definitions import (
 @mock.patch("truss.remote.baseten.utils.transfer.multipart_upload_boto3")
 @mock.patch("truss.remote.baseten.api.BasetenApi.get_blob_credentials")
 @pytest.mark.parametrize("enable_cache", [True, False])
+@pytest.mark.parametrize("team_cache_gpu_type", [None, "H100", "H200"])
 @pytest.mark.parametrize(
     "compute",
     [
@@ -44,6 +45,7 @@ def test_prepare_push(
     multipart_upload_boto3_mock,
     compute,
     enable_cache,
+    team_cache_gpu_type,
     truss_user_env,
 ):
     if truss_user_env == "with_env":
@@ -69,7 +71,16 @@ def test_prepare_push(
             compute=compute,
             runtime=Runtime(
                 cache_config=CacheConfig(
-                    enabled=enable_cache, enable_legacy_hf_mount=True
+                    enabled=enable_cache,
+                    enable_legacy_hf_mount=True,
+                    **(
+                        {}
+                        if team_cache_gpu_type is None
+                        else {
+                            "require_team_cache_affinity": True,
+                            "team_cache_affinity_gpu_type": team_cache_gpu_type,
+                        }
+                    ),
                 )
             ),
         ),
@@ -89,7 +100,15 @@ def test_prepare_push(
     assert prepared_job.runtime.cache_config.enable_legacy_hf_mount
     assert prepared_job.truss_user_env == truss_user_env
     # ensure that serialization works
-    prepared_job.model_dump()
+    assert prepared_job.model_dump()["runtime"]["cache_config"][
+        "require_team_cache_affinity"
+    ] is (team_cache_gpu_type is not None)
+    assert (
+        prepared_job.model_dump()["runtime"]["cache_config"][
+            "team_cache_affinity_gpu_type"
+        ]
+        == team_cache_gpu_type
+    )
 
 
 class TestGatherTrainingDir:
