@@ -29,9 +29,7 @@ fn convert_core_error_to_napi_error(error: ClientError) -> napi::Error {
     ClientError::InvalidParameter(msg) => create_napi_error(&msg),
     ClientError::Network(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
     ClientError::Http {
-      status: _,
-      message,
-      customer_request_id: _,
+      status: _, message, ..
     } => napi::Error::new(napi::Status::GenericFailure, message),
     ClientError::Connect(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
     ClientError::Serialization(msg) => napi::Error::new(napi::Status::GenericFailure, msg),

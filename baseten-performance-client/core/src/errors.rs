@@ -11,6 +11,8 @@ pub enum ClientError {
         status: u16,
         message: String,
         customer_request_id: Option<String>,
+        response_headers: std::collections::HashMap<String, String>,
+        response_body: Vec<u8>,
     },
     InvalidParameter(String),
     Serialization(String),
@@ -32,6 +34,7 @@ impl fmt::Display for ClientError {
                 status,
                 message,
                 customer_request_id,
+                ..
             } => {
                 if let Some(ref cid) = customer_request_id {
                     write!(

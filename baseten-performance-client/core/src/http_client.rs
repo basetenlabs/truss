@@ -218,14 +218,28 @@ async fn ensure_successful_response(
 ) -> Result<reqwest::Response, ClientError> {
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response
-            .text()
+        let response_headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|value| (name.as_str().to_string(), value.to_string()))
+            })
+            .collect();
+        let response_body = response
+            .bytes()
             .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
+            .map(|body| body.to_vec())
+            .unwrap_or_else(|_| b"Unknown error".to_vec());
+        let error_text = String::from_utf8_lossy(&response_body);
         Err(ClientError::Http {
             status: status.as_u16(),
             message: format!("API request failed with status {}: {}", status, error_text),
             customer_request_id,
+            response_headers,
+            response_body,
         })
     } else {
         Ok(response)
@@ -243,6 +257,7 @@ async fn send_request_with_retry(
     let mut attempted_endpoint_indices: HashSet<usize> = HashSet::new();
 
     loop {
+        let mut retry_after = None;
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint) =
             config.select_attempt_url(request_suffix, &indices_vec);
@@ -305,6 +320,7 @@ async fn send_request_with_retry(
                     .await;
                 }
 
+                retry_after = retry_after_delay(resp.headers());
                 // Retryable status: drain the body so the connection can be reused.
                 let _ = resp.bytes().await;
                 true
@@ -378,9 +394,25 @@ async fn send_request_with_retry(
         let jitter = rand::rng().random_range(0..100);
         let backoff_duration = current_backoff.min(Duration::from_millis(MAX_BACKOFF_MS))
             + Duration::from_millis(jitter);
+        let backoff_duration =
+            retry_after.map_or(backoff_duration, |delay| delay.max(backoff_duration));
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
     }
+}
+
+fn retry_after_delay(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    if let Ok(seconds) = value.trim().parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    let retry_at = httpdate::parse_http_date(value).ok()?;
+    Some(
+        retry_at
+            .duration_since(SystemTime::now())
+            .unwrap_or(Duration::ZERO),
+    )
 }
 
 fn spawn_hedged_request_cleanup(
@@ -497,5 +529,41 @@ fn is_retryable_status(status: u16, config: &RequestProcessingConfig) -> bool {
         400..=499 => false,
         // Unexpected status codes
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retry_after_delay;
+    use reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn parses_retry_after_delta_seconds() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("12"));
+
+        assert_eq!(retry_after_delay(&headers), Some(Duration::from_secs(12)));
+    }
+
+    #[test]
+    fn parses_retry_after_http_date() {
+        let retry_at = SystemTime::now() + Duration::from_secs(5);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            RETRY_AFTER,
+            HeaderValue::from_str(&httpdate::fmt_http_date(retry_at))
+                .expect("formatted date should be a valid header"),
+        );
+
+        assert!(retry_after_delay(&headers).unwrap() >= Duration::from_secs(4));
+    }
+
+    #[test]
+    fn ignores_invalid_retry_after_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("tomorrow"));
+
+        assert_eq!(retry_after_delay(&headers), None);
     }
 }
