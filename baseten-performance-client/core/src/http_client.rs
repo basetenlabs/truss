@@ -45,7 +45,8 @@ where
     R: serde::de::DeserializeOwned,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
+    let request_id = &customer_request_id;
+    let response = send_request_with_retry(&request_suffix, config, request_id, |attempt_url| {
         let mut request_builder = client
             .post(attempt_url)
             .bearer_auth(&api_key)
@@ -99,7 +100,8 @@ where
     T: serde::Serialize,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
+    let request_id = &customer_request_id;
+    let response = send_request_with_retry(&request_suffix, config, request_id, |attempt_url| {
         let mut request_builder = client
             .request(method.into(), attempt_url)
             .bearer_auth(&api_key)
@@ -235,6 +237,7 @@ async fn ensure_successful_response(
 async fn send_request_with_retry(
     request_suffix: &str,
     config: &RequestProcessingConfig,
+    customer_request_id: &CustomerRequestId,
     build_request: impl Fn(&str) -> reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, ClientError> {
     let mut retries_done = 0;
@@ -280,9 +283,10 @@ async fn send_request_with_retry(
             let _ = hedge_selection;
             send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {
-            build_request(&attempt_url).send().await.map_err(|e| {
-                convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
-            })
+            build_request(&attempt_url)
+                .send()
+                .await
+                .map_err(|e| convert_reqwest_error_with_customer_id(e, customer_request_id.clone()))
         };
 
         // Decide retry exactly once per iteration.
@@ -298,11 +302,8 @@ async fn send_request_with_retry(
                 let should_retry = retryable && retries_done < max_retries;
 
                 if !should_retry {
-                    return ensure_successful_response(
-                        resp,
-                        Some(config.customer_request_id.to_string()),
-                    )
-                    .await;
+                    return ensure_successful_response(resp, Some(customer_request_id.to_string()))
+                        .await;
                 }
 
                 // Retryable status: drain the body so the connection can be reused.
@@ -318,7 +319,7 @@ async fn send_request_with_retry(
                             "Local timeout encountered, retry budget available: {}, remaining: {} {}",
                             budget_available,
                             config.retry_budget.load(Ordering::SeqCst),
-                            config.customer_request_id.to_string()
+                            customer_request_id.to_string()
                         );
                         budget_available
                     }
@@ -328,7 +329,7 @@ async fn send_request_with_retry(
                             "Remote timeout encountered, retry budget available: {}, remaining: {} {}",
                             budget_available,
                             config.retry_budget.load(Ordering::SeqCst),
-                            config.customer_request_id.to_string()
+                            customer_request_id.to_string()
                         );
                         budget_available
                     }
@@ -343,7 +344,7 @@ async fn send_request_with_retry(
                                 "Network error encountered, retry budget available: {}, remaining: {} {}",
                                 budget_available,
                                 config.retry_budget.load(Ordering::SeqCst),
-                                config.customer_request_id.to_string()
+                                customer_request_id.to_string()
                             );
                             budget_available
                         }

@@ -673,6 +673,107 @@ async fn test_non_retryable_status_codes_disable_default_5xx_retry() {
     assert_eq!(endpoint.request_count.load(Ordering::SeqCst), 1);
 }
 
+async fn sent_customer_request_id(endpoint: &TestServer) -> String {
+    let headers = endpoint.request_headers.lock().await;
+    assert_eq!(headers.len(), 1, "expected exactly one request");
+    headers[0]
+        .get("x-baseten-customer-request-id")
+        .expect("request should carry a customer request id")
+        .to_str()
+        .expect("customer request id should be ASCII")
+        .to_string()
+}
+
+#[tokio::test]
+async fn test_http_error_reports_the_request_id_that_was_sent() {
+    let endpoint = start_test_server_with_failure_status(
+        "endpoint",
+        Duration::ZERO,
+        1,
+        true,
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference().with_hedge_budget_pct(0.0);
+
+    let error = client
+        .process_embeddings_requests(
+            vec!["bad request".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect_err("a 400 should fail the call");
+
+    let sent_id = sent_customer_request_id(&endpoint).await;
+    match error {
+        errors::ClientError::Http {
+            status,
+            customer_request_id,
+            ..
+        } => {
+            assert_eq!(status, 400);
+            assert_eq!(customer_request_id.as_deref(), Some(sent_id.as_str()));
+        }
+        other => panic!("expected an HTTP error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_timeout_error_reports_the_request_id_that_was_sent() {
+    let endpoint = start_test_server("endpoint", Duration::from_millis(500), 0, true).await;
+
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference()
+        .with_timeout_s(0.2)
+        .with_max_retries(0)
+        .with_hedge_budget_pct(0.0);
+
+    let error = client
+        .process_embeddings_requests(
+            vec!["slow request".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect_err("the request should time out");
+
+    let sent_id = sent_customer_request_id(&endpoint).await;
+    match error {
+        errors::ClientError::LocalTimeout(_, customer_request_id)
+        | errors::ClientError::RemoteTimeout(_, customer_request_id) => {
+            assert_eq!(customer_request_id.as_deref(), Some(sent_id.as_str()));
+        }
+        other => panic!("expected a timeout error, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn test_pin_initial_endpoint_once_keeps_initial_batch_requests_on_one_endpoint() {
     let endpoint_a = start_test_server("endpoint-a", Duration::ZERO, 0, true).await;
