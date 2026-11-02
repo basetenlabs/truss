@@ -768,7 +768,6 @@ def test_push_uses_bis_llm_service_for_bis_llm(
                         mock_truss_handle.truss_dir,
                         publish=True,
                         labels={"git_sha": "abc123", "environment": "production"},
-                        environment="staging",
                         deployment_name="v2",
                     )
 
@@ -801,7 +800,6 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         assert "fabric" not in kwargs["body"]["resources"]
     else:
         assert kwargs["body"]["resources"]["fabric"] == expected_resource_config
-    assert kwargs["body"]["environment_name"] == "staging"
     assert kwargs["body"]["deployment_name"] == "v2"
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
@@ -897,6 +895,10 @@ def test_push_forwards_fabric_requirement_for_non_bis_deployments(
             "Development deployment is not supported for BIS LLM models.",
         ),
         ({"promote": True}, "Promotion is not supported for BIS LLM models "),
+        (
+            {"environment": "staging"},
+            "Environment is not supported for BIS LLM models.",
+        ),
         (
             {"preserve_previous_prod_deployment": True},
             "Preserve previous production deployment is not supported for BIS LLM models.",

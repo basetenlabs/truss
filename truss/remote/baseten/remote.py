@@ -273,6 +273,7 @@ class BasetenRemote(TrussRemote):
         preserve_previous_prod_deployment: bool,
         disable_truss_download: bool,
         origin: Optional[custom_types.ModelOrigin],
+        environment: Optional[str],
         deploy_timeout_minutes: Optional[int],
     ) -> None:
         if not publish:
@@ -281,6 +282,8 @@ class BasetenRemote(TrussRemote):
             )
         if promote:
             raise ValueError("Promotion is not supported for BIS LLM models ")
+        if environment:
+            raise ValueError("Environment is not supported for BIS LLM models.")
         if preserve_previous_prod_deployment:
             raise ValueError(
                 "Preserve previous production deployment is not supported for BIS LLM models."
@@ -302,7 +305,6 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
-        environment: Optional[str] = None,
         deployment_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
@@ -318,8 +320,6 @@ class BasetenRemote(TrussRemote):
             body["model_metadata"] = config.model_metadata
         if labels is not None:
             body["metadata"] = labels
-        if environment is not None:
-            body["environment_name"] = environment
         if deployment_name is not None:
             body["deployment_name"] = deployment_name
         if config.runtime.egress_restrictions is not None:
@@ -376,6 +376,7 @@ class BasetenRemote(TrussRemote):
                 preserve_previous_prod_deployment=preserve_previous_prod_deployment,
                 disable_truss_download=disable_truss_download,
                 origin=origin,
+                environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
 
@@ -517,7 +518,6 @@ class BasetenRemote(TrussRemote):
                     model_name=model_name,
                     model_id=push_data.model_id,
                     labels=push_data.labels,
-                    environment=push_data.environment,
                     deployment_name=push_data.version_name,
                 ),
                 model_id=push_data.model_id,
