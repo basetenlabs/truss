@@ -4,6 +4,7 @@ from typing import Optional
 
 import tomlkit
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,38 @@ def parse_requirement_string(req_str: str) -> Optional[str]:
     # non PEP 508 compliant requirement strings (e.g. `git+` URLs). We want to be as permissive as possible here, and let `pip`
     # handle the validation of the requirement string.
     return stripped_line
+
+
+def add_or_update_requirement(requirements: list[str], requirement: str) -> list[str]:
+    """Replace the same named requirement, keeping other markers and extras independent.
+
+    pip also accepts opaque inputs such as bare Git URLs and local paths. Preserve
+    those verbatim instead of guessing a package name or rejecting the whole list.
+    """
+    key = _requirement_key(requirement)
+    return [
+        existing
+        for existing in requirements
+        if (
+            existing != requirement
+            if key is None
+            else _requirement_key(existing) != key
+        )
+    ] + [requirement]
+
+
+def _requirement_key(
+    requirement: str,
+) -> Optional[tuple[str, frozenset[str], Optional[str]]]:
+    try:
+        parsed = Requirement(requirement)
+    except InvalidRequirement:
+        return None
+    return (
+        canonicalize_name(parsed.name),
+        frozenset(canonicalize_name(extra) for extra in parsed.extras),
+        str(parsed.marker) if parsed.marker is not None else None,
+    )
 
 
 def parse_requirements_from_pyproject(
