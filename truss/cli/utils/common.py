@@ -187,17 +187,24 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     return wrapper
 
 
-def maybe_upgrade_dialogue():
+def maybe_upgrade_dialogue(baseten_cli_banner: bool = True):
+    # baseten-cli always sets this when invoking truss, which also suppresses the
+    # Baseten CLI banner there.
     if os.environ.get("TRUSS_NO_UPDATE_CHECK", "").lower() in ("1", "true"):
         return
     try:
         self_upgrade.notify_if_outdated(truss.__version__)
     except Exception as e:
         logger.debug(f"Upgrade check failed: {e}")
+    if baseten_cli_banner and check_is_interactive():
+        try:
+            self_upgrade.notify_baseten_cli()
+        except Exception as e:
+            logger.debug(f"Baseten CLI banner failed: {e}")
 
 
 def common_options(
-    add_middleware: bool = True,
+    add_middleware: bool = True, baseten_cli_banner: bool = True
 ) -> Callable[[Callable[..., object]], Callable[..., object]]:
     def decorator(f: Callable[..., object]) -> Callable[..., object]:
         @wraps(f)
@@ -207,7 +214,7 @@ def common_options(
         def wrapper(*args: object, **kwargs: object) -> Any:
             if add_middleware:
                 set_logging_level()
-                maybe_upgrade_dialogue()
+                maybe_upgrade_dialogue(baseten_cli_banner=baseten_cli_banner)
 
             return f(*args, **kwargs)
 

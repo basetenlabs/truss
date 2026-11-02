@@ -288,7 +288,7 @@ def _abort_chain_deployment(
     ),
 )
 @click.pass_context
-@common.common_options()
+@common.common_options(baseten_cli_banner=False)
 def push_chain(
     ctx: click.Context,
     source: Path,
@@ -566,7 +566,7 @@ def push_chain(
     help="Keep development chainlet models warm by preventing scale-to-zero while watching.",
 )
 @click.pass_context
-@common.common_options()
+@common.common_options(baseten_cli_banner=False)
 def watch_chains(
     ctx: click.Context,
     source: Path,
@@ -614,7 +614,7 @@ def watch_chains(
 
 @chains.command(name="init")  # type: ignore
 @click.argument("directory", type=Path, required=False)
-@common.common_options()
+@common.common_options(baseten_cli_banner=False)
 def init_chain(directory: Optional[Path]) -> None:
     """
     Initializes a chains project directory.
