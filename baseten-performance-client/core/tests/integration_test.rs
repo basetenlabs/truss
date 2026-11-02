@@ -801,6 +801,118 @@ async fn test_hedge_uses_alternate_endpoint_from_pool() {
 }
 
 #[tokio::test]
+async fn test_failed_hedge_does_not_cancel_slow_original() {
+    let endpoint_a = start_test_server("endpoint-a", Duration::from_millis(600), 0, true).await;
+    let endpoint_b = start_test_server_with_failure_status(
+        "endpoint-b",
+        Duration::ZERO,
+        usize::MAX,
+        true,
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
+    .await;
+
+    let endpoint_pool = EndpointPool::new(
+        EndpointPoolConfig::new(vec![
+            test_endpoint(&endpoint_a.base_url),
+            test_endpoint(&endpoint_b.base_url),
+        ])
+        .with_weights(vec![1.0, 0.0]),
+    )
+    .expect("endpoint pool should build");
+
+    let client = PerformanceClientCore::new(
+        endpoint_a.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        Some(endpoint_pool),
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference()
+        .with_max_retries(0)
+        .with_hedge_delay(0.2)
+        .with_hedge_budget_pct(1.0);
+
+    let (_, _, headers, _) = client
+        .process_embeddings_requests(
+            vec!["hedge me".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect("the original request should still succeed after the hedge fails");
+
+    assert_eq!(
+        headers[0].get("x-test-server").map(String::as_str),
+        Some("endpoint-a")
+    );
+    assert_eq!(endpoint_a.request_count.load(Ordering::SeqCst), 1);
+    assert_eq!(endpoint_b.request_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn test_hedge_returns_error_when_original_and_hedge_both_fail() {
+    let endpoint_a =
+        start_test_server("endpoint-a", Duration::from_millis(400), usize::MAX, true).await;
+    let endpoint_b = start_test_server_with_failure_status(
+        "endpoint-b",
+        Duration::ZERO,
+        usize::MAX,
+        true,
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
+    .await;
+
+    let endpoint_pool = EndpointPool::new(
+        EndpointPoolConfig::new(vec![
+            test_endpoint(&endpoint_a.base_url),
+            test_endpoint(&endpoint_b.base_url),
+        ])
+        .with_weights(vec![1.0, 0.0]),
+    )
+    .expect("endpoint pool should build");
+
+    let client = PerformanceClientCore::new(
+        endpoint_a.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        Some(endpoint_pool),
+    )
+    .expect("client should build");
+
+    let preference = single_request_preference()
+        .with_max_retries(0)
+        .with_hedge_delay(0.2)
+        .with_hedge_budget_pct(1.0);
+
+    let result = client
+        .process_embeddings_requests(
+            vec!["hedge me".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "both attempts failed, so the call should fail"
+    );
+    assert_eq!(endpoint_a.request_count.load(Ordering::SeqCst), 1);
+    assert_eq!(endpoint_b.request_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn test_hedge_budget_caps_hedges_when_every_request_is_slow() {
     // A fleet-wide slowdown: every request takes longer than the hedge delay,
     // so all in-flight requests reach the hedge timer at roughly the same time.

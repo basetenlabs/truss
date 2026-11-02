@@ -396,6 +396,18 @@ fn spawn_hedged_request_cleanup(
     });
 }
 
+fn is_successful_attempt(result: &Result<reqwest::Response, ClientError>) -> bool {
+    matches!(result, Ok(response) if response.status().is_success())
+}
+
+fn drain_in_background(result: Result<reqwest::Response, ClientError>) {
+    if let Ok(response) = result {
+        tokio::spawn(async move {
+            let _ = response.bytes().await;
+        });
+    }
+}
+
 pub(crate) async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
     request_builder_hedge: reqwest::RequestBuilder,
@@ -453,11 +465,24 @@ pub(crate) async fn send_request_with_hedging(
                     result
                 });
 
-                // Race between original and hedged request - first to complete wins
-                match join_set.join_next().await {
+                // Race between original and hedged request - first success wins.
+                // A fast failure from one copy must not cancel the other copy,
+                // which may still succeed.
+                let first = match join_set.join_next().await {
                     Some(Ok(response_result)) => response_result,
                     Some(Err(join_err)) => Err(ClientError::Network(format!("Request task failed: {}", join_err))),
                     None => Err(ClientError::Network("No task result available".to_string())),
+                };
+                if is_successful_attempt(&first) {
+                    first
+                } else {
+                    match join_set.join_next().await {
+                        Some(Ok(second)) if is_successful_attempt(&second) => {
+                            drain_in_background(first);
+                            second
+                        }
+                        _ => first,
+                    }
                 }
                 // JoinSetGuard will abort the remaining task on drop
             } else {
