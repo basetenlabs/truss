@@ -140,7 +140,6 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
     mount_base_path: str = "/root/.cache"
-    # Keeps $HOME in a per-job directory on the project cache; needs `enabled`.
     persistent_home: bool = False
 
 
