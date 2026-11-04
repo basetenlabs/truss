@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from truss.base import truss_config
+from truss.base.truss_config import Accelerator
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
@@ -27,16 +28,27 @@ from truss_train.definitions import (
 
 @pytest.mark.parametrize(
     "project_accelerator,job_accelerator",
-    [(None, "H200:8"), ("H100", None), ("H100", "H100:8"), ("H100", "H200:8")],
+    [
+        (None, Accelerator.H200),
+        (Accelerator.H100, None),
+        (Accelerator.H100, Accelerator.H100),
+        (Accelerator.H100, Accelerator.H200),
+    ],
 )
 def test_project_accelerator_allows_cpu_and_matching_gpu_jobs(
     project_accelerator, job_accelerator
 ):
     job = TrainingJob(
         image=Image(base_image="python:3.11"),
-        compute=Compute(accelerator=job_accelerator),
+        compute=Compute(
+            accelerator=truss_config.AcceleratorSpec(
+                accelerator=job_accelerator, count=8
+            )
+            if job_accelerator is not None
+            else None
+        ),
     )
-    if project_accelerator == "H100" and job_accelerator == "H200:8":
+    if project_accelerator is Accelerator.H100 and job_accelerator is Accelerator.H200:
         with pytest.raises(ValidationError, match="GPU jobs must request H100"):
             TrainingProject(
                 name="prep", job=job, project_accelerator=project_accelerator
@@ -48,13 +60,14 @@ def test_project_accelerator_allows_cpu_and_matching_gpu_jobs(
         assert project.job.compute.accelerator == job.compute.accelerator
 
 
-@pytest.mark.parametrize("project_accelerator", ["CPU", "H100:8", "unknown"])
-def test_project_accelerator_rejects_invalid_gpu_type(project_accelerator):
-    with pytest.raises(ValidationError):
+def test_project_accelerator_rejects_strings():
+    with pytest.raises(
+        ValidationError, match="Input should be an instance of Accelerator"
+    ):
         TrainingProject(
             name="prep",
             job=TrainingJob(image=Image(base_image="python:3.11")),
-            project_accelerator=project_accelerator,
+            project_accelerator="H100",
         )
 
 

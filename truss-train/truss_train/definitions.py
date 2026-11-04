@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Annotated, Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import ValidationError, field_validator, model_validator
+from pydantic import ValidationError, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
@@ -338,11 +338,6 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
     team_name: Optional[str] = None
     project_accelerator: Optional[truss_config.Accelerator] = None
-
-    @field_validator("project_accelerator", mode="before")
-    @classmethod
-    def _parse_project_accelerator(cls, value):
-        return truss_config.Accelerator(value) if value is not None else None
 
     @model_validator(mode="after")
     def _validate_project_accelerator(self) -> "TrainingProject":
