@@ -140,6 +140,7 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
     mount_base_path: str = "/root/.cache"
+    persistent_home: bool = False
 
 
 class InteractiveSessionTrigger(str, enum.Enum):

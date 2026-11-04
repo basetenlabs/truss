@@ -265,6 +265,30 @@ class TestWorkstationJsonOutput:
             == availability
         )
 
+    @pytest.mark.parametrize(
+        ("args", "persistent_home"), [([], False), (["--persistent-home"], True)]
+    )
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_persistent_home_sets_workstation_cache_config(
+        self,
+        mock_remote_factory,
+        mock_get_remote_team,
+        mock_push,
+        args,
+        persistent_home,
+    ):
+        mock_remote_factory.return_value = self._setup_mock_remote()
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = self._invoke(*args)
+
+        assert result.exit_code == 0, result.output
+        cache_config = mock_push.call_args.kwargs["config"].job.runtime.cache_config
+        assert cache_config.persistent_home is persistent_home
+
     @patch("truss_train.public_api.push")
     @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
     @patch("truss.cli.train_commands.RemoteFactory.create")

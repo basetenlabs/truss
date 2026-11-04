@@ -1341,6 +1341,11 @@ def _print_workstation_json(
     help="Run on interruptible spot capacity. You are responsible for checkpointing your progress.",
 )
 @click.option(
+    "--persistent-home",
+    is_flag=True,
+    help="Keep $HOME on the project cache so its contents outlive the workstation.",
+)
+@click.option(
     "-o",
     "--output-format",
     "output_format",
@@ -1368,6 +1373,7 @@ def workstation(
     provided_team_name: Optional[str],
     tail: bool,
     spot: bool,
+    persistent_home: bool,
     output_format: str,
 ):
     """Spin up an SSH workstation on Baseten training infrastructure."""
@@ -1420,6 +1426,7 @@ def workstation(
         checkpoint_volume_size=checkpoint_volume_size,
         checkpoint_from_job=checkpoint_from_job,
         spot=spot,
+        persistent_home=persistent_home,
     )
 
     node_str = f"{node_count}x " if node_count > 1 else ""
