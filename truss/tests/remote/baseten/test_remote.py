@@ -768,6 +768,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
                         mock_truss_handle.truss_dir,
                         publish=True,
                         labels={"git_sha": "abc123", "environment": "production"},
+                        deployment_name="v2",
                     )
 
     mock_validate_backend.assert_not_called()
@@ -799,6 +800,7 @@ def test_push_uses_bis_llm_service_for_bis_llm(
         assert "fabric" not in kwargs["body"]["resources"]
     else:
         assert kwargs["body"]["resources"]["fabric"] == expected_resource_config
+    assert kwargs["body"]["deployment_name"] == "v2"
     assert "name" not in kwargs["body"]
     assert service.model_id == "bis-llm-model-id"
     assert service.model_version_id == "bis-llm-deployment-id"
@@ -904,10 +906,6 @@ def test_push_forwards_fabric_requirement_for_non_bis_deployments(
         (
             {"disable_truss_download": True},
             "Disable truss download is not supported for BIS LLM models.",
-        ),
-        (
-            {"deployment_name": "v1"},
-            "Deployment name is not supported for BIS LLM models.",
         ),
         (
             {"origin": b10_types.ModelOrigin.BASETEN},
