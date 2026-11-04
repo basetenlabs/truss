@@ -8,6 +8,7 @@ from truss_train.definitions import (
     AWSIAMDockerAuth,
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
+    CacheConfig,
     CheckpointList,
     Compute,
     DockerAuth,
@@ -416,3 +417,12 @@ class TestCheckpointListLoopsCheckpoints:
                 ],
                 loops_checkpoint_ids=["tcp_xyz"],
             )
+
+
+@pytest.mark.parametrize("persistent_home", [True, False])
+def test_cache_config_serializes_persistent_home(persistent_home):
+    runtime = Runtime(
+        cache_config=CacheConfig(enabled=True, persistent_home=persistent_home)
+    )
+
+    assert runtime.model_dump()["cache_config"]["persistent_home"] is persistent_home
