@@ -35,9 +35,7 @@ from truss_train.definitions import (
         (Accelerator.H100, Accelerator.H200),
     ],
 )
-def test_project_accelerator_allows_cpu_and_matching_gpu_jobs(
-    project_accelerator, job_accelerator
-):
+def test_project_accelerator_keeps_job_compute(project_accelerator, job_accelerator):
     job = TrainingJob(
         image=Image(base_image="python:3.11"),
         compute=Compute(
@@ -48,16 +46,11 @@ def test_project_accelerator_allows_cpu_and_matching_gpu_jobs(
             else None
         ),
     )
-    if project_accelerator is Accelerator.H100 and job_accelerator is Accelerator.H200:
-        with pytest.raises(ValidationError, match="GPU jobs must request H100"):
-            TrainingProject(
-                name="prep", job=job, project_accelerator=project_accelerator
-            )
-    else:
-        project = TrainingProject(
-            name="prep", job=job, project_accelerator=project_accelerator
-        )
-        assert project.job.compute.accelerator == job.compute.accelerator
+    project = TrainingProject(
+        name="prep", job=job, project_accelerator=project_accelerator
+    )
+    assert project.job.compute.accelerator == job.compute.accelerator
+    assert project.project_accelerator == project_accelerator
 
 
 def test_project_accelerator_rejects_strings():

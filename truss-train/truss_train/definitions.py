@@ -339,21 +339,6 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     team_name: Optional[str] = None
     project_accelerator: Optional[truss_config.Accelerator] = None
 
-    @model_validator(mode="after")
-    def _validate_project_accelerator(self) -> "TrainingProject":
-        accelerator = self.job.compute.accelerator
-        if (
-            self.project_accelerator is not None
-            and accelerator is not None
-            and accelerator.accelerator is not None
-            and accelerator.accelerator != self.project_accelerator
-        ):
-            raise ValueError(
-                f"This project uses {self.project_accelerator.value}. GPU jobs must "
-                f"request {self.project_accelerator.value}; CPU jobs can use the same project."
-            )
-        return self
-
 
 class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
