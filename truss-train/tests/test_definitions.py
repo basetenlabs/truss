@@ -21,7 +21,41 @@ from truss_train.definitions import (
     Runtime,
     SecretReference,
     TrainingJob,
+    TrainingProject,
 )
+
+
+@pytest.mark.parametrize(
+    "project_accelerator,job_accelerator",
+    [(None, "H200:8"), ("H100", None), ("H100", "H100:8"), ("H100", "H200:8")],
+)
+def test_project_accelerator_allows_cpu_and_matching_gpu_jobs(
+    project_accelerator, job_accelerator
+):
+    job = TrainingJob(
+        image=Image(base_image="python:3.11"),
+        compute=Compute(accelerator=job_accelerator),
+    )
+    if project_accelerator == "H100" and job_accelerator == "H200:8":
+        with pytest.raises(ValidationError, match="GPU jobs must request H100"):
+            TrainingProject(
+                name="prep", job=job, project_accelerator=project_accelerator
+            )
+    else:
+        project = TrainingProject(
+            name="prep", job=job, project_accelerator=project_accelerator
+        )
+        assert project.job.compute.accelerator == job.compute.accelerator
+
+
+@pytest.mark.parametrize("project_accelerator", ["CPU", "H100:8", "unknown"])
+def test_project_accelerator_rejects_invalid_gpu_type(project_accelerator):
+    with pytest.raises(ValidationError):
+        TrainingProject(
+            name="prep",
+            job=TrainingJob(image=Image(base_image="python:3.11")),
+            project_accelerator=project_accelerator,
+        )
 
 
 class TestLoopsCheckpoint:

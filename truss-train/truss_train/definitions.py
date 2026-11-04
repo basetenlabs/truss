@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Annotated, Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import ValidationError, model_validator
+from pydantic import ValidationError, field_validator, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
@@ -337,6 +337,27 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
     team_name: Optional[str] = None
+    project_accelerator: Optional[truss_config.Accelerator] = None
+
+    @field_validator("project_accelerator", mode="before")
+    @classmethod
+    def _parse_project_accelerator(cls, value):
+        return truss_config.Accelerator(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def _validate_project_accelerator(self) -> "TrainingProject":
+        accelerator = self.job.compute.accelerator
+        if (
+            self.project_accelerator is not None
+            and accelerator is not None
+            and accelerator.accelerator is not None
+            and accelerator.accelerator != self.project_accelerator
+        ):
+            raise ValueError(
+                f"This project uses {self.project_accelerator.value}. GPU jobs must "
+                f"request {self.project_accelerator.value}; CPU jobs can use the same project."
+            )
+        return self
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):
