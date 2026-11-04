@@ -17,7 +17,7 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::types::{PyBytes, PyDict, PyType};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -740,8 +740,32 @@ impl PerformanceClient {
             ClientError::Http {
                 status,
                 message,
-                customer_request_id: _,
-            } => PyErr::new::<HTTPError, _>((status, message)),
+                response_headers,
+                response_body,
+                ..
+            } => {
+                let fallback = PyErr::new::<HTTPError, _>((status, message.clone()));
+                Python::with_gil(|py| -> PyResult<PyErr> {
+                    let requests = py.import("requests")?;
+                    let response = requests.getattr("Response")?.call0()?;
+                    let headers = PyDict::new(py);
+                    for (name, value) in response_headers {
+                        headers.set_item(name, value)?;
+                    }
+                    let case_insensitive_headers = requests
+                        .getattr("structures")?
+                        .getattr("CaseInsensitiveDict")?
+                        .call1((headers,))?;
+                    response.setattr("status_code", status)?;
+                    response.setattr("headers", case_insensitive_headers)?;
+                    response.setattr("_content", PyBytes::new(py, &response_body))?;
+
+                    let error = PyErr::new::<HTTPError, _>((status, message));
+                    error.value(py).setattr("response", response)?;
+                    Ok(error)
+                })
+                .unwrap_or(fallback)
+            }
             ClientError::InvalidParameter(msg) => PyValueError::new_err(msg),
             ClientError::Serialization(msg) => PyValueError::new_err(msg),
             ClientError::Network(msg) => PyValueError::new_err(msg),

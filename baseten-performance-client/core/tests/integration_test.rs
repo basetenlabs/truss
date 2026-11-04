@@ -236,6 +236,7 @@ struct TestServerState {
     response_delay: Duration,
     healthy: bool,
     failure_status: StatusCode,
+    retry_after: Option<&'static str>,
 }
 
 struct TestServer {
@@ -274,6 +275,41 @@ async fn start_test_server_with_failure_status(
     healthy: bool,
     failure_status: StatusCode,
 ) -> TestServer {
+    start_test_server_config(
+        name,
+        response_delay,
+        remaining_failures,
+        healthy,
+        failure_status,
+        None,
+    )
+    .await
+}
+
+async fn start_test_server_with_retry_after(
+    name: &'static str,
+    remaining_failures: usize,
+    retry_after: &'static str,
+) -> TestServer {
+    start_test_server_config(
+        name,
+        Duration::ZERO,
+        remaining_failures,
+        true,
+        StatusCode::SERVICE_UNAVAILABLE,
+        Some(retry_after),
+    )
+    .await
+}
+
+async fn start_test_server_config(
+    name: &'static str,
+    response_delay: Duration,
+    remaining_failures: usize,
+    healthy: bool,
+    failure_status: StatusCode,
+    retry_after: Option<&'static str>,
+) -> TestServer {
     let request_count = Arc::new(AtomicUsize::new(0));
     let request_headers = Arc::new(Mutex::new(Vec::new()));
     let state = TestServerState {
@@ -284,6 +320,7 @@ async fn start_test_server_with_failure_status(
         response_delay,
         healthy,
         failure_status,
+        retry_after,
     };
 
     let app = Router::new()
@@ -341,8 +378,13 @@ async fn test_embeddings_handler(
     let mut remaining_failures = state.remaining_failures.lock().await;
     if *remaining_failures > 0 {
         *remaining_failures -= 1;
+        let mut headers = AxumHeaderMap::new();
+        if let Some(retry_after) = state.retry_after {
+            headers.insert("retry-after", HeaderValue::from_static(retry_after));
+        }
         return (
             state.failure_status,
+            headers,
             Json(json!({"error": format!("{} failed", state.name)})),
         )
             .into_response();
@@ -597,6 +639,73 @@ async fn test_retry_uses_alternate_endpoint_from_pool() {
     let alternate_request_count = endpoint_b.request_count.load(Ordering::SeqCst)
         + endpoint_c.request_count.load(Ordering::SeqCst);
     assert_eq!(alternate_request_count, 1);
+}
+
+#[tokio::test]
+async fn test_retry_after_delay_is_honored() {
+    let endpoint = start_test_server_with_retry_after("retry-after", 1, "1").await;
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+    let preference = single_request_preference()
+        .with_timeout_s(3.0)
+        .with_max_retries(1)
+        .with_hedge_budget_pct(0.0);
+
+    let started = std::time::Instant::now();
+    client
+        .process_embeddings_requests(
+            vec!["retry after".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await
+        .expect("request should succeed after retry");
+
+    assert!(started.elapsed() >= Duration::from_secs(1));
+    assert_eq!(endpoint.request_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn test_retry_after_beyond_total_timeout_does_not_retry_early() {
+    let endpoint = start_test_server_with_retry_after("retry-after-timeout", 1, "5").await;
+    let client = PerformanceClientCore::new(
+        endpoint.base_url.clone(),
+        Some("test-key".to_string()),
+        1,
+        None,
+        None,
+        None,
+    )
+    .expect("client should build");
+    let preference = single_request_preference()
+        .with_timeout_s(1.0)
+        .with_total_timeout_s(1.0)
+        .with_max_retries(1)
+        .with_hedge_budget_pct(0.0);
+
+    let result = client
+        .process_embeddings_requests(
+            vec!["do not retry early".to_string()],
+            "test-model".to_string(),
+            None,
+            None,
+            None,
+            &preference,
+        )
+        .await;
+
+    assert!(result.is_err(), "total timeout should end the request");
+    assert_eq!(endpoint.request_count.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

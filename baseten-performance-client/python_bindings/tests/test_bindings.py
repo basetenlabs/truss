@@ -1,6 +1,8 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
+import pytest
+import requests
 from baseten_performance_client import (
     PerformanceClient,
     RequestProcessingPreference,
@@ -295,3 +297,41 @@ def test_trace_context_forwarding():
     assert seen[0]["tracestate"] == "vendor=value"
     assert "traceparent" not in seen[1]
     assert "tracestate" not in seen[1]
+
+
+def test_http_error_preserves_response():
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", "0")
+            self.send_header("X-Request-Id", "synthetic-request-id")
+            self.end_headers()
+            self.wfile.write(b'{"error":"rate limited"}')
+
+        def log_message(self, format, *args):
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            client = PerformanceClient(
+                f"http://127.0.0.1:{server.server_port}", "test-key", http_version=1
+            )
+            preference = RequestProcessingPreference(
+                max_retries=0, hedge_budget_pct=0.0
+            )
+            with pytest.raises(requests.exceptions.HTTPError) as excinfo:
+                client.batch_post("/error", [{}], preference=preference)
+        finally:
+            server.shutdown()
+            thread.join()
+
+    error = excinfo.value
+    assert error.args[0] == 429
+    assert error.response.status_code == 429
+    assert error.response.headers["retry-after"] == "0"
+    assert error.response.headers["X-Request-Id"] == "synthetic-request-id"
+    assert error.response.text == '{"error":"rate limited"}'
