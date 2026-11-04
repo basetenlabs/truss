@@ -28,7 +28,10 @@ def parse_requirements_from_pyproject(
     pyproject_path: pathlib.Path, warn_on_invalid: bool = False
 ) -> list[str]:
     global _invalid_dependency_warned
-    with open(pyproject_path) as f:
+    # TOML is defined as UTF-8, so pin the codec instead of inheriting the
+    # locale's: on a non-UTF-8 box (e.g. cp936) any non-ASCII byte that the
+    # locale charset cannot decode aborts the read here.
+    with open(pyproject_path, encoding="utf-8") as f:
         data = tomlkit.load(f)
 
     raw_deps = data.get("project", {}).get("dependencies", [])
