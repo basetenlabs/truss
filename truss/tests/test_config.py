@@ -47,12 +47,13 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-def test_tpu_resources_roundtrip():
-    resources = Resources.model_validate({"accelerator": "TPU_V6E:8"})
+@pytest.mark.parametrize("accelerator, count", [("TPU_V6E", 8), ("TPU_V7", 4)])
+def test_tpu_resources_roundtrip(accelerator, count):
+    resources = Resources.model_validate({"accelerator": f"{accelerator}:{count}"})
     assert resources.is_tpu
     assert resources.use_gpu
-    assert resources.accelerator.count == 8
-    assert resources.model_dump()["accelerator"] == "TPU_V6E:8"
+    assert resources.accelerator.count == count
+    assert resources.model_dump()["accelerator"] == f"{accelerator}:{count}"
     assert Resources.model_validate(resources.model_dump()) == resources
 
 
@@ -79,6 +80,7 @@ def test_tpu_rejects_unsupported_config(overrides, message):
         TrussConfig.model_validate(config)
 
 
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:8", "TPU_V7:4"])
 @pytest.mark.parametrize(
     "resource_settings",
     [
@@ -87,10 +89,10 @@ def test_tpu_rejects_unsupported_config(overrides, message):
         {"fabric": {"preferences": ["roce"]}},
     ],
 )
-def test_tpu_node_and_fabric_settings_warn(resource_settings, caplog):
+def test_tpu_node_and_fabric_settings_warn(accelerator, resource_settings, caplog):
     config = TrussConfig.model_validate(
         {
-            "resources": {"accelerator": "TPU_V6E:8", **resource_settings},
+            "resources": {"accelerator": accelerator, **resource_settings},
             "base_image": {"image": "example.com/tpu-runtime:preview"},
         }
     )
