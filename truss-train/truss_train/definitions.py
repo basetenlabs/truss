@@ -338,6 +338,7 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
     team_name: Optional[str] = None
+    project_accelerator: Optional[truss_config.Accelerator] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):

@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from truss.base import truss_config
+from truss.base.truss_config import Accelerator
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
@@ -22,7 +23,46 @@ from truss_train.definitions import (
     Runtime,
     SecretReference,
     TrainingJob,
+    TrainingProject,
 )
+
+
+@pytest.mark.parametrize(
+    "project_accelerator,job_accelerator",
+    [
+        (None, Accelerator.H200),
+        (Accelerator.H100, None),
+        (Accelerator.H100, Accelerator.H100),
+        (Accelerator.H100, Accelerator.H200),
+    ],
+)
+def test_project_accelerator_keeps_job_compute(project_accelerator, job_accelerator):
+    job = TrainingJob(
+        image=Image(base_image="python:3.11"),
+        compute=Compute(
+            accelerator=truss_config.AcceleratorSpec(
+                accelerator=job_accelerator, count=8
+            )
+            if job_accelerator is not None
+            else None
+        ),
+    )
+    project = TrainingProject(
+        name="prep", job=job, project_accelerator=project_accelerator
+    )
+    assert project.job.compute.accelerator == job.compute.accelerator
+    assert project.project_accelerator == project_accelerator
+
+
+def test_project_accelerator_rejects_strings():
+    with pytest.raises(
+        ValidationError, match="Input should be an instance of Accelerator"
+    ):
+        TrainingProject(
+            name="prep",
+            job=TrainingJob(image=Image(base_image="python:3.11")),
+            project_accelerator="H100",
+        )
 
 
 class TestLoopsCheckpoint:
