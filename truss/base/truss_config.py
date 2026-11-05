@@ -1844,10 +1844,6 @@ class TrussConfig(custom_types.ConfigModel):
                 raise ValueError(
                     "TPU deployments support a single node without fabric requirements."
                 )
-            if self.model_framework != "custom":
-                raise ValueError(
-                    "TPU accelerators require a custom model or docker_server."
-                )
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"

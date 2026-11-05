@@ -72,7 +72,6 @@ def test_tpu_rejects_invalid_accelerator_count(accelerator):
             {"resources": {"accelerator": "TPU_V6E:8", "fabric": {"use_rdma": True}}},
             "single node",
         ),
-        ({"model_framework": "huggingface_transformer"}, "custom model"),
     ],
 )
 def test_tpu_rejects_unsupported_config(overrides, message):
