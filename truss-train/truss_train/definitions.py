@@ -29,13 +29,21 @@ class SecretReference(custom_types.SafeModelNoExtra):
 class AvailabilityModel(str, enum.Enum):
     """Capacity guarantee under which a training job is scheduled.
 
-    ``DEDICATED`` is on-demand capacity that is not preempted (the default). ``SPOT`` is
+    ``STANDARD`` is capacity that is not preempted (the default). ``SPOT`` is
     interruptible capacity that may be preempted; the user is responsible for
     checkpointing their own progress.
     """
 
-    DEDICATED = "dedicated"
+    STANDARD = "standard"
     SPOT = "spot"
+    # The old name for STANDARD, kept so existing configs keep working.
+    DEDICATED = "standard"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["AvailabilityModel"]:
+        if value == "dedicated":
+            return cls.STANDARD
+        return None
 
 
 class Compute(custom_types.SafeModelNoExtra):
@@ -43,7 +51,7 @@ class Compute(custom_types.SafeModelNoExtra):
     cpu_count: int = 1
     memory: str = "2Gi"
     accelerator: Optional[truss_config.AcceleratorSpec] = None
-    availability_model: AvailabilityModel = AvailabilityModel.DEDICATED
+    availability_model: AvailabilityModel = AvailabilityModel.STANDARD
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -52,7 +60,12 @@ class Compute(custom_types.SafeModelNoExtra):
                 "accelerator": self.accelerator.accelerator.value,
                 "count": self.accelerator.count,
             }
-        data["availability_model"] = self.availability_model.value
+        # Sent only for spot: the server defaults to standard, and servers from before
+        # the rename reject 'standard'.
+        if self.availability_model is AvailabilityModel.SPOT:
+            data["availability_model"] = AvailabilityModel.SPOT.value
+        else:
+            data.pop("availability_model", None)
         return data
 
     def to_truss_config(self) -> truss_config.Resources:
@@ -338,6 +351,7 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
     team_name: Optional[str] = None
+    project_accelerator: Optional[truss_config.Accelerator] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):

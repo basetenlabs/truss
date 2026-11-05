@@ -89,7 +89,7 @@ def build_workstation_project(
         ),
         availability_model=AvailabilityModel.SPOT
         if spot
-        else AvailabilityModel.DEDICATED,
+        else AvailabilityModel.STANDARD,
     )
 
     load_checkpoint_config = None

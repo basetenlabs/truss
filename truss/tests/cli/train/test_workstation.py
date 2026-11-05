@@ -245,7 +245,7 @@ class TestWorkstationJsonOutput:
 
     @pytest.mark.parametrize(
         ("args", "availability"),
-        [([], AvailabilityModel.DEDICATED), (["--spot"], AvailabilityModel.SPOT)],
+        [([], AvailabilityModel.STANDARD), (["--spot"], AvailabilityModel.SPOT)],
     )
     @patch("truss_train.public_api.push")
     @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
