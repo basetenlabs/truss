@@ -6,6 +6,7 @@ import requests
 from requests import Response
 
 import truss_train.definitions as train_definitions
+from truss.base.truss_config import Accelerator
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
@@ -559,11 +560,18 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
     assert "entrypoint:" in gql_mutation
 
 
+@pytest.mark.parametrize(
+    "project_accelerator,expected_accelerator",
+    [(None, None), (Accelerator.H100, "H100"), (Accelerator.A100_40GB, "A100_40GB")],
+)
 @mock.patch("requests.post", return_value=mock_upsert_training_project_response())
-def test_upsert_training_project(mock_post, baseten_api):
+def test_upsert_training_project(
+    mock_post, baseten_api, project_accelerator, expected_accelerator
+):
     baseten_api.upsert_training_project(
         training_project=train_definitions.TrainingProject(
             name="training-project",
+            project_accelerator=project_accelerator,
             job=train_definitions.TrainingJob(
                 image=train_definitions.Image(base_image="base-image"),
                 runtime=train_definitions.Runtime(
@@ -576,6 +584,10 @@ def test_upsert_training_project(mock_post, baseten_api):
     upsert_body = mock_post.call_args[1]["json"]["training_project"]
     assert "job" not in upsert_body
     assert "training-project" == upsert_body["name"]
+    if project_accelerator is None:
+        assert "project_accelerator" not in upsert_body
+    else:
+        assert upsert_body["project_accelerator"] == expected_accelerator
 
 
 def mock_update_training_job_response():
