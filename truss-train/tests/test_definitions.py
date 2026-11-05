@@ -118,9 +118,17 @@ class TestLoopsCheckpoint:
 
 
 class TestComputeAvailabilityModel:
-    def test_defaults_to_dedicated(self):
-        assert Compute().availability_model == AvailabilityModel.DEDICATED
-        assert Compute().model_dump()["availability_model"] == "dedicated"
+    def test_defaults_to_standard_and_leaves_it_to_the_server(self):
+        assert Compute().availability_model == AvailabilityModel.STANDARD
+        assert "availability_model" not in Compute().model_dump()
+
+    def test_old_dedicated_name_means_standard(self):
+        assert AvailabilityModel.DEDICATED is AvailabilityModel.STANDARD
+        assert AvailabilityModel("dedicated") is AvailabilityModel.STANDARD
+        assert (
+            "availability_model"
+            not in Compute(availability_model=AvailabilityModel.DEDICATED).model_dump()
+        )
 
     def test_spot_serializes_to_string_value(self):
         dumped = Compute(availability_model=AvailabilityModel.SPOT).model_dump()
