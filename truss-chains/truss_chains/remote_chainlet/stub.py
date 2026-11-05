@@ -33,6 +33,14 @@ from truss_chains.remote_chainlet import utils
 if TYPE_CHECKING:
     import aiohttp
 
+# Default for optional args in generated stubs: such args are left out of the
+# request, so the remote chainlet applies its own default.
+NOT_SET: Any = object()
+
+
+def provided_args(**kwargs: Any) -> Dict[str, Any]:
+    return {k: v for k, v in kwargs.items() if v is not NOT_SET}
+
 
 DEFAULT_DNS_CACHE_TIMEOUT_SECONDS = 300
 
@@ -301,14 +309,15 @@ class StubBase(BasetenSession, abc.ABC):
             headers[private_types.CHAIN_REQUEST_ID_HEADER_KEY] = chain_request_id
 
         if isinstance(inputs, pydantic.BaseModel):
+            unset = set(type(inputs).model_fields) - inputs.model_fields_set
             if self._service_descriptor.options.use_binary:
-                data_dict = inputs.model_dump(mode="python")
+                data_dict = inputs.model_dump(mode="python", exclude=unset)
                 data_key = "content" if for_httpx else "data"
                 kwargs[data_key] = serialization.truss_msgpack_serialize(data_dict)
                 headers["Content-Type"] = "application/octet-stream"
             else:
                 data_key = "content" if for_httpx else "data"
-                kwargs[data_key] = inputs.model_dump_json()
+                kwargs[data_key] = inputs.model_dump_json(exclude=unset)
                 headers["Content-Type"] = "application/json"
         else:  # inputs is JSON dict.
             if self._service_descriptor.options.use_binary:
