@@ -1842,8 +1842,9 @@ class TrussConfig(custom_types.ConfigModel):
             if (self.resources.node_count or 1) > 1 or (
                 fabric is not None and (fabric.use_rdma or fabric.preferences)
             ):
-                raise ValueError(
-                    "TPU deployments support a single node without fabric requirements."
+                logger.warning(
+                    "TPU deployments with multiple nodes or fabric requirements may not "
+                    "be supported. Support is validated server side during deployment."
                 )
         if self.requirements and self.requirements_file:
             raise ValueError(

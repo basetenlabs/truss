@@ -68,12 +68,6 @@ def test_tpu_rejects_invalid_accelerator_count(accelerator):
     [
         ({"base_image": None}, "custom base_image"),
         ({"base_image": {"image": ""}}, "custom base_image"),
-        ({"resources": {"accelerator": "TPU_V6E:8", "node_count": 2}}, "single node"),
-        (
-            {"resources": {"accelerator": "TPU_V6E:8", "fabric": {"use_rdma": True}}},
-            "single node",
-        ),
-        ({"resources": {"accelerator": "TPU_V7:4", "node_count": 2}}, "single node"),
     ],
 )
 def test_tpu_rejects_unsupported_config(overrides, message):
@@ -84,6 +78,32 @@ def test_tpu_rejects_unsupported_config(overrides, message):
     }
     with pytest.raises(ValueError, match=message):
         TrussConfig.model_validate(config)
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:8", "TPU_V7:4"])
+@pytest.mark.parametrize(
+    "resource_settings",
+    [
+        {"node_count": 2},
+        {"fabric": {"use_rdma": True}},
+        {"fabric": {"preferences": ["roce"]}},
+    ],
+)
+def test_tpu_node_and_fabric_settings_warn(accelerator, resource_settings, caplog):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": accelerator, **resource_settings},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+        }
+    )
+    resources = config.resources.model_dump()
+    for key, value in resource_settings.items():
+        if key == "fabric":
+            for fabric_key, fabric_value in value.items():
+                assert resources[key][fabric_key] == fabric_value
+        else:
+            assert resources[key] == value
+    assert "Support is validated server side during deployment." in caplog.text
 
 
 @pytest.mark.parametrize(
