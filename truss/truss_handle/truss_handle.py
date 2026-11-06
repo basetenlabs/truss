@@ -874,12 +874,16 @@ class TrussHandle:
         if not self.is_scattered():
             return self._truss_dir
 
-        return gather(self._truss_dir)
+        return gather(self._truss_dir, self._config_path)
 
     @property
     def max_modified_time(self) -> float:
         """Max modified time of all the files and directories that this Truss spans."""
-        max_mod_time = get_max_modified_time_of_dir(self._truss_dir)
+        max_mod_time = max(
+            get_max_modified_time_of_dir(self._truss_dir),
+            # A custom config file does not have to live inside the truss directory.
+            self._spec.config_path.stat().st_mtime,
+        )
         if self.no_external_packages:
             return max_mod_time
 
