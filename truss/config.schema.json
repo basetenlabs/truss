@@ -2157,6 +2157,19 @@
           "default": null,
           "description": "Baseten secret name containing credentials for accessing the source.",
           "title": "Auth Secret Name"
+        },
+        "hf_oidc_resource": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hugging Face repository (namespace/name) or username for OIDC token exchange.",
+          "title": "Hf Oidc Resource"
         }
       },
       "required": [
@@ -2171,6 +2184,7 @@
         "CUSTOM_SECRET",
         "AWS_OIDC",
         "GCP_OIDC",
+        "HF_OIDC",
         "AWS_ASSUME_ROLE"
       ],
       "title": "WeightsAuthMethod",
