@@ -1,3 +1,4 @@
+import configparser
 import filecmp
 import json
 import os
@@ -24,6 +25,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
     _resolve_cache_mount_id,
     generate_docker_server_nginx_config,
+    generate_docker_server_supervisord_config,
     get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -1001,6 +1003,40 @@ class TestDockerServerSupervisordConfig:
 
         command = cfg.get("program:model-server", "command")
         assert command == start_command, f"Command mismatch for {test_id}"
+
+    @pytest.mark.parametrize(
+        "start_command,expected_command",
+        [
+            ("date +%s", "date +%s"),
+            ("printf '%d items' 3", "printf '%d items' 3"),
+            ("curl 'http://host/a%20b'", "curl 'http://host/a%20b'"),
+            ("100%", "100%"),
+            ("%%%s", "%%s"),
+            # Already meaningful to supervisord, so these keep their behavior.
+            ("printf '100%%'", "printf '100%'"),
+            ("%(ENV_START_CMD)s", "from-env"),
+            ("%(ENV_START_CMD)s --rate 5%", "from-env --rate 5%"),
+        ],
+    )
+    def test_commands_with_percent_signs(
+        self, tmp_path, start_command, expected_command
+    ):
+        class MockDockerServer:
+            pass
+
+        MockDockerServer.start_command = start_command
+
+        class MockConfig:
+            docker_server = MockDockerServer()
+
+        generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(tmp_path / "supervisord.conf")
+
+        # Supervisord expands values with `value % expansions`.
+        command = cfg.get("program:model-server", "command")
+        assert command % {"ENV_START_CMD": "from-env"} == expected_command
 
     @pytest.mark.parametrize(
         "test_id,start_command,expected_substrings",
