@@ -72,6 +72,7 @@ from truss.util.path import (
     get_max_modified_time_of_dir,
     load_trussignore_patterns,
 )
+from truss.util.requirements import add_or_update_requirement
 
 if TYPE_CHECKING:
     from python_on_whales.components.container.cli_wrapper import Container
@@ -496,8 +497,11 @@ class TrussHandle:
         return image_builder.docker_build_command(build_dir)
 
     def add_python_requirement(self, python_requirement: str):
+        """Add or replace a requirement without rejecting pip-specific URL syntax."""
         self._update_config(
-            requirements=[*self._spec.config.requirements, python_requirement]
+            requirements=add_or_update_requirement(
+                self._spec.config.requirements, python_requirement
+            )
         )
 
     def remove_python_requirement(self, python_requirement: str):
