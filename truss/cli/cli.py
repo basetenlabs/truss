@@ -616,8 +616,8 @@ def run_python(script, target_directory):
     type=str,
     required=False,
     help=(
-        "Push the truss as a published deployment to the specified environment."
-        "If specified, publish is implied and the supplied value of --promote will be ignored."
+        "Push the truss as a published deployment to the specified environment. "
+        "Cannot be combined with --promote."
     ),
 )
 @click.option(
