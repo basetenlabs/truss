@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -76,9 +75,10 @@ def _download_external_data_using_requests(data_dir: Path, external_data: Extern
 
 def download_from_url_using_requests(URL: str, download_to: Path):
     # Streaming download to keep memory usage low
-    resp = requests.get(
+    with requests.get(
         URL, allow_redirects=True, stream=True, timeout=BLOB_DOWNLOAD_TIMEOUT_SECS
-    )
-    resp.raise_for_status()
-    with download_to.open("wb") as file:
-        shutil.copyfileobj(resp.raw, file)
+    ) as resp:
+        resp.raise_for_status()
+        with download_to.open("wb") as file:
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                file.write(chunk)
