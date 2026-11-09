@@ -79,7 +79,7 @@ dev = [
     "mypy>=1.0.0,<2",
     "nbconvert>=7.2.1,<8",
     "pre-commit>=2.18.1,<3",
-    "pytest==7.2.0",
+    "pytest>=8.4,<8.5",
     "pytest-asyncio>=0.23.6,<0.24",
     "pytest-check>=2.4.1,<3",
     "pytest-cov>=3.0.0,<4",
