@@ -1603,6 +1603,88 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
 class TestWeightsSource:
     """Tests for the new WeightsSource model."""
 
+    @pytest.mark.parametrize("resource", ["acme/private-model", "hf-user"])
+    def test_hf_oidc(self, resource):
+        source = WeightsSource.model_validate(
+            {
+                "source": "hf://acme/private-model@main",
+                "mount_location": "/models/weights",
+                "auth": {"auth_method": "hf_oidc", "hf_oidc_resource": resource},
+            },
+            context={"forbid_extra": True},
+        )
+        assert source.auth.auth_method == WeightsAuthMethod.HF_OIDC
+        assert source.auth.hf_oidc_resource == resource
+
+    @pytest.mark.parametrize("resource", [None, ""])
+    def test_hf_oidc_requires_resource(self, resource):
+        with pytest.raises(
+            pydantic.ValidationError, match="hf_oidc_resource must be provided"
+        ):
+            WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource=resource)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "auth_secret_name",
+            "aws_oidc_role_arn",
+            "aws_oidc_region",
+            "gcp_oidc_service_account",
+            "gcp_oidc_workload_id_provider",
+            "aws_assume_role_arn",
+            "aws_assume_role_region",
+        ],
+    )
+    def test_hf_oidc_rejects_other_auth_fields(self, field):
+        with pytest.raises(
+            pydantic.ValidationError, match=f"{field} cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method="HF_OIDC", hf_oidc_resource="hf-user", **{field: "value"}
+            )
+
+    @pytest.mark.parametrize(
+        "method", [method for method in WeightsAuthMethod if method != "HF_OIDC"]
+    )
+    def test_hf_oidc_resource_requires_hf_oidc(self, method):
+        with pytest.raises(
+            pydantic.ValidationError, match="hf_oidc_resource cannot be specified"
+        ):
+            WeightsAuth(auth_method=method, hf_oidc_resource="hf-user")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "s3://bucket/model",
+            "gs://bucket/model",
+            "azure://account/container/model",
+            "r2://account.bucket/model",
+            "cw://bucket/model",
+            "https://example.com/model",
+        ],
+    )
+    def test_hf_oidc_requires_huggingface_source(self, source):
+        with pytest.raises(
+            pydantic.ValidationError, match="HF_OIDC authentication requires"
+        ):
+            WeightsSource(
+                source=source,
+                mount_location="/models/weights",
+                auth=WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource="hf-user"),
+            )
+
+    def test_hf_oidc_rejects_top_level_secret(self):
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name cannot be specified when auth_method is HF_OIDC",
+        ):
+            WeightsSource(
+                source="hf://acme/private-model",
+                mount_location="/models/weights",
+                auth_secret_name="hf-token",
+                auth=WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource="hf-user"),
+            )
+
     def test_huggingface_source_basic(self):
         """HuggingFace source with revision in URI should work."""
         source = WeightsSource(
@@ -2043,6 +2125,27 @@ class TestWeights:
 
 class TestTrussConfigWeights:
     """Tests for weights field in TrussConfig."""
+
+    @pytest.mark.parametrize("verbose", [False, True])
+    def test_hf_oidc_yaml_roundtrip(self, tmp_path, verbose):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            """
+weights:
+  - source: hf://acme/private-model@main
+    mount_location: /models/weights
+    auth:
+      auth_method: HF_OIDC
+      hf_oidc_resource: acme/private-model
+"""
+        )
+        config = TrussConfig.from_yaml(config_path)
+        config.write_to_yaml_file(config_path, verbose=verbose)
+        reloaded = TrussConfig.from_yaml(config_path)
+        assert reloaded.weights == config.weights
+        auth = reloaded.weights.sources[0].auth
+        assert auth.auth_method == WeightsAuthMethod.HF_OIDC
+        assert auth.hf_oidc_resource == "acme/private-model"
 
     def test_empty_weights_config(self, default_config):
         """Empty weights should work."""
