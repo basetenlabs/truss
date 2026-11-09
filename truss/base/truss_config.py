@@ -59,6 +59,7 @@ AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
 AWS_OIDC_REGION_PARAM = "aws_oidc_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
+HF_OIDC_RESOURCE_PARAM = "hf_oidc_resource"
 AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
 AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
 
@@ -256,6 +257,7 @@ class WeightsAuthMethod(str, enum.Enum):
     CUSTOM_SECRET = "CUSTOM_SECRET"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    HF_OIDC = "HF_OIDC"
     AWS_ASSUME_ROLE = "AWS_ASSUME_ROLE"
 
 
@@ -349,6 +351,10 @@ class WeightsAuth(AuthFieldsMixin):
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
+    hf_oidc_resource: Optional[str] = pydantic.Field(
+        default=None,
+        description="Hugging Face repository (namespace/name) or username for OIDC token exchange.",
+    )
 
     @pydantic.field_validator("auth_method", mode="before")
     @classmethod
@@ -357,6 +363,9 @@ class WeightsAuth(AuthFieldsMixin):
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_fields(self) -> "WeightsAuth":
+        if self.auth_method != WeightsAuthMethod.HF_OIDC:
+            self._forbid_fields(self.auth_method.value, HF_OIDC_RESOURCE_PARAM)
+
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
             self._validate_fields(
                 self.auth_method.value,
@@ -407,6 +416,21 @@ class WeightsAuth(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+
+        elif self.auth_method == WeightsAuthMethod.HF_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[HF_OIDC_RESOURCE_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
 
@@ -555,6 +579,15 @@ class WeightsSource(custom_types.ConfigModel):
                 "auth_secret_name cannot be specified both at the top level and in auth section. "
                 "Please use only one location."
             )
+        if self.auth and self.auth.auth_method == WeightsAuthMethod.HF_OIDC:
+            if not self.is_huggingface:
+                raise ValueError(
+                    "HF_OIDC authentication requires a HuggingFace source (hf://)."
+                )
+            if self.auth_secret_name:
+                raise ValueError(
+                    "auth_secret_name cannot be specified when auth_method is HF_OIDC"
+                )
         return self
 
 
