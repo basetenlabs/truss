@@ -194,7 +194,10 @@ class RemoteFactory:
         Get team name from remote config if configured.
         """
         try:
-            config = RemoteFactory.load_remote_config(remote_name)
+            # Only the team is needed, so a broken or absent stored credential is irrelevant.
+            config = RemoteFactory.load_remote_config(
+                remote_name, without_stored_credential=True
+            )
             return config.configs.get("team")
         except (FileNotFoundError, ValueError):
             return None

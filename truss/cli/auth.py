@@ -13,6 +13,7 @@ from truss.cli.utils.output import console
 from truss.remote.baseten import oauth
 from truss.remote.baseten.api import resolve_rest_api_url
 from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
     IDENTITY_TOKEN_FILE_ENV,
     TRUST_RULE_ID_ENV,
     workload_identity_from_env,
@@ -196,9 +197,9 @@ def _existing_remote_url(remote_name: str) -> Optional[str]:
 
 def _print_workload_identity_status() -> None:
     # Mirrors BasetenRemote, where BASETEN_API_KEY outranks workload identity.
-    if os.environ.get("BASETEN_API_KEY"):
+    if os.environ.get(BASETEN_API_KEY_ENV):
         console.print("auth_type: api_key")
-        console.print("source: BASETEN_API_KEY")
+        console.print(f"source: {BASETEN_API_KEY_ENV}")
         return
     console.print("auth_type: workload_identity")
     console.print(f"source: {IDENTITY_TOKEN_FILE_ENV}, {TRUST_RULE_ID_ENV}")

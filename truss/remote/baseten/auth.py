@@ -34,6 +34,7 @@ class OAuthSession(pydantic.BaseModel):
     on_token_refresh: Optional[Callable[[OAuthCredential], None]] = None
 
 
+BASETEN_API_KEY_ENV = "BASETEN_API_KEY"
 IDENTITY_TOKEN_FILE_ENV = "BASETEN_IDENTITY_TOKEN_FILE"
 TRUST_RULE_ID_ENV = "BASETEN_TRUST_RULE_ID"
 

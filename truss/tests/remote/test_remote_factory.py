@@ -380,6 +380,17 @@ def test_load_raises_when_secret_missing_and_keyring_unavailable(fail_keyring, t
         RemoteFactory.load_remote_config("baseten")
 
 
+def test_get_remote_team_ignores_unreadable_stored_credential(fail_keyring, trussrc):
+    trussrc.write_text(
+        "[baseten]\n"
+        "remote_provider = baseten\n"
+        "auth_type = api_key\n"
+        "remote_url = http://x\n"
+        "team = Team A\n"
+    )
+    assert RemoteFactory.get_remote_team("baseten") == "Team A"
+
+
 def test_load_raises_when_keyring_entry_missing(memory_keyring, trussrc):
     trussrc.write_text(
         "[baseten]\n"

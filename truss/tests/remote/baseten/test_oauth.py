@@ -281,3 +281,27 @@ def test_exchange_identity_token_unreadable_file(tmp_path, contents):
         with pytest.raises(oauth.OAuthError, match=re.escape(str(token_file))):
             oauth.exchange_identity_token(API_URL, token_file, "rule-1")
         assert not m.called
+
+
+@pytest.mark.parametrize("expires_in", [60, 90])
+def test_short_lived_token_is_not_expired_on_arrival(expires_in):
+    token = oauth.AccessToken.from_token_response(
+        {"access_token": "t", "expires_in": expires_in}
+    )
+    assert not token.is_expired()
+
+
+def test_short_lived_token_expires_after_half_its_lifetime(monkeypatch):
+    token = oauth.AccessToken.from_token_response(
+        {"access_token": "t", "expires_in": 60}
+    )
+    now = time.time()
+    monkeypatch.setattr(oauth.time, "time", lambda: now + 31)
+    assert token.is_expired()
+
+
+def test_token_of_unknown_lifetime_keeps_the_full_leeway(monkeypatch):
+    token = oauth.AccessToken(access_token="t", expires_at=int(time.time()) + 90)
+    now = time.time()
+    monkeypatch.setattr(oauth.time, "time", lambda: now + 31)
+    assert token.is_expired()

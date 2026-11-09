@@ -41,8 +41,14 @@ class AccessToken(pydantic.BaseModel):
 
     access_token: str = pydantic.Field(min_length=1)
     expires_at: int  # absolute Unix timestamp seconds
+    # Seconds the token was issued for; unknown for credentials loaded from storage.
+    lifetime_seconds: Optional[int] = None
 
-    def is_expired(self, leeway: int = EXPIRY_LEEWAY_SECONDS) -> bool:
+    def is_expired(self) -> bool:
+        leeway = EXPIRY_LEEWAY_SECONDS
+        if self.lifetime_seconds is not None:
+            # A token issued for a minute or less would otherwise be expired on arrival.
+            leeway = min(leeway, self.lifetime_seconds // 2)
         return time.time() + leeway >= self.expires_at
 
     @classmethod
@@ -54,7 +60,11 @@ class AccessToken(pydantic.BaseModel):
             raise OAuthError(
                 f"Token response missing required fields: {sorted(payload)}"
             )
-        payload = {**payload, "expires_at": int(time.time()) + int(expires_in)}
+        payload = {
+            **payload,
+            "expires_at": int(time.time()) + int(expires_in),
+            "lifetime_seconds": int(expires_in),
+        }
         try:
             return cls.model_validate(payload)
         except pydantic.ValidationError as exc:

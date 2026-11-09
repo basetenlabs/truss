@@ -32,6 +32,7 @@ from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
 from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
     ApiKeyCredential,
     AuthService,
     OAuthSession,
@@ -163,7 +164,7 @@ class BasetenRemote(TrussRemote):
                 )
             )
         else:
-            api_key = api_key or os.environ.get("BASETEN_API_KEY")
+            api_key = api_key or os.environ.get(BASETEN_API_KEY_ENV)
             if api_key:
                 self._auth_service = AuthService(
                     ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
