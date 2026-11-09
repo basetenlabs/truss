@@ -1,3 +1,4 @@
+import re
 import time
 
 import pytest
@@ -277,6 +278,6 @@ def test_exchange_identity_token_unreadable_file(tmp_path, contents):
     if contents is not None:
         token_file.write_text(contents)
     with requests_mock.Mocker() as m:
-        with pytest.raises(oauth.OAuthError, match=str(token_file)):
+        with pytest.raises(oauth.OAuthError, match=re.escape(str(token_file))):
             oauth.exchange_identity_token(API_URL, token_file, "rule-1")
         assert not m.called
