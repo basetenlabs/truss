@@ -3,7 +3,7 @@ import time
 import pydantic
 
 from truss.remote.baseten import service
-from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.core import READY_STATUSES, TERMINAL_FAILURE_STATUSES
 
 
 class ModelDeployment:
@@ -36,10 +36,10 @@ class ModelDeployment:
             ):
                 raise TimeoutError("Deployment timed out.")
 
-            if deployment_status == ACTIVE_STATUS:
+            if deployment_status in READY_STATUSES:
                 return True
 
-            if deployment_status not in DEPLOYING_STATUSES:
+            if deployment_status in TERMINAL_FAILURE_STATUSES:
                 raise ValueError(f"Deployment failed with status: {deployment_status}")
 
         raise RuntimeError("Error polling deployment status.")
