@@ -85,6 +85,33 @@ def test_logout_oauth_revokes_and_removes(memory_keyring, trussrc):
     assert memory_keyring.get_password(KEYRING_SERVICE, "baseten") is None
 
 
+def test_logout_oauth_with_workload_identity_set(
+    memory_keyring, trussrc, tmp_path, monkeypatch
+):
+    token_file = tmp_path / "identity-token"
+    token_file.write_text("idp-jwt")
+    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    RemoteFactory.update_remote_config(
+        rf_module.RemoteConfig(
+            name="baseten",
+            configs={
+                "remote_provider": "baseten",
+                "remote_url": "http://x",
+                "auth_type": "oauth",
+                "oauth_access_token": "atk",
+                "oauth_refresh_token": "rtk",
+                "oauth_expires_at": "9999999999",
+            },
+        )
+    )
+    with patch("truss.cli.auth.oauth.revoke") as mock_revoke:
+        result = CliRunner().invoke(truss_cli, ["auth", "logout"])
+    assert result.exit_code == 0, result.output
+    assert mock_revoke.call_args.args[1].access_token == "atk"
+    assert "[baseten]" not in trussrc.read_text()
+
+
 def test_logout_api_key_skips_revoke(memory_keyring, trussrc):
     RemoteFactory.update_remote_config(
         rf_module.RemoteConfig(

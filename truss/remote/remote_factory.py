@@ -135,9 +135,14 @@ class RemoteFactory:
         return list(filter(partial(is_not, DEFAULTSECT), config.keys()))
 
     @staticmethod
-    def load_remote_config(remote_name: str) -> RemoteConfig:
+    def load_remote_config(
+        remote_name: str, without_stored_credential: bool = False
+    ) -> RemoteConfig:
         """
         Load and validate a remote config from the .trussrc file
+
+        ``without_stored_credential`` drops the section's stored credential and
+        skips the keyring, for callers that authenticate another way.
         """
         if env_config := env_remote_config():
             # Only `get_available_config_names` hands out ENV_REMOTE_NAME, so
@@ -161,13 +166,12 @@ class RemoteFactory:
         remote_config = RemoteConfig(
             name=remote_name, configs=dict(config[remote_name])
         )
-        if workload_identity_from_env():
-            # Workload identity outranks a stored credential; skipping the
-            # keyring lookup also keeps CI hosts without a keyring working.
-            for key in _INLINE_SECRET_KEYS:
-                remote_config.configs.pop(key, None)
+        if not without_stored_credential:
+            _apply_secrets_to_config(remote_config)
             return remote_config
-        _apply_secrets_to_config(remote_config)
+        for key in _INLINE_SECRET_KEYS:
+            remote_config.configs.pop(key, None)
+        remote_config.configs.pop("auth_type", None)
         return remote_config
 
     @staticmethod
@@ -219,7 +223,11 @@ class RemoteFactory:
 
     @classmethod
     def create(cls, remote: str) -> TrussRemote:
-        remote_config = cls.load_remote_config(remote).configs
+        # Workload identity outranks a stored credential; skipping the keyring
+        # lookup also keeps CI hosts without a keyring working.
+        remote_config = cls.load_remote_config(
+            remote, without_stored_credential=bool(workload_identity_from_env())
+        ).configs
         remote_config.setdefault("oauth_remote_name", remote)
         if "remote_provider" not in remote_config:
             raise ValueError(f"Missing 'remote_provider' field for remote `{remote}`.")
