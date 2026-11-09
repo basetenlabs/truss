@@ -742,6 +742,29 @@ const response = await client.batchPost(
 );
 ```
 
+#### Batch Key
+
+A deployment running active-active across clusters balances each request on its own, so the
+requests of one call can be served by different clusters with different latencies. When a call's
+requests should all be served in one place, set `send_batch_key=True` (Node.js: `sendBatchKey`;
+Rust: `with_send_batch_key(true)`) on that call's preference. Every request of the call, including
+retries and hedges, then carries the call's request ID as `x-baseten-batch-key`, and requests with the
+same key are served from the same cluster. The key is the part of `x-baseten-customer-request-id`
+that the call's requests share, so each call gets its own. Calls without it are balanced as usual.
+
+```python
+from baseten_performance_client import RequestProcessingPreference
+
+response = client.batch_post(
+    url_path="/predict",
+    payloads=payloads,
+    preference=RequestProcessingPreference(send_batch_key=True),
+)
+```
+
+To choose the key yourself, put `x-baseten-batch-key` in `extra_headers` instead; setting both is
+an error.
+
 #### Cancellation Support
 The client supports cancellation of long-running operations through `CancellationToken`. This allows you to cancel batch operations that are in progress.
 

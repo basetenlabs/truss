@@ -1,5 +1,6 @@
-//! Fake model server and OTLP collector for the client-span export tests. The exporter
-//! reads its environment once per process, so each configuration is its own test file.
+//! Fake model server and OTLP collector for the client-span export and batch-key tests. The
+//! exporter reads its environment once per process, so each export configuration is its own
+//! test file.
 #![allow(dead_code)] // Each test file uses a different subset.
 
 use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Json, Router};
@@ -49,6 +50,26 @@ impl Harness {
                     move |headers: HeaderMap| {
                         seen.lock().unwrap().push(headers);
                         async { Json(json!({})) }
+                    }
+                }),
+            )
+            .route(
+                "/v1/embeddings",
+                post({
+                    let seen = seen.clone();
+                    move |headers: HeaderMap, Json(request): Json<Value>| {
+                        seen.lock().unwrap().push(headers);
+                        let data: Vec<Value> = (0..request["input"].as_array().unwrap().len())
+                            .map(|index| json!({"object": "embedding", "embedding": [0.0], "index": index}))
+                            .collect();
+                        async move {
+                            Json(json!({
+                                "object": "list",
+                                "data": data,
+                                "model": request["model"],
+                                "usage": {"prompt_tokens": 0, "total_tokens": 0},
+                            }))
+                        }
                     }
                 }),
             )
@@ -123,6 +144,50 @@ impl Harness {
             .await
             .unwrap();
         self.seen.lock().unwrap().last().unwrap().clone()
+    }
+
+    /// Posts `payloads` empty bodies to `/model` in one call and returns the headers of every
+    /// request the model received for it.
+    pub async fn post_batch(
+        &self,
+        client: &PerformanceClientCore,
+        payloads: usize,
+        preference: &RequestProcessingPreference,
+    ) -> Vec<HeaderMap> {
+        let before = self.seen.lock().unwrap().len();
+        client
+            .process_batch_post_requests(
+                "/model".into(),
+                vec![json!({}); payloads],
+                preference,
+                HttpMethod::POST,
+            )
+            .await
+            .unwrap();
+        self.seen.lock().unwrap()[before..].to_vec()
+    }
+
+    /// Embeds `texts` inputs in one call and returns the headers of every request the model
+    /// received for it.
+    pub async fn embed(
+        &self,
+        client: &PerformanceClientCore,
+        texts: usize,
+        preference: &RequestProcessingPreference,
+    ) -> Vec<HeaderMap> {
+        let before = self.seen.lock().unwrap().len();
+        client
+            .process_embeddings_requests(
+                vec!["text".into(); texts],
+                "model".into(),
+                None,
+                None,
+                None,
+                preference,
+            )
+            .await
+            .unwrap();
+        self.seen.lock().unwrap()[before..].to_vec()
     }
 
     pub async fn next_span(&mut self) -> Value {
