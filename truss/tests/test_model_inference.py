@@ -2252,7 +2252,7 @@ _VERSION_CHECK_MODEL = """
         def predict(self, data):
             packages = [
                 "fastapi", "numpy", "uvicorn", "requests",
-                "pyyaml", "msgpack", "msgpack-numpy",
+                "pyyaml", "msgpack", "b10-msgpack-numpy",
             ]
             versions = {
                 pkg: importlib.metadata.version(pkg)
@@ -2436,7 +2436,7 @@ def test_numpy2x_compat():
         assert response.json()["result"] == 4.0
 
         # Msgpack round-trip with a numpy array  - the critical test for
-        # msgpack-numpy 0.4.8 compatibility with numpy 2.x.
+        # b10-msgpack-numpy 0.4.8 compatibility with numpy 2.x.
         from truss.templates.shared.serialization import (
             truss_msgpack_deserialize,
             truss_msgpack_serialize,
