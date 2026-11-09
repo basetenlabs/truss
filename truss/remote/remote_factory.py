@@ -23,6 +23,7 @@ import keyring.backends.null
 import keyring.errors
 
 from truss.remote.baseten import BasetenRemote
+from truss.remote.baseten.auth import workload_identity_from_env
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
 logger = logging.getLogger(__name__)
@@ -73,12 +74,18 @@ def env_remote_config() -> Optional[RemoteConfig]:
 
     BASETEN_TRUSS_AUTH_REMOTE_URL and BASETEN_TRUSS_AUTH_API_KEY together fully
     define a remote, bypassing the trussrc and the keyring. Setting just one of
-    them is an error.
+    them is an error, unless workload identity federation supplies the
+    credential for BASETEN_TRUSS_AUTH_REMOTE_URL.
     """
     remote_url = os.environ.get(REMOTE_URL_ENV)
     api_key = os.environ.get(API_KEY_ENV)
     if not remote_url and not api_key:
         return None
+    if remote_url and not api_key and workload_identity_from_env():
+        return RemoteConfig(
+            name=ENV_REMOTE_NAME,
+            configs={"remote_provider": "baseten", "remote_url": remote_url},
+        )
     if not remote_url or not api_key:
         missing, present = (
             (REMOTE_URL_ENV, API_KEY_ENV)
@@ -154,6 +161,12 @@ class RemoteFactory:
         remote_config = RemoteConfig(
             name=remote_name, configs=dict(config[remote_name])
         )
+        if workload_identity_from_env():
+            # Workload identity outranks a stored credential; skipping the
+            # keyring lookup also keeps CI hosts without a keyring working.
+            for key in _INLINE_SECRET_KEYS:
+                remote_config.configs.pop(key, None)
+            return remote_config
         _apply_secrets_to_config(remote_config)
         return remote_config
 

@@ -221,3 +221,15 @@ def test_logout_env_remote_errors(trussrc, monkeypatch):
     result = CliRunner().invoke(truss_cli, ["auth", "logout"])
     assert result.exit_code != 0
     assert rf_module.API_KEY_ENV in result.output
+
+
+def test_status_reports_workload_identity_over_trussrc(trussrc, monkeypatch):
+    trussrc.write_text(
+        "[baseten]\nremote_provider = baseten\napi_key = k\n"
+        "remote_url = https://app.baseten.co\n"
+    )
+    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", "/token")
+    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    result = CliRunner().invoke(truss_cli, ["auth", "status"])
+    assert result.exit_code == 0, result.output
+    assert "auth_type: workload_identity" in result.output

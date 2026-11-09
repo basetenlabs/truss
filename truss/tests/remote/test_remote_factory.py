@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 
 from truss.remote import remote_factory as rf_module
+from truss.remote.baseten.oauth import AccessToken
 from truss.remote.remote_factory import KEYRING_SERVICE, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig, RemoteUser, TrussRemote
 
@@ -486,3 +487,60 @@ def test_env_remote_cannot_be_written_or_removed(trussrc, env_remote):
             RemoteConfig(name=rf_module.ENV_REMOTE_NAME, configs={})
         )
     assert not trussrc.exists()
+
+
+BASETEN_TRUSSRC = """
+[baseten]
+remote_provider=baseten
+api_key=trussrc_key
+remote_url=https://app.baseten.co
+"""
+
+
+@pytest.fixture
+def workload_identity(tmp_path, monkeypatch):
+    token_file = tmp_path / "identity-token"
+    token_file.write_text("idp-jwt")
+    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    exchanges = []
+
+    def fake_exchange(api_url, identity_token_file, trust_rule_id):
+        exchanges.append(api_url)
+        return AccessToken(access_token="wif_token", expires_at=9999999999)
+
+    monkeypatch.setattr(
+        "truss.remote.baseten.auth.exchange_identity_token", fake_exchange
+    )
+    return exchanges
+
+
+def test_workload_identity_wins_over_trussrc(trussrc, workload_identity):
+    trussrc.write_text(BASETEN_TRUSSRC)
+    remote = RemoteFactory.create("baseten")
+    assert remote.fetch_auth_header() == {"Authorization": "Bearer wif_token"}
+    assert workload_identity == ["https://api.baseten.co"]
+
+
+def test_baseten_api_key_wins_over_workload_identity(
+    trussrc, workload_identity, monkeypatch
+):
+    trussrc.write_text(BASETEN_TRUSSRC)
+    monkeypatch.setenv("BASETEN_API_KEY", "env_key")
+    remote = RemoteFactory.create("baseten")
+    assert remote.fetch_auth_header() == {"Authorization": "Api-Key env_key"}
+    assert workload_identity == []
+
+
+def test_env_remote_url_with_workload_identity(trussrc, workload_identity, monkeypatch):
+    monkeypatch.setenv(rf_module.REMOTE_URL_ENV, "https://app.baseten.co")
+    assert RemoteFactory.get_available_config_names() == [rf_module.ENV_REMOTE_NAME]
+    remote = RemoteFactory.create(rf_module.ENV_REMOTE_NAME)
+    assert remote.fetch_auth_header() == {"Authorization": "Bearer wif_token"}
+
+
+def test_half_configured_workload_identity_raises(trussrc, monkeypatch):
+    trussrc.write_text(BASETEN_TRUSSRC)
+    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    with pytest.raises(ValueError, match="BASETEN_IDENTITY_TOKEN_FILE"):
+        RemoteFactory.create("baseten")

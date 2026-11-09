@@ -7,7 +7,8 @@ Tokens are returned as :class:`OAuthCredential` with an absolute Unix
 import logging
 import time
 import webbrowser
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Type, TypeVar
 
 import pydantic
 import requests
@@ -21,8 +22,10 @@ CLIENT_ID = "baseten-cli"
 DEVICE_AUTHORIZE_PATH = "/v1/users/auth/device/authorize"
 DEVICE_TOKEN_PATH = "/v1/users/auth/device/token"
 LOGOUT_PATH = "/v1/users/auth/logout"
+TOKEN_EXCHANGE_PATH = "/v1/auth/token"
 
 DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
+JWT_BEARER_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 REFRESH_GRANT_TYPE = "refresh_token"
 
 DEFAULT_POLL_INTERVAL_SECONDS = 5
@@ -33,18 +36,19 @@ class OAuthError(Exception):
     """Raised on terminal OAuth failures (denied, expired, invalid request)."""
 
 
-class OAuthCredential(pydantic.BaseModel):
+class AccessToken(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True, extra="ignore")
 
     access_token: str = pydantic.Field(min_length=1)
-    refresh_token: str = pydantic.Field(min_length=1)
     expires_at: int  # absolute Unix timestamp seconds
 
     def is_expired(self, leeway: int = EXPIRY_LEEWAY_SECONDS) -> bool:
         return time.time() + leeway >= self.expires_at
 
     @classmethod
-    def from_token_response(cls, payload: dict) -> "OAuthCredential":
+    def from_token_response(
+        cls: Type["_AccessTokenT"], payload: dict
+    ) -> "_AccessTokenT":
         expires_in = payload.get("expires_in")
         if expires_in is None:
             raise OAuthError(
@@ -55,6 +59,13 @@ class OAuthCredential(pydantic.BaseModel):
             return cls.model_validate(payload)
         except pydantic.ValidationError as exc:
             raise OAuthError(f"Token response missing required fields: {exc}") from exc
+
+
+_AccessTokenT = TypeVar("_AccessTokenT", bound=AccessToken)
+
+
+class OAuthCredential(AccessToken):
+    refresh_token: str = pydantic.Field(min_length=1)
 
 
 class DeviceAuthorization(pydantic.BaseModel):
@@ -167,6 +178,47 @@ def refresh(api_url: str, credential: OAuthCredential) -> OAuthCredential:
             f"Token refresh failed ({resp.status_code}): {resp.text.strip()}"
         )
     return OAuthCredential.from_token_response(resp.json())
+
+
+def exchange_identity_token(
+    api_url: str, identity_token_file: Path, trust_rule_id: str
+) -> AccessToken:
+    """Trade a workload's identity provider JWT for a Baseten access token
+    (workload identity federation, RFC 7523 JWT-bearer grant)."""
+    try:
+        assertion = identity_token_file.read_text().strip()
+    except OSError as exc:
+        raise OAuthError(
+            f"Cannot read the identity token file {identity_token_file}: {exc}"
+        ) from exc
+    if not assertion:
+        raise OAuthError(f"The identity token file {identity_token_file} is empty.")
+    resp = requests.post(
+        api_url.rstrip("/") + TOKEN_EXCHANGE_PATH,
+        json={
+            "grant_type": JWT_BEARER_GRANT_TYPE,
+            "assertion": assertion,
+            "trust_rule_id": trust_rule_id,
+        },
+        headers={"User-Agent": user_agent_header()},
+        timeout=30,
+    )
+    if resp.ok:
+        return AccessToken.from_token_response(resp.json())
+    try:
+        code = resp.json().get("error")
+    except ValueError:
+        code = None
+    # The server never says why it refused, so point at both inputs.
+    if code == "invalid_grant":
+        raise OAuthError(
+            f"Baseten refused to exchange the identity token for trust rule "
+            f"{trust_rule_id!r}. Check that the trust rule exists and that the "
+            f"token in {identity_token_file} is current and matches the rule."
+        )
+    raise OAuthError(
+        f"Identity token exchange failed ({resp.status_code}): {resp.text.strip()}"
+    )
 
 
 def revoke(api_url: str, credential: OAuthCredential) -> None:

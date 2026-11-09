@@ -29,6 +29,7 @@ from truss.contexts.image_builder.serving_image_builder import (
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.remote import remote_factory
+from truss.remote.baseten.auth import IDENTITY_TOKEN_FILE_ENV, TRUST_RULE_ID_ENV
 from truss.remote.baseten.core import ModelVersionHandle
 from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle.build import init_directory
@@ -1106,6 +1107,9 @@ def trussrc(tmp_path, monkeypatch):
     monkeypatch.delenv(remote_factory.KEYRING_DISABLED_ENV, raising=False)
     monkeypatch.delenv(remote_factory.REMOTE_URL_ENV, raising=False)
     monkeypatch.delenv(remote_factory.API_KEY_ENV, raising=False)
+    monkeypatch.delenv("BASETEN_API_KEY", raising=False)
+    monkeypatch.delenv(IDENTITY_TOKEN_FILE_ENV, raising=False)
+    monkeypatch.delenv(TRUST_RULE_ID_ENV, raising=False)
     monkeypatch.setattr(remote_factory, "_keyring_fallback_warned", False)
     return path
 
