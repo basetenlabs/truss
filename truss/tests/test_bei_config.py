@@ -223,14 +223,26 @@ def test_tpu_passes_models_and_quantization_without_dtype_assumptions(
 
 @pytest.mark.parametrize("inject_image", [False, True])
 @pytest.mark.parametrize("explicit_image", [False, True])
+@pytest.mark.parametrize("backend", ["nvidia", "tpu"])
+@pytest.mark.parametrize(
+    "image",
+    ["private.example/bei:resolved", "private.example/bei:resolved@sha256:" + "a" * 64],
+)
 def test_shared_image_injection_supports_truss_first_rollout(
-    config_data, bei_dir, tmp_path, monkeypatch, inject_image, explicit_image
+    config_data,
+    bei_dir,
+    tmp_path,
+    monkeypatch,
+    inject_image,
+    explicit_image,
+    backend,
+    image,
 ):
+    config_data["bei"]["backend"] = backend
     config_data["bei"]["version_override"] = "v3-test"
     if not explicit_image:
         config_data.pop("base_image")
     (bei_dir / "config.yaml").write_text(yaml.safe_dump(config_data))
-    image = "private.example/bei:resolved@sha256:" + "a" * 64
     versions = ImageVersions(
         bei_image="legacy/bei",
         beibert_image="legacy/bert",
@@ -261,8 +273,9 @@ def test_shared_image_injection_supports_truss_first_rollout(
         return
     assert result.exit_code == 0, result.output
     config = TrussConfig.from_yaml(tmp_path / "build/config.yaml")
+    expected_image = image if "@" in image else f"{image}-{backend}"
     assert config.base_image.image == (
-        image if inject_image else config_data["base_image"]["image"]
+        expected_image if inject_image else config_data["base_image"]["image"]
     )
     assert config.bei.version_override == "v3-test"
     assert (
