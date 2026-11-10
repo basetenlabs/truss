@@ -1464,7 +1464,7 @@ class DockerServer(custom_types.ConfigModel):
         description="The command to start the server. Required when no_build is not true.",
     )
     server_port: int = pydantic.Field(
-        description="The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used."
+        description="The port where the server runs. Port 8080 is reserved when Truss installs its internal reverse proxy; no_build deployments can use 8080."
     )
     predict_endpoint: str = pydantic.Field(
         description="The endpoint for inference requests. This is mapped to Baseten's /predict route."
@@ -1918,7 +1918,7 @@ class TrussConfig(custom_types.ConfigModel):
                         for key, value in self.environment_variables.items()
                         if (key, value)
                         not in (
-                            ("BEI_PORT", "7997"),
+                            ("BEI_PORT", "8080"),
                             ("BEI_HOSTNAME", "0.0.0.0"),
                             ("BEI_MAX_BATCH_REQUESTS", "32"),
                         )
@@ -1958,7 +1958,7 @@ class TrussConfig(custom_types.ConfigModel):
                 "BEI hf_access_token must come from runtime secrets, not a config default."
             )
         environment = dict(self.environment_variables)
-        for key, value in {"BEI_PORT": "7997", "BEI_HOSTNAME": "0.0.0.0"}.items():
+        for key, value in {"BEI_PORT": "8080", "BEI_HOSTNAME": "0.0.0.0"}.items():
             if key in environment and environment[key] != value:
                 raise ValueError(f"bei manages {key}.")
             environment[key] = value
@@ -2018,7 +2018,7 @@ def bei_docker_server(
     return DockerServer(
         start_command=bei.start_command(use_hf_secret),
         no_build=True,
-        server_port=7997,
+        server_port=8080,
         predict_endpoint="/v1/embeddings",
         readiness_endpoint="/health",
         liveness_endpoint="/health",

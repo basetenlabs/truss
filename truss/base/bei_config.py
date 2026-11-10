@@ -48,7 +48,7 @@ class BEIConfiguration(ConfigModel):
         argv = [
             "/usr/local/bin/bei",
             "--hostname=0.0.0.0",
-            "--port=7997",
+            "--port=8080",
             "--json-output",
         ]
         if self.backend == "nvidia":

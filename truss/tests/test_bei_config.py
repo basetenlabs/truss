@@ -35,6 +35,9 @@ def test_no_build_configuration_and_roundtrip(config_data, bei_dir, tmp_path):
     config = TrussConfig.from_dict(config_data)
     config.validate_forbid_extra()
     assert config.docker_server.no_build is True
+    assert config.docker_server.server_port == 8080
+    assert config.environment_variables["BEI_PORT"] == "8080"
+    assert "--port=8080" in _argv(config)
     assert config.docker_server.predict_endpoint == "/v1/embeddings"
     assert config.docker_server.readiness_endpoint == "/health"
     assert TrussConfig.from_dict(config.to_dict(verbose=False)) == config

@@ -608,7 +608,7 @@
           "title": "Start Command"
         },
         "server_port": {
-          "description": "The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used.",
+          "description": "The port where the server runs. Port 8080 is reserved when Truss installs its internal reverse proxy; no_build deployments can use 8080.",
           "title": "Server Port",
           "type": "integer"
         },
