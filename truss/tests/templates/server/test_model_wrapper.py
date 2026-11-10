@@ -70,6 +70,26 @@ async def test_model_wrapper_load_error_once(app_path, connected_request):
     assert model_wrapper._model.load_count == 2
 
 
+def test_load_completion_is_logged_before_readiness(app_path):
+    model_wrapper_module = importlib.import_module("model_wrapper")
+    config = yaml.safe_load((app_path / "config.yaml").read_text())
+    model_wrapper = model_wrapper_module.ModelWrapper(config, sdk_trace.NoOpTracer())
+    readiness_at_completion = []
+
+    def observe_log(message):
+        if message.startswith("Completed model.load()"):
+            readiness_at_completion.append(model_wrapper.ready)
+
+    with (
+        patch.object(model_wrapper, "_load_impl"),
+        patch.object(model_wrapper._logger, "info", side_effect=observe_log),
+    ):
+        model_wrapper.load()
+
+    assert readiness_at_completion == [False]
+    assert model_wrapper.ready
+
+
 def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
     with helpers.env_var("NUM_LOAD_RETRIES_TRUSS", "0"):
         if "model_wrapper" in sys.modules:
@@ -266,6 +286,123 @@ async def test_messages_endpoint(open_ai_container_fs, helpers, connected_reques
 
         responses_resp = await model_wrapper.responses({}, connected_request)
         assert responses_resp == "responses"
+
+
+@pytest.fixture
+def generic_pydantic_app_path(truss_container_fs: Path, helpers: Any):
+    truss_container_app_path = truss_container_fs / "app"
+    # Parameterizing a generic pydantic model at module scope makes pydantic look
+    # up `sys.modules[<model module name>]` while model.py is being executed.
+    model_file_content = """
+from typing import Generic, TypeVar
+
+import pydantic
+from typing_extensions import TypeAlias
+
+T = TypeVar("T")
+
+
+class Options(pydantic.BaseModel):
+    value: int
+
+
+class Request(pydantic.BaseModel, Generic[T]):
+    options: T
+
+
+Alias: TypeAlias = Request[Options]
+
+
+class Model:
+    def predict(self, request: Alias) -> int:
+        return request.options.value
+    """
+    with (
+        helpers.file_content(
+            truss_container_app_path / "model" / "model.py", model_file_content
+        ),
+        helpers.sys_path(truss_container_app_path),
+    ):
+        yield truss_container_app_path
+
+
+@pytest.fixture
+def failing_import_app_path(truss_container_fs: Path, helpers: Any):
+    truss_container_app_path = truss_container_fs / "app"
+    model_file_content = """
+raise RuntimeError("Simulated import error")
+    """
+    with (
+        helpers.file_content(
+            truss_container_app_path / "model" / "model.py", model_file_content
+        ),
+        helpers.sys_path(truss_container_app_path),
+    ):
+        yield truss_container_app_path
+
+
+def test_model_module_registered_in_sys_modules(generic_pydantic_app_path):
+    with _clear_model_load_modules(), _change_directory(generic_pydantic_app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((generic_pydantic_app_path / "config.yaml").read_text())
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper._load_impl()
+
+        assert "model.model" in sys.modules
+        assert sys.modules["model.model"].Model is type(model_wrapper._model)
+        assert not hasattr(sys.modules["model.model"], "__path__")
+
+
+@pytest.fixture
+def package_import_app_path(truss_container_fs: Path, helpers: Any):
+    truss_container_app_path = truss_container_fs / "app"
+    helper_path = truss_container_app_path / "model" / "helper.py"
+    helper_path.write_text('TOKEN = "pkg"\n')
+    model_file_content = """
+from model.helper import TOKEN
+
+
+class Model:
+    def predict(self, request):
+        return TOKEN
+    """
+    try:
+        with (
+            helpers.file_content(
+                truss_container_app_path / "model" / "model.py", model_file_content
+            ),
+            helpers.sys_path(truss_container_app_path),
+        ):
+            yield truss_container_app_path
+    finally:
+        helper_path.unlink(missing_ok=True)
+
+
+def test_model_package_import_during_load(package_import_app_path):
+    with _clear_model_load_modules(), _change_directory(package_import_app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((package_import_app_path / "config.yaml").read_text())
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper._load_impl()
+
+        assert model_wrapper._model.predict(None) == "pkg"
+        assert hasattr(sys.modules["model"], "__path__")
+    sys.modules.pop("model.helper", None)
+
+
+def test_failed_model_load_leaves_no_sys_modules_entry(failing_import_app_path):
+    with _clear_model_load_modules(), _change_directory(failing_import_app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((failing_import_app_path / "config.yaml").read_text())
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+
+        with pytest.raises(RuntimeError, match="Simulated import error"):
+            model_wrapper._load_impl()
+
+        assert "model.model" not in sys.modules
 
 
 @contextmanager

@@ -37,6 +37,7 @@ from truss.base.constants import (
     MODEL_DOCKERFILE_NAME,
     NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
     PYPROJECT_TOML_FILENAME,
+    REBUILD_FREE_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -179,7 +180,12 @@ def _build_cache_mount_template_vars(cache_mount_id: Optional[str]) -> Dict[str,
 
 
 def _is_docker_server_build(config: TrussConfig) -> bool:
-    return config.docker_server is not None and not config.docker_server.no_build
+    server = config.docker_server
+    return (
+        server is not None
+        and server.no_build is not True
+        and server.rebuild_free is not True
+    )
 
 
 def _docker_server_slim_enabled() -> bool:
@@ -710,6 +716,13 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+        if config.bei is not None and (
+            not config.base_image or not config.base_image.image.strip()
+        ):
+            raise ValueError(
+                "BEIv3 image is unresolved. Supply base_image.image or have the platform "
+                "inject bei_v3_image before no-build dispatch."
+            )
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
@@ -961,6 +974,10 @@ class ServingImageBuilder(ImageBuilder):
             dockerfile_template = read_template_from_fs(
                 TEMPLATES_DIR, NO_BUILD_DOCKERFILE_TEMPLATE_NAME
             )
+        elif config.docker_server and config.docker_server.rebuild_free is True:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, REBUILD_FREE_DOCKERFILE_TEMPLATE_NAME
+            )
         else:
             dockerfile_template = read_template_from_fs(
                 TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
@@ -985,7 +1002,7 @@ class ServingImageBuilder(ImageBuilder):
         min_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[0])
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
-        hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
+        hf_access_token = config.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY)
         passthrough_environment_variables = self._filter_reserved_environment_variables(
             config
         )

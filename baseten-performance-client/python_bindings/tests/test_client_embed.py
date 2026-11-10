@@ -101,8 +101,8 @@ def test_wrong_api_key(method):
             client.classify(
                 inputs=["who, who?", "Paris france"] * 32, preference=preference
             )
-    assert "403 Forbidden" in str(excinfo.value)
-    assert excinfo.value.args[0] == 403
+    assert "401 Unauthorized" in str(excinfo.value)
+    assert excinfo.value.args[0] == 401
 
 
 @pytest.mark.skipif(

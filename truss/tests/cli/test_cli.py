@@ -1580,8 +1580,35 @@ def test_push_json_output_wait_deploy_failed(
     assert result.exit_code == 1
     data = json.loads(result.stdout)
     assert "error" in data
-    assert "DEPLOY_FAILED" in data["error"]["message"]
+    assert data["error"]["message"] == "Deployment failed with status DEPLOY_FAILED."
     assert data["error"]["deployment"] == failed_deployment
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
+def test_push_json_output_wait_deploy_failed_includes_failure_reason(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    failed_deployment = {
+        "status": "DEPLOY_FAILED",
+        "id": "deploy_id",
+        "failure_reason": "hf://org/repo@main: No files found to mirror",
+    }
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter([failed_deployment])
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["error"]["message"] == (
+        "Deployment failed with status DEPLOY_FAILED. "
+        "Reason: hf://org/repo@main: No files found to mirror"
+    )
 
 
 def _invoke_download(args):

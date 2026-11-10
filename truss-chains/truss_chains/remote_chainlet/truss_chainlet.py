@@ -84,7 +84,7 @@ def get_service_urls(
 
 
 class TrussHandle:
-    """Sibling chainlet handle; build once (e.g. in ``__init__``), then call args."""
+    """Sibling chainlet handle; build once (for example, in ``__init__``), then call args."""
 
     urls: public_types.ServiceDescriptorUrls
 

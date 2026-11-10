@@ -951,11 +951,18 @@ class BasetenApi:
         return resp_json["training_job"]
 
     def update_training_job(
-        self, project_id: str, job_id: str, *, priority: Optional[int] = None
+        self,
+        project_id: str,
+        job_id: str,
+        *,
+        priority: Optional[int] = None,
+        availability_model: Optional[str] = None,
     ):
         body: Dict[str, Any] = {}
         if priority is not None:
             body["priority"] = priority
+        if availability_model is not None:
+            body["availability_model"] = availability_model
         resp_json = self._rest_api_client.patch(
             f"v1/training_projects/{project_id}/jobs/{job_id}", body=body
         )
@@ -1368,12 +1375,15 @@ class BasetenApi:
         base_model: str,
         seed: Optional[int] = None,
         replicas: Optional[int] = None,
+        sampler_num_replicas: Optional[int] = None,
     ) -> dict:
         body: Dict[str, Any] = {"session_id": session_id, "base_model": base_model}
         if seed is not None:
             body["seed"] = seed
         if replicas is not None:
             body["replicas"] = replicas
+        if sampler_num_replicas is not None:
+            body["sampler_num_replicas"] = sampler_num_replicas
         resp_json = self._rest_api_client.post("v1/loops/runs", body=body)
         return resp_json["run"]
 

@@ -431,7 +431,7 @@ class TestSpotOverride:
         assert project.job.compute.availability_model == AvailabilityModel.SPOT
 
     def test_spot_flag_overrides_config_dedicated(self):
-        project = _project(Compute(availability_model=AvailabilityModel.DEDICATED))
+        project = _project(Compute(availability_model=AvailabilityModel.STANDARD))
         deployment._apply_cli_overrides(project, spot=True)
         assert project.job.compute.availability_model == AvailabilityModel.SPOT
 
@@ -443,4 +443,4 @@ class TestSpotOverride:
     def test_no_spot_flag_preserves_default(self):
         project = _project(Compute())
         deployment._apply_cli_overrides(project, spot=False)
-        assert project.job.compute.availability_model == AvailabilityModel.DEDICATED
+        assert project.job.compute.availability_model == AvailabilityModel.STANDARD

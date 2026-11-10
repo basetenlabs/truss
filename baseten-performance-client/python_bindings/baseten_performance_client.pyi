@@ -239,6 +239,7 @@ class RequestProcessingPreference:
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         cancel_token: Optional CancellationToken for cancelling operations.
         extra_headers: Optional dictionary of custom headers to include with all requests.
+        send_batch_key: If True, send the call's request ID as x-baseten-batch-key on every request (default: False).
 
     Example:
         >>> # Use all defaults
@@ -289,6 +290,7 @@ class RequestProcessingPreference:
         extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]] = None,
         non_retryable_status_codes: typing.Optional[typing.Set[builtins.int]] = None,
         trace_context: TraceContext | None = None,
+        send_batch_key: typing.Optional[bool] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -309,6 +311,9 @@ class RequestProcessingPreference:
             primary_api_key_override: Optional API key override used for primary requests.
             extra_headers: Optional dictionary of custom headers to include with all requests.
             non_retryable_status_codes: Optional set of HTTP status codes that should not be retried.
+            send_batch_key: If True, send the call's request ID as x-baseten-batch-key on every request,
+                so a deployment running active-active across clusters serves the whole call from one
+                cluster (default: False). Cannot be combined with x-baseten-batch-key in extra_headers.
         """
 
     # Property definitions with type hints
@@ -328,6 +333,7 @@ class RequestProcessingPreference:
     extra_headers: typing.Optional[typing.Dict[builtins.str, builtins.str]]
     non_retryable_status_codes: typing.Set[builtins.int]
     trace_context: TraceContext | None
+    send_batch_key: builtins.bool
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":
@@ -869,6 +875,18 @@ class PerformanceClient:
         """
         ...
 
+    # One POST per state/questions request; ordered backend responses are in .data.
+    # Model and provider extensions pass through. Empty lists raise ValueError.
+    def batch_system_one(
+        self,
+        requests: builtins.list[builtins.dict[builtins.str, typing.Any]],
+        preference: RequestProcessingPreference | None = None,
+    ) -> BatchPostResponse: ...
+    async def async_batch_system_one(
+        self,
+        requests: builtins.list[builtins.dict[builtins.str, typing.Any]],
+        preference: RequestProcessingPreference | None = None,
+    ) -> BatchPostResponse: ...
     async def async_batch_post(
         self,
         url_path: builtins.str,

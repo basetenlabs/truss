@@ -1,3 +1,6 @@
+/// Typed-decision endpoint shared by Jev, Infinity, and vLLM.
+pub const SYSTEM_ONE_PATH: &str = "/v1/systemone";
+
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub(crate) const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
@@ -42,6 +45,7 @@ pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
 pub(crate) const REQUEST_TIMEOUT_HEADER_NAME: &str = "Request-Timeout-Ms";
 pub(crate) const REQUEST_DEADLINE_HEADER_NAME: &str = "Request-Deadline-Ms";
+pub(crate) const BATCH_KEY_HEADER_NAME: &str = "x-baseten-batch-key";
 
 // Logging constants
 pub const DEFAULT_LOG_LEVEL: &str = "warn";

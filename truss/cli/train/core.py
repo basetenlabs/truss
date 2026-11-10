@@ -40,17 +40,17 @@ ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_DEPLOYING",
 ]
 
-# Human-readable labels for a job's `availability_model`. DEDICATED is
-# non-preemptible on-demand capacity (and the default when the field is absent,
+# Human-readable labels for a job's `availability_model`. STANDARD is
+# non-preemptible capacity (and the default when the field is absent,
 # which predates it); SPOT is interruptible.
 _AVAILABILITY_MODEL_LABELS = {
-    AvailabilityModel.DEDICATED: "On-demand",
+    AvailabilityModel.STANDARD: "Standard",
     AvailabilityModel.SPOT: "Spot",
 }
 
 
 def _format_capacity_type(job: dict) -> str:
-    raw = job.get("availability_model") or AvailabilityModel.DEDICATED
+    raw = job.get("availability_model") or AvailabilityModel.STANDARD
     try:
         model = AvailabilityModel(raw)
     except ValueError:
@@ -184,15 +184,19 @@ def recreate_training_job(
 
 
 def update_training_job(
-    remote_provider: BasetenRemote, job_id: str, *, priority: Optional[int] = None
+    remote_provider: BasetenRemote,
+    job_id: str,
+    *,
+    priority: Optional[int] = None,
+    availability_model: Optional[str] = None,
 ) -> Dict[str, Any]:
-    if priority is None:
+    if priority is None and availability_model is None:
         raise ValueError("At least one field to update must be provided.")
     job = _get_job_by_job_id(remote_provider, job_id)
     project_id = job["training_project"]["id"]
     job_id = job["id"]
     return remote_provider.api.update_training_job(
-        project_id, job_id, priority=priority
+        project_id, job_id, priority=priority, availability_model=availability_model
     )
 
 
@@ -479,9 +483,7 @@ def display_training_job(
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Priority", str(job.get("priority") or 0))
-    table.add_row(
-        "Availability Model", str(job.get("availability_model") or "dedicated")
-    )
+    table.add_row("Availability Model", _format_capacity_type(job))
     if user_email := job.get("user", {}).get("email"):
         table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
@@ -610,6 +612,39 @@ def status_page_url(remote_url: str, project_id: str, training_job_id: str) -> s
     return f"{remote_url}/training/{project_id}/logs/{training_job_id}"
 
 
+EXAMPLES_INDEX_FILE = ".examples-index.json"
+
+
+def _fetch_examples_index(
+    repo_id: str = "ml-cookbook", token: Optional[str] = None
+) -> Optional[Dict[str, Dict[str, str]]]:
+    """
+    Fetch the repository's examples index, which maps each example name to the
+    directory to download (``{"examples": {name: {"path": ...}}}``). Returns None
+    when the repository has no usable index, so callers fall back to listing
+    the examples directory.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = f"https://raw.githubusercontent.com/basetenlabs/{repo_id}/main/{EXAMPLES_INDEX_FILE}"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        index = response.json()
+    except (requests.exceptions.RequestException, ValueError):
+        return None
+
+    if (
+        not isinstance(index, dict)
+        or index.get("version") != 1
+        or not isinstance(index.get("examples"), dict)
+    ):
+        return None
+    return index["examples"]
+
+
 def _get_all_train_init_example_options(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
@@ -620,6 +655,10 @@ def _get_all_train_init_example_options(
     copy locally for training initialization. This method generates a list
     of examples and URL paths to show the user for selection.
     """
+    index = _fetch_examples_index(repo_id=repo_id, token=token)
+    if index is not None:
+        return sorted(index)
+
     headers = {}
     if token:
         headers["Authorization"] = f"token {token}"
@@ -655,6 +694,20 @@ def _get_train_init_example_info(
     Retrieve directory download links for the example from the ml-cookbook repository to
     copy locally for training initialization.
     """
+    index = _fetch_examples_index(repo_id=repo_id, token=token)
+    if index is not None:
+        entry = index.get(example_name) if example_name else None
+        if not entry or not entry.get("path"):
+            return []
+        path = entry["path"].strip("/")
+        return [
+            {
+                "name": path.rsplit("/", 1)[-1],
+                "type": "dir",
+                "url": f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{path}",
+            }
+        ]
+
     headers = {}
     if token:
         headers["Authorization"] = f"token {token}"
@@ -829,17 +882,17 @@ def view_cache_summary_by_project(
 
 
 def _usage_split(item: dict) -> Tuple[str, str]:
-    """Return (on-demand, spot) usage cells for a capacity item.
+    """Return (standard, spot) usage cells for a capacity item.
 
-    The backend splits usage_count into dedicated (on-demand) and spot. A
-    pre-split backend omits the breakdown; fall back to showing the total
-    under on-demand so the column still reflects real usage.
+    The backend splits usage_count into standard and spot. A pre-split backend
+    omits the breakdown; fall back to showing the total under standard so the
+    column still reflects real usage.
     """
-    dedicated = item.get("dedicated_usage_count")
+    standard = item.get("dedicated_usage_count")
     spot = item.get("spot_usage_count")
-    if dedicated is None and spot is None:
+    if standard is None and spot is None:
         return str(item.get("usage_count", 0)), "0"
-    return str(dedicated or 0), str(spot or 0)
+    return str(standard or 0), str(spot or 0)
 
 
 def display_training_capacity(remote_provider: BasetenRemote) -> None:
@@ -863,7 +916,7 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         org_table.add_column("GPU Type", style="cyan")
         org_table.add_column("Baseline", justify="right")
         org_table.add_column("Limit", justify="right")
-        org_table.add_column("On-Demand", justify="right")
+        org_table.add_column("Standard", justify="right")
         org_table.add_column("Spot", justify="right")
         for item in gpu_capacities:
             on_demand, spot = _usage_split(item)
@@ -887,7 +940,7 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
         team_table.add_column("Team", style="cyan")
         team_table.add_column("GPU Type", style="cyan")
         team_table.add_column("Limit", justify="right")
-        team_table.add_column("On-Demand", justify="right")
+        team_table.add_column("Standard", justify="right")
         team_table.add_column("Spot", justify="right")
         for item in team_gpu_capacities:
             on_demand, spot = _usage_split(item)

@@ -144,10 +144,12 @@ class BasetenEndpoints:
         elif not is_healthy:
             raise errors.ModelNotReady(self._model.name)
 
+        log_config.disable_startup_logging()
         return {}
 
     async def model_loaded(self, model_name: str) -> dict:
         self.check_healthy()
+        log_config.disable_startup_logging()
         return {}
 
     async def invocations_ready(self) -> dict[str, Union[str, bool]]:
@@ -157,7 +159,7 @@ class BasetenEndpoints:
         if self._model is None:
             raise errors.ModelMissingError("model")
         self.check_healthy()
-
+        log_config.disable_startup_logging()
         return {}
 
     async def invocations(
@@ -426,6 +428,7 @@ class TrussServer:
 
     def __init__(self, http_port: int, config_or_path: Union[str, Path, dict]):
         # This is run before uvicorn is up. Need explicit logging config here.
+        log_config.enable_startup_logging()
         logging.config.dictConfig(log_config.make_log_config("INFO"))
 
         if isinstance(config_or_path, (str, Path)):

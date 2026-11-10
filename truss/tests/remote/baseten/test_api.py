@@ -6,6 +6,7 @@ import requests
 from requests import Response
 
 import truss_train.definitions as train_definitions
+from truss.base.truss_config import Accelerator
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
@@ -559,11 +560,18 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
     assert "entrypoint:" in gql_mutation
 
 
+@pytest.mark.parametrize(
+    "project_accelerator,expected_accelerator",
+    [(None, None), (Accelerator.H100, "H100"), (Accelerator.A100_40GB, "A100_40GB")],
+)
 @mock.patch("requests.post", return_value=mock_upsert_training_project_response())
-def test_upsert_training_project(mock_post, baseten_api):
+def test_upsert_training_project(
+    mock_post, baseten_api, project_accelerator, expected_accelerator
+):
     baseten_api.upsert_training_project(
         training_project=train_definitions.TrainingProject(
             name="training-project",
+            project_accelerator=project_accelerator,
             job=train_definitions.TrainingJob(
                 image=train_definitions.Image(base_image="base-image"),
                 runtime=train_definitions.Runtime(
@@ -576,6 +584,10 @@ def test_upsert_training_project(mock_post, baseten_api):
     upsert_body = mock_post.call_args[1]["json"]["training_project"]
     assert "job" not in upsert_body
     assert "training-project" == upsert_body["name"]
+    if project_accelerator is None:
+        assert "project_accelerator" not in upsert_body
+    else:
+        assert upsert_body["project_accelerator"] == expected_accelerator
 
 
 def mock_update_training_job_response():
@@ -587,15 +599,26 @@ def mock_update_training_job_response():
     return response
 
 
+@pytest.mark.parametrize(
+    "kwargs,expected_body",
+    [
+        ({"priority": 42}, {"priority": 42}),
+        ({"availability_model": "spot"}, {"availability_model": "spot"}),
+        (
+            {"priority": 42, "availability_model": "spot"},
+            {"priority": 42, "availability_model": "spot"},
+        ),
+    ],
+)
 @mock.patch("requests.patch", return_value=mock_update_training_job_response())
-def test_update_training_job(mock_patch, baseten_api):
-    result = baseten_api.update_training_job("project_id", "job_id", priority=42)
+def test_update_training_job(mock_patch, baseten_api, kwargs, expected_body):
+    result = baseten_api.update_training_job("project_id", "job_id", **kwargs)
 
     assert result == {"id": "job_id", "priority": 42}
 
     called_url = mock_patch.call_args[0][0]
     assert called_url.endswith("/v1/training_projects/project_id/jobs/job_id")
-    assert mock_patch.call_args[1]["json"] == {"priority": 42}
+    assert mock_patch.call_args[1]["json"] == expected_body
 
 
 # Mock responses for training job logs pagination tests
@@ -837,3 +860,25 @@ def test_deactivate_loops_run_posts_run_deactivate_endpoint(baseten_api):
     assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs/run-1/deactivate"
     assert mock_rest_client.post.call_args[1]["body"] == {}
     mock_rest_client.get.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("replicas", "expected_fields"),
+    [({}, {}), ({"sampler_num_replicas": 3}, {"sampler_num_replicas": 3})],
+)
+def test_create_loops_run_sends_sampler_num_replicas_only_when_set(
+    baseten_api, replicas, expected_fields
+):
+    # An unset count are left out so the server applies its own defaults.
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"run": {}}
+    baseten_api._rest_api_client = mock_rest_client
+
+    baseten_api.create_loops_run("session-1", "Qwen/Qwen3-8B", **replicas)
+
+    assert mock_rest_client.post.call_args[0][0] == "v1/loops/runs"
+    assert mock_rest_client.post.call_args[1]["body"] == {
+        "session_id": "session-1",
+        "base_model": "Qwen/Qwen3-8B",
+        **expected_fields,
+    }

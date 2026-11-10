@@ -31,6 +31,34 @@ their own tracing subscriber should use `default-features = false` and enable
 `rustls` (or `native-tls`) explicitly. This disables automatic subscriber setup
 and logging environment-variable changes; client tracing events remain enabled.
 
+## TLS trust stores
+
+The Rust core's default `rustls` feature and the Node.js binding use a bundled
+Mozilla root store. The `rustls` feature requires `webpki-roots >= 1.0.10`, which
+removes **emSign ECC Root CA - G3**. This is targeted G3 distrust, not removal of
+all emSign roots. Certificate and hostname verification remain enabled.
+
+The workspace lockfile also includes `rustls 0.23.46` and
+[`rustls-webpki 0.103.16`](https://github.com/rustls/webpki/releases/tag/v/0.103.16).
+The latter rejects certificate paths containing specific distrusted intermediate
+public keys, providing additional protection beyond removing G3 from the bundle.
+Downstream Rust consumers use their own lockfiles and should update these
+dependencies too; the `webpki-roots` manifest floor only guarantees the bundled
+root removal.
+
+The Python binding and reverse proxy also enable `native-tls`. When both TLS
+backends are enabled, reqwest selects native TLS by default. Native TLS uses the
+platform/OpenSSL trust store; the bundled-root update does **not** remediate that
+store. Update the system CA package or otherwise remove G3 from the trust store
+used by those deployments. An explicitly native-TLS-only Rust build needs the
+same treatment. This change does not alter backend selection or enterprise CA
+support.
+
+Rebuild and redistribute Rust TLS binaries and Node.js native addons to pick up
+the new bundle. Previously shipped artifacts are not changed by updating the
+repository, and upgrading Python `certifi` does not update Rust's bundled roots
+or the native platform trust store.
+
 ## Usage
 
 ### Python
@@ -472,7 +500,7 @@ async def async_classify():
 
 The client can raise several types of errors. Here's how to handle common ones:
 
-- **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 403 Forbidden if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
+- **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 401 Unauthorized if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
 - **`requests.exceptions.Timeout`**: This error is raised when a request or the total operation times out (based on `timeout_s` or `total_timeout_s`).
 - **`ValueError`**: This error can occur due to invalid input parameters (e.g., an empty `input` list for `embed`, invalid `batch_size` or `max_concurrent_requests` values). It can also be raised by `response.numpy()` if embeddings are not float vectors or have inconsistent dimensions.
 
@@ -742,6 +770,29 @@ const response = await client.batchPost(
 );
 ```
 
+#### Batch Key
+
+A deployment running active-active across clusters balances each request on its own, so the
+requests of one call can be served by different clusters with different latencies. When a call's
+requests should all be served in one place, set `send_batch_key=True` (Node.js: `sendBatchKey`;
+Rust: `with_send_batch_key(true)`) on that call's preference. Every request of the call, including
+retries and hedges, then carries the call's request ID as `x-baseten-batch-key`, and requests with the
+same key are served from the same cluster. The key is the part of `x-baseten-customer-request-id`
+that the call's requests share, so each call gets its own. Calls without it are balanced as usual.
+
+```python
+from baseten_performance_client import RequestProcessingPreference
+
+response = client.batch_post(
+    url_path="/predict",
+    payloads=payloads,
+    preference=RequestProcessingPreference(send_batch_key=True),
+)
+```
+
+To choose the key yourself, put `x-baseten-batch-key` in `extra_headers` instead; setting both is
+an error.
+
 #### Cancellation Support
 The client supports cancellation of long-running operations through `CancellationToken`. This allows you to cancel batch operations that are in progress.
 
@@ -1004,6 +1055,8 @@ To enable client-span export, set these before the first client request:
 export BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT=http://localhost:4318
 # Optional, comma-separated literal name=value headers for the collector only:
 export BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS='authorization=Bearer collector-token'
+# Optional, `parent` (default) or `link`; see below:
+export BASETEN_PERFORMANCE_CLIENT_OTLP_CALLER_CONTEXT=parent
 ```
 
 The endpoint accepts gzip-compressed OTLP/HTTP JSON; `/v1/traces` is appended unless already present.
@@ -1015,6 +1068,11 @@ Each client call records one span covering all its batches, retries, and hedges,
 response parsing. Its context is forwarded to the model so server spans join underneath it.
 A supplied sampled parent is preserved as the client span's parent; an unsampled parent
 is forwarded without recording. Without a parent, export creates a new root trace.
+If the collector never receives the application's own spans, set the caller context to
+`link`: each recorded span then roots a new trace, so the collector receives complete
+traces. A supplied sampled context becomes a span link (with its tracestate) instead of the
+parent, and only the new trace's context is forwarded; an unsampled context is still
+forwarded unchanged.
 The SDK validates and propagates W3C context when recording; an invalid traceparent is an error.
 
 The SDK exports on a separate thread, batching up to 256 spans every second,
@@ -1023,3 +1081,13 @@ HTTP timeout. It is best effort: failed batches, queue overflow, and spans pendi
 process exit can be lost; there is no shutdown flush or export retry. Export failures
 do not fail inference. Client-call failures/cancellation mark the span as an error.
 Unset the endpoint to disable recording/export; the request loop has no tracing work.
+
+## System One decisions
+
+Python: `batch_system_one()` / `async_batch_system_one()`. Node: `batchSystemOne()`.
+Each sends a list of independent `state`/`questions` requests to `/v1/systemone`,
+with an optional `model`. Results are in `.data`, in input order, with batch timings
+and response headers. Existing request preferences apply.
+
+See the [Python example](python_bindings/README.md#system-one-decisions) or
+[Node example](node_bindings/README.md#system-one-decisions).

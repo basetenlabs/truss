@@ -254,6 +254,7 @@ impl RequestProcessingPreference {
     extra_headers: Option<HashMap<String, String>>,
     non_retryable_status_codes: Option<Vec<u16>>,
     trace_context: Option<TraceContext>,
+    send_batch_key: Option<bool>,
   ) -> Self {
     let non_retryable_status_codes: Option<HashSet<u16>> =
       non_retryable_status_codes.map(|codes| codes.into_iter().collect());
@@ -277,6 +278,7 @@ impl RequestProcessingPreference {
         traceparent: context.traceparent,
         tracestate: context.tracestate,
       }),
+      send_batch_key,
     };
 
     // Apply defaults using the same method as Rust core
@@ -337,6 +339,16 @@ impl RequestProcessingPreference {
   #[napi(getter)]
   pub fn pin_initial_endpoint_once(&self) -> bool {
     self.complete.pin_initial_endpoint_once.unwrap_or(false)
+  }
+
+  #[napi(setter)]
+  pub fn set_send_batch_key(&mut self, value: bool) {
+    self.complete.send_batch_key = Some(value);
+  }
+
+  #[napi(getter)]
+  pub fn send_batch_key(&self) -> bool {
+    self.complete.send_batch_key.unwrap_or(false)
   }
 
   #[napi(getter)]
@@ -645,6 +657,23 @@ impl PerformanceClient {
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
+  }
+
+  /// Send one System One POST per request, preserving response order and backend fields.
+  #[napi(js_name = "batchSystemOne")]
+  pub async fn batch_system_one(
+    &self,
+    requests: Vec<JsonValue>,
+    preference: Option<&RequestProcessingPreference>,
+  ) -> napi::Result<serde_json::Value> {
+    self
+      .batch_post(
+        baseten_performance_client_core::SYSTEM_ONE_PATH.into(),
+        requests,
+        preference,
+        None,
+      )
+      .await
   }
 
   // TODO: This JSON-compatible return type cannot preserve MessagePack binary, invalid UTF-8

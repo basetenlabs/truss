@@ -1065,9 +1065,11 @@ def push(
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    exc = RuntimeError(
-                        f"Deployment failed with status {deployment_status}."
-                    )
+                    message = f"Deployment failed with status {deployment_status}."
+                    # Older backends don't return failure_reason.
+                    if failure_reason := deployment.get("failure_reason"):
+                        message += f" Reason: {failure_reason}"
+                    exc = RuntimeError(message)
                     setattr(exc, "json_data", {"deployment": deployment})
                     raise exc
 

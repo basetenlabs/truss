@@ -13,7 +13,7 @@ import httpx
 from endpoints import control_app
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from helpers.errors import ModelLoadFailed, PatchApplicatonError
+from helpers.errors import ModelLoadFailed, ModelNotReady, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.inference_server_starter import async_inference_server_startup_flow
@@ -41,11 +41,17 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as exc:
-            # NB(nikhil): Intentionally bypass error logging for ModelLoadFailed, since health checks
-            # are noisy. The underlying model logs for why the load failed will still be visible.
+            # NB(nikhil): Intentionally bypass error logging for ModelLoadFailed and ModelNotReady,
+            # since health checks are noisy. The underlying model logs for why the load failed
+            # will still be visible.
             if isinstance(exc, ModelLoadFailed):
                 return JSONResponse(
                     {"error": str(exc)}, status_code=http.HTTPStatus.BAD_GATEWAY.value
+                )
+            if isinstance(exc, ModelNotReady):
+                return JSONResponse(
+                    {"error": str(exc)},
+                    status_code=http.HTTPStatus.SERVICE_UNAVAILABLE.value,
                 )
 
             # Defensive: the error handler itself must not crash. _format_error

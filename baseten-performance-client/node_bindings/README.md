@@ -455,7 +455,7 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 #### RequestProcessingPreference
 
 ```javascript
-new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?)
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, pinInitialEndpointOnce?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?, nonRetryableStatusCodes?, traceContext?, sendBatchKey?)
 ```
 
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 256)
@@ -473,6 +473,8 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, timeoutS?, m
 - `primaryApiKeyOverride` (string, optional): Override API key for requests
 - `extraHeaders` (Record<string, string>, optional): Custom headers to include with all requests
 - `nonRetryableStatusCodes` (number[], optional): Status codes that should not be retried even if the default policy would retry them
+- `traceContext` (TraceContext, optional): W3C trace context to forward to the model
+- `sendBatchKey` (boolean, optional): Send the call's request ID as `x-baseten-batch-key` on every request, so a deployment running active-active across clusters serves the whole call from one cluster (default: false). Cannot be combined with `x-baseten-batch-key` in `extraHeaders`. Also settable as `preference.sendBatchKey = true`
 
 ### Methods
 
@@ -594,3 +596,23 @@ MIT License
 ## Acknowledgements:
 Venkatesh Narayan (Clay.com) for the prototpe of this here https://github.com/basetenlabs/truss/pull/1778
 and Suren (Baseten) for getting a PoC and protyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package
+
+## System One decisions
+
+Send independent requests to `/v1/systemone`; use a one-element array for one request.
+
+```javascript
+const response = await client.batchSystemOne([{
+  state: "My invoice was charged twice.",
+  questions: { route: {
+    type: "choice",
+    instructions: "Which team should handle this?",
+    criteria: { billing: null, support: null },
+  } },
+}]);
+console.log(response.data[0].answers.route);
+```
+
+Add `model` or backend-specific fields to each request as needed. `data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.

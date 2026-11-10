@@ -134,3 +134,20 @@ def notify_if_outdated(current_version: str) -> None:
     stderr_console.print(
         f"▪▪▪▪ To disable this check, set `check_for_updates` to false in {settings_path}"
     )
+
+
+def notify_baseten_cli() -> None:
+    if not user_config.get_settings().check_for_updates:
+        return
+
+    if not user_config.get_state().should_notify_baseten_cli_banner():
+        return
+
+    stderr_console.print(
+        "▪▪▪▪ The Baseten CLI is now the recommended CLI for Baseten: "
+        "[bold cyan]https://docs.baseten.co/reference/cli/baseten/overview[/bold cyan]"
+    )
+    settings_path = user_config._SettingsWrapper.path()
+    stderr_console.print(
+        f"▪▪▪▪ To disable this notice, set `check_for_updates` to false in {settings_path}"
+    )

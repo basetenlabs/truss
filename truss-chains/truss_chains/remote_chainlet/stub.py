@@ -271,7 +271,7 @@ class StubBase(BasetenSession, abc.ABC):
             predict_url: URL to predict endpoint of another chain / truss model.
             context_or_api_key: Deployment context object, obtained in the
                chainlet's ``__init__`` or Baseten API key.
-            options: RPC options, e.g. retries.
+            options: RPC options, for example, retries.
         """
         options = options or public_types.RPCOptions()
         if isinstance(context_or_api_key, str):

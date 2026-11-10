@@ -19,6 +19,8 @@ import websockets
 from prometheus_client.parser import text_string_to_metric_families
 
 PATCH_PING_MAX_DELAY_SECS = 3
+# Child-process cleanup can take 30 seconds before the inference server stops.
+CONTROL_SERVER_TERMINATION_TIMEOUT_SECS = 45
 
 
 def _start_truss_server(
@@ -92,7 +94,9 @@ def test_truss_control_server_termination(control_server: ControlServerDetails):
     assert not _is_port_available(control_server.inference_server_port)
 
     os.kill(proc_id, signal.SIGTERM)
-    control_server.control_server_process.join(timeout=30)
+    control_server.control_server_process.join(
+        timeout=CONTROL_SERVER_TERMINATION_TIMEOUT_SECS
+    )
     assert not control_server.control_server_process.is_alive()
     assert _process_tree_is_dead(proc_id)
 
@@ -145,6 +149,9 @@ class Model:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Control-server WebSockets require Python 3.11+"
+)
 async def test_truss_control_server_text_websocket(
     control_server: ControlServerDetails,
 ):
@@ -176,6 +183,9 @@ class Model:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Control-server WebSockets require Python 3.11+"
+)
 async def test_truss_control_server_binary_websocket(
     control_server: ControlServerDetails,
 ):
@@ -256,7 +266,9 @@ def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path
             )
 
             os.kill(proc_id, signal.SIGTERM)
-            control_server.control_server_process.join(timeout=30)
+            control_server.control_server_process.join(
+                timeout=CONTROL_SERVER_TERMINATION_TIMEOUT_SECS
+            )
             # Control server process tree should be dead
             assert not control_server.control_server_process.is_alive()
             assert _process_tree_is_dead(proc_id)

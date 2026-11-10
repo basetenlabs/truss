@@ -515,7 +515,7 @@ Health semantics:
 
 The client can raise several types of errors. Here's how to handle common ones:
 
-- **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 403 Forbidden if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
+- **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 401 Unauthorized if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
 - **`ValueError`**: This error can occur due to invalid input parameters (e.g., an empty `input` list for `embed`, invalid `batch_size` or `max_concurrent_requests` values). It can also be raised by `response.numpy()` if embeddings are not float vectors or have inconsistent dimensions.
 
 Here's an example demonstrating how to catch these errors for the `embed` method:
@@ -578,3 +578,25 @@ Feel free to contribute to this repo, tag @michaelfeil for review.
 
 ## License
 MIT License
+
+## System One decisions
+
+Send independent requests to `/v1/systemone`; use a one-element list for one request.
+
+```python
+requests = [{
+    "state": "My invoice was charged twice.",
+    "questions": {"route": {
+        "type": "choice",
+        "instructions": "Which team should handle this?",
+        "criteria": {"billing": None, "support": None},
+    }},
+}]
+response = client.batch_system_one(requests=requests)
+print(response.data[0]["answers"]["route"])
+# Async: await client.async_batch_system_one(requests=requests)
+```
+
+Add `model` or backend-specific fields to each request as needed. `.data` preserves
+input order; the response also includes timings and headers. Existing request
+preferences apply. Supported question types depend on the backend.

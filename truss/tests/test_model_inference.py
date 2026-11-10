@@ -65,12 +65,13 @@ def _assert_logs_contain_error(
     )
 
 
-def _assert_logs_contain(logs: str, message: str, level: str = "INFO"):
+def _assert_startup_log(logs: str, message: str, level: str = "INFO"):
     loglines = [json.loads(line) for line in logs.splitlines()]
-    assert any(_log_contains_line(line, message, level) for line in loglines), (
-        f"Did not find expected  logs.\n"
-        f"Expected message: {message}\nActual logs:\n{loglines}"
-    )
+    matching_lines = [
+        line for line in loglines if _log_contains_line(line, message, level)
+    ]
+    assert matching_lines, f"Did not find expected startup log: {message}"
+    assert all(line.get("startup") == "1" for line in matching_lines)
 
 
 class _PropagatingThread(Thread):
@@ -147,10 +148,10 @@ def test_model_load_logs(test_data_path):
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         logs = container.logs()
-        _assert_logs_contain(logs, message="Executing model.load()")
-        _assert_logs_contain(logs, message="Loading truss model from file")
-        _assert_logs_contain(logs, message="Completed model.load()")
-        _assert_logs_contain(logs, message="User Load Message")
+        _assert_startup_log(logs, message="Executing model.load()")
+        _assert_startup_log(logs, message="Loading truss model from file")
+        _assert_startup_log(logs, message="Completed model.load()")
+        _assert_startup_log(logs, message="User Load Message")
 
 
 @pytest.mark.integration
@@ -1676,15 +1677,17 @@ def test_async_streaming_with_cancellation():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
-        # For hard cancellation we need to use httpx, requests' timeouts don't work.
-        with pytest.raises(httpx.ReadTimeout):
-            with httpx.Client(
-                timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
-            ) as client:
-                response = client.post(urls.predict_url, json={}, timeout=1.0)
+        # Close after receiving a chunk so cancellation happens during generation.
+        with httpx.Client(timeout=10.0) as client:
+            with client.stream("POST", urls.predict_url, json={}) as response:
                 response.raise_for_status()
+                assert next(response.iter_text()) == "0"
 
-        time.sleep(2)  # Wait a bit to get all logs.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if "Cancelled (during gen)." in container.logs():
+                break
+            time.sleep(0.1)
         assert "Cancelled (during gen)." in container.logs()
 
 
@@ -2251,7 +2254,7 @@ _VERSION_CHECK_MODEL = """
         def predict(self, data):
             packages = [
                 "fastapi", "numpy", "uvicorn", "requests",
-                "pyyaml", "msgpack", "msgpack-numpy",
+                "pyyaml", "msgpack", "b10-msgpack-numpy",
             ]
             versions = {
                 pkg: importlib.metadata.version(pkg)
@@ -2435,7 +2438,7 @@ def test_numpy2x_compat():
         assert response.json()["result"] == 4.0
 
         # Msgpack round-trip with a numpy array  - the critical test for
-        # msgpack-numpy 0.4.8 compatibility with numpy 2.x.
+        # b10-msgpack-numpy 0.4.8 compatibility with numpy 2.x.
         from truss.templates.shared.serialization import (
             truss_msgpack_deserialize,
             truss_msgpack_serialize,
