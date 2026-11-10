@@ -873,7 +873,7 @@
             }
           ],
           "default": null,
-          "description": "The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+          "description": "The time in seconds after which an unhealthy instance is restarted. With trt_llm, defaults to 60 and must be <= 60. Otherwise defaults to platform-determined value when not set.",
           "title": "Restart Threshold Seconds"
         },
         "stop_traffic_threshold_seconds": {
@@ -886,7 +886,7 @@
             }
           ],
           "default": null,
-          "description": "The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+          "description": "The time in seconds after which traffic is stopped to an unhealthy instance. With trt_llm, defaults to 30 and must be <= 30. Otherwise defaults to platform-determined value when not set.",
           "title": "Stop Traffic Threshold Seconds"
         },
         "startup_threshold_seconds": {
