@@ -1,3 +1,4 @@
+import glob
 import os
 import time
 from pathlib import Path
@@ -579,6 +580,34 @@ def test_add_files_directory_glob(tmp_path, method_name, destination_name, patte
         if path.is_file()
     } == expected
     assert not list(destination.rglob("__pycache__"))
+
+
+@pytest.mark.parametrize(
+    "method_name, destination_name",
+    [("add_data", "data_dir"), ("add_bundled_package", "bundled_packages_dir")],
+)
+def test_add_files_glob_missing_file(
+    tmp_path, monkeypatch, method_name, destination_name
+):
+    th = truss.load(init_directory(tmp_path / "truss"))
+    source = tmp_path / "source"
+    source.mkdir()
+    file_path = source / "file.txt"
+    file_path.write_text("file")
+    real_glob = glob.glob
+
+    def glob_then_remove(pattern):
+        matches = real_glob(pattern)
+        assert matches == [str(file_path)]
+        file_path.unlink()
+        return matches
+
+    monkeypatch.setattr(glob, "glob", glob_then_remove)
+
+    with pytest.raises(FileNotFoundError):
+        getattr(th, method_name)(str(source / "*.txt"))
+
+    assert not (getattr(th.spec, destination_name) / file_path.name).exists()
 
 
 def test_examples(custom_model_truss_dir_with_pre_and_post):
