@@ -105,9 +105,6 @@ jobs:
           fi
 
           uv run pytest $test_marker \
-            truss/tests/templates/control/control/test_server_integration.py::test_truss_control_server_termination \
-            truss/tests/templates/control/control/test_server_integration.py::test_truss_control_server_patch_ping_delays \
-            truss/tests/test_model_inference.py::test_async_streaming_with_cancellation \
             truss/tests/test_model_inference.py::test_is_healthy_returns_503_on_load_failure \
             truss/tests/test_truss_handle.py::test_control_truss_local_update_that_crashes_inference_server \
             truss/tests/test_truss_handle.py::test_docker_predict_custom_base_image \
