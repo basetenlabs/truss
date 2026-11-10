@@ -26,7 +26,7 @@ import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
 
-from truss.base import constants, custom_types, trt_llm_config
+from truss.base import bei_config, constants, custom_types, trt_llm_config
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
@@ -1658,6 +1658,10 @@ class TrussConfig(custom_types.ConfigModel):
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
+    bei: Optional[bei_config.BEIConfiguration] = pydantic.Field(
+        default=None,
+        description="BEIv3 encoder serving configuration. Loads checkpoints directly without an engine-build job.",
+    )
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
@@ -1895,6 +1899,54 @@ class TrussConfig(custom_types.ConfigModel):
         return CacheInternal([]) if v is None else v
 
     @pydantic.model_validator(mode="after")
+    def _validate_bei(self) -> "TrussConfig":
+        if self.bei is None:
+            return self
+        if self.trt_llm is not None or self.bis_llm is not None:
+            raise ValueError("bei cannot be combined with trt_llm or bis_llm.")
+        if self.live_reload:
+            raise ValueError("bei does not support live_reload.")
+        if self.runtime.transport.kind != TransportKind.HTTP:
+            raise ValueError("bei requires HTTP transport.")
+        if self.requirements or self.requirements_file:
+            raise ValueError(
+                "bei does not install Python requirements; include custom dependencies in the BEIv3 base image."
+            )
+        # Build preparation adds this managed server configuration. Accept it on
+        # subsequent config loads, while rejecting conflicting user settings.
+        if self.docker_server is not None and self.docker_server != bei_docker_server():
+            raise ValueError(
+                "bei manages docker_server; remove custom docker_server settings."
+            )
+        accelerator = self.resources.accelerator.accelerator
+        if accelerator is None and not self.resources.instance_type:
+            raise ValueError(
+                "bei requires accelerator resources or an explicit instance_type."
+            )
+        if (self.resources.node_count or 1) > 1:
+            raise ValueError("BEIv3 currently supports single-node deployments.")
+        family = (
+            self.resources.instance_type.split(":", 1)[0]
+            if self.resources.instance_type
+            else (accelerator.value if accelerator else "")
+        )
+        if family:
+            is_tpu = family.startswith("TPU_")
+            if is_tpu != (self.bei.backend == bei_config.BEIBackend.TPU):
+                raise ValueError(
+                    "bei.backend must match the resources accelerator family."
+                )
+            if self.bei.backend == bei_config.BEIBackend.NVIDIA:
+                if family in ("CPU", "T4", "V100"):
+                    raise ValueError("BEIv3 requires NVIDIA SM80 or newer GPUs.")
+                if any(
+                    model.quantization == bei_config.BEIQuantization.FP8
+                    for model in self.bei.configuration
+                ) and family in ("A10G", "A100", "A100_40GB"):
+                    raise ValueError("BEIv3 FP8 requires NVIDIA SM89 or newer GPUs.")
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
 
@@ -1919,6 +1971,18 @@ class TrussConfig(custom_types.ConfigModel):
         elif basename == PYPROJECT_TOML_FILENAME:
             return RequirementsFileType.PYPROJECT
         return RequirementsFileType.PIP
+
+
+def bei_docker_server() -> DockerServer:
+    # The command contains only a fixed launcher path; model values are passed
+    # to exec as an argv array by the launcher rather than through a shell.
+    return DockerServer(
+        start_command="/docker_server/.venv/bin/python /app/bei/launch.py",
+        server_port=7997,
+        predict_endpoint="/v1/embeddings",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

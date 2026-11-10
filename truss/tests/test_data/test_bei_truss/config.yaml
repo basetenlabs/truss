@@ -1,0 +1,17 @@
+model_name: BEIv3 encoders
+resources:
+  accelerator: L4:2
+base_image:
+  image: example.com/bei:test-nvidia
+bei:
+  backend: nvidia
+  version_override: null
+  configuration:
+    - checkpoint: BAAI/bge-small-en-v1.5
+      revision: main
+      served_model_name: baai-small
+      quantization: none
+    - checkpoint: BAAI/bge-large-en-v1.5
+      revision: pinned-large
+      served_model_name: baai-large
+      quantization: fp8

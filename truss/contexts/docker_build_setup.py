@@ -7,7 +7,7 @@ from typing import Optional
 
 import click
 
-from truss.base import constants, trt_llm_config
+from truss.base import bei_config, constants, trt_llm_config
 from truss.base.truss_config import Accelerator
 from truss.patch.hash import directory_content_hash
 from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
@@ -84,11 +84,36 @@ def _fill_trt_llm_versions(
             )
 
 
+def _fill_bei_versions(
+    tr: truss_handle.TrussHandle, image_versions: bei_config.BEIImageVersions
+) -> None:
+    bei = tr.spec.config.bei
+    assert bei is not None
+    if (
+        not bei.image_override
+        and tr.spec.config.base_image
+        and tr.spec.config.base_image.image.strip()
+    ):
+        return
+    image = bei.image_override or (
+        image_versions.nvidia_image
+        if bei.backend == bei_config.BEIBackend.NVIDIA
+        else image_versions.tpu_image
+    )
+    if not image:
+        raise ValueError(f"No BEIv3 image supplied for backend {bei.backend.value}.")
+    current = tr.spec.config.base_image
+    tr.set_base_image(image, current.python_executable_path if current else "")
+
+
 @click.command()
 @click.option("--truss_type", required=True)
 @click.option("--trt_llm_image_versions_json")
+@click.option("--bei_image_versions_json")
 def docker_build_setup(
-    truss_type: str, trt_llm_image_versions_json: Optional[str] = None
+    truss_type: str,
+    trt_llm_image_versions_json: Optional[str] = None,
+    bei_image_versions_json: Optional[str] = None,
 ) -> None:
     """
     Prepares source and asset files in a build directory (build context), on which a
@@ -104,6 +129,11 @@ def docker_build_setup(
             trt_llm_image_versions_json
         )
         _fill_trt_llm_versions(tr, image_versions)
+
+    if tr.spec.config.bei is not None and bei_image_versions_json:
+        _fill_bei_versions(
+            tr, bei_config.BEIImageVersions.model_validate_json(bei_image_versions_json)
+        )
 
     logging.info("Truss is loaded")
 

@@ -63,6 +63,12 @@ RUN mkdir -p {{ dst.parent | string | dockerfile_shell_value }}; curl -L {{ url 
 COPY --chown={{ default_owner }} ./{{ config.data_dir }} ${APP_HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
 
+{%- if config.bei %}
+COPY --chown={{ default_owner }} ./bei ${APP_HOME}/bei
+ENV BEI_PORT=7997
+ENV BEI_HOSTNAME=0.0.0.0
+{%- endif %}
+
 {%- if copy_truss_transfer_cli %}
 {# v0.0.9, keep synced with server_requirements.txt #}
 RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.11.13rc3/truss-transfer-cli-v0.11.13rc3-linux-x86_64-unknown-linux-musl
@@ -123,6 +129,11 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 
 {%- if config.docker_server %}
 {%- if docker_server_slim %}
+{%- if config.bei %}
+{#- BEIv3 NVIDIA images are Python-free; the launcher uses a managed interpreter. #}
+RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
+RUN {{ clean_uv_env }} uv venv /docker_server/.venv --python {{ control_python_version }}
+{%- endif %}
 ENV SERVER_START_CMD={{ config.docker_server.start_command | dockerfile_env_value }}
 {{ chown_and_switch_to_regular_user_if_enabled() }}
 {{ copy_config_yaml() }}
@@ -152,6 +163,10 @@ RUN mkdir -p /dev/shm
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
 {{ copy_config_yaml() }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
+{%- if config.bei %}
+{#- Clear BEI image defaults (--json-output or --help) for supervisord. #}
+CMD []
+{%- endif %}
 {%- endif %} {#- endif docker_server_slim #}
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
