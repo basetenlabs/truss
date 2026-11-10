@@ -47,13 +47,114 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-@pytest.mark.parametrize("accelerator", [None, *Accelerator])
+@pytest.mark.parametrize(
+    "accelerator",
+    [
+        None,
+        *(
+            accelerator
+            for accelerator in Accelerator
+            if accelerator not in (Accelerator.TPU_V6E, Accelerator.TPU_V7)
+        ),
+    ],
+)
 def test_non_tpu_resources(accelerator):
     resources = Resources(accelerator=AcceleratorSpec(accelerator=accelerator))
     assert not resources.is_tpu
     assert resources.use_gpu == (accelerator is not None)
     assert "is_tpu" not in resources.model_dump()
     assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator, count", [("TPU_V6E", 8), ("TPU_V7", 4)])
+def test_tpu_resources_roundtrip(accelerator, count):
+    resources = Resources.model_validate({"accelerator": f"{accelerator}:{count}"})
+    assert resources.is_tpu
+    assert resources.use_gpu
+    assert "is_tpu" not in resources.model_dump()
+    assert resources.accelerator.count == count
+    assert resources.model_dump()["accelerator"] == f"{accelerator}:{count}"
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:0", "TPU_V6E:-1", "TPU_V6E:abc"])
+def test_tpu_rejects_invalid_accelerator_count(accelerator):
+    with pytest.raises(ValueError, match="Invalid count"):
+        Resources.model_validate({"accelerator": accelerator})
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"base_image": None}, "custom base_image"),
+        ({"base_image": {"image": ""}}, "custom base_image"),
+    ],
+)
+def test_tpu_rejects_unsupported_config(overrides, message):
+    config = {
+        "resources": {"accelerator": "TPU_V6E:8"},
+        "base_image": {"image": "example.com/tpu-runtime:preview"},
+        **overrides,
+    }
+    with pytest.raises(ValueError, match=message):
+        TrussConfig.model_validate(config)
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:8", "TPU_V7:4"])
+@pytest.mark.parametrize(
+    "resource_settings",
+    [
+        {"node_count": 2},
+        {"fabric": {"use_rdma": True}},
+        {"fabric": {"preferences": ["roce"]}},
+    ],
+)
+def test_tpu_node_and_fabric_settings_warn(accelerator, resource_settings, caplog):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": accelerator, **resource_settings},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+        }
+    )
+    resources = config.resources.model_dump()
+    for key, value in resource_settings.items():
+        if key == "fabric":
+            for fabric_key, fabric_value in value.items():
+                assert resources[key][fabric_key] == fabric_value
+        else:
+            assert resources[key] == value
+    assert "Support is validated server side during deployment." in caplog.text
+
+
+@pytest.mark.parametrize(
+    "docker_server",
+    [
+        None,
+        {
+            "start_command": "python server.py",
+            "server_port": 9000,
+            "predict_endpoint": "/predict",
+            "readiness_endpoint": "/ready",
+            "liveness_endpoint": "/health",
+        },
+    ],
+)
+def test_tpu_custom_image_config_roundtrip(docker_server):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8"},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+            "docker_server": docker_server,
+        }
+    )
+    assert TrussConfig.model_validate(config.model_dump()) == config
+
+
+def test_tpu_rejects_nvidia_inference_engine(trtllm_config):
+    trtllm_config["resources"]["accelerator"] = "TPU_V6E:8"
+    trtllm_config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    with pytest.raises(ValueError, match="NVIDIA inference engines"):
+        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize(

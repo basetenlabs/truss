@@ -34,6 +34,24 @@ from truss.util.jinja import dockerfile_env_value, dockerfile_shell_value
 BASE_DIR = Path(__file__).parent
 
 
+def test_tpu_build_context_uses_custom_image(custom_model_truss_dir, tmp_path):
+    config_path = custom_model_truss_dir / "config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["resources"] = {"accelerator": "TPU_V6E:8"}
+    config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    config_path.write_text(yaml.safe_dump(config))
+
+    builder = ServingImageBuilderContext.run(custom_model_truss_dir)
+    builder.prepare_image_build_dir(tmp_path)
+
+    dockerfile = (tmp_path / "Dockerfile").read_text()
+    assert "FROM example.com/tpu-runtime:preview" in dockerfile
+    assert "cuda" not in dockerfile.lower()
+    assert "nvidia" not in dockerfile.lower()
+    built_config = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    assert built_config["resources"]["accelerator"] == "TPU_V6E:8"
+
+
 def _external_data_curl_lines(dockerfile: str) -> list[str]:
     # `curl -L ` (space) avoids the uv bootstrap `curl -LsSf`.
     return [
