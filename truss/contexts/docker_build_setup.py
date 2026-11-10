@@ -93,6 +93,9 @@ def _fill_bei_versions(
     image = image_versions.bei_v3_image
     if not image or not image.strip():
         return
+    # Digest references already identify a concrete backend image.
+    if "@" not in image:
+        image = f"{image}-{tr.spec.config.bei.backend}"
     current = tr.spec.config.base_image
     tr.set_base_image(image, current.python_executable_path if current else "")
 
