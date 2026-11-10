@@ -174,7 +174,7 @@ class TrussSpec:
             return yaml_file.read()
 
     @property
-    def secrets(self) -> MutableMapping[str, Optional[str]]:
+    def secrets(self) -> Union[list[str], MutableMapping[str, Optional[str]]]:
         return self._config.secrets
 
     @property

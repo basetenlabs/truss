@@ -78,6 +78,7 @@ def build_workstation_project(
     checkpoint_volume_size: Optional[int] = None,
     checkpoint_from_job: Optional[str] = None,
     spot: bool = False,
+    persistent_home: bool = False,
 ) -> TrainingProject:
     accel_enum = truss_config.Accelerator(accelerator)
 
@@ -88,7 +89,7 @@ def build_workstation_project(
         ),
         availability_model=AvailabilityModel.SPOT
         if spot
-        else AvailabilityModel.DEDICATED,
+        else AvailabilityModel.STANDARD,
     )
 
     load_checkpoint_config = None
@@ -107,7 +108,9 @@ def build_workstation_project(
 
     runtime = Runtime(
         start_commands=start_commands,
-        cache_config=CacheConfig(enabled=True, require_cache_affinity=False),
+        cache_config=CacheConfig(
+            enabled=True, require_cache_affinity=False, persistent_home=persistent_home
+        ),
         checkpointing_config=CheckpointingConfig(
             enabled=enable_checkpointing,
             checkpoint_path=checkpoint_path,

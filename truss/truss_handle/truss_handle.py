@@ -199,8 +199,15 @@ class TrussHandle:
         """[Deprecated] Do not use."""
         return _docker_image_from_labels(labels)
 
+    def _validate_local_accelerator(self) -> None:
+        if self.spec.config.resources.is_tpu:
+            raise ValueError(
+                "Local TPU execution is not supported. Deploy this Truss to Baseten."
+            )
+
     @proxy_to_shadow_if_scattered
     def run_python_script(self, script_path: Path, build_dir: Optional[Path] = None):
+        self._validate_local_accelerator()
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
@@ -291,6 +298,7 @@ class TrussHandle:
         """
         from python_on_whales.exceptions import DockerException
 
+        self._validate_local_accelerator()
         container: Union[Container, str]
         container_if_patched = self._try_patch()
         if container_if_patched is not None:
@@ -522,8 +530,17 @@ class TrussHandle:
         )
 
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
+        secrets = self._spec.config.secrets
+        if isinstance(secrets, list) and not default_secret_value:
+            if secret_name not in secrets:
+                self._update_config(secrets=[*secrets, secret_name])
+            return
+        # A default value can only be carried by the mapping form.
         self._update_config(
-            secrets={**self._spec.config.secrets, secret_name: default_secret_value}
+            secrets={
+                **self._spec.config.secret_defaults(),
+                secret_name: default_secret_value,
+            }
         )
 
     def add_external_data_item(

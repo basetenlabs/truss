@@ -395,7 +395,7 @@ def _apply_cli_overrides(
 
     if spot:
         # The flag always wins. We don't warn when overriding a config value because
-        # the default (dedicated) is indistinguishable from an explicit dedicated, so a
+        # the default (standard) is indistinguishable from an explicit standard, so a
         # warning would fire on the common path (no availability_model set in config).
         training_project.job.compute.availability_model = AvailabilityModel.SPOT
 

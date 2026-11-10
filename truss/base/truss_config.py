@@ -59,6 +59,7 @@ AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
 AWS_OIDC_REGION_PARAM = "aws_oidc_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
+HF_OIDC_RESOURCE_PARAM = "hf_oidc_resource"
 AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
 AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
 
@@ -256,6 +257,7 @@ class WeightsAuthMethod(str, enum.Enum):
     CUSTOM_SECRET = "CUSTOM_SECRET"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    HF_OIDC = "HF_OIDC"
     AWS_ASSUME_ROLE = "AWS_ASSUME_ROLE"
 
 
@@ -349,6 +351,10 @@ class WeightsAuth(AuthFieldsMixin):
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
+    hf_oidc_resource: Optional[str] = pydantic.Field(
+        default=None,
+        description="Hugging Face repository (namespace/name) or username for OIDC token exchange.",
+    )
 
     @pydantic.field_validator("auth_method", mode="before")
     @classmethod
@@ -357,6 +363,9 @@ class WeightsAuth(AuthFieldsMixin):
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_fields(self) -> "WeightsAuth":
+        if self.auth_method != WeightsAuthMethod.HF_OIDC:
+            self._forbid_fields(self.auth_method.value, HF_OIDC_RESOURCE_PARAM)
+
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
             self._validate_fields(
                 self.auth_method.value,
@@ -407,6 +416,21 @@ class WeightsAuth(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+
+        elif self.auth_method == WeightsAuthMethod.HF_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[HF_OIDC_RESOURCE_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
 
@@ -555,6 +579,15 @@ class WeightsSource(custom_types.ConfigModel):
                 "auth_secret_name cannot be specified both at the top level and in auth section. "
                 "Please use only one location."
             )
+        if self.auth and self.auth.auth_method == WeightsAuthMethod.HF_OIDC:
+            if not self.is_huggingface:
+                raise ValueError(
+                    "HF_OIDC authentication requires a HuggingFace source (hf://)."
+                )
+            if self.auth_secret_name:
+                raise ValueError(
+                    "auth_secret_name cannot be specified when auth_method is HF_OIDC"
+                )
         return self
 
 
@@ -1170,7 +1203,7 @@ class Resources(custom_types.ConfigModel):
     )
     accelerator: AcceleratorSpec = pydantic.Field(
         default_factory=AcceleratorSpec,
-        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        description="The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
         examples=["A100", "T4:2", "H100:8"],
     )
     instance_type: Optional[str] = pydantic.Field(
@@ -1206,7 +1239,13 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.computed_field(return_type=bool)
     def use_gpu(self) -> bool:
+        # The legacy wire flag represents any accelerator, including TPUs.
         return self.accelerator.accelerator is not None
+
+    @property
+    def is_tpu(self) -> bool:
+        # Concrete TPU accelerator types are introduced separately.
+        return self.accelerator.accelerator in []
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1450,6 +1489,14 @@ class DockerServer(custom_types.ConfigModel):
         default=None,
         description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
     )
+    rebuild_free: Optional[bool] = pydantic.Field(
+        default=None,
+        description=(
+            "Do not install packages or rewrite the image entrypoint. "
+            "Rejects requirements, requirements_file, system_packages, and "
+            "build_commands. The base image must already contain them."
+        ),
+    )
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
@@ -1577,9 +1624,9 @@ class TrussConfig(custom_types.ConfigModel):
         default_factory=dict,
         description="Key-value pairs exposed to the environment that the model executes in. Do not store secret values here.",
     )
-    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(
+    secrets: Union[list[str], MutableMapping[str, Optional[str]]] = pydantic.Field(
         default_factory=dict,
-        description="Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
+        description="Declare names of secrets your model needs at runtime, such as API keys or access tokens. Store actual values in your organization settings.",
     )
 
     resources: Resources = pydantic.Field(
@@ -1666,6 +1713,12 @@ class TrussConfig(custom_types.ConfigModel):
     @property
     def canonical_python_version(self) -> str:
         return to_dotted_python_version(self.python_version)
+
+    def secret_defaults(self) -> dict[str, Optional[str]]:
+        """Secret names mapped to their config default values, None for list form."""
+        if isinstance(self.secrets, list):
+            return {name: None for name in self.secrets}
+        return dict(self.secrets)
 
     def to_dict(self, verbose: bool = True) -> dict:
         self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
@@ -1808,6 +1861,23 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
+        if self.resources.is_tpu:
+            if self.trt_llm is not None:
+                raise ValueError(
+                    "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
+                )
+            if not self.base_image or not self.base_image.image:
+                raise ValueError(
+                    "TPU accelerators require a TPU-compatible custom base_image."
+                )
+            fabric = self.resources.fabric
+            if (self.resources.node_count or 1) > 1 or (
+                fabric is not None and (fabric.use_rdma or fabric.preferences)
+            ):
+                logger.warning(
+                    "TPU deployments with multiple nodes or fabric requirements may not "
+                    "be supported. Support is validated server side during deployment."
+                )
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
@@ -1815,6 +1885,31 @@ class TrussConfig(custom_types.ConfigModel):
         if self.model_cache.models and self.weights.sources:
             raise ValueError(
                 "Please ensure that only one of `model_cache` and `weights` is specified"
+            )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_docker_server_install_fields(self) -> "TrussConfig":
+        server = self.docker_server
+        if server is None or server.no_build is True or server.rebuild_free is not True:
+            return self
+        if self.base_image is None or not self.base_image.image:
+            raise ValueError("docker_server.rebuild_free requires base_image.")
+        rejected: list[str] = []
+        if self.requirements:
+            rejected.append("requirements")
+        if self.requirements_file:
+            rejected.append("requirements_file")
+        if self.system_packages:
+            rejected.append("system_packages")
+        if self.build_commands:
+            rejected.append("build_commands")
+        if rejected:
+            names = ", ".join(rejected)
+            raise ValueError(
+                f"docker_server does not install {names}. "
+                "This applies only on rebuild-free docker server deployments. "
+                "Include them in the base image."
             )
         return self
 

@@ -39,7 +39,7 @@ load_checkpoint_config = LoadCheckpointConfig(
 checkpointing_config = CheckpointingConfig(enabled=True)
 
 job = TrainingJob(
-    image=Image(base_image="ghcr.io/baseten-ai/truss-train-base:latest"),
+    image=Image(base_image="pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"),
     runtime=Runtime(
         checkpointing_config=checkpointing_config,
         load_checkpoint_config=load_checkpoint_config,

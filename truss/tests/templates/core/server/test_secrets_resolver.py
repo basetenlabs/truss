@@ -2,7 +2,9 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-from truss.templates.shared.secrets_resolver import SecretsResolver
+import pytest
+
+from truss.templates.shared.secrets_resolver import SecretNotFound, SecretsResolver
 
 CONFIG = {"secrets": {"secret_key": "default_secret_value"}}
 
@@ -27,6 +29,18 @@ def test_resolve_mounted_secrets(tmp_path):
         _override_env_var("TRUSS_SECRET_secret_key", "secret_value_from_env"),
     ):
         assert secrets["secret_key"] == "secret_value_from_mounted_secrets"
+
+
+def test_resolve_list_mounted_secrets(tmp_path):
+    secrets = SecretsResolver.get_secrets({"secrets": ["secret_key", "missing_key"]})
+    with (tmp_path / "secret_key").open("w") as f:
+        f.write("secret_value_from_mounted_secrets")
+    with _secrets_mount_dir(tmp_path):
+        assert secrets["secret_key"] == "secret_value_from_mounted_secrets"
+        with pytest.raises(SecretNotFound):
+            secrets["missing_key"]
+        with pytest.raises(SecretNotFound):
+            secrets["undeclared_key"]
 
 
 @contextmanager

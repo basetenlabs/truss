@@ -51,6 +51,8 @@ jobs:
           - os: ubuntu-22.04
             python_version: "${{ needs.determine-python-versions.outputs.min_supported_python_version }}"
     runs-on: ${{ matrix.os }}
+    env:
+      UV_PYTHON: ${{ matrix.python_version }}
     steps:
       - uses: actions/checkout@v4
         with:

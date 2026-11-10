@@ -45,7 +45,7 @@ from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
-from truss_train import TrainingJob
+from truss_train import AvailabilityModel, TrainingJob
 
 
 @click.group()
@@ -942,9 +942,9 @@ def update_session(
 )
 @click.option(
     "--availability-model",
-    type=click.Choice(["dedicated", "spot"]),
+    type=click.Choice(["standard", "spot", "dedicated"]),
     required=False,
-    help="New capacity type. 'spot' can be preempted; checkpointing your progress is up to you. Only PENDING jobs can have their capacity type changed.",
+    help="New capacity type. 'spot' can be preempted; checkpointing your progress is up to you. 'dedicated' is the old name for 'standard'. Only PENDING jobs can have their capacity type changed.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
@@ -971,7 +971,9 @@ def update(
             remote_provider=remote_provider,
             job_id=job_id,
             priority=priority,
-            availability_model=availability_model,
+            availability_model=AvailabilityModel(availability_model).value
+            if availability_model is not None
+            else None,
         )
     except Exception as e:
         error_console.print(f"Failed to update training job: {str(e)}")
@@ -1341,6 +1343,11 @@ def _print_workstation_json(
     help="Run on interruptible spot capacity. You are responsible for checkpointing your progress.",
 )
 @click.option(
+    "--persistent-home",
+    is_flag=True,
+    help="Keep $HOME on the project cache so its contents outlive the workstation.",
+)
+@click.option(
     "-o",
     "--output-format",
     "output_format",
@@ -1368,6 +1375,7 @@ def workstation(
     provided_team_name: Optional[str],
     tail: bool,
     spot: bool,
+    persistent_home: bool,
     output_format: str,
 ):
     """Spin up an SSH workstation on Baseten training infrastructure."""
@@ -1420,6 +1428,7 @@ def workstation(
         checkpoint_volume_size=checkpoint_volume_size,
         checkpoint_from_job=checkpoint_from_job,
         spot=spot,
+        persistent_home=persistent_home,
     )
 
     node_str = f"{node_count}x " if node_count > 1 else ""
