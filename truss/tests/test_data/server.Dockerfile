@@ -19,13 +19,13 @@ RUN /usr/local/bin/python3 -c "import sys; \
 RUN if [ -f /etc/apt/sources.list ]; then \
     sed -i.bak \
         -e 's|http://archive\.ubuntu\.com/ubuntu/*|mirror://mirrors.ubuntu.com/US.txt|g' \
-        -e 's|http://security\.ubuntu\.com/ubuntu/*|mirror://mirrors.ubuntu.com/US.txt|g' \
+        -e 's|http://security\.ubuntu\.com/ubuntu/*|https://security.ubuntu.com/ubuntu/|g' \
         /etc/apt/sources.list; \
 fi
 RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
     sed -i.bak \
         -e 's|http://archive\.ubuntu\.com/ubuntu/*|mirror://mirrors.ubuntu.com/US.txt|g' \
-        -e 's|http://security\.ubuntu\.com/ubuntu/*|mirror://mirrors.ubuntu.com/US.txt|g' \
+        -e 's|http://security\.ubuntu\.com/ubuntu/*|https://security.ubuntu.com/ubuntu/|g' \
         /etc/apt/sources.list.d/ubuntu.sources; \
 fi
 RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
