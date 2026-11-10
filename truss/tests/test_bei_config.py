@@ -130,21 +130,13 @@ def test_quantization_maps_to_current_native_flags(config_data, mode):
     args = _argv(TrussConfig.from_dict(config_data))
     assert f"--dynamic-quantization={mode}" in args
     dtypes = [arg for arg in args if arg.startswith("--dtype=")]
-    assert dtypes[0] == (
-        "--dtype=bfloat16" if mode in ("mxfp8", "nvfp4") else "--dtype=auto"
+    assert dtypes == (
+        ["--dtype=bfloat16", "--dtype=auto"] if mode in ("mxfp8", "nvfp4") else []
     )
 
 
 @pytest.mark.parametrize(
-    "case",
-    [
-        "empty",
-        "duplicate",
-        "delimiter",
-        "unknown_quantization",
-        "tpu_multi",
-        "tpu_quantization",
-    ],
+    "case", ["empty", "duplicate", "delimiter", "unknown_quantization"]
 )
 def test_invalid_model_configuration(config_data, case):
     models = config_data["bei"]["configuration"]
@@ -156,10 +148,6 @@ def test_invalid_model_configuration(config_data, case):
         models[0]["revision"] = "main;other"
     elif case == "unknown_quantization":
         models[0]["quantization"] = "unknown"
-    else:
-        config_data["bei"]["backend"] = "tpu"
-        if case == "tpu_quantization":
-            config_data["bei"]["configuration"] = [models[1]]
     with pytest.raises(ValueError):
         TrussConfig.from_dict(config_data)
 
@@ -218,14 +206,18 @@ def test_health_threshold_boundaries_allow_long_startup(config_data, value):
     assert config.runtime.health_checks.restart_check_delay_seconds == 900
 
 
-def test_tpu_native_defaults(config_data):
-    config_data["bei"] = {
-        "backend": "tpu",
-        "configuration": [{"checkpoint": "Alibaba-NLP/gte-multilingual-base"}],
-    }
+@pytest.mark.parametrize("mode", ["none", "fp8", "mxfp8", "nvfp4"])
+def test_tpu_passes_models_and_quantization_without_dtype_assumptions(
+    config_data, mode
+):
+    config_data["bei"]["backend"] = "tpu"
+    config_data["bei"]["configuration"][0]["quantization"] = mode
     config = TrussConfig.from_dict(config_data)
-    assert "--backend=python-backend" in _argv(config)
-    assert "--dtype=bfloat16" in _argv(config)
+    args = _argv(config)
+    assert "--backend=python-backend" in args
+    assert f"--dynamic-quantization={mode}" in args
+    assert len([arg for arg in args if arg.startswith("--model-id=")]) == 2
+    assert not any(arg.startswith("--dtype=") for arg in args)
     assert config.environment_variables["BEI_MAX_BATCH_REQUESTS"] == "32"
 
 
@@ -285,7 +277,7 @@ def test_shared_image_injection_supports_truss_first_rollout(
     )
 
 
-def test_native_shell_preserves_arguments_and_reads_runtime_secret(
+def test_native_shell_preserves_arguments_without_exporting_hf_token(
     config_data, tmp_path
 ):
     checkpoint = r'''/models/space $(touch pwned) `id` 'quote' "double"'''
@@ -294,27 +286,30 @@ def test_native_shell_preserves_arguments_and_reads_runtime_secret(
     config = TrussConfig.from_dict(config_data)
     fake = tmp_path / "bei.py"
     fake.write_text(
-        "import json, os, sys\nprint(json.dumps([sys.argv[1:], os.environ['BEI_HF_TOKEN']]))\n"
+        "import json, os, sys\nprint(json.dumps([sys.argv[1:], os.environ.get('BEI_HF_TOKEN')]))\n"
     )
     command = config.docker_server.start_command.replace(
         "exec /usr/local/bin/bei ",
         "exec " + shlex.join([sys.executable, str(fake)]) + " ",
     )
-    token_file = tmp_path / "token"
-    token_file.write_text("test-token")
-    command = command.replace("/secrets/hf_access_token", shlex.quote(str(token_file)))
     result = subprocess.run(
         ["sh", "-c", command],
         cwd=tmp_path,
-        env={**os.environ, **config.environment_variables},
+        env={
+            **{
+                key: value for key, value in os.environ.items() if key != "BEI_HF_TOKEN"
+            },
+            **config.environment_variables,
+            "TRUSS_SECRET_hf_access_token": "test-token",
+        },
         capture_output=True,
         text=True,
         check=True,
     )
     args, token = json.loads(result.stdout)
     assert f"--model-id={checkpoint}" in args
-    assert token == "test-token"
-    assert "test-token" not in command
+    assert token is None
+    assert "hf_access_token" not in command
     assert not (tmp_path / "pwned").exists()
 
 

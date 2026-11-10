@@ -1983,10 +1983,6 @@ class TrussConfig(custom_types.ConfigModel):
                     f"bei requires runtime.health_checks.{field} explicitly set to 1–60 seconds. "
                     "Use startup_threshold_seconds for a longer startup grace period."
                 )
-        if self.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY) is not None:
-            raise ValueError(
-                "BEI hf_access_token must come from runtime secrets, not a config default."
-            )
         environment = dict(self.environment_variables)
         for key, value in {"BEI_PORT": "8080", "BEI_HOSTNAME": "0.0.0.0"}.items():
             if key in environment and environment[key] != value:
@@ -1999,9 +1995,7 @@ class TrussConfig(custom_types.ConfigModel):
         # Materialize before the platform selects no-build, without recursively
         # invoking assignment validation for these derived fields.
         object.__setattr__(
-            self,
-            "docker_server",
-            bei_docker_server(self.bei, use_hf_secret, model_paths),
+            self, "docker_server", bei_docker_server(self.bei, model_paths)
         )
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "environment_variables", environment)
@@ -2081,10 +2075,10 @@ def _bei_weights(
 
 
 def bei_docker_server(
-    bei: bei_config.BEIConfiguration, use_hf_secret: bool, model_paths: list[str]
+    bei: bei_config.BEIConfiguration, model_paths: list[str]
 ) -> DockerServer:
     return DockerServer(
-        start_command=bei.start_command(use_hf_secret, model_paths),
+        start_command=bei.start_command(model_paths),
         no_build=True,
         server_port=8080,
         predict_endpoint="/v1/embeddings",

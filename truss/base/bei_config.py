@@ -41,13 +41,9 @@ class BEIConfiguration(ConfigModel):
         ]
         if len(set(names)) != len(names):
             raise ValueError("BEI served model names must be unique.")
-        if self.backend == "tpu" and (
-            len(self.configuration) != 1 or self.configuration[0].quantization != "none"
-        ):
-            raise ValueError("BEI TPU currently supports one unquantized model.")
         return self
 
-    def start_command(self, use_hf_secret: bool, model_paths: list[str]) -> str:
+    def start_command(self, model_paths: list[str]) -> str:
         argv = [
             "/usr/local/bin/bei",
             "--hostname=0.0.0.0",
@@ -57,7 +53,11 @@ class BEIConfiguration(ConfigModel):
         if self.backend == "nvidia":
             argv.extend(["--backend=libtorch", "--torch-device=cuda"])
         else:
-            argv.extend(["--backend=python-backend", "--dtype=bfloat16"])
+            argv.append("--backend=python-backend")
+        # NVIDIA MXFP8/NVFP4 need BF16; mixed lists need aligned dtype flags.
+        needs_dtype = self.backend == "nvidia" and any(
+            model.quantization in ("mxfp8", "nvfp4") for model in self.configuration
+        )
         for model, model_path in zip(self.configuration, model_paths):
             argv.extend(
                 [
@@ -67,7 +67,7 @@ class BEIConfiguration(ConfigModel):
                     f"--dynamic-quantization={model.quantization}",
                 ]
             )
-            if self.backend == "nvidia":
+            if needs_dtype:
                 argv.append(
                     "--dtype="
                     + (
@@ -76,19 +76,6 @@ class BEIConfiguration(ConfigModel):
                         else "auto"
                     )
                 )
-                if len(self.configuration) > 1:
-                    argv.append("--backend-device-ids=auto")
-        script = NATIVE_COMMAND_PREFIX
-        if use_hf_secret:
-            script += """set -eu
-if [ -s /secrets/hf_access_token ]; then
-    export BEI_HF_TOKEN="$(cat /secrets/hf_access_token)"
-elif [ -n "${TRUSS_SECRET_hf_access_token:-}" ]; then
-    export BEI_HF_TOKEN="$TRUSS_SECRET_hf_access_token"
-fi
-if [ -z "${BEI_HF_TOKEN:-}${HF_TOKEN:-}" ]; then
-    echo 'Missing hf_access_token secret.' >&2
-    exit 1
-fi
-"""
-        return script + "exec " + shlex.join(argv)
+            if self.backend == "nvidia" and len(self.configuration) > 1:
+                argv.append("--backend-device-ids=auto")
+        return NATIVE_COMMAND_PREFIX + "exec " + shlex.join(argv)
