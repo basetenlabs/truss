@@ -194,6 +194,21 @@ wheels = [
 ]
 
 [[package]]
+name = "b10-msgpack-numpy"
+version = "0.4.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "msgpack" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/94/0a6b8a2d8167bbfc517a3032035b580bf91873e8dad301bb2768d5b5f601/b10_msgpack_numpy-0.4.8.tar.gz", hash = "sha256:2ad2ad724ac15a3d0c6f72d6d4efd062692e00591223e8a80eeaea75bb7fc0a3", size = 11343, upload-time = "2026-11-09T22:24:49.255Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/0c/65498f97051caabd5a584f9600dd30f0bd597a881ea431f60acd670850d6/b10_msgpack_numpy-0.4.8-py2.py3-none-any.whl", hash = "sha256:cc9d8283cebcb88f49e79664e328c432e2a0398ddf54d27c33121edfc22f8ded", size = 7983, upload-time = "2026-11-09T22:24:47.974Z" },
+]
+
+[[package]]
 name = "backcall"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1945,21 +1960,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/ec/1e067292e02d2ceb4c8cb5ba222c4f7bb28730eef5676740609dc2627e0f/msgpack-1.1.1-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:a8ef6e342c137888ebbfb233e02b8fbd689bb5b5fcc59b34711ac47ebd504478", size = 401873, upload-time = "2025-06-13T06:52:47.957Z" },
     { url = "https://files.pythonhosted.org/packages/d3/31/e8c9c6b5b58d64c9efa99c8d181fcc25f38ead357b0360379fbc8a4234ad/msgpack-1.1.1-cp39-cp39-win32.whl", hash = "sha256:61abccf9de335d9efd149e2fff97ed5974f2481b3353772e8e2dd3402ba2bd57", size = 65028, upload-time = "2025-06-13T06:52:49.166Z" },
     { url = "https://files.pythonhosted.org/packages/20/d6/cd62cded572e5e25892747a5d27850170bcd03c855e9c69c538e024de6f9/msgpack-1.1.1-cp39-cp39-win_amd64.whl", hash = "sha256:40eae974c873b2992fd36424a5d9407f93e97656d999f43fca9d29f820899084", size = 71700, upload-time = "2025-06-13T06:52:50.244Z" },
-]
-
-[[package]]
-name = "msgpack-numpy"
-version = "0.4.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "msgpack" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
-    { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/08/94/61e8aee142733ebfdc400a05bdac6e1763c4514bba3b42743d223f388450/msgpack-numpy-0.4.8.tar.gz", hash = "sha256:c667d3180513422f9c7545be5eec5d296dcbb357e06f72ed39cc683797556e69", size = 10923, upload-time = "2022-06-09T03:43:08.739Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/5d/f25ac7d4fb77cbd53ddc6d05d833c6bf52b12770a44fa9a447eed470ca9a/msgpack_numpy-0.4.8-py2.py3-none-any.whl", hash = "sha256:773c19d4dfbae1b3c7b791083e2caf66983bb19b40901646f61d8731554ae3da", size = 6919, upload-time = "2022-06-09T03:43:06.82Z" },
 ]
 
 [[package]]
@@ -3778,7 +3778,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.18.39"
+version = "0.18.40"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -3839,10 +3839,10 @@ dev = [
 ]
 dev-server = [
     { name = "aiohttp" },
+    { name = "b10-msgpack-numpy" },
     { name = "fastapi" },
     { name = "flask" },
     { name = "msgpack" },
-    { name = "msgpack-numpy" },
     { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
     { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -3913,10 +3913,10 @@ dev = [
 ]
 dev-server = [
     { name = "aiohttp", specifier = ">3.11.13" },
+    { name = "b10-msgpack-numpy", specifier = ">=0.4.8" },
     { name = "fastapi", specifier = ">0.114" },
     { name = "flask", specifier = ">=2.3.3,<3" },
     { name = "msgpack", specifier = ">=1.0.2" },
-    { name = "msgpack-numpy", specifier = ">=0.4.8" },
     { name = "numpy", specifier = ">=1.23.5" },
     { name = "opentelemetry-api", specifier = ">=1.25.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.25.0" },

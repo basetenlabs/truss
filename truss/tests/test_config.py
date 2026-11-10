@@ -47,6 +47,15 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
+@pytest.mark.parametrize("accelerator", [None, *Accelerator])
+def test_non_tpu_resources(accelerator):
+    resources = Resources(accelerator=AcceleratorSpec(accelerator=accelerator))
+    assert not resources.is_tpu
+    assert resources.use_gpu == (accelerator is not None)
+    assert "is_tpu" not in resources.model_dump()
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
 @pytest.mark.parametrize(
     "input_dict, expect_resources, output_dict",
     [

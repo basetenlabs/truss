@@ -657,6 +657,7 @@ class ImageVersions(PydanticTrTBaseModel):
     beibert_image: str
     briton_image: str
     v2_llm_image: str
+    bei_v3_image: Optional[str] = None
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):
