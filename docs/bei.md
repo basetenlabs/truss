@@ -58,17 +58,30 @@ platform must forward these routes directly; Truss installs no in-image proxy.
 
 ## Image selection
 
-The backend must resolve its approved BEIv3 image references before dispatching
-the no-build deployment. The image-version payload has this shape:
+BEIv3 uses the existing `ImageVersions` payload and
+`--trt_llm_image_versions_json` injection argument used by BEI, BEI-BERT,
+Briton, and inference stack v2. The only additional payload field is
+`bei_v3_image`, a fully resolved reference for the selected backend:
 
 ```json
-{"nvidia_image":"registry/bei:approved-nvidia","tpu_image":"registry/bei:approved-tpu"}
+{
+  "bei_image": "registry/bei:legacy",
+  "beibert_image": "registry/beibert:legacy",
+  "briton_image": "registry/briton:legacy",
+  "v2_llm_image": "registry/v2:approved",
+  "bei_v3_image": "registry/bei:approved-nvidia"
+}
 ```
 
-The build-context CLI accepts this payload through `--bei_image_versions_json`
-for local/fallback preparation. A deployment that skips that step must resolve
-the image earlier. Default image tags are not hardcoded in Truss, and no image
-is published by this feature.
+Extend the existing platform resolver to select the BEIv3 image using `bei.backend` and
+`bei.version_override`, defaulting to the approved version when the override is
+null. Truss consumes `bei_v3_image` as supplied, preserving registry paths and
+digests. There is no separate BEIv3 injection argument or payload type. Legacy
+payloads without `bei_v3_image` remain valid for legacy engines.
+
+The image must be resolved before no-build dispatch when context preparation is
+skipped. The same shared argument remains available for local/fallback build
+context preparation. No default image is hardcoded or published by this feature.
 
 The platform rollout also needs to honor the derived `start_command` as a shell
 command overriding the image's default command, forward the declared predict
@@ -76,13 +89,11 @@ endpoint for no-build deployments, and inject the declared environment variables
 and secret mounts. In particular, the TPU image's default `--help` command must
 not run. Those platform changes are separate from this Truss integration.
 
-For testing, an explicit `base_image.image` can supply a compatible BEIv3 image.
-Alternatively, `version_override: v3.0.1-<commit>` selects
-`baseten/bei:v3.0.1-<commit>-nvidia` or `-tpu` according to `backend`. An override
-takes precedence over an explicit base image; an explicit base image takes
-precedence over an injected default. An unresolved image fails before generating
-a fallback Truss/CUDA image. These tags illustrate the existing BEIv3 naming
-scheme; use an image that has actually been published.
+For local testing, an explicit `base_image.image` can supply a compatible BEIv3
+image. `version_override` is forwarded to the platform resolver, like legacy
+engine overrides; Truss does not construct image references from it. An injected
+resolved image is authoritative. Without injection, local preparation requires
+an explicit image and fails rather than selecting a generic Truss/CUDA image.
 
 TPU deployments also require the TPU resource definitions and platform device,
 topology, and socket setup. This Truss change prepares the serving image; it does

@@ -11,9 +11,7 @@ from huggingface_hub.utils import validate_repo_id
 
 from truss.base import custom_types
 
-_IMAGE_REPOSITORY = "baseten/bei"
 NATIVE_COMMAND_PREFIX = "# Truss-managed BEIv3\n"
-IMAGE_OVERRIDE_PREFIX = "# BEIv3 image override: "
 HF_SECRET_DEFAULT_ENV = "TRUSS_BEI_HF_TOKEN_DEFAULT"
 _IMAGE_TAG_MAX_LENGTH = 128
 _DOCKER_TAG_COMPONENT_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
@@ -183,12 +181,6 @@ class BEIConfiguration(custom_types.ConfigModel):
 
         return self
 
-    @property
-    def image_override(self) -> Optional[str]:
-        if self.version_override is None:
-            return None
-        return f"{_IMAGE_REPOSITORY}:{self.version_override}-{self.backend.value}"
-
     def start_command(self, use_hf_secret: bool) -> str:
         """Launch the native executable using only the prebuilt image's shell."""
         argv = [
@@ -219,8 +211,6 @@ class BEIConfiguration(custom_types.ConfigModel):
     export BEI_HF_TOKEN="$HF_TOKEN"
 fi""",
         ]
-        if self.image_override:
-            script.insert(1, IMAGE_OVERRIDE_PREFIX + self.image_override)
         if use_hf_secret:
             script.append("""truss_hf_token=''
 if [ -f /secrets/hf_access_token ]; then
@@ -240,8 +230,3 @@ fi
 export BEI_HF_TOKEN""")
         script.append("exec " + shlex.join(argv))
         return "\n".join(script)
-
-
-class BEIImageVersions(custom_types.ConfigModel):
-    nvidia_image: Optional[str] = None
-    tpu_image: Optional[str] = None

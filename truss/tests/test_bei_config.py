@@ -4,7 +4,6 @@ import pytest
 from truss.base.bei_config import (
     BEIBackend,
     BEIConfiguration,
-    BEIImageVersions,
     BEIModelConfiguration,
     BEIQuantization,
 )
@@ -51,7 +50,6 @@ def test_configuration_roundtrip():
     assert (
         config.configuration[1].effective_served_model_name == "BAAI/bge-base-en-v1.5"
     )
-    assert config.image_override == "baseten/bei:1.2.3-nvidia"
 
     dumped = config.model_dump(mode="json")
     assert dumped["backend"] == "nvidia"
@@ -158,7 +156,7 @@ def test_tpu_accepts_single_unquantized_model():
     )
 
     assert config.backend == BEIBackend.TPU
-    assert config.image_override is None
+    assert config.version_override is None
 
 
 @pytest.mark.parametrize(
@@ -192,8 +190,7 @@ def test_version_override_length_includes_backend_suffix():
     config = BEIConfiguration(
         backend="nvidia", version_override=max_nvidia_prefix, configuration=[_model()]
     )
-    assert config.image_override is not None
-    assert len(config.image_override.split(":", 1)[1]) == 128
+    assert len(config.version_override + "-nvidia") == 128
 
     with pytest.raises(pydantic.ValidationError, match="maximum is 128"):
         BEIConfiguration(
@@ -206,8 +203,7 @@ def test_version_override_length_includes_backend_suffix():
     tpu_config = BEIConfiguration(
         backend="tpu", version_override=max_tpu_prefix, configuration=[_model()]
     )
-    assert tpu_config.image_override is not None
-    assert len(tpu_config.image_override.split(":", 1)[1]) == 128
+    assert len(tpu_config.version_override + "-tpu") == 128
 
     with pytest.raises(pydantic.ValidationError, match="maximum is 128"):
         BEIConfiguration(
@@ -227,9 +223,3 @@ def test_nested_forbid_extra():
     )
     with pytest.raises(pydantic.ValidationError, match="Extra fields not allowed"):
         nested_model_extra.validate_forbid_extra()
-
-    nested_images_extra = BEIImageVersions.model_validate(
-        {"nvidia_image": "baseten/bei:1.0-nvidia", "unexpected": True}
-    )
-    with pytest.raises(pydantic.ValidationError, match="Extra fields not allowed"):
-        nested_images_extra.validate_forbid_extra()

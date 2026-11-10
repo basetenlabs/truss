@@ -1907,25 +1907,6 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_bei(self) -> "TrussConfig":
         managed = _is_managed_bei_server(self.docker_server)
-        if managed and (self.bei is None or self.bei.image_override is None):
-            # An override materialized into the serialized base image should stop
-            # pinning that image when the override is removed.
-            prior_image = next(
-                (
-                    line.removeprefix(bei_config.IMAGE_OVERRIDE_PREFIX)
-                    for line in self.docker_server.start_command.splitlines()
-                    if line.startswith(bei_config.IMAGE_OVERRIDE_PREFIX)
-                ),
-                None,
-            )
-            if prior_image and self.base_image and self.base_image.image == prior_image:
-                object.__setattr__(
-                    self,
-                    "base_image",
-                    self.base_image.model_copy(update={"image": ""})
-                    if self.bei is not None
-                    else None,
-                )
         if self.bei is None:
             if managed:
                 environment = dict(self.environment_variables)
@@ -2029,14 +2010,6 @@ class TrussConfig(custom_types.ConfigModel):
         object.__setattr__(self, "docker_server", server)
         object.__setattr__(self, "environment_variables", environment)
         self.__pydantic_fields_set__.update({"docker_server", "environment_variables"})
-        if self.bei.image_override:
-            image = (
-                self.base_image.model_copy(update={"image": self.bei.image_override})
-                if self.base_image
-                else BaseImage(image=self.bei.image_override)
-            )
-            object.__setattr__(self, "base_image", image)
-            self.__pydantic_fields_set__.add("base_image")
         return self
 
     @pydantic.model_validator(mode="after")

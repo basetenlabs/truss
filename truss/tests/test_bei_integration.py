@@ -11,7 +11,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from truss.base.bei_config import BEIImageVersions
+from truss.base.trt_llm_config import ImageVersions
 from truss.base.truss_config import TrussConfig
 from truss.contexts import docker_build_setup as setup
 from truss.contexts.docker_build_setup import _fill_bei_versions
@@ -19,6 +19,16 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.truss_handle.truss_handle import TrussHandle
+
+
+def _image_versions(image=None):
+    return ImageVersions(
+        bei_image="legacy/bei:pinned",
+        beibert_image="legacy/bert:pinned",
+        briton_image="legacy/briton:pinned",
+        v2_llm_image="legacy/v2:pinned",
+        bei_v3_image=image,
+    )
 
 
 def _native_argv(config):
@@ -231,26 +241,24 @@ def test_image_injection_and_version_override(
     bei_config.pop("base_image")
     (bei_truss_dir / "config.yaml").write_text(yaml.safe_dump(bei_config))
     handle = TrussHandle(bei_truss_dir)
-    versions = BEIImageVersions(
-        nvidia_image="registry/bei:pinned-nvidia", tpu_image="registry/bei:pinned-tpu"
-    )
+    versions = _image_versions(f"registry/bei:pinned-{backend}")
     _fill_bei_versions(handle, versions)
     assert handle.spec.config.base_image.image == f"registry/bei:pinned-{backend}"
     assert "bei" in yaml.safe_load((bei_truss_dir / "config.yaml").read_text())
     handle.spec.config.bei.version_override = "v3.0.2-tested"
     handle.spec.config.write_to_yaml_file(bei_truss_dir / "config.yaml", verbose=True)
+    resolved_image = f"private.example/bei:override-{backend}@sha256:" + "a" * 64
+    _fill_bei_versions(handle, _image_versions(resolved_image))
     builder = ServingImageBuilderContext.run(bei_truss_dir)
     builder.prepare_image_build_dir(tmp_path / "build")
-    assert (
-        f"FROM baseten/bei:v3.0.2-tested-{backend}"
-        in (tmp_path / "build/Dockerfile").read_text()
-    )
+    assert f"FROM {resolved_image}" in (tmp_path / "build/Dockerfile").read_text()
+    assert handle.spec.config.bei.version_override == "v3.0.2-tested"
 
 
-def test_explicit_image_is_preserved_by_default_injection(bei_truss_dir):
+def test_resolved_image_is_authoritative_like_legacy_engines(bei_truss_dir):
     handle = TrussHandle(bei_truss_dir)
-    _fill_bei_versions(handle, BEIImageVersions(nvidia_image="registry/bei:default"))
-    assert handle.spec.config.base_image.image == "example.com/bei:test-nvidia"
+    _fill_bei_versions(handle, _image_versions("registry/bei:default"))
+    assert handle.spec.config.base_image.image == "registry/bei:default"
 
 
 @pytest.mark.parametrize(
@@ -329,8 +337,8 @@ def test_remote_build_setup_accepts_bei_image_injection(
         [
             "--truss_type",
             "server",
-            "--bei_image_versions_json",
-            json.dumps({"nvidia_image": "registry/bei:approved-nvidia"}),
+            "--trt_llm_image_versions_json",
+            _image_versions("registry/bei:approved-nvidia").model_dump_json(),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -355,17 +363,19 @@ def test_managed_no_build_settings_refresh_after_config_edits(bei_config):
     assert TrussConfig.from_dict(exported).to_dict() == exported
 
 
-def test_version_override_resolves_before_any_build(bei_config):
+def test_version_override_is_forwarded_for_backend_resolution(bei_config):
     bei_config.pop("base_image")
     bei_config["bei"]["version_override"] = "v3.0.2-tested"
     config = TrussConfig.model_validate(bei_config)
-    assert config.base_image.image == "baseten/bei:v3.0.2-tested-nvidia"
+    assert config.base_image is None
+    assert config.to_dict()["bei"]["version_override"] == "v3.0.2-tested"
     assert config.docker_server.no_build is True
     assert "/app/" not in config.docker_server.start_command
 
 
 @pytest.mark.parametrize("method", ["assignment", "copy", "serialized"])
 def test_removing_bei_clears_managed_deployment_settings(bei_config, method):
+    bei_config.pop("base_image")
     bei_config["bei"]["version_override"] = "v3.0.2-tested"
     config = TrussConfig.model_validate(bei_config)
     if method == "assignment":
@@ -391,13 +401,11 @@ def test_removing_version_override_allows_default_image_resolution(
     config = TrussConfig.model_validate(bei_config)
     config.bei.version_override = None
     data = config.to_dict()
-    assert data["base_image"]["image"] == ""
+    assert data["base_image"] is None
     config = TrussConfig.from_dict(data)
     config.write_to_yaml_file(bei_truss_dir / "config.yaml")
     handle = TrussHandle(bei_truss_dir)
-    _fill_bei_versions(
-        handle, BEIImageVersions(nvidia_image="registry/bei:approved-nvidia")
-    )
+    _fill_bei_versions(handle, _image_versions("registry/bei:approved-nvidia"))
     assert handle.spec.config.base_image.image == "registry/bei:approved-nvidia"
 
 
@@ -424,3 +432,14 @@ def test_empty_secret_source_preserves_hf_token_fallback(
     result = _run_native_command(config, tmp_path, environment, command=command)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["token"] == "fallback-test-token"
+
+
+def test_shared_payload_still_accepts_legacy_images_without_beiv3():
+    versions = _image_versions()
+    assert versions.bei_v3_image is None
+    assert versions.bei_image == "legacy/bei:pinned"
+
+
+def test_beiv3_requires_resolved_field_in_shared_payload(bei_truss_dir):
+    with pytest.raises(ValueError, match="bei_v3_image"):
+        _fill_bei_versions(TrussHandle(bei_truss_dir), _image_versions())
