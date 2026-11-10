@@ -167,19 +167,16 @@
       "title": "BDNVolumeMount",
       "type": "object"
     },
-    "BEIBackend": {
-      "enum": [
-        "nvidia",
-        "tpu"
-      ],
-      "title": "BEIBackend",
-      "type": "string"
-    },
     "BEIConfiguration": {
       "additionalProperties": true,
       "properties": {
         "backend": {
-          "$ref": "#/$defs/BEIBackend"
+          "enum": [
+            "nvidia",
+            "tpu"
+          ],
+          "title": "Backend",
+          "type": "string"
         },
         "version_override": {
           "anyOf": [
@@ -191,11 +188,9 @@
             }
           ],
           "default": null,
-          "description": "Optional version/tag prefix for the backend image.",
           "title": "Version Override"
         },
         "configuration": {
-          "description": "Models served by this BEIv3 deployment.",
           "items": {
             "$ref": "#/$defs/BEIModelConfiguration"
           },
@@ -215,7 +210,7 @@
       "additionalProperties": true,
       "properties": {
         "checkpoint": {
-          "description": "HuggingFace repository ID or absolute local directory containing the model.",
+          "minLength": 1,
           "title": "Checkpoint",
           "type": "string"
         },
@@ -229,7 +224,6 @@
             }
           ],
           "default": null,
-          "description": "HuggingFace revision. Defaults to the backend's default (main).",
           "title": "Revision"
         },
         "served_model_name": {
@@ -242,12 +236,18 @@
             }
           ],
           "default": null,
-          "description": "Name exposed by the model server. Defaults to the checkpoint.",
           "title": "Served Model Name"
         },
         "quantization": {
-          "$ref": "#/$defs/BEIQuantization",
-          "default": "none"
+          "default": "none",
+          "enum": [
+            "none",
+            "fp8",
+            "mxfp8",
+            "nvfp4"
+          ],
+          "title": "Quantization",
+          "type": "string"
         }
       },
       "required": [
@@ -255,14 +255,6 @@
       ],
       "title": "BEIModelConfiguration",
       "type": "object"
-    },
-    "BEIQuantization": {
-      "enum": [
-        "none",
-        "fp8"
-      ],
-      "title": "BEIQuantization",
-      "type": "string"
     },
     "BISLLM": {
       "additionalProperties": true,

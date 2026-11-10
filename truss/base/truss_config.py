@@ -1909,105 +1909,70 @@ class TrussConfig(custom_types.ConfigModel):
         managed = _is_managed_bei_server(self.docker_server)
         if self.bei is None:
             if managed:
-                environment = dict(self.environment_variables)
-                for name, value in {
-                    "BEI_PORT": "7997",
-                    "BEI_HOSTNAME": "0.0.0.0",
-                }.items():
-                    if environment.get(name) == value:
-                        environment.pop(name)
-                environment.pop(bei_config.HF_SECRET_DEFAULT_ENV, None)
-                if environment.get("BEI_MAX_BATCH_REQUESTS") == "32":
-                    environment.pop("BEI_MAX_BATCH_REQUESTS")
                 object.__setattr__(self, "docker_server", None)
-                object.__setattr__(self, "environment_variables", environment)
+                object.__setattr__(
+                    self,
+                    "environment_variables",
+                    {
+                        key: value
+                        for key, value in self.environment_variables.items()
+                        if (key, value)
+                        not in (
+                            ("BEI_PORT", "7997"),
+                            ("BEI_HOSTNAME", "0.0.0.0"),
+                            ("BEI_MAX_BATCH_REQUESTS", "32"),
+                        )
+                    },
+                )
             return self
-        if self.trt_llm is not None or self.bis_llm is not None:
-            raise ValueError("bei cannot be combined with trt_llm or bis_llm.")
-        if self.live_reload:
-            raise ValueError("bei does not support live_reload.")
-        if self.runtime.transport.kind != TransportKind.HTTP:
-            raise ValueError("bei requires HTTP transport.")
-        rejected = [
-            name
-            for name in (
-                "requirements",
-                "requirements_file",
-                "system_packages",
-                "build_commands",
-                "external_data",
-                "external_package_dirs",
-                "use_local_src",
-            )
-            if getattr(self, name)
-        ]
-        if self.model_cache.models:
-            rejected.append("model_cache")
-        if rejected:
-            raise ValueError(
-                f"bei uses no_build and cannot apply {', '.join(rejected)}. Include dependencies and files in the prebuilt BEIv3 image or use runtime weights mounts."
-            )
-        server = bei_docker_server(
-            self.bei, constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
-        )
-        current_server = self.docker_server
-        # Serialized managed commands may be stale after the BEI configuration
-        # changes. Regenerate them, while rejecting independent server overrides.
-        if current_server is not None and not (
-            current_server.start_command
-            and current_server.start_command.startswith(
-                bei_config.NATIVE_COMMAND_PREFIX
-            )
-            and current_server.model_copy(
-                update={"start_command": server.start_command}
-            )
-            == server
+        if (
+            self.trt_llm is not None
+            or self.bis_llm is not None
+            or self.live_reload
+            or self.runtime.transport.kind != TransportKind.HTTP
         ):
+            raise ValueError(
+                "bei requires HTTP and cannot be combined with another engine or live_reload."
+            )
+        if self.docker_server is not None and not managed:
             raise ValueError(
                 "bei manages docker_server; remove custom docker_server settings."
             )
-        accelerator = self.resources.accelerator.accelerator
-        if accelerator is None and not self.resources.instance_type:
+        fields = (
+            "requirements",
+            "requirements_file",
+            "system_packages",
+            "build_commands",
+            "external_data",
+            "external_package_dirs",
+            "use_local_src",
+        )
+        if any(getattr(self, name) for name in fields) or self.model_cache.models:
             raise ValueError(
-                "bei requires accelerator resources or an explicit instance_type."
+                "bei uses no_build; include dependencies and files in the prebuilt image or runtime weights mounts."
             )
         if (self.resources.node_count or 1) > 1:
-            raise ValueError("BEIv3 currently supports single-node deployments.")
-        family = (
-            self.resources.instance_type.split(":", 1)[0]
-            if self.resources.instance_type
-            else (accelerator.value if accelerator else "")
-        )
-        if family:
-            is_tpu = family.startswith("TPU_")
-            if is_tpu != (self.bei.backend == bei_config.BEIBackend.TPU):
-                raise ValueError(
-                    "bei.backend must match the resources accelerator family."
-                )
-            if self.bei.backend == bei_config.BEIBackend.NVIDIA:
-                if family in ("CPU", "T4", "V100"):
-                    raise ValueError("BEIv3 requires NVIDIA SM80 or newer GPUs.")
-                if any(
-                    model.quantization == bei_config.BEIQuantization.FP8
-                    for model in self.bei.configuration
-                ) and family in ("A10G", "A100", "A100_40GB"):
-                    raise ValueError("BEIv3 FP8 requires NVIDIA SM89 or newer GPUs.")
+            raise ValueError("BEI currently supports single-node deployments.")
+        if self.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY) is not None:
+            raise ValueError(
+                "BEI hf_access_token must come from runtime secrets, not a config default."
+            )
         environment = dict(self.environment_variables)
-        for name, value in {"BEI_PORT": "7997", "BEI_HOSTNAME": "0.0.0.0"}.items():
-            if name in environment and environment[name] != value:
-                raise ValueError(
-                    f"bei manages {name}; remove its environment override."
-                )
-            environment[name] = value
-        if self.bei.backend == bei_config.BEIBackend.TPU:
+        for key, value in {"BEI_PORT": "7997", "BEI_HOSTNAME": "0.0.0.0"}.items():
+            if key in environment and environment[key] != value:
+                raise ValueError(f"bei manages {key}.")
+            environment[key] = value
+        if self.bei.backend == "tpu":
             environment.setdefault("BEI_MAX_BATCH_REQUESTS", "32")
-        environment.pop(bei_config.HF_SECRET_DEFAULT_ENV, None)
-        hf_default = self.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY)
-        if hf_default is not None:
-            environment[bei_config.HF_SECRET_DEFAULT_ENV] = hf_default
-        # Derived values must exist before the platform chooses the no-build
-        # deployment path. Avoid assignment-validation recursion here.
-        object.__setattr__(self, "docker_server", server)
+        # Materialize before the platform selects no-build, without recursively
+        # invoking assignment validation for these derived fields.
+        object.__setattr__(
+            self,
+            "docker_server",
+            bei_docker_server(
+                self.bei, constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
+            ),
+        )
         object.__setattr__(self, "environment_variables", environment)
         self.__pydantic_fields_set__.update({"docker_server", "environment_variables"})
         return self
