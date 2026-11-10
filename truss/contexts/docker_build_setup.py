@@ -84,6 +84,19 @@ def _fill_trt_llm_versions(
             )
 
 
+def _fill_bei_versions(
+    tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
+) -> None:
+    assert tr.spec.config.bei is not None
+    # The platform can start supplying this after Truss ships. Until then,
+    # keep any explicit base_image; image preparation rejects unresolved images.
+    image = image_versions.bei_v3_image
+    if not image or not image.strip():
+        return
+    current = tr.spec.config.base_image
+    tr.set_base_image(image, current.python_executable_path if current else "")
+
+
 @click.command()
 @click.option("--truss_type", required=True)
 @click.option("--trt_llm_image_versions_json")
@@ -99,11 +112,16 @@ def docker_build_setup(
     """
     logging.info("Loading truss")
     tr = truss_handle.TrussHandle(TRUSS_SRC_DIR)
-    if tr.spec.config.trt_llm is not None and trt_llm_image_versions_json:
+    if trt_llm_image_versions_json and (
+        tr.spec.config.trt_llm is not None or tr.spec.config.bei is not None
+    ):
         image_versions = trt_llm_config.ImageVersions.model_validate_json(
             trt_llm_image_versions_json
         )
-        _fill_trt_llm_versions(tr, image_versions)
+        if tr.spec.config.bei is not None:
+            _fill_bei_versions(tr, image_versions)
+        else:
+            _fill_trt_llm_versions(tr, image_versions)
 
     logging.info("Truss is loaded")
 

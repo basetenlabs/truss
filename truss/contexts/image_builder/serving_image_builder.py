@@ -716,6 +716,13 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+        if config.bei is not None and (
+            not config.base_image or not config.base_image.image.strip()
+        ):
+            raise ValueError(
+                "BEIv3 image is unresolved. Supply base_image.image or have the platform "
+                "inject bei_v3_image before no-build dispatch."
+            )
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
