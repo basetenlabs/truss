@@ -1203,7 +1203,7 @@ class Resources(custom_types.ConfigModel):
     )
     accelerator: AcceleratorSpec = pydantic.Field(
         default_factory=AcceleratorSpec,
-        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        description="The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
         examples=["A100", "T4:2", "H100:8"],
     )
     instance_type: Optional[str] = pydantic.Field(
@@ -1239,7 +1239,13 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.computed_field(return_type=bool)
     def use_gpu(self) -> bool:
+        # The legacy wire flag represents any accelerator, including TPUs.
         return self.accelerator.accelerator is not None
+
+    @property
+    def is_tpu(self) -> bool:
+        # Concrete TPU accelerator types are introduced separately.
+        return self.accelerator.accelerator in []
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1865,6 +1871,23 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
+        if self.resources.is_tpu:
+            if self.trt_llm is not None:
+                raise ValueError(
+                    "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
+                )
+            if self.bei is None and (not self.base_image or not self.base_image.image):
+                raise ValueError(
+                    "TPU accelerators require a TPU-compatible custom base_image."
+                )
+            fabric = self.resources.fabric
+            if (self.resources.node_count or 1) > 1 or (
+                fabric is not None and (fabric.use_rdma or fabric.preferences)
+            ):
+                logger.warning(
+                    "TPU deployments with multiple nodes or fabric requirements may not "
+                    "be supported. Support is validated server side during deployment."
+                )
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"

@@ -10,7 +10,7 @@ import yaml
 from click.testing import CliRunner
 
 from truss.base.trt_llm_config import ImageVersions
-from truss.base.truss_config import TrussConfig
+from truss.base.truss_config import Resources, TrussConfig
 from truss.contexts import docker_build_setup as setup
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
@@ -202,3 +202,17 @@ def test_managed_configuration_refreshes_and_can_be_removed(config_data):
     assert "--served-model-name=updated" in data["docker_server"]["start_command"]
     data.pop("bei")
     assert TrussConfig.from_dict(data).docker_server is None
+
+
+def test_managed_tpu_image_can_be_resolved_after_validation(monkeypatch):
+    monkeypatch.setattr(Resources, "is_tpu", property(lambda self: True))
+    config = TrussConfig.from_dict(
+        {
+            "bei": {
+                "backend": "tpu",
+                "configuration": [{"checkpoint": "BAAI/bge-small-en-v1.5"}],
+            }
+        }
+    )
+    assert config.base_image is None
+    assert config.docker_server.no_build is True
