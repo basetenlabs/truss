@@ -2044,10 +2044,10 @@ def _bei_weights(
 ) -> tuple[Weights, list[str]]:
     sources = list(weights.sources)
     by_checkpoint = {}
-    for source in sources:
-        if source.is_huggingface:
-            repo, _, revision = source.source[len(_HF_PREFIX) :].partition("@")
-            by_checkpoint[(repo.lower(), revision or "main")] = source
+    for existing in sources:
+        if existing.is_huggingface:
+            repo, _, revision = existing.source[len(_HF_PREFIX) :].partition("@")
+            by_checkpoint[(repo.lower(), revision or "main")] = existing
     model_paths = []
     for model in bei.configuration:
         if model.checkpoint.startswith("/"):
