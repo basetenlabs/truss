@@ -21,6 +21,8 @@ http = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
+# Keep the G3 distrust floor in the manifest for downstream Rust consumers too.
+webpki-roots = { version = "1.0.10", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }
@@ -38,7 +40,7 @@ nonempty = { workspace = true }
 default = ["rustls", "auto-init-tracing"]
 auto-init-tracing = []
 native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
-rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
+rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots", "dep:webpki-roots"]
 
 [dev-dependencies]
 flate2 = "1"
