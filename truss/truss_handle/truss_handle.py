@@ -67,7 +67,7 @@ from truss.util.docker import (
 )
 from truss.util.notebook import is_notebook_or_ipython
 from truss.util.path import (
-    copy_file_path,
+    copy_tree_or_file,
     copy_tree_path,
     get_max_modified_time_of_dir,
     load_trussignore_patterns,
@@ -915,7 +915,7 @@ class TrussHandle:
             filenames = glob.glob(item)
             for filename in filenames:
                 filepath = Path(filename)
-                copy_file_path(filepath, destination_dir / filepath.name)
+                copy_tree_or_file(filepath, destination_dir / filepath.name)
 
     def _get_serving_labels(self) -> Dict[str, Any]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
