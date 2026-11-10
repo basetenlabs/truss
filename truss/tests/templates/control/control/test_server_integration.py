@@ -145,6 +145,9 @@ class Model:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Control-server WebSockets require Python 3.11+"
+)
 async def test_truss_control_server_text_websocket(
     control_server: ControlServerDetails,
 ):
@@ -176,6 +179,9 @@ class Model:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Control-server WebSockets require Python 3.11+"
+)
 async def test_truss_control_server_binary_websocket(
     control_server: ControlServerDetails,
 ):
