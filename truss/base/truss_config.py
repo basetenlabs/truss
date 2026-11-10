@@ -97,7 +97,6 @@ class Accelerator(str, enum.Enum):
     RTX_PRO_6000 = "RTX_PRO_6000"
     B300 = "B300"
     GB300 = "GB300"
-    TPU_V6E = "TPU_V6E"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -1212,7 +1211,8 @@ class Resources(custom_types.ConfigModel):
 
     @property
     def is_tpu(self) -> bool:
-        return self.accelerator.accelerator == Accelerator.TPU_V6E
+        # Concrete TPU accelerator types are introduced separately.
+        return self.accelerator.accelerator in []
 
     @property
     def memory_in_bytes(self) -> int:
