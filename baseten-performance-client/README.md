@@ -38,6 +38,14 @@ Mozilla root store. The `rustls` feature requires `webpki-roots >= 1.0.10`, whic
 removes **emSign ECC Root CA - G3**. This is targeted G3 distrust, not removal of
 all emSign roots. Certificate and hostname verification remain enabled.
 
+The workspace lockfile also includes `rustls 0.23.46` and
+[`rustls-webpki 0.103.16`](https://github.com/rustls/webpki/releases/tag/v/0.103.16).
+The latter rejects certificate paths containing specific distrusted intermediate
+public keys, providing additional protection beyond removing G3 from the bundle.
+Downstream Rust consumers use their own lockfiles and should update these
+dependencies too; the `webpki-roots` manifest floor only guarantees the bundled
+root removal.
+
 The Python binding and reverse proxy also enable `native-tls`. When both TLS
 backends are enabled, reqwest selects native TLS by default. Native TLS uses the
 platform/OpenSSL trust store; the bundled-root update does **not** remediate that
