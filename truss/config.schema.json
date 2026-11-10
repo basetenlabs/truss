@@ -210,6 +210,7 @@
       "additionalProperties": true,
       "properties": {
         "checkpoint": {
+          "description": "Hugging Face repository to download through weights, or an absolute path to manually mounted weights.",
           "minLength": 1,
           "title": "Checkpoint",
           "type": "string"
@@ -2595,7 +2596,7 @@
         }
       ],
       "default": null,
-      "description": "BEIv3 encoder serving configuration. Loads checkpoints directly without an engine-build job."
+      "description": "BEIv3 encoder serving without an engine-build job. Hugging Face checkpoints use runtime weights mounts. Requires explicit restart and stop-traffic health thresholds of 1\u201360 seconds."
     },
     "training_checkpoints": {
       "anyOf": [

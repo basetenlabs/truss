@@ -1,6 +1,11 @@
 model_name: BEIv3 encoders
 resources:
   accelerator: L4:2
+runtime:
+  health_checks:
+    startup_threshold_seconds: 1800
+    restart_threshold_seconds: 10
+    stop_traffic_threshold_seconds: 10
 base_image:
   image: example.com/bei:test-nvidia
 bei:

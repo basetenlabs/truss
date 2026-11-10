@@ -51,6 +51,79 @@ def test_no_build_configuration_and_roundtrip(config_data, bei_dir, tmp_path):
     assert not (tmp_path / "build/supervisord.conf").exists()
 
 
+def test_checkpoints_generate_runtime_weights(config_data):
+    config_data["secrets"] = ["hf_access_token"]
+    config = TrussConfig.from_dict(config_data)
+    assert [source.source for source in config.weights.sources] == [
+        "hf://BAAI/bge-small-en-v1.5@main",
+        "hf://BAAI/bge-large-en-v1.5@pinned-large",
+    ]
+    for model, source in zip(config.bei.configuration, config.weights.sources):
+        assert f"--model-id={source.mount_location}" in _argv(config)
+        assert f"--served-model-name={model.served_model_name}" in _argv(config)
+        assert source.ignore_patterns == ["*.bin", "onnx/**"]
+        assert source.auth_secret_name == "hf_access_token"
+    assert config.bei.configuration[0].checkpoint == "BAAI/bge-small-en-v1.5"
+    assert TrussConfig.from_dict(config.to_dict(verbose=False)) == config
+
+
+def test_explicit_hf_weights_override_defaults_and_are_shared(config_data):
+    config_data["bei"]["configuration"][1]["checkpoint"] = "BAAI/bge-small-en-v1.5"
+    config_data["bei"]["configuration"][1].pop("revision")
+    explicit = {
+        "source": "hf://baai/bge-small-en-v1.5",
+        "mount_location": "/models/bge-small",
+        "auth_secret_name": "custom_hf_token",
+        "allow_patterns": ["*.json", "*.safetensors"],
+        "ignore_patterns": ["onnx/**"],
+    }
+    config_data["weights"] = [explicit]
+    config = TrussConfig.from_dict(config_data)
+    assert config.to_dict(verbose=False)["weights"] == [explicit]
+    assert _argv(config).count("--model-id=/models/bge-small") == 2
+
+
+def test_automatic_weights_share_download_but_not_revisions(config_data):
+    models = config_data["bei"]["configuration"]
+    models[1]["checkpoint"] = models[0]["checkpoint"]
+    config = TrussConfig.from_dict(config_data)
+    assert len(config.weights.sources) == 2
+    assert (
+        config.weights.sources[0].mount_location
+        != config.weights.sources[1].mount_location
+    )
+    models[1].pop("revision")
+    config = TrussConfig.from_dict(config_data)
+    assert len(config.weights.sources) == 1
+    assert (
+        _argv(config).count("--model-id=" + config.weights.sources[0].mount_location)
+        == 2
+    )
+    assert config.weights.sources[0].auth_secret_name is None
+
+
+def test_absolute_checkpoints_use_manual_bucket_mounts(config_data):
+    config_data["bei"]["configuration"] = [{"checkpoint": "/models/custom/bge-small"}]
+    config_data["weights"] = [
+        {"source": "s3://my-models/encoders", "mount_location": "/models/custom"}
+    ]
+    config = TrussConfig.from_dict(config_data)
+    assert config.to_dict(verbose=False)["weights"] == config_data["weights"]
+    assert "--model-id=/models/custom/bge-small" in _argv(config)
+
+
+def test_automatic_mounts_do_not_overwrite_explicit_weights(config_data):
+    config_data["weights"] = [
+        {"source": "gs://my-models/encoders", "mount_location": "/models/bei-0"}
+    ]
+    config = TrussConfig.from_dict(config_data)
+    assert [source.mount_location for source in config.weights.sources] == [
+        "/models/bei-0",
+        "/models/bei-1",
+        "/models/bei-2",
+    ]
+
+
 @pytest.mark.parametrize("mode", ["none", "fp8", "mxfp8", "nvfp4"])
 def test_quantization_maps_to_current_native_flags(config_data, mode):
     config_data["bei"]["configuration"][0]["quantization"] = mode
@@ -103,6 +176,46 @@ def test_no_build_rejects_install_settings(config_data, field, value):
     config_data[field] = value
     with pytest.raises(ValueError, match="no_build"):
         TrussConfig.from_dict(config_data)
+
+
+@pytest.mark.parametrize(
+    "field", ["restart_threshold_seconds", "stop_traffic_threshold_seconds"]
+)
+@pytest.mark.parametrize("value", [None, 0, -1, 61])
+def test_health_thresholds_must_be_explicit_and_tight(config_data, field, value):
+    checks = config_data["runtime"]["health_checks"]
+    if value is None:
+        checks.pop(field)
+    else:
+        checks[field] = value
+    with pytest.raises(ValueError, match=field):
+        TrussConfig.from_dict(config_data)
+
+
+def test_health_checks_cannot_use_platform_defaults(config_data):
+    config_data.pop("runtime")
+    with pytest.raises(ValueError, match="runtime.health_checks"):
+        TrussConfig.from_dict(config_data)
+
+
+def test_health_limits_revalidated_after_nested_edits(config_data):
+    config = TrussConfig.from_dict(config_data)
+    config.runtime.health_checks.restart_threshold_seconds = 61
+    with pytest.raises(ValueError, match="restart_threshold_seconds"):
+        config.to_dict()
+
+
+@pytest.mark.parametrize("value", [1, 60])
+def test_health_threshold_boundaries_allow_long_startup(config_data, value):
+    config_data["runtime"]["health_checks"] = {
+        "restart_threshold_seconds": value,
+        "stop_traffic_threshold_seconds": value,
+        "startup_threshold_seconds": 1800,
+        "restart_check_delay_seconds": 900,
+    }
+    config = TrussConfig.from_dict(config_data)
+    assert config.runtime.health_checks.startup_threshold_seconds == 1800
+    assert config.runtime.health_checks.restart_check_delay_seconds == 900
 
 
 def test_tpu_native_defaults(config_data):
@@ -204,14 +317,15 @@ def test_managed_configuration_refreshes_and_can_be_removed(config_data):
     assert TrussConfig.from_dict(data).docker_server is None
 
 
-def test_managed_tpu_image_can_be_resolved_after_validation(monkeypatch):
+def test_managed_tpu_image_can_be_resolved_after_validation(config_data, monkeypatch):
     monkeypatch.setattr(Resources, "is_tpu", property(lambda self: True))
     config = TrussConfig.from_dict(
         {
+            "runtime": config_data["runtime"],
             "bei": {
                 "backend": "tpu",
                 "configuration": [{"checkpoint": "BAAI/bge-small-en-v1.5"}],
-            }
+            },
         }
     )
     assert config.base_image is None

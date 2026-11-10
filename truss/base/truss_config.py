@@ -1666,7 +1666,7 @@ class TrussConfig(custom_types.ConfigModel):
     )
     bei: Optional[bei_config.BEIConfiguration] = pydantic.Field(
         default=None,
-        description="BEIv3 encoder serving configuration. Loads checkpoints directly without an engine-build job.",
+        description="BEIv3 encoder serving without an engine-build job. Hugging Face checkpoints use runtime weights mounts. Requires explicit restart and stop-traffic health thresholds of 1–60 seconds.",
     )
 
     # deploying from checkpoint
@@ -1976,6 +1976,13 @@ class TrussConfig(custom_types.ConfigModel):
             )
         if (self.resources.node_count or 1) > 1:
             raise ValueError("BEI currently supports single-node deployments.")
+        for field in ("restart_threshold_seconds", "stop_traffic_threshold_seconds"):
+            threshold = getattr(self.runtime.health_checks, field)
+            if threshold is None or not 1 <= threshold <= 60:
+                raise ValueError(
+                    f"bei requires runtime.health_checks.{field} explicitly set to 1–60 seconds. "
+                    "Use startup_threshold_seconds for a longer startup grace period."
+                )
         if self.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY) is not None:
             raise ValueError(
                 "BEI hf_access_token must come from runtime secrets, not a config default."
@@ -1987,17 +1994,20 @@ class TrussConfig(custom_types.ConfigModel):
             environment[key] = value
         if self.bei.backend == "tpu":
             environment.setdefault("BEI_MAX_BATCH_REQUESTS", "32")
+        use_hf_secret = constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
+        weights, model_paths = _bei_weights(self.bei, self.weights, use_hf_secret)
         # Materialize before the platform selects no-build, without recursively
         # invoking assignment validation for these derived fields.
         object.__setattr__(
             self,
             "docker_server",
-            bei_docker_server(
-                self.bei, constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
-            ),
+            bei_docker_server(self.bei, use_hf_secret, model_paths),
         )
+        object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "environment_variables", environment)
-        self.__pydantic_fields_set__.update({"docker_server", "environment_variables"})
+        self.__pydantic_fields_set__.update(
+            {"docker_server", "environment_variables", "weights"}
+        )
         return self
 
     @pydantic.model_validator(mode="after")
@@ -2035,11 +2045,46 @@ def _is_managed_bei_server(server: Optional[DockerServer]) -> bool:
     )
 
 
+def _bei_weights(
+    bei: bei_config.BEIConfiguration, weights: Weights, use_hf_secret: bool
+) -> tuple[Weights, list[str]]:
+    sources = list(weights.sources)
+    by_checkpoint = {}
+    for source in sources:
+        if source.is_huggingface:
+            repo, _, revision = source.source[len(_HF_PREFIX) :].partition("@")
+            by_checkpoint[(repo.lower(), revision or "main")] = source
+    model_paths = []
+    for model in bei.configuration:
+        if model.checkpoint.startswith("/"):
+            model_paths.append(model.checkpoint)
+            continue
+        revision = model.revision or "main"
+        key = (model.checkpoint.lower(), revision)
+        source = by_checkpoint.get(key)
+        if source is None:
+            index = 0
+            while any(s.mount_location == f"/models/bei-{index}" for s in sources):
+                index += 1
+            source = WeightsSource(
+                source=f"hf://{model.checkpoint}@{revision}",
+                mount_location=f"/models/bei-{index}",
+                ignore_patterns=["*.bin", "onnx/**"],
+                auth_secret_name=constants.HF_ACCESS_TOKEN_KEY
+                if use_hf_secret
+                else None,
+            )
+            sources.append(source)
+            by_checkpoint[key] = source
+        model_paths.append(source.mount_location)
+    return Weights(sources), model_paths
+
+
 def bei_docker_server(
-    bei: bei_config.BEIConfiguration, use_hf_secret: bool
+    bei: bei_config.BEIConfiguration, use_hf_secret: bool, model_paths: list[str]
 ) -> DockerServer:
     return DockerServer(
-        start_command=bei.start_command(use_hf_secret),
+        start_command=bei.start_command(use_hf_secret, model_paths),
         no_build=True,
         server_port=8080,
         predict_endpoint="/v1/embeddings",

@@ -9,7 +9,10 @@ NATIVE_COMMAND_PREFIX = "# Truss-managed BEIv3\n"
 
 
 class BEIModelConfiguration(ConfigModel):
-    checkpoint: str = pydantic.Field(min_length=1)
+    checkpoint: str = pydantic.Field(
+        min_length=1,
+        description="Hugging Face repository to download through weights, or an absolute path to manually mounted weights.",
+    )
     revision: Optional[str] = None
     served_model_name: Optional[str] = None
     quantization: Literal["none", "fp8", "mxfp8", "nvfp4"] = "none"
@@ -44,7 +47,7 @@ class BEIConfiguration(ConfigModel):
             raise ValueError("BEI TPU currently supports one unquantized model.")
         return self
 
-    def start_command(self, use_hf_secret: bool) -> str:
+    def start_command(self, use_hf_secret: bool, model_paths: list[str]) -> str:
         argv = [
             "/usr/local/bin/bei",
             "--hostname=0.0.0.0",
@@ -55,10 +58,10 @@ class BEIConfiguration(ConfigModel):
             argv.extend(["--backend=libtorch", "--torch-device=cuda"])
         else:
             argv.extend(["--backend=python-backend", "--dtype=bfloat16"])
-        for model in self.configuration:
+        for model, model_path in zip(self.configuration, model_paths):
             argv.extend(
                 [
-                    f"--model-id={model.checkpoint}",
+                    f"--model-id={model_path}",
                     f"--revision={model.revision or 'main'}",
                     f"--served-model-name={model.served_model_name or model.checkpoint}",
                     f"--dynamic-quantization={model.quantization}",
