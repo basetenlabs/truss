@@ -22,7 +22,7 @@ from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 
-from truss.base import bei_config, constants, truss_config
+from truss.base import constants, truss_config
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
@@ -62,11 +62,9 @@ from truss.base.trt_llm_config import (
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     K8S_RESERVED_ENVIRONMENT_VARIABLES,
-    BaseImage,
     DockerServer,
     RequirementsFileType,
     TrussConfig,
-    bei_docker_server,
 )
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
@@ -539,71 +537,6 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
-    def prepare_bei_build_dir(self, build_dir: Path) -> None:
-        config = self._spec.config
-        bei = config.bei
-        assert bei is not None
-        if bei.image_override:
-            config.base_image = (
-                config.base_image.model_copy(update={"image": bei.image_override})
-                if config.base_image
-                else BaseImage(image=bei.image_override)
-            )
-        if config.base_image is None or not config.base_image.image.strip():
-            raise ValueError(
-                "BEIv3 image is unresolved. Supply a BEI base_image, set "
-                "bei.version_override, or inject --bei_image_versions_json during build setup."
-            )
-        config.docker_server = bei_docker_server()
-        launch_dir = build_dir / "bei"
-        launch_dir.mkdir(exist_ok=True)
-        self._copy_into_build_dir(
-            TEMPLATES_DIR / "bei" / "launch.py", launch_dir, "launch.py"
-        )
-        argv = [
-            "/usr/local/bin/bei",
-            "--hostname=0.0.0.0",
-            "--port=7997",
-            "--json-output",
-        ]
-        if bei.backend == bei_config.BEIBackend.NVIDIA:
-            argv.extend(["--backend=libtorch", "--torch-device=cuda"])
-        else:
-            # Preserve the TPU image's Python plugin configuration, and use its
-            # supported precision instead of the LibTorch auto default.
-            argv.extend(["--backend=python-backend", "--dtype=bfloat16"])
-        for model in bei.configuration:
-            argv.extend(
-                [
-                    f"--model-id={model.checkpoint}",
-                    f"--revision={model.revision or 'main'}",
-                    f"--served-model-name={model.served_model_name or model.checkpoint}",
-                    f"--enable-fp8-dynamic={'true' if model.quantization == bei_config.BEIQuantization.FP8 else 'false'}",
-                ]
-            )
-            if (
-                bei.backend == bei_config.BEIBackend.NVIDIA
-                and len(bei.configuration) > 1
-            ):
-                # Explicit placement is required for multi-model CUDA serving.
-                # Preserve BEIv3's default replication across visible GPUs.
-                argv.append("--backend-device-ids=auto")
-        (launch_dir / "config.json").write_text(
-            json.dumps(
-                {
-                    "argv": argv,
-                    "use_hf_secret": constants.HF_ACCESS_TOKEN_KEY
-                    in config.secret_defaults(),
-                    "hf_secret_default": config.secret_defaults().get(
-                        constants.HF_ACCESS_TOKEN_KEY
-                    ),
-                    "environment_defaults": {"BEI_MAX_BATCH_REQUESTS": "32"}
-                    if bei.backend == bei_config.BEIBackend.TPU
-                    else {},
-                }
-            )
-        )
-
     def _copy_into_build_dir(
         self, from_path: Path, build_dir: Path, path_in_build_dir: str
     ):
@@ -783,8 +716,13 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-        if config.bei is not None:
-            self.prepare_bei_build_dir(build_dir)
+        if config.bei is not None and (
+            not config.base_image or not config.base_image.image.strip()
+        ):
+            raise ValueError(
+                "BEIv3 image is unresolved. Supply a BEI base_image, set "
+                "bei.version_override, or resolve the platform image before no-build dispatch."
+            )
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None

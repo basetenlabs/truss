@@ -1719,11 +1719,17 @@ class TrussConfig(custom_types.ConfigModel):
         return dict(self.secrets)
 
     def to_dict(self, verbose: bool = True) -> dict:
-        self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
-        data = super().to_dict(verbose)
+        # Refresh managed deployment settings after model_copy or nested BEI edits.
+        config = (
+            type(self).model_validate(self.model_dump(mode="python"))
+            if self.bei is not None or _is_managed_bei_server(self.docker_server)
+            else self
+        )
+        config.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
+        data = custom_types.ConfigModel.to_dict(config, verbose)
         # Always include.
-        data["resources"] = self.resources.to_dict(verbose=True)
-        data["python_version"] = self.python_version
+        data["resources"] = config.resources.to_dict(verbose=True)
+        data["python_version"] = config.python_version
         return data
 
     @classmethod
@@ -1900,7 +1906,40 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_bei(self) -> "TrussConfig":
+        managed = _is_managed_bei_server(self.docker_server)
+        if managed and (self.bei is None or self.bei.image_override is None):
+            # An override materialized into the serialized base image should stop
+            # pinning that image when the override is removed.
+            prior_image = next(
+                (
+                    line.removeprefix(bei_config.IMAGE_OVERRIDE_PREFIX)
+                    for line in self.docker_server.start_command.splitlines()
+                    if line.startswith(bei_config.IMAGE_OVERRIDE_PREFIX)
+                ),
+                None,
+            )
+            if prior_image and self.base_image and self.base_image.image == prior_image:
+                object.__setattr__(
+                    self,
+                    "base_image",
+                    self.base_image.model_copy(update={"image": ""})
+                    if self.bei is not None
+                    else None,
+                )
         if self.bei is None:
+            if managed:
+                environment = dict(self.environment_variables)
+                for name, value in {
+                    "BEI_PORT": "7997",
+                    "BEI_HOSTNAME": "0.0.0.0",
+                }.items():
+                    if environment.get(name) == value:
+                        environment.pop(name)
+                environment.pop(bei_config.HF_SECRET_DEFAULT_ENV, None)
+                if environment.get("BEI_MAX_BATCH_REQUESTS") == "32":
+                    environment.pop("BEI_MAX_BATCH_REQUESTS")
+                object.__setattr__(self, "docker_server", None)
+                object.__setattr__(self, "environment_variables", environment)
             return self
         if self.trt_llm is not None or self.bis_llm is not None:
             raise ValueError("bei cannot be combined with trt_llm or bis_llm.")
@@ -1908,13 +1947,41 @@ class TrussConfig(custom_types.ConfigModel):
             raise ValueError("bei does not support live_reload.")
         if self.runtime.transport.kind != TransportKind.HTTP:
             raise ValueError("bei requires HTTP transport.")
-        if self.requirements or self.requirements_file:
-            raise ValueError(
-                "bei does not install Python requirements; include custom dependencies in the BEIv3 base image."
+        rejected = [
+            name
+            for name in (
+                "requirements",
+                "requirements_file",
+                "system_packages",
+                "build_commands",
+                "external_data",
+                "external_package_dirs",
+                "use_local_src",
             )
-        # Build preparation adds this managed server configuration. Accept it on
-        # subsequent config loads, while rejecting conflicting user settings.
-        if self.docker_server is not None and self.docker_server != bei_docker_server():
+            if getattr(self, name)
+        ]
+        if self.model_cache.models:
+            rejected.append("model_cache")
+        if rejected:
+            raise ValueError(
+                f"bei uses no_build and cannot apply {', '.join(rejected)}. Include dependencies and files in the prebuilt BEIv3 image or use runtime weights mounts."
+            )
+        server = bei_docker_server(
+            self.bei, constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
+        )
+        current_server = self.docker_server
+        # Serialized managed commands may be stale after the BEI configuration
+        # changes. Regenerate them, while rejecting independent server overrides.
+        if current_server is not None and not (
+            current_server.start_command
+            and current_server.start_command.startswith(
+                bei_config.NATIVE_COMMAND_PREFIX
+            )
+            and current_server.model_copy(
+                update={"start_command": server.start_command}
+            )
+            == server
+        ):
             raise ValueError(
                 "bei manages docker_server; remove custom docker_server settings."
             )
@@ -1944,6 +2011,32 @@ class TrussConfig(custom_types.ConfigModel):
                     for model in self.bei.configuration
                 ) and family in ("A10G", "A100", "A100_40GB"):
                     raise ValueError("BEIv3 FP8 requires NVIDIA SM89 or newer GPUs.")
+        environment = dict(self.environment_variables)
+        for name, value in {"BEI_PORT": "7997", "BEI_HOSTNAME": "0.0.0.0"}.items():
+            if name in environment and environment[name] != value:
+                raise ValueError(
+                    f"bei manages {name}; remove its environment override."
+                )
+            environment[name] = value
+        if self.bei.backend == bei_config.BEIBackend.TPU:
+            environment.setdefault("BEI_MAX_BATCH_REQUESTS", "32")
+        environment.pop(bei_config.HF_SECRET_DEFAULT_ENV, None)
+        hf_default = self.secret_defaults().get(constants.HF_ACCESS_TOKEN_KEY)
+        if hf_default is not None:
+            environment[bei_config.HF_SECRET_DEFAULT_ENV] = hf_default
+        # Derived values must exist before the platform chooses the no-build
+        # deployment path. Avoid assignment-validation recursion here.
+        object.__setattr__(self, "docker_server", server)
+        object.__setattr__(self, "environment_variables", environment)
+        self.__pydantic_fields_set__.update({"docker_server", "environment_variables"})
+        if self.bei.image_override:
+            image = (
+                self.base_image.model_copy(update={"image": self.bei.image_override})
+                if self.base_image
+                else BaseImage(image=self.bei.image_override)
+            )
+            object.__setattr__(self, "base_image", image)
+            self.__pydantic_fields_set__.add("base_image")
         return self
 
     @pydantic.model_validator(mode="after")
@@ -1973,11 +2066,20 @@ class TrussConfig(custom_types.ConfigModel):
         return RequirementsFileType.PIP
 
 
-def bei_docker_server() -> DockerServer:
-    # The command contains only a fixed launcher path; model values are passed
-    # to exec as an argv array by the launcher rather than through a shell.
+def _is_managed_bei_server(server: Optional[DockerServer]) -> bool:
+    return bool(
+        server
+        and server.start_command
+        and server.start_command.startswith(bei_config.NATIVE_COMMAND_PREFIX)
+    )
+
+
+def bei_docker_server(
+    bei: bei_config.BEIConfiguration, use_hf_secret: bool
+) -> DockerServer:
     return DockerServer(
-        start_command="/docker_server/.venv/bin/python /app/bei/launch.py",
+        start_command=bei.start_command(use_hf_secret),
+        no_build=True,
         server_port=7997,
         predict_endpoint="/v1/embeddings",
         readiness_endpoint="/health",

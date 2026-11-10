@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from enum import Enum
 from typing import Optional
 
@@ -11,6 +12,9 @@ from huggingface_hub.utils import validate_repo_id
 from truss.base import custom_types
 
 _IMAGE_REPOSITORY = "baseten/bei"
+NATIVE_COMMAND_PREFIX = "# Truss-managed BEIv3\n"
+IMAGE_OVERRIDE_PREFIX = "# BEIv3 image override: "
+HF_SECRET_DEFAULT_ENV = "TRUSS_BEI_HF_TOKEN_DEFAULT"
 _IMAGE_TAG_MAX_LENGTH = 128
 _DOCKER_TAG_COMPONENT_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 _UNAVAILABLE_QUANTIZATION_MODES = {"mxfp8", "nvfp4"}
@@ -184,6 +188,58 @@ class BEIConfiguration(custom_types.ConfigModel):
         if self.version_override is None:
             return None
         return f"{_IMAGE_REPOSITORY}:{self.version_override}-{self.backend.value}"
+
+    def start_command(self, use_hf_secret: bool) -> str:
+        """Launch the native executable using only the prebuilt image's shell."""
+        argv = [
+            "/usr/local/bin/bei",
+            "--hostname=0.0.0.0",
+            "--port=7997",
+            "--json-output",
+        ]
+        if self.backend == BEIBackend.NVIDIA:
+            argv.extend(["--backend=libtorch", "--torch-device=cuda"])
+        else:
+            argv.extend(["--backend=python-backend", "--dtype=bfloat16"])
+        for model in self.configuration:
+            argv.extend(
+                [
+                    f"--model-id={model.checkpoint}",
+                    f"--revision={model.revision or 'main'}",
+                    f"--served-model-name={model.effective_served_model_name}",
+                    f"--enable-fp8-dynamic={'true' if model.quantization == BEIQuantization.FP8 else 'false'}",
+                ]
+            )
+            if self.backend == BEIBackend.NVIDIA and len(self.configuration) > 1:
+                argv.append("--backend-device-ids=auto")
+        script = [
+            NATIVE_COMMAND_PREFIX.rstrip(),
+            "set -eu",
+            """if [ -z "${BEI_HF_TOKEN:-}" ] && [ -n "${HF_TOKEN:-}" ]; then
+    export BEI_HF_TOKEN="$HF_TOKEN"
+fi""",
+        ]
+        if self.image_override:
+            script.insert(1, IMAGE_OVERRIDE_PREFIX + self.image_override)
+        if use_hf_secret:
+            script.append("""truss_hf_token=''
+if [ -f /secrets/hf_access_token ]; then
+    truss_hf_token="$(cat /secrets/hf_access_token)"
+elif [ "${TRUSS_SECRET_hf_access_token+x}" = x ]; then
+    truss_hf_token="$TRUSS_SECRET_hf_access_token"
+elif [ "${TRUSS_BEI_HF_TOKEN_DEFAULT+x}" = x ]; then
+    truss_hf_token="$TRUSS_BEI_HF_TOKEN_DEFAULT"
+fi
+if [ -n "$truss_hf_token" ]; then
+    BEI_HF_TOKEN="$truss_hf_token"
+fi
+if [ -z "${BEI_HF_TOKEN:-}" ]; then
+    echo 'The declared hf_access_token secret is missing at runtime.' >&2
+    exit 1
+fi
+export BEI_HF_TOKEN""")
+        script.append("exec " + shlex.join(argv))
+        return "\n".join(script)
 
 
 class BEIImageVersions(custom_types.ConfigModel):
