@@ -94,7 +94,7 @@ def test_apt_mirror_url_override(mock_machine, custom_model_truss_dir, monkeypat
     assert "mirror://mirrors.ubuntu.com/JP.txt" in dockerfile
     assert "mirror://mirrors.ubuntu.com/US.txt" not in dockerfile
     assert (
-        r"s|http://security\.ubuntu\.com/ubuntu/*|mirror://mirrors.ubuntu.com/JP.txt|g"
+        r"s|http://security\.ubuntu\.com/ubuntu/*|https://security.ubuntu.com/ubuntu/|g"
         in dockerfile
     )
 

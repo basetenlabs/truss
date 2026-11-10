@@ -167,10 +167,13 @@ jobs:
               if command -v apk &> /dev/null; then
                 apk add --no-cache curl perl openssl-dev build-base
               elif command -v apt-get &> /dev/null; then
-                # Use the same Ubuntu mirror as the Truss integration builds.
+                # Use HTTPS for Ubuntu archive and security downloads.
                 for apt_sources in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
                   if [ -f "$apt_sources" ]; then
-                    sed -i -E "s#http://(archive|security)\.ubuntu\.com/ubuntu/*#https://azure.archive.ubuntu.com/ubuntu/#g" "$apt_sources"
+                    sed -i -E \
+                      -e "s#http://archive\.ubuntu\.com/ubuntu/*#https://azure.archive.ubuntu.com/ubuntu/#g" \
+                      -e "s#http://security\.ubuntu\.com/ubuntu/*#https://security.ubuntu.com/ubuntu/#g" \
+                      "$apt_sources"
                   fi
                 done
                 apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
