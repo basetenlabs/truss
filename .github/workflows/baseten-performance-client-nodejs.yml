@@ -170,7 +170,7 @@ jobs:
                 # Use the same Ubuntu mirror as the Truss integration builds.
                 for apt_sources in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
                   if [ -f "$apt_sources" ]; then
-                    sed -i -E "s#http://(archive|security)\.ubuntu\.com/ubuntu/*#http://us-east-1.ec2.archive.ubuntu.com/ubuntu/#g" "$apt_sources"
+                    sed -i -E "s#http://(archive|security)\.ubuntu\.com/ubuntu/*#https://archive.ubuntu.com/ubuntu/#g" "$apt_sources"
                   fi
                 done
                 apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
