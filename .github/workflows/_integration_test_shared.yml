@@ -30,6 +30,9 @@ jobs:
                   "$apt_sources"
               fi
             done
-            apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
+            apt-get update && apt-get install -y curl libssl-dev libatomic-ops-dev
+            if ! perl -MIPC::Cmd -e 1 > /dev/null 2>&1; then
+              apt-get install -y perl
+            fi
             perl --version
           '
