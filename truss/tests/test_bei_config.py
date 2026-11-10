@@ -229,10 +229,14 @@ def test_tpu_native_defaults(config_data):
     assert config.environment_variables["BEI_MAX_BATCH_REQUESTS"] == "32"
 
 
-def test_shared_image_injection_is_authoritative(
-    config_data, bei_dir, tmp_path, monkeypatch
+@pytest.mark.parametrize("inject_image", [False, True])
+@pytest.mark.parametrize("explicit_image", [False, True])
+def test_shared_image_injection_supports_truss_first_rollout(
+    config_data, bei_dir, tmp_path, monkeypatch, inject_image, explicit_image
 ):
     config_data["bei"]["version_override"] = "v3-test"
+    if not explicit_image:
+        config_data.pop("base_image")
     (bei_dir / "config.yaml").write_text(yaml.safe_dump(config_data))
     image = "private.example/bei:resolved@sha256:" + "a" * 64
     versions = ImageVersions(
@@ -240,7 +244,7 @@ def test_shared_image_injection_is_authoritative(
         beibert_image="legacy/bert",
         briton_image="legacy/briton",
         v2_llm_image="legacy/v2",
-        bei_v3_image=image,
+        bei_v3_image=image if inject_image else None,
     )
     monkeypatch.delenv("PATCHES_DIR", raising=False)
     for name, path in {
@@ -256,12 +260,18 @@ def test_shared_image_injection_is_authoritative(
             "--truss_type",
             "server",
             "--trt_llm_image_versions_json",
-            versions.model_dump_json(),
+            versions.model_dump_json(exclude_none=True),
         ],
     )
+    if not inject_image and not explicit_image:
+        assert isinstance(result.exception, ValueError)
+        assert "BEIv3 image is unresolved" in str(result.exception)
+        return
     assert result.exit_code == 0, result.output
     config = TrussConfig.from_yaml(tmp_path / "build/config.yaml")
-    assert config.base_image.image == image
+    assert config.base_image.image == (
+        image if inject_image else config_data["base_image"]["image"]
+    )
     assert config.bei.version_override == "v3-test"
     assert (
         ImageVersions.model_validate(

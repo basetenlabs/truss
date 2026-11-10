@@ -720,8 +720,8 @@ class ServingImageBuilder(ImageBuilder):
             not config.base_image or not config.base_image.image.strip()
         ):
             raise ValueError(
-                "BEIv3 image is unresolved. Supply a BEI base_image, set "
-                "bei.version_override, or resolve the platform image before no-build dispatch."
+                "BEIv3 image is unresolved. Supply base_image.image or have the platform "
+                "inject bei_v3_image before no-build dispatch."
             )
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)

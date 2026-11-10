@@ -88,13 +88,11 @@ def _fill_bei_versions(
     tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
 ) -> None:
     assert tr.spec.config.bei is not None
-    # Like legacy engines, consume the backend-resolved reference, including
-    # its version override and selected hardware backend.
+    # The platform can start supplying this after Truss ships. Until then,
+    # keep any explicit base_image; image preparation rejects unresolved images.
     image = image_versions.bei_v3_image
     if not image or not image.strip():
-        raise ValueError(
-            "No resolved bei_v3_image supplied in the shared image versions payload."
-        )
+        return
     current = tr.spec.config.base_image
     tr.set_base_image(image, current.python_executable_path if current else "")
 
