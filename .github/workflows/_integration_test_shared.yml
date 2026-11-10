@@ -36,6 +36,8 @@ jobs:
     if: ${{ inputs.store_durations_serially }}
     runs-on: ubuntu-22.04
     needs: determine-python-versions
+    env:
+      UV_PYTHON: ${{ needs.determine-python-versions.outputs.max_supported_python_version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
@@ -56,6 +58,8 @@ jobs:
     if: ${{ !inputs.store_durations_serially }}
     needs: determine-python-versions
     runs-on: ubuntu-24.04
+    env:
+      UV_PYTHON: ${{ matrix.python_version }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +122,8 @@ jobs:
     if: ${{ !inputs.store_durations_serially }}
     needs: determine-python-versions
     runs-on: ubuntu-22.04
+    env:
+      UV_PYTHON: ${{ matrix.python_version }}
     strategy:
       fail-fast: false
       matrix:
