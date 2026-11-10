@@ -176,7 +176,11 @@ jobs:
                       "$apt_sources"
                   fi
                 done
-                apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
+                apt-get update && apt-get install -y curl libssl-dev libatomic-ops-dev
+                # Reuse preinstalled Perl when the required build module is available.
+                if ! perl -MIPC::Cmd -e 1 > /dev/null 2>&1; then
+                  apt-get install -y perl
+                fi
               elif command -v yum &> /dev/null; then
                 yum install curl openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
               else
