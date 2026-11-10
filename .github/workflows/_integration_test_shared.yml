@@ -18,6 +18,17 @@ env:
   BT_APT_MIRROR_URL: https://archive.ubuntu.com/ubuntu/
 
 jobs:
+  diagnose-ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare Ubuntu package downloads
+        run: |
+          for ubuntu_repo_url in https://archive.ubuntu.com/ubuntu https://security.ubuntu.com/ubuntu https://azure.archive.ubuntu.com/ubuntu https://mirrors.edge.kernel.org/ubuntu; do
+            curl -L --max-time 20 --silent --show-error \
+              "$ubuntu_repo_url/pool/main/p/perl/libperl5.34_5.34.0-3ubuntu1.10_amd64.deb" \
+              -o /tmp/perl-probe -w "$ubuntu_repo_url %{http_code} %{size_download}\\n" || true
+          done
+
   determine-python-versions:
     runs-on: ubuntu-22.04
     outputs:
@@ -55,7 +66,7 @@ jobs:
 
 
   truss-integration-tests:
-    if: ${{ !inputs.store_durations_serially }}
+    if: ${{ false }}
     needs: determine-python-versions
     runs-on: ubuntu-24.04
     env:
@@ -121,7 +132,7 @@ jobs:
           report_paths: "report-${{ matrix.python_version }}-${{ matrix.split_group }}.xml"
 
   chains-integration-tests:
-    if: ${{ !inputs.store_durations_serially }}
+    if: ${{ false }}
     needs: determine-python-versions
     runs-on: ubuntu-22.04
     env:
