@@ -837,7 +837,11 @@ def test_prepare_bis_llm_request_body_forwards_egress_restrictions(
     )
 
     body = remote._prepare_bis_llm_request_body(
-        config=config, model_name="model_name", model_id=None, labels=None
+        config=config,
+        model_name="model_name",
+        model_id=None,
+        labels=None,
+        deployment_name=None,
     )
 
     assert body["egress_restrictions"] == expected
@@ -847,7 +851,11 @@ def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):
     config = TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"}))
 
     body = remote._prepare_bis_llm_request_body(
-        config=config, model_name="model_name", model_id=None, labels=None
+        config=config,
+        model_name="model_name",
+        model_id=None,
+        labels=None,
+        deployment_name=None,
     )
 
     assert "egress_restrictions" not in body

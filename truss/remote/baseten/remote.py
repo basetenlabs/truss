@@ -305,7 +305,7 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
-        deployment_name: Optional[str] = None,
+        deployment_name: Optional[str],
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True)
