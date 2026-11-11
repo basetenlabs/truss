@@ -318,6 +318,7 @@ class BasetenRemote(TrussRemote):
             body["weights"] = config.weights.model_dump(exclude_none=True)
         if config.model_metadata:
             body["model_metadata"] = config.model_metadata
+        body["bdn"] = config.bdn.model_dump(exclude_none=True)
         if labels is not None:
             body["metadata"] = labels
         if deployment_name is not None:

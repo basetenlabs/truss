@@ -861,6 +861,50 @@ def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):
     assert "egress_restrictions" not in body
 
 
+_BDN_SOURCE = "bdn:weights/llama@b3:" + "a" * 64
+
+
+@pytest.mark.parametrize(
+    ("bdn", "expected"),
+    [
+        (
+            {"mounts": [{"source": _BDN_SOURCE, "path": "/models/llama"}]},
+            {
+                "mounts": [
+                    {
+                        "source": _BDN_SOURCE,
+                        "path": "/models/llama",
+                        "include": [],
+                        "exclude": [],
+                    }
+                ],
+                "access": [],
+                "hotload": {"enabled": False},
+            },
+        ),
+        (
+            {"hotload": {"enabled": True}},
+            {"mounts": [], "access": [], "hotload": {"enabled": True}},
+        ),
+        ({}, {"mounts": [], "access": [], "hotload": {"enabled": False}}),
+    ],
+)
+def test_prepare_bis_llm_request_body_forwards_bdn(remote, bdn, expected):
+    config = TrussConfig.model_validate(
+        {"bis_llm": {"config": {"model": "test-llm"}}, "bdn": bdn}
+    )
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config,
+        model_name="model_name",
+        model_id=None,
+        labels=None,
+        deployment_name=None,
+    )
+
+    assert body["bdn"] == expected
+
+
 @pytest.mark.parametrize(
     ("resource_config", "expected_resource_config"),
     [
