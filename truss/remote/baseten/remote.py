@@ -272,7 +272,6 @@ class BasetenRemote(TrussRemote):
         promote: bool,
         preserve_previous_prod_deployment: bool,
         disable_truss_download: bool,
-        deployment_name: Optional[str],
         origin: Optional[custom_types.ModelOrigin],
         environment: Optional[str],
         deploy_timeout_minutes: Optional[int],
@@ -293,8 +292,6 @@ class BasetenRemote(TrussRemote):
             raise ValueError(
                 "Disable truss download is not supported for BIS LLM models."
             )
-        if deployment_name:
-            raise ValueError("Deployment name is not supported for BIS LLM models.")
         if origin:
             raise ValueError("Origin is not supported for BIS LLM models.")
         if deploy_timeout_minutes is not None:
@@ -308,6 +305,7 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         model_id: Optional[str],
         labels: Optional[Dict[str, Any]],
+        deployment_name: Optional[str],
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True)
@@ -322,6 +320,8 @@ class BasetenRemote(TrussRemote):
             body["model_metadata"] = config.model_metadata
         if labels is not None:
             body["metadata"] = labels
+        if deployment_name is not None:
+            body["deployment_name"] = deployment_name
         if config.runtime.egress_restrictions is not None:
             body["egress_restrictions"] = config.runtime.egress_restrictions.model_dump(
                 exclude_none=True
@@ -375,7 +375,6 @@ class BasetenRemote(TrussRemote):
                 promote=promote,
                 preserve_previous_prod_deployment=preserve_previous_prod_deployment,
                 disable_truss_download=disable_truss_download,
-                deployment_name=deployment_name,
                 origin=origin,
                 environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
@@ -519,6 +518,7 @@ class BasetenRemote(TrussRemote):
                     model_name=model_name,
                     model_id=push_data.model_id,
                     labels=push_data.labels,
+                    deployment_name=push_data.version_name,
                 ),
                 model_id=push_data.model_id,
                 team_id=push_data.team_id,

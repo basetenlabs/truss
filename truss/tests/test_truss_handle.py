@@ -708,15 +708,16 @@ class Model:
             except requests.exceptions.ConnectionError:
                 time.sleep(1)
                 continue
-            if resp.status_code == 503 and (
-                "Model load failed" in resp.text
-                or "It appears your model has stopped running" in resp.text
+            if (resp.status_code == 502 and "Model load failed" in resp.text) or (
+                resp.status_code == 503
+                and "It appears your model has stopped running" in resp.text
             ):
                 break
             time.sleep(1)
         else:
             pytest.fail(
-                f"expected 503 with model load failure, got {resp.status_code}: {resp.text}"
+                "expected model load failure (502) or stopped server (503), "
+                f"got {resp.status_code}: {resp.text}"
             )
 
         # Should be able to fix code after

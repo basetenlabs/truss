@@ -167,7 +167,20 @@ jobs:
               if command -v apk &> /dev/null; then
                 apk add --no-cache curl perl openssl-dev build-base
               elif command -v apt-get &> /dev/null; then
-                apt-get update && apt-get install -y curl perl libssl-dev libatomic-ops-dev
+                # Use HTTPS for Ubuntu archive and security downloads.
+                for apt_sources in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+                  if [ -f "$apt_sources" ]; then
+                    sed -i -E \
+                      -e "s#http://archive\.ubuntu\.com/ubuntu/*#https://azure.archive.ubuntu.com/ubuntu/#g" \
+                      -e "s#http://security\.ubuntu\.com/ubuntu/*#https://security.ubuntu.com/ubuntu/#g" \
+                      "$apt_sources"
+                  fi
+                done
+                apt-get update && apt-get install -y curl libssl-dev libatomic-ops-dev
+                # Reuse preinstalled Perl when the required build module is available.
+                if ! perl -MIPC::Cmd -e 1 > /dev/null 2>&1; then
+                  apt-get install -y perl
+                fi
               elif command -v yum &> /dev/null; then
                 yum install curl openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
               else

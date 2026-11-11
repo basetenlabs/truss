@@ -1677,15 +1677,17 @@ def test_async_streaming_with_cancellation():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
-        # For hard cancellation we need to use httpx, requests' timeouts don't work.
-        with pytest.raises(httpx.ReadTimeout):
-            with httpx.Client(
-                timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
-            ) as client:
-                response = client.post(urls.predict_url, json={}, timeout=1.0)
+        # Close after receiving a chunk so cancellation happens during generation.
+        with httpx.Client(timeout=10.0) as client:
+            with client.stream("POST", urls.predict_url, json={}) as response:
                 response.raise_for_status()
+                assert next(response.iter_text()) == "0"
 
-        time.sleep(2)  # Wait a bit to get all logs.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if "Cancelled (during gen)." in container.logs():
+                break
+            time.sleep(0.1)
         assert "Cancelled (during gen)." in container.logs()
 
 
@@ -2252,7 +2254,7 @@ _VERSION_CHECK_MODEL = """
         def predict(self, data):
             packages = [
                 "fastapi", "numpy", "uvicorn", "requests",
-                "pyyaml", "msgpack", "msgpack-numpy",
+                "pyyaml", "msgpack", "b10-msgpack-numpy",
             ]
             versions = {
                 pkg: importlib.metadata.version(pkg)
@@ -2436,7 +2438,7 @@ def test_numpy2x_compat():
         assert response.json()["result"] == 4.0
 
         # Msgpack round-trip with a numpy array  - the critical test for
-        # msgpack-numpy 0.4.8 compatibility with numpy 2.x.
+        # b10-msgpack-numpy 0.4.8 compatibility with numpy 2.x.
         from truss.templates.shared.serialization import (
             truss_msgpack_deserialize,
             truss_msgpack_serialize,

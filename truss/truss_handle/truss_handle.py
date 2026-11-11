@@ -199,8 +199,15 @@ class TrussHandle:
         """[Deprecated] Do not use."""
         return _docker_image_from_labels(labels)
 
+    def _validate_local_accelerator(self) -> None:
+        if self.spec.config.resources.is_tpu:
+            raise ValueError(
+                "Local TPU execution is not supported. Deploy this Truss to Baseten."
+            )
+
     @proxy_to_shadow_if_scattered
     def run_python_script(self, script_path: Path, build_dir: Optional[Path] = None):
+        self._validate_local_accelerator()
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
@@ -291,6 +298,7 @@ class TrussHandle:
         """
         from python_on_whales.exceptions import DockerException
 
+        self._validate_local_accelerator()
         container: Union[Container, str]
         container_if_patched = self._try_patch()
         if container_if_patched is not None:

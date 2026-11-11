@@ -464,7 +464,7 @@ def _capacity_rows(out: str) -> dict:
 
 
 def test_display_training_capacity(capsys):
-    """Usage is split into On-Demand and Spot columns per GPU type."""
+    """Usage is split into Standard and Spot columns per GPU type."""
     mock_api = Mock()
     mock_api.get_training_capacity.return_value = {
         "gpu_capacities": [
@@ -493,7 +493,7 @@ def test_display_training_capacity(capsys):
         display_training_capacity(mock_remote)
 
     rows = _capacity_rows(capsys.readouterr().out)
-    # GPU Type, Baseline, Limit, On-Demand, Spot
+    # GPU Type, Baseline, Limit, Standard, Spot
     assert rows["H100"] == ["H100", "16", "64", "24", "16"]
     assert rows["A10G"] == ["A10G", "0", "8", "0", "0"]
 
@@ -535,15 +535,15 @@ def test_display_training_capacity_with_teams(capsys):
     rows = _capacity_rows(out)
 
     assert "Team Training GPU Capacity" in out
-    # Org table keeps Baseline: GPU Type, Baseline, Limit, On-Demand, Spot
+    # Org table keeps Baseline: GPU Type, Baseline, Limit, Standard, Spot
     assert rows["H100"] == ["H100", "16", "64", "32", "0"]
-    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, On-Demand, Spot
+    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, Standard, Spot
     assert rows["ml-research"] == ["ml-research", "H100", "32", "2", "6"]
     assert "Baseline" not in rows["Team"]
 
 
 def test_display_training_capacity_pre_split_backend(capsys):
-    """A pre-split backend (only usage_count) shows the total under On-Demand."""
+    """A pre-split backend (only usage_count) shows the total under Standard."""
     mock_api = Mock()
     mock_api.get_training_capacity.return_value = {
         "gpu_capacities": [
@@ -646,12 +646,14 @@ def test_update_team_training_gpu_capacity_unknown_team_raises():
 
 
 def test_format_capacity_type():
-    """availability_model maps to human-readable labels; absent reads as on-demand."""
+    """availability_model maps to human-readable labels; absent reads as standard."""
     assert _format_capacity_type({"availability_model": "spot"}) == "Spot"
-    assert _format_capacity_type({"availability_model": "dedicated"}) == "On-demand"
-    # Absent / null predates the field and reads as on-demand.
-    assert _format_capacity_type({}) == "On-demand"
-    assert _format_capacity_type({"availability_model": None}) == "On-demand"
+    assert _format_capacity_type({"availability_model": "standard"}) == "Standard"
+    # Servers from before the rename send 'dedicated'.
+    assert _format_capacity_type({"availability_model": "dedicated"}) == "Standard"
+    # Absent / null predates the field and reads as standard.
+    assert _format_capacity_type({}) == "Standard"
+    assert _format_capacity_type({"availability_model": None}) == "Standard"
     # An unknown future value is surfaced rather than dropped.
     assert _format_capacity_type({"availability_model": "reserved"}) == "Reserved"
 
@@ -699,8 +701,8 @@ def test_display_queued_jobs_shows_capacity_type(capsys):
     # Columns: Job ID, Job Name, Project, Instance Type, Capacity Type, ...
     assert rows["Job ID"][4] == "Capacity Type"
     assert rows["spotjob"][4] == "Spot"
-    assert rows["dedjob"][4] == "On-demand"
-    assert rows["oldjob"][4] == "On-demand"
+    assert rows["dedjob"][4] == "Standard"
+    assert rows["oldjob"][4] == "Standard"
 
 
 def test_display_training_jobs_shows_capacity_type(capsys):
@@ -718,4 +720,4 @@ def test_display_training_jobs_shows_capacity_type(capsys):
     # Columns: Job ID, Job Name, Project, Status, Instance Type, Capacity Type, ...
     assert rows["Job ID"][5] == "Capacity Type"
     assert rows["spotjob"][5] == "Spot"
-    assert rows["dedjob"][5] == "On-demand"
+    assert rows["dedjob"][5] == "Standard"

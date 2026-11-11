@@ -26,7 +26,7 @@ import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
 
-from truss.base import constants, custom_types, trt_llm_config
+from truss.base import bei_config, constants, custom_types, trt_llm_config
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
@@ -59,6 +59,7 @@ AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
 AWS_OIDC_REGION_PARAM = "aws_oidc_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
+HF_OIDC_RESOURCE_PARAM = "hf_oidc_resource"
 AWS_ASSUME_ROLE_ARN_PARAM = "aws_assume_role_arn"
 AWS_ASSUME_ROLE_REGION_PARAM = "aws_assume_role_region"
 
@@ -256,6 +257,7 @@ class WeightsAuthMethod(str, enum.Enum):
     CUSTOM_SECRET = "CUSTOM_SECRET"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    HF_OIDC = "HF_OIDC"
     AWS_ASSUME_ROLE = "AWS_ASSUME_ROLE"
 
 
@@ -349,6 +351,10 @@ class WeightsAuth(AuthFieldsMixin):
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
+    hf_oidc_resource: Optional[str] = pydantic.Field(
+        default=None,
+        description="Hugging Face repository (namespace/name) or username for OIDC token exchange.",
+    )
 
     @pydantic.field_validator("auth_method", mode="before")
     @classmethod
@@ -357,6 +363,9 @@ class WeightsAuth(AuthFieldsMixin):
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_fields(self) -> "WeightsAuth":
+        if self.auth_method != WeightsAuthMethod.HF_OIDC:
+            self._forbid_fields(self.auth_method.value, HF_OIDC_RESOURCE_PARAM)
+
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
             self._validate_fields(
                 self.auth_method.value,
@@ -407,6 +416,21 @@ class WeightsAuth(AuthFieldsMixin):
                     AWS_OIDC_REGION_PARAM,
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+
+        elif self.auth_method == WeightsAuthMethod.HF_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[HF_OIDC_RESOURCE_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                    AWS_ASSUME_ROLE_ARN_PARAM,
+                    AWS_ASSUME_ROLE_REGION_PARAM,
                 ],
             )
 
@@ -555,6 +579,15 @@ class WeightsSource(custom_types.ConfigModel):
                 "auth_secret_name cannot be specified both at the top level and in auth section. "
                 "Please use only one location."
             )
+        if self.auth and self.auth.auth_method == WeightsAuthMethod.HF_OIDC:
+            if not self.is_huggingface:
+                raise ValueError(
+                    "HF_OIDC authentication requires a HuggingFace source (hf://)."
+                )
+            if self.auth_secret_name:
+                raise ValueError(
+                    "auth_secret_name cannot be specified when auth_method is HF_OIDC"
+                )
         return self
 
 
@@ -831,11 +864,11 @@ class HealthChecks(custom_types.ConfigModel):
     )
     restart_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which an unhealthy instance is restarted. With trt_llm, defaults to 60 and must be <= 60. Otherwise defaults to platform-determined value when not set.",
     )
     stop_traffic_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which traffic is stopped to an unhealthy instance. With trt_llm, defaults to 30 and must be <= 30. Otherwise defaults to platform-determined value when not set.",
     )
     startup_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
@@ -1170,7 +1203,7 @@ class Resources(custom_types.ConfigModel):
     )
     accelerator: AcceleratorSpec = pydantic.Field(
         default_factory=AcceleratorSpec,
-        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        description="The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
         examples=["A100", "T4:2", "H100:8"],
     )
     instance_type: Optional[str] = pydantic.Field(
@@ -1206,7 +1239,13 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.computed_field(return_type=bool)
     def use_gpu(self) -> bool:
+        # The legacy wire flag represents any accelerator, including TPUs.
         return self.accelerator.accelerator is not None
+
+    @property
+    def is_tpu(self) -> bool:
+        # Concrete TPU accelerator types are introduced separately.
+        return self.accelerator.accelerator in []
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1431,7 +1470,7 @@ class DockerServer(custom_types.ConfigModel):
         description="The command to start the server. Required when no_build is not true.",
     )
     server_port: int = pydantic.Field(
-        description="The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used."
+        description="The port where the server runs. Port 8080 is reserved when Truss installs its internal reverse proxy; no_build deployments can use 8080."
     )
     predict_endpoint: str = pydantic.Field(
         description="The endpoint for inference requests. This is mapped to Baseten's /predict route."
@@ -1625,6 +1664,10 @@ class TrussConfig(custom_types.ConfigModel):
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
+    bei: Optional[bei_config.BEIConfiguration] = pydantic.Field(
+        default=None,
+        description="BEIv3 encoder serving without an engine-build job. Hugging Face checkpoints use runtime weights mounts. Requires explicit restart and stop-traffic health thresholds of 1–60 seconds.",
+    )
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
@@ -1682,11 +1725,17 @@ class TrussConfig(custom_types.ConfigModel):
         return dict(self.secrets)
 
     def to_dict(self, verbose: bool = True) -> dict:
-        self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
-        data = super().to_dict(verbose)
+        # Refresh managed deployment settings after model_copy or nested BEI edits.
+        config = (
+            type(self).model_validate(self.model_dump(mode="python"))
+            if self.bei is not None or _is_managed_bei_server(self.docker_server)
+            else self
+        )
+        config.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
+        data = custom_types.ConfigModel.to_dict(config, verbose)
         # Always include.
-        data["resources"] = self.resources.to_dict(verbose=True)
-        data["python_version"] = self.python_version
+        data["resources"] = config.resources.to_dict(verbose=True)
+        data["python_version"] = config.python_version
         return data
 
     @classmethod
@@ -1822,6 +1871,23 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
+        if self.resources.is_tpu:
+            if self.trt_llm is not None:
+                raise ValueError(
+                    "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
+                )
+            if self.bei is None and (not self.base_image or not self.base_image.image):
+                raise ValueError(
+                    "TPU accelerators require a TPU-compatible custom base_image."
+                )
+            fabric = self.resources.fabric
+            if (self.resources.node_count or 1) > 1 or (
+                fabric is not None and (fabric.use_rdma or fabric.preferences)
+            ):
+                logger.warning(
+                    "TPU deployments with multiple nodes or fabric requirements may not "
+                    "be supported. Support is validated server side during deployment."
+                )
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
@@ -1862,8 +1928,105 @@ class TrussConfig(custom_types.ConfigModel):
         return CacheInternal([]) if v is None else v
 
     @pydantic.model_validator(mode="after")
+    def _validate_bei(self) -> "TrussConfig":
+        managed = _is_managed_bei_server(self.docker_server)
+        if self.bei is None:
+            if managed:
+                object.__setattr__(self, "docker_server", None)
+                object.__setattr__(
+                    self,
+                    "environment_variables",
+                    {
+                        key: value
+                        for key, value in self.environment_variables.items()
+                        if (key, value)
+                        not in (
+                            ("BEI_PORT", "8080"),
+                            ("BEI_HOSTNAME", "0.0.0.0"),
+                            ("BEI_MAX_BATCH_REQUESTS", "32"),
+                        )
+                    },
+                )
+            return self
+        if (
+            self.trt_llm is not None
+            or self.bis_llm is not None
+            or self.live_reload
+            or self.runtime.transport.kind != TransportKind.HTTP
+        ):
+            raise ValueError(
+                "bei requires HTTP and cannot be combined with another engine or live_reload."
+            )
+        if self.docker_server is not None and not managed:
+            raise ValueError(
+                "bei manages docker_server; remove custom docker_server settings."
+            )
+        fields = (
+            "requirements",
+            "requirements_file",
+            "system_packages",
+            "build_commands",
+            "external_data",
+            "external_package_dirs",
+            "use_local_src",
+        )
+        if any(getattr(self, name) for name in fields) or self.model_cache.models:
+            raise ValueError(
+                "bei uses no_build; include dependencies and files in the prebuilt image or runtime weights mounts."
+            )
+        if (self.resources.node_count or 1) > 1:
+            raise ValueError("BEI currently supports single-node deployments.")
+        for field in ("restart_threshold_seconds", "stop_traffic_threshold_seconds"):
+            threshold = getattr(self.runtime.health_checks, field)
+            if threshold is None or not 1 <= threshold <= 60:
+                raise ValueError(
+                    f"bei requires runtime.health_checks.{field} explicitly set to 1–60 seconds. "
+                    "Use startup_threshold_seconds for a longer startup grace period."
+                )
+        environment = dict(self.environment_variables)
+        for key, value in {"BEI_PORT": "8080", "BEI_HOSTNAME": "0.0.0.0"}.items():
+            if key in environment and environment[key] != value:
+                raise ValueError(f"bei manages {key}.")
+            environment[key] = value
+        if self.bei.backend == "tpu":
+            environment.setdefault("BEI_MAX_BATCH_REQUESTS", "32")
+        use_hf_secret = constants.HF_ACCESS_TOKEN_KEY in self.secret_defaults()
+        weights, model_paths = _bei_weights(self.bei, self.weights, use_hf_secret)
+        # Materialize before the platform selects no-build, without recursively
+        # invoking assignment validation for these derived fields.
+        object.__setattr__(
+            self, "docker_server", bei_docker_server(self.bei, model_paths)
+        )
+        object.__setattr__(self, "weights", weights)
+        object.__setattr__(self, "environment_variables", environment)
+        self.__pydantic_fields_set__.update(
+            {"docker_server", "environment_variables", "weights"}
+        )
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_trt_llm_health_checks(self) -> "TrussConfig":
+        if self.trt_llm is None:
+            return self
+
+        health_checks = self.runtime.health_checks
+        for field, limit in (
+            ("stop_traffic_threshold_seconds", 30),
+            ("restart_threshold_seconds", 60),
+        ):
+            threshold = getattr(health_checks, field)
+            if threshold is None:
+                setattr(health_checks, field, limit)
+            elif threshold > limit:
+                raise ValueError(
+                    f"runtime.health_checks.{field} must be <= {limit} seconds "
+                    "when trt_llm is configured."
+                )
+        return self
 
     @pydantic.field_serializer("trt_llm")
     def _serialize_trt_llm(
@@ -1886,6 +2049,62 @@ class TrussConfig(custom_types.ConfigModel):
         elif basename == PYPROJECT_TOML_FILENAME:
             return RequirementsFileType.PYPROJECT
         return RequirementsFileType.PIP
+
+
+def _is_managed_bei_server(server: Optional[DockerServer]) -> bool:
+    return bool(
+        server
+        and server.start_command
+        and server.start_command.startswith(bei_config.NATIVE_COMMAND_PREFIX)
+    )
+
+
+def _bei_weights(
+    bei: bei_config.BEIConfiguration, weights: Weights, use_hf_secret: bool
+) -> tuple[Weights, list[str]]:
+    sources = list(weights.sources)
+    by_checkpoint = {}
+    for existing in sources:
+        if existing.is_huggingface:
+            repo, _, revision = existing.source[len(_HF_PREFIX) :].partition("@")
+            by_checkpoint[(repo.lower(), revision or "main")] = existing
+    model_paths = []
+    for model in bei.configuration:
+        if model.checkpoint.startswith("/"):
+            model_paths.append(model.checkpoint)
+            continue
+        revision = model.revision or "main"
+        key = (model.checkpoint.lower(), revision)
+        source = by_checkpoint.get(key)
+        if source is None:
+            index = 0
+            while any(s.mount_location == f"/models/bei-{index}" for s in sources):
+                index += 1
+            source = WeightsSource(
+                source=f"hf://{model.checkpoint}@{revision}",
+                mount_location=f"/models/bei-{index}",
+                ignore_patterns=["*.bin", "onnx/**"],
+                auth_secret_name=constants.HF_ACCESS_TOKEN_KEY
+                if use_hf_secret
+                else None,
+            )
+            sources.append(source)
+            by_checkpoint[key] = source
+        model_paths.append(source.mount_location)
+    return Weights(sources), model_paths
+
+
+def bei_docker_server(
+    bei: bei_config.BEIConfiguration, model_paths: list[str]
+) -> DockerServer:
+    return DockerServer(
+        start_command=bei.start_command(model_paths),
+        no_build=True,
+        server_port=8080,
+        predict_endpoint="/v1/embeddings",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

@@ -948,6 +948,65 @@ async fn test_background_health_worker_skips_unhealthy_endpoints() {
 }
 
 #[tokio::test]
+async fn test_batch_key_survives_retries_and_hedges() {
+    for hedge in [false, true] {
+        let delay = if hedge {
+            Duration::from_millis(250)
+        } else {
+            Duration::ZERO
+        };
+        // Fail the first attempt to force a retry, or delay responses to force a hedge.
+        let server = start_test_server("batch-key", delay, usize::from(!hedge), true).await;
+        let client = PerformanceClientCore::new(
+            server.base_url.clone(),
+            Some("test-key".into()),
+            1,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let mut preference = single_request_preference()
+            .with_send_batch_key(true)
+            .with_timeout_s(5.0)
+            .with_max_retries(1)
+            .with_retry_budget_pct(1.0);
+        if hedge {
+            preference = preference.with_hedge_delay(0.05).with_hedge_budget_pct(1.0);
+        }
+        client
+            .process_embeddings_requests(
+                vec!["first batch".into(), "second batch".into()],
+                "test-model".into(),
+                None,
+                None,
+                None,
+                &preference,
+            )
+            .await
+            .unwrap();
+
+        let headers = server.request_headers.lock().await;
+        assert!(
+            headers.len() >= 3,
+            "expected an extra retry or hedge attempt"
+        );
+        let key = headers[0]["x-baseten-batch-key"].to_str().unwrap();
+        assert!(!key.is_empty());
+        for request in headers.iter() {
+            let keys: Vec<_> = request.get_all("x-baseten-batch-key").iter().collect();
+            assert_eq!(keys.len(), 1);
+            assert_eq!(keys[0].to_str().unwrap(), key);
+            assert!(request["x-baseten-customer-request-id"]
+                .to_str()
+                .unwrap()
+                .starts_with(&format!("{key}-")));
+        }
+        assert!(preference.extra_headers.is_none());
+    }
+}
+
+#[tokio::test]
 async fn test_explicit_trace_context() {
     const PARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-03";
     for (enabled, retry, hedge, state) in [

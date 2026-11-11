@@ -47,6 +47,15 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
+@pytest.mark.parametrize("accelerator", [None, *Accelerator])
+def test_non_tpu_resources(accelerator):
+    resources = Resources(accelerator=AcceleratorSpec(accelerator=accelerator))
+    assert not resources.is_tpu
+    assert resources.use_gpu == (accelerator is not None)
+    assert "is_tpu" not in resources.model_dump()
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
 @pytest.mark.parametrize(
     "input_dict, expect_resources, output_dict",
     [
@@ -1071,6 +1080,103 @@ def test_secret_to_path_mapping_incorrect_type(default_config):
             TrussConfig.from_yaml(yaml_path)
 
 
+@pytest.mark.parametrize(
+    "config_fixture", ["trtllm_config", "trtllm_config_v2", "trtllm_config_encoder"]
+)
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        None,
+        {},
+        {"health_checks": {}},
+        {
+            "health_checks": {
+                "stop_traffic_threshold_seconds": None,
+                "restart_threshold_seconds": None,
+            }
+        },
+    ],
+)
+def test_trt_llm_health_check_defaults(config_fixture, runtime, request, tmp_path):
+    data = request.getfixturevalue(config_fixture)
+    if runtime is None:
+        data.pop("runtime", None)
+    else:
+        data["runtime"] = runtime
+    config = TrussConfig.from_dict(data)
+
+    path = tmp_path / "config.yaml"
+    config.write_to_yaml_file(path, verbose=False)
+    serialized = yaml.safe_load(path.read_text())
+    assert serialized["runtime"]["health_checks"] == {
+        "stop_traffic_threshold_seconds": 30,
+        "restart_threshold_seconds": 60,
+    }
+    assert (
+        TrussConfig.from_yaml(path).runtime.health_checks
+        == config.runtime.health_checks
+    )
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "stop_traffic, restart", [(10, 10), (30, 60), (None, 20), (20, None)]
+)
+def test_trt_llm_health_check_overrides(config_fixture, stop_traffic, restart, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {
+        "predict_concurrency": 8,
+        "health_checks": {
+            "stop_traffic_threshold_seconds": stop_traffic,
+            "restart_threshold_seconds": restart,
+            "startup_threshold_seconds": 2400,
+        },
+    }
+    config = TrussConfig.model_validate(data)
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == (
+        stop_traffic if stop_traffic is not None else 30
+    )
+    assert config.runtime.health_checks.restart_threshold_seconds == (
+        restart if restart is not None else 60
+    )
+    assert config.runtime.health_checks.startup_threshold_seconds == 2400
+    assert config.runtime.predict_concurrency == 8
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "field, value, limit",
+    [
+        ("stop_traffic_threshold_seconds", 31, 30),
+        ("restart_threshold_seconds", 61, 60),
+        ("stop_traffic_threshold_seconds", 1800, 30),
+        ("restart_threshold_seconds", 1800, 60),
+    ],
+)
+def test_trt_llm_health_check_limits(config_fixture, field, value, limit, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {"health_checks": {field: value}}
+    with pytest.raises(
+        ValueError,
+        match=rf"runtime\.health_checks\.{field} must be <= {limit} seconds when trt_llm is configured",
+    ):
+        TrussConfig.model_validate(data)
+
+
+@pytest.mark.parametrize("threshold", [None, 1800])
+def test_health_check_limits_without_trt_llm(threshold):
+    config = TrussConfig(
+        runtime={
+            "health_checks": {
+                "stop_traffic_threshold_seconds": threshold,
+                "restart_threshold_seconds": threshold,
+            }
+        }
+    )
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == threshold
+    assert config.runtime.health_checks.restart_threshold_seconds == threshold
+
+
 def test_max_beam_width_check(trtllm_config):
     trtllm_config["trt_llm"]["build"]["max_beam_width"] = 2
     with pytest.raises(ValueError):
@@ -1136,9 +1242,17 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
+    expected = {
+        **trtllm_config,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
-        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose)
-        == trtllm_config
+        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose) == expected
     ) == expect_equal
 
 
@@ -1146,11 +1260,20 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
 def test_to_dict_trtllm_spec_dec(
     verbose, expect_equal, trtllm_spec_dec_config_lookahead_v1
 ):
+    expected = {
+        **trtllm_spec_dec_config_lookahead_v1,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
         TrussConfig.model_validate(trtllm_spec_dec_config_lookahead_v1).to_dict(
             verbose=verbose
         )
-        == trtllm_spec_dec_config_lookahead_v1
+        == expected
     ) == expect_equal
 
 
@@ -1603,6 +1726,88 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
 class TestWeightsSource:
     """Tests for the new WeightsSource model."""
 
+    @pytest.mark.parametrize("resource", ["acme/private-model", "hf-user"])
+    def test_hf_oidc(self, resource):
+        source = WeightsSource.model_validate(
+            {
+                "source": "hf://acme/private-model@main",
+                "mount_location": "/models/weights",
+                "auth": {"auth_method": "hf_oidc", "hf_oidc_resource": resource},
+            },
+            context={"forbid_extra": True},
+        )
+        assert source.auth.auth_method == WeightsAuthMethod.HF_OIDC
+        assert source.auth.hf_oidc_resource == resource
+
+    @pytest.mark.parametrize("resource", [None, ""])
+    def test_hf_oidc_requires_resource(self, resource):
+        with pytest.raises(
+            pydantic.ValidationError, match="hf_oidc_resource must be provided"
+        ):
+            WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource=resource)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "auth_secret_name",
+            "aws_oidc_role_arn",
+            "aws_oidc_region",
+            "gcp_oidc_service_account",
+            "gcp_oidc_workload_id_provider",
+            "aws_assume_role_arn",
+            "aws_assume_role_region",
+        ],
+    )
+    def test_hf_oidc_rejects_other_auth_fields(self, field):
+        with pytest.raises(
+            pydantic.ValidationError, match=f"{field} cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method="HF_OIDC", hf_oidc_resource="hf-user", **{field: "value"}
+            )
+
+    @pytest.mark.parametrize(
+        "method", [method for method in WeightsAuthMethod if method != "HF_OIDC"]
+    )
+    def test_hf_oidc_resource_requires_hf_oidc(self, method):
+        with pytest.raises(
+            pydantic.ValidationError, match="hf_oidc_resource cannot be specified"
+        ):
+            WeightsAuth(auth_method=method, hf_oidc_resource="hf-user")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "s3://bucket/model",
+            "gs://bucket/model",
+            "azure://account/container/model",
+            "r2://account.bucket/model",
+            "cw://bucket/model",
+            "https://example.com/model",
+        ],
+    )
+    def test_hf_oidc_requires_huggingface_source(self, source):
+        with pytest.raises(
+            pydantic.ValidationError, match="HF_OIDC authentication requires"
+        ):
+            WeightsSource(
+                source=source,
+                mount_location="/models/weights",
+                auth=WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource="hf-user"),
+            )
+
+    def test_hf_oidc_rejects_top_level_secret(self):
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name cannot be specified when auth_method is HF_OIDC",
+        ):
+            WeightsSource(
+                source="hf://acme/private-model",
+                mount_location="/models/weights",
+                auth_secret_name="hf-token",
+                auth=WeightsAuth(auth_method="HF_OIDC", hf_oidc_resource="hf-user"),
+            )
+
     def test_huggingface_source_basic(self):
         """HuggingFace source with revision in URI should work."""
         source = WeightsSource(
@@ -2043,6 +2248,27 @@ class TestWeights:
 
 class TestTrussConfigWeights:
     """Tests for weights field in TrussConfig."""
+
+    @pytest.mark.parametrize("verbose", [False, True])
+    def test_hf_oidc_yaml_roundtrip(self, tmp_path, verbose):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            """
+weights:
+  - source: hf://acme/private-model@main
+    mount_location: /models/weights
+    auth:
+      auth_method: HF_OIDC
+      hf_oidc_resource: acme/private-model
+"""
+        )
+        config = TrussConfig.from_yaml(config_path)
+        config.write_to_yaml_file(config_path, verbose=verbose)
+        reloaded = TrussConfig.from_yaml(config_path)
+        assert reloaded.weights == config.weights
+        auth = reloaded.weights.sources[0].auth
+        assert auth.auth_method == WeightsAuthMethod.HF_OIDC
+        assert auth.hf_oidc_resource == "acme/private-model"
 
     def test_empty_weights_config(self, default_config):
         """Empty weights should work."""
