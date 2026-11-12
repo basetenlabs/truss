@@ -44,12 +44,7 @@ class BEIConfiguration(ConfigModel):
         return self
 
     def start_command(self, model_paths: list[str]) -> str:
-        argv = [
-            "/usr/local/bin/bei",
-            "--hostname=0.0.0.0",
-            "--port=8080",
-            "--json-output",
-        ]
+        argv = ["/usr/local/bin/bei", "--hostname=0.0.0.0", "--port=8080"]
         if self.backend == "nvidia":
             argv.extend(["--backend=libtorch", "--torch-device=cuda"])
         else:
