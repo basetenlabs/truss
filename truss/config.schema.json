@@ -190,6 +190,12 @@
           "default": null,
           "title": "Version Override"
         },
+        "predict_endpoint": {
+          "default": "/v1/embeddings",
+          "description": "HTTP path the truss server exposes for predictions. Set to /predict for sequence-classification checkpoints.",
+          "title": "Predict Endpoint",
+          "type": "string"
+        },
         "configuration": {
           "items": {
             "$ref": "#/$defs/BEIModelConfiguration"

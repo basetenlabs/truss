@@ -51,6 +51,20 @@ def test_no_build_configuration_and_roundtrip(config_data, bei_dir, tmp_path):
     assert not (tmp_path / "build/supervisord.conf").exists()
 
 
+def test_predict_endpoint_can_be_overridden_for_classifiers(config_data):
+    config_data["bei"]["predict_endpoint"] = "/predict"
+    config = TrussConfig.from_dict(config_data)
+    assert config.docker_server.predict_endpoint == "/predict"
+    assert config.to_dict(verbose=False)["bei"]["predict_endpoint"] == "/predict"
+
+
+@pytest.mark.parametrize("value", ["predict", "/pre dict", ""])
+def test_invalid_predict_endpoint(config_data, value):
+    config_data["bei"]["predict_endpoint"] = value
+    with pytest.raises(ValueError, match="predict_endpoint"):
+        TrussConfig.from_dict(config_data)
+
+
 def test_checkpoints_generate_runtime_weights(config_data):
     config_data["secrets"] = ["hf_access_token"]
     config = TrussConfig.from_dict(config_data)

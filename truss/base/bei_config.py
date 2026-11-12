@@ -32,7 +32,18 @@ class BEIModelConfiguration(ConfigModel):
 class BEIConfiguration(ConfigModel):
     backend: Literal["nvidia", "tpu"]
     version_override: Optional[str] = None
+    predict_endpoint: str = pydantic.Field(
+        default="/v1/embeddings",
+        description="HTTP path the truss server exposes for predictions. Set to /predict for sequence-classification checkpoints.",
+    )
     configuration: list[BEIModelConfiguration] = pydantic.Field(min_length=1)
+
+    @pydantic.field_validator("predict_endpoint")
+    @classmethod
+    def _validate_predict_endpoint(cls, value):
+        if not value.startswith("/") or any(character.isspace() for character in value):
+            raise ValueError(f"Invalid BEI predict_endpoint: {value!r}")
+        return value
 
     @pydantic.model_validator(mode="after")
     def _validate_models(self):

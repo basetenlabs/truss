@@ -2104,7 +2104,7 @@ def bei_docker_server(
         start_command=bei.start_command(model_paths),
         no_build=True,
         server_port=8080,
-        predict_endpoint="/v1/embeddings",
+        predict_endpoint=bei.predict_endpoint,
         readiness_endpoint="/health",
         liveness_endpoint="/health",
     )
