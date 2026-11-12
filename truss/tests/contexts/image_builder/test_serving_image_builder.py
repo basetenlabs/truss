@@ -11,7 +11,11 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from truss.base.constants import TRTLLM_PREDICT_CONCURRENCY, TRTLLM_TRUSS_DIR
+from truss.base.constants import (
+    TEMPLATES_DIR,
+    TRTLLM_PREDICT_CONCURRENCY,
+    TRTLLM_TRUSS_DIR,
+)
 from truss.base.truss_config import (
     DockerServer,
     ModelCache,
@@ -20,7 +24,9 @@ from truss.base.truss_config import (
     TrussConfig,
 )
 from truss.contexts.image_builder.serving_image_builder import (
+    CLOUD_BUCKET_CACHE,
     HF_ACCESS_TOKEN_FILE_NAME,
+    CachedFile,
     ServingImageBuilderContext,
     _resolve_cache_mount_id,
     generate_docker_server_nginx_config,
@@ -29,7 +35,12 @@ from truss.contexts.image_builder.serving_image_builder import (
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
-from truss.util.jinja import dockerfile_env_value, dockerfile_shell_value
+from truss.util.jinja import (
+    dockerfile_copy_path,
+    dockerfile_env_value,
+    dockerfile_shell_value,
+    read_template_from_fs,
+)
 
 BASE_DIR = Path(__file__).parent
 
@@ -682,6 +693,152 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         assert (
             "folder_a/folder_b/fake_model-001-of-002.bin" in model_files[model]["files"]
         )
+
+
+# Deliberately adversarial: names a third-party bucket or HF repo owner controls.
+_ODD_REMOTE_FILE_NAMES = [
+    "plain.bin",
+    "with space.bin",
+    "quote'single.bin",
+    'quote"double.bin',
+    "dollar$X.bin",
+    "trailing-backslash\\",
+    "<<EOF",
+    "back`tick`.bin",
+    "semi;colon.bin",
+]
+
+
+def _render_model_cache_v1_dockerfile(truss_dir: Path, file_names: list[str]) -> str:
+    config_path = truss_dir / "config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["model_cache"] = [{"repo_id": "s3://test-bucket", "use_volume": False}]
+    config_path.write_text(yaml.safe_dump(config))
+    with (
+        patch(
+            "truss.contexts.image_builder.serving_image_builder.S3Cache.list_files",
+            return_value=file_names,
+        ),
+        TemporaryDirectory() as tmp_dir,
+    ):
+        tmp_path = Path(tmp_dir)
+        ServingImageBuilderContext.run(truss_dir).prepare_image_build_dir(tmp_path)
+        return (tmp_path / "Dockerfile").read_text()
+
+
+def _cache_warmer_run_lines(dockerfile: str) -> list[str]:
+    return [
+        line.strip()
+        for line in dockerfile.splitlines()
+        if line.startswith("RUN") and "/cache_warmer.py" in line
+    ]
+
+
+def test_model_cache_v1_quotes_remote_file_names(custom_model_truss_dir):
+    dockerfile = _render_model_cache_v1_dockerfile(
+        custom_model_truss_dir, _ODD_REMOTE_FILE_NAMES
+    )
+
+    assert _cache_warmer_run_lines(dockerfile) == [
+        f"RUN python3 /cache_warmer.py {dockerfile_shell_value(name)} s3://test-bucket"
+        for name in _ODD_REMOTE_FILE_NAMES
+    ]
+
+    copy_lines = [
+        line.strip()
+        for line in dockerfile.splitlines()
+        if "--from=cache_warmer" in line
+    ]
+    assert len(copy_lines) == len(_ODD_REMOTE_FILE_NAMES)
+    for name in _ODD_REMOTE_FILE_NAMES:
+        path = dockerfile_copy_path(f"/app/model_cache/test-bucket/{name}")
+        assert any(line.endswith(f"[{path}, {path}]") for line in copy_lines)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="/bin/sh is not on Windows CI")
+def test_model_cache_v1_run_line_is_safe_under_posix_sh(
+    custom_model_truss_dir, tmp_path
+):
+    pwned = tmp_path / "pwned"
+    names = [
+        name.replace("PWNED", str(pwned))
+        for name in [
+            "x;touch PWNED",
+            "`touch PWNED`",
+            "$(touch PWNED)",
+            "x' ; touch PWNED ; echo '",
+            'x" ; touch PWNED ; echo "',
+            "with space.bin",
+            "$HOME",
+        ]
+    ]
+    dockerfile = _render_model_cache_v1_dockerfile(custom_model_truss_dir, names)
+    run_lines = _cache_warmer_run_lines(dockerfile)
+    assert len(run_lines) == len(names)
+
+    argv_file = tmp_path / "argv"
+    python3 = tmp_path / "python3"
+    python3.write_text(f"#!/bin/sh\nprintf '%s\\0' \"$@\" > '{argv_file}'\n")
+    python3.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    for name, run_line in zip(names, run_lines):
+        subprocess.run(
+            ["/bin/sh", "-c", run_line.removeprefix("RUN ")],
+            env=env,
+            check=True,
+            capture_output=True,
+        )
+        argv = [a.decode() for a in argv_file.read_bytes().split(b"\0") if a]
+        assert argv == ["/cache_warmer.py", name, "s3://test-bucket"]
+    assert pwned.exists() is False
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(sys.platform == "win32", reason="file names invalid on Windows")
+def test_model_cache_v1_copy_lines_keep_remote_file_names(tmp_path):
+    # Runs the real COPY template through buildkit, which applies word
+    # expansion to JSON-form paths, to check names arrive unchanged.
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+    for name in _ODD_REMOTE_FILE_NAMES:
+        (files_dir / name).write_text(name)
+    cached_files = [
+        CachedFile(source=path, dst=path)
+        for path in (
+            str(CLOUD_BUCKET_CACHE / "test-bucket" / name)
+            for name in _ODD_REMOTE_FILE_NAMES
+        )
+    ]
+    copy_lines = read_template_from_fs(
+        TEMPLATES_DIR, "copy_cache_files.Dockerfile.jinja"
+    ).render(cached_files=cached_files, default_owner="root:root")
+    (tmp_path / "Dockerfile").write_text(
+        "FROM busybox:1.36 AS cache_warmer\n"
+        "COPY files/ /app/model_cache/test-bucket/\n"
+        "FROM busybox:1.36\n"
+        "ENV X=expanded\n"
+        f"{copy_lines}\n"
+    )
+
+    out = tmp_path / "out"
+    subprocess.run(
+        [
+            "docker",
+            "buildx",
+            "build",
+            str(tmp_path),
+            "--platform=linux/amd64",
+            "--output",
+            f"type=local,dest={out}",
+        ],
+        check=True,
+    )
+
+    bucket = out / "app" / "model_cache" / "test-bucket"
+    assert sorted(p.name for p in bucket.iterdir()) == sorted(_ODD_REMOTE_FILE_NAMES)
+    for name in _ODD_REMOTE_FILE_NAMES:
+        assert (bucket / name).read_text() == name
 
 
 @pytest.mark.integration
