@@ -25,7 +25,8 @@ LOGOUT_PATH = "/v1/users/auth/logout"
 TOKEN_EXCHANGE_PATH = "/v1/auth/token"
 
 DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
-JWT_BEARER_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
+JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 REFRESH_GRANT_TYPE = "refresh_token"
 
 DEFAULT_POLL_INTERVAL_SECONDS = 5
@@ -194,7 +195,8 @@ def exchange_identity_token(
     api_url: str, identity_token_file: Path, trust_rule_id: str
 ) -> AccessToken:
     """Trade a workload's identity provider JWT for a Baseten access token
-    (workload identity federation, RFC 7523 JWT-bearer grant)."""
+    (workload identity federation, RFC 8693 token exchange with the trust rule
+    as the audience)."""
     try:
         assertion = identity_token_file.read_text().strip()
     except OSError as exc:
@@ -206,9 +208,10 @@ def exchange_identity_token(
     resp = requests.post(
         api_url.rstrip("/") + TOKEN_EXCHANGE_PATH,
         json={
-            "grant_type": JWT_BEARER_GRANT_TYPE,
-            "assertion": assertion,
-            "trust_rule_id": trust_rule_id,
+            "grant_type": TOKEN_EXCHANGE_GRANT_TYPE,
+            "subject_token": assertion,
+            "subject_token_type": JWT_TOKEN_TYPE,
+            "audience": trust_rule_id,
         },
         headers={"User-Agent": user_agent_header()},
         timeout=30,

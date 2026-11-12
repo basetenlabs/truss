@@ -246,9 +246,10 @@ def test_exchange_identity_token_request_shape(tmp_path):
         )
         token = oauth.exchange_identity_token(API_URL, token_file, "rule-1")
     assert m.last_request.json() == {
-        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        "assertion": "idp-jwt",
-        "trust_rule_id": "rule-1",
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "subject_token": "idp-jwt",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "audience": "rule-1",
     }
     assert token.access_token == "at"
     assert token.expires_at > int(time.time()) + 3500
