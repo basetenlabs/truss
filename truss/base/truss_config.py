@@ -1877,6 +1877,8 @@ class TrussConfig(custom_types.ConfigModel):
                 raise ValueError(
                     "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
                 )
+            # BEI resolves its own image from the platform
+            # (bei_v3_image-{backend}), so it does not need a user base_image.
             if self.bei is None and (not self.base_image or not self.base_image.image):
                 raise ValueError(
                     "TPU accelerators require a TPU-compatible custom base_image."
