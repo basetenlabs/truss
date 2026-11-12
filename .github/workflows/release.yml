@@ -12,7 +12,10 @@ concurrency:
 jobs:
   detect-version-changed:
     uses: ./.github/workflows/_detect_version_changed_shared.yml
-    secrets: inherit
+    permissions:
+      contents: read
+    secrets:
+      BASETENBOT_GITHUB_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
 
   build-n-push-context-builder-image:
     needs: [detect-version-changed]
@@ -52,6 +55,7 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' }}
     runs-on: ubuntu-22.04
     permissions:
+      contents: read
       # this permission is mandatory for Trusted Publishing
       id-token: write
     steps:

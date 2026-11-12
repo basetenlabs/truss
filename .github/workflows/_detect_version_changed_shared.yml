@@ -2,6 +2,9 @@ name: Detect Version Changed
 
 on:
   workflow_call:
+    secrets:
+      BASETENBOT_GITHUB_TOKEN:
+        required: true
     outputs:
       version_changed:
         value: ${{ jobs.detect-version-changed.outputs.version_changed }}
@@ -15,6 +18,9 @@ on:
         value: ${{ jobs.detect-version-changed.outputs.release_version }}
       is_prerelease_version:
         value: ${{ jobs.detect-version-changed.outputs.is_prerelease_version }}
+
+permissions:
+  contents: read
 
 jobs:
   detect-version-changed:
