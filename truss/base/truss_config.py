@@ -98,6 +98,8 @@ class Accelerator(str, enum.Enum):
     RTX_PRO_6000 = "RTX_PRO_6000"
     B300 = "B300"
     GB300 = "GB300"
+    TPU_V6E = "TPU_V6E"
+    TPU_V7 = "TPU_V7"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -1244,8 +1246,7 @@ class Resources(custom_types.ConfigModel):
 
     @property
     def is_tpu(self) -> bool:
-        # Concrete TPU accelerator types are introduced separately.
-        return self.accelerator.accelerator in []
+        return self.accelerator.accelerator in [Accelerator.TPU_V6E, Accelerator.TPU_V7]
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1876,6 +1877,8 @@ class TrussConfig(custom_types.ConfigModel):
                 raise ValueError(
                     "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
                 )
+            # BEI resolves its own image from the platform
+            # (bei_v3_image-{backend}), so it does not need a user base_image.
             if self.bei is None and (not self.base_image or not self.base_image.image):
                 raise ValueError(
                     "TPU accelerators require a TPU-compatible custom base_image."

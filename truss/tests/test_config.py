@@ -47,13 +47,92 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-@pytest.mark.parametrize("accelerator", [None, *Accelerator])
+@pytest.mark.parametrize(
+    "accelerator",
+    [
+        None,
+        *(
+            accelerator
+            for accelerator in Accelerator
+            if accelerator not in (Accelerator.TPU_V6E, Accelerator.TPU_V7)
+        ),
+    ],
+)
 def test_non_tpu_resources(accelerator):
     resources = Resources(accelerator=AcceleratorSpec(accelerator=accelerator))
     assert not resources.is_tpu
     assert resources.use_gpu == (accelerator is not None)
     assert "is_tpu" not in resources.model_dump()
     assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator, count", [("TPU_V6E", 8), ("TPU_V7", 4)])
+def test_tpu_resources_roundtrip(accelerator, count):
+    resources = Resources.model_validate({"accelerator": f"{accelerator}:{count}"})
+    assert resources.is_tpu
+    assert resources.use_gpu
+    assert "is_tpu" not in resources.model_dump()
+    assert resources.accelerator.count == count
+    assert resources.model_dump()["accelerator"] == f"{accelerator}:{count}"
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:0", "TPU_V6E:abc"])
+def test_tpu_rejects_invalid_accelerator_count(accelerator):
+    with pytest.raises(ValueError, match="Invalid count"):
+        Resources.model_validate({"accelerator": accelerator})
+
+
+def test_tpu_rejects_missing_custom_base_image():
+    with pytest.raises(ValueError, match="custom base_image"):
+        TrussConfig.model_validate({"resources": {"accelerator": "TPU_V6E:8"}})
+
+
+def test_tpu_bei_does_not_require_custom_base_image():
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8"},
+            "bei": {
+                "backend": "tpu",
+                "configuration": [{"checkpoint": "BAAI/bge-small-en-v1.5"}],
+            },
+            "runtime": {
+                "health_checks": {
+                    "restart_threshold_seconds": 5,
+                    "stop_traffic_threshold_seconds": 5,
+                }
+            },
+        }
+    )
+    assert config.resources.is_tpu
+    assert config.base_image is None
+
+
+@pytest.mark.parametrize(
+    "resource_settings", [{"node_count": 2}, {"fabric": {"use_rdma": True}}]
+)
+def test_tpu_node_and_fabric_settings_warn(resource_settings, caplog):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8", **resource_settings},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+        }
+    )
+    resources = config.resources.model_dump()
+    for key, value in resource_settings.items():
+        if key == "fabric":
+            for fabric_key, fabric_value in value.items():
+                assert resources[key][fabric_key] == fabric_value
+        else:
+            assert resources[key] == value
+    assert "Support is validated server side during deployment." in caplog.text
+
+
+def test_tpu_rejects_nvidia_inference_engine(trtllm_config):
+    trtllm_config["resources"]["accelerator"] = "TPU_V6E:8"
+    trtllm_config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    with pytest.raises(ValueError, match="NVIDIA inference engines"):
+        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize(
