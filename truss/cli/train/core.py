@@ -514,8 +514,11 @@ def display_training_job(
     console.print(table)
 
 
-def _generate_job_artifact_name(project_name: str, job_id: str) -> str:
-    return f"{project_name}_{job_id}"
+def _generate_job_download_artifact_name(project_name: str, job_id: str) -> str:
+    # Project names can contain path separators; keep the result a single
+    # path component.
+    safe_project_name = project_name.replace("/", "-").replace("\\", "-")
+    return f"{safe_project_name}_{job_id}"
 
 
 def download_training_job_data(
@@ -539,7 +542,7 @@ def download_training_job_data(
     project_id = project["id"]
     project_name = project["name"]
 
-    artifact_base_name = _generate_job_artifact_name(project_name, job_id)
+    artifact_base_name = _generate_job_download_artifact_name(project_name, job_id)
     file_name = f"{artifact_base_name}.tgz"
     target_path = output_dir / file_name
 
@@ -601,9 +604,8 @@ def download_checkpoint_artifacts(
         "checkpoint_artifacts": checkpoint_artifacts,
     }
 
-    urls_file = (
-        output_dir / f"{project_name.replace(' ', '-')}_{job_id}_checkpoints.json"
-    )
+    artifact_base_name = _generate_job_download_artifact_name(project_name, job_id)  # type: ignore[arg-type]
+    urls_file = output_dir / f"{artifact_base_name.replace(' ', '-')}_checkpoints.json"
     with open(urls_file, "w") as f:
         json.dump(output, f, indent=2)
 

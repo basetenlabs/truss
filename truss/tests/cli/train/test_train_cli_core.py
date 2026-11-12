@@ -15,6 +15,7 @@ from truss.cli.train.core import (
     display_queued_jobs,
     display_training_capacity,
     display_training_jobs,
+    download_checkpoint_artifacts,
     download_training_job_data,
     update_team_training_gpu_capacity,
     view_training_job_metrics,
@@ -32,10 +33,10 @@ def _tgz_bytes(members: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
-def _mock_training_job_download(content: bytes) -> Mock:
+def _mock_training_job_download(content: bytes, project_name: str = "proj") -> Mock:
     mock_remote = Mock()
     mock_remote.api.search_training_jobs.return_value = [
-        {"id": "job123", "training_project": {"id": "proj456", "name": "proj"}}
+        {"id": "job123", "training_project": {"id": "proj456", "name": project_name}}
     ]
     mock_remote.api.get_from_presigned_url.return_value = content
     return mock_remote
@@ -59,6 +60,44 @@ def test_download_training_job_data_unzip_rejects_path_traversal(tmp_path):
         download_training_job_data(mock_remote, "job123", str(tmp_path), unzip=True)
 
     assert not (tmp_path / "escape.txt").exists()
+
+
+@pytest.mark.parametrize("unzip", [False, True])
+@pytest.mark.parametrize(
+    "project_name, expected_base",
+    [("org/model", "org-model_job123"), ("..\\../evil", "..-..-evil_job123")],
+)
+def test_download_training_job_data_flattens_project_name_separators(
+    tmp_path, unzip, project_name, expected_base
+):
+    out = tmp_path / "out"
+    mock_remote = _mock_training_job_download(
+        _tgz_bytes({"a.txt": b"hello"}), project_name
+    )
+
+    path = download_training_job_data(mock_remote, "job123", str(out), unzip=unzip)
+
+    assert path == out / (expected_base if unzip else f"{expected_base}.tgz")
+    assert path.exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["out"]
+
+
+def test_download_checkpoint_artifacts_flattens_project_name_separators(
+    tmp_path, monkeypatch
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.chdir(out)
+    mock_remote = _mock_training_job_download(b"", "../evil")
+    mock_remote.api.get_training_job_checkpoint_presigned_url.return_value = [
+        {"url": "https://example.com/checkpoint"}
+    ]
+
+    path = download_checkpoint_artifacts(mock_remote, "job123")
+
+    assert path == out / "..-evil_job123_checkpoints.json"
+    assert path.exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["out"]
 
 
 @patch("truss.cli.train.metrics_watcher.time.sleep")
