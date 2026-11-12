@@ -1,6 +1,9 @@
+import io
 import json
 import sys
+import tarfile
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import click
@@ -1699,6 +1702,46 @@ def test_download_allows_existing_empty_dir(tmp_path):
         )
     assert result.exit_code == 0
     assert "Extracted to" in result.output
+
+
+def _invoke_download_with_tar(out: Path, members: dict[str, bytes]):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_download_url.return_value = (
+        "https://presigned.example.com"
+    )
+    mock_response = MagicMock()
+    mock_response.raw = buf
+    mock_response.__enter__.return_value = mock_response
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+        patch("truss.cli.cli.requests.get", return_value=mock_response),
+    ):
+        return _invoke_download(
+            ["--model-id", "m", "--deployment-id", "d", "--out-dir", str(out)]
+        )
+
+
+def test_download_extracts_out_dir(tmp_path):
+    out = tmp_path / "model"
+    result = _invoke_download_with_tar(out, {"model/model.py": b"hello"})
+    assert result.exit_code == 0, result.output
+    assert (out / "model" / "model.py").read_bytes() == b"hello"
+
+
+def test_download_out_dir_rejects_path_traversal(tmp_path):
+    out = tmp_path / "model"
+    result = _invoke_download_with_tar(out, {"../escape.txt": b"x"})
+    assert result.exit_code != 0
+    assert "OutsideDestinationError" in result.output
+    assert not (tmp_path / "escape.txt").exists()
 
 
 def _invoke_model_config(args):

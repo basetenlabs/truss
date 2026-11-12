@@ -1333,6 +1333,13 @@ def download(
                 f"Directory is not empty: {out_path}. Use --overwrite to write into it."
             )
 
+    # Extraction filters exist in all 3.12+ and were backported to 3.9.17,
+    # 3.10.12 and 3.11.4.
+    if out_dir and not hasattr(tarfile, "data_filter"):
+        raise click.ClickException(
+            "Extracting requires a newer Python. Please upgrade Python."
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
@@ -1355,11 +1362,7 @@ def download(
         else:
             out_path.mkdir(exist_ok=True)
             with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
-                # filter="data" prevents path traversal; only available in 3.12+
-                if sys.version_info >= (3, 12):
-                    tar.extractall(path=out_path, filter="data")
-                else:
-                    tar.extractall(path=out_path)
+                tar.extractall(path=out_path, filter="data")
             console.print(f"Extracted to {out_path}")
 
 

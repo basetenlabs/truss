@@ -1,3 +1,5 @@
+import io
+import tarfile
 from unittest.mock import Mock, patch
 
 import click
@@ -13,10 +15,50 @@ from truss.cli.train.core import (
     display_queued_jobs,
     display_training_capacity,
     display_training_jobs,
+    download_training_job_data,
     update_team_training_gpu_capacity,
     view_training_job_metrics,
 )
 from truss.remote.baseten.custom_types import FileSummary, TeamType
+
+
+def _tgz_bytes(members: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _mock_training_job_download(content: bytes) -> Mock:
+    mock_remote = Mock()
+    mock_remote.api.search_training_jobs.return_value = [
+        {"id": "job123", "training_project": {"id": "proj456", "name": "proj"}}
+    ]
+    mock_remote.api.get_from_presigned_url.return_value = content
+    return mock_remote
+
+
+def test_download_training_job_data_unzips(tmp_path):
+    mock_remote = _mock_training_job_download(_tgz_bytes({"out/a.txt": b"hello"}))
+
+    unzip_dir = download_training_job_data(
+        mock_remote, "job123", str(tmp_path), unzip=True
+    )
+
+    assert unzip_dir == tmp_path / "proj_job123"
+    assert (unzip_dir / "out" / "a.txt").read_bytes() == b"hello"
+
+
+def test_download_training_job_data_unzip_rejects_path_traversal(tmp_path):
+    mock_remote = _mock_training_job_download(_tgz_bytes({"../escape.txt": b"x"}))
+
+    with pytest.raises(tarfile.OutsideDestinationError):
+        download_training_job_data(mock_remote, "job123", str(tmp_path), unzip=True)
+
+    assert not (tmp_path / "escape.txt").exists()
 
 
 @patch("truss.cli.train.metrics_watcher.time.sleep")
