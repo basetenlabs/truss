@@ -2100,6 +2100,9 @@ def _bei_weights(
 def bei_docker_server(
     bei: bei_config.BEIConfiguration, model_paths: list[str]
 ) -> DockerServer:
+    # Buildless: truss generates no nginx proxy, so predict_endpoint is a no-op
+    # for this server. The BEI base image serves /predict and /v1/embeddings
+    # itself; platform routing decides the external API.
     return DockerServer(
         start_command=bei.start_command(model_paths),
         no_build=True,
