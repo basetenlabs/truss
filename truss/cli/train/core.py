@@ -524,6 +524,12 @@ def download_training_job_data(
     target_directory: Optional[str],
     unzip: bool,
 ) -> Path:
+    # Extraction filters exist in all 3.12+ and were backported to 3.9.17,
+    # 3.10.12 and 3.11.4.
+    if unzip and not hasattr(tarfile, "data_filter"):
+        raise click.ClickException(
+            "Unzipping requires a newer Python. Please upgrade Python."
+        )
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -557,7 +563,7 @@ def download_training_job_data(
 
             unzip_dir.mkdir(parents=True, exist_ok=True)
             with tarfile.open(temp_path, "r:*") as tar:
-                tar.extractall(path=unzip_dir)
+                tar.extractall(path=unzip_dir, filter="data")
 
             return unzip_dir
     else:
