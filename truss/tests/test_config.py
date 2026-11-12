@@ -316,6 +316,13 @@ def test_acc_spec_from_str(input_str, expected_acc):
     assert AcceleratorSpec.model_validate(input_str) == expected_acc
 
 
+@pytest.mark.parametrize("input_str", ["H100:8:2", "H100:8:junk", "T4:1:", "A10G::4"])
+def test_acc_spec_rejects_extra_segments(input_str):
+    # Segments past `<type>:<count>` used to be ignored, so `H100:8:2` became 1 GPU.
+    with pytest.raises(pydantic.ValidationError, match="Invalid accelerator spec"):
+        AcceleratorSpec.model_validate(input_str)
+
+
 @pytest.mark.parametrize(
     "input_dict, expect_base_image, output_dict",
     [

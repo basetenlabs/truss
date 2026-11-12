@@ -118,6 +118,11 @@ class AcceleratorSpec(custom_types.ConfigModel):
             raise ValueError(
                 f"Unsupported accelerator type: `{parts[0]}`. Available types: {available}."
             )
+        if len(parts) > 2:
+            raise ValueError(
+                f"Invalid accelerator spec: '{value}'. "
+                "Use `<type>` or `<type>:<count>`, for example `H100:8`."
+            )
         count = 1
         if len(parts) == 2:
             if not parts[1].isdigit() or int(parts[1]) <= 0:
