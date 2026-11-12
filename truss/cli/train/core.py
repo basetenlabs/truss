@@ -1,8 +1,8 @@
 import base64
+import io
 import json
 import os
 import tarfile
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -549,23 +549,19 @@ def download_training_job_data(
     content = remote_provider.api.get_from_presigned_url(presigned_url)
 
     if unzip:
-        with tempfile.NamedTemporaryFile() as temp_file:
-            temp_path = Path(temp_file.name)
-            temp_path.write_bytes(content)
+        unzip_dir = output_dir / artifact_base_name
+        unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
+        if unzip_dir.exists():
+            raise click.ClickException(
+                f"Directory '{unzip_dir}' already exists. "
+                "Please remove it or specify a different target directory."
+            )
 
-            unzip_dir = output_dir / artifact_base_name
-            unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
-            if unzip_dir.exists():
-                raise click.ClickException(
-                    f"Directory '{unzip_dir}' already exists. "
-                    "Please remove it or specify a different target directory."
-                )
+        unzip_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(content), mode="r:*") as tar:
+            tar.extractall(path=unzip_dir, filter="data")
 
-            unzip_dir.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(temp_path, "r:*") as tar:
-                tar.extractall(path=unzip_dir, filter="data")
-
-            return unzip_dir
+        return unzip_dir
     else:
         target_path = Path(str(target_path).replace(" ", "-"))
         target_path.write_bytes(content)
