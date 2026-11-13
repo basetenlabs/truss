@@ -915,7 +915,9 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
     capacity = remote_provider.api.get_training_capacity()
     gpu_capacities = capacity.get("gpu_capacities", [])
     team_gpu_capacities = capacity.get("team_gpu_capacities", [])
-    spot_enabled = capacity.get("spot_enabled", False)
+    spot_enabled = capacity.get("spot_enabled", False) and all(
+        item.get("spot_quota") is not None for item in gpu_capacities
+    )
 
     if not gpu_capacities and not team_gpu_capacities:
         console.print("No training GPU quotas.")

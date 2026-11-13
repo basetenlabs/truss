@@ -657,6 +657,32 @@ def test_display_training_capacity_older_backend():
     assert "Spot" not in out
 
 
+def test_display_training_capacity_spot_enabled_backend_without_quota_fields():
+    """A backend that reports spot_enabled but not the quota fields falls back to limit
+    and hides spot rather than failing."""
+    out = _render_capacity(
+        {
+            "spot_enabled": True,
+            "gpu_capacities": [
+                {
+                    "gpu_type": "H100",
+                    "baseline": 16,
+                    "limit": 64,
+                    "on_demand_cap": 16,
+                    "spot_cap": 64,
+                    "usage_count": 40,
+                    "dedicated_usage_count": 12,
+                    "spot_usage_count": 28,
+                }
+            ],
+        }
+    )
+    rows = _capacity_rows(out)
+
+    assert rows["H100"] == ["H100", "12 / 64"]
+    assert "Spot" not in out
+
+
 def test_display_training_capacity_teams_only(capsys):
     """A team table is shown even when there are no org-level capacities."""
     mock_api = Mock()
