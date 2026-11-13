@@ -544,101 +544,117 @@ def _capacity_rows(out: str) -> dict:
     }
 
 
-def test_display_training_capacity(capsys):
-    """Usage is split into Standard and Spot columns per GPU type."""
-    mock_api = Mock()
-    mock_api.get_training_capacity.return_value = {
-        "gpu_capacities": [
-            {
-                "gpu_type": "H100",
-                "baseline": 16,
-                "limit": 64,
-                "usage_count": 40,
-                "dedicated_usage_count": 24,
-                "spot_usage_count": 16,
-            },
-            {
-                "gpu_type": "A10G",
-                "baseline": 0,
-                "limit": 8,
-                "usage_count": 0,
-                "dedicated_usage_count": 0,
-                "spot_usage_count": 0,
-            },
-        ]
-    }
+def _render_capacity(capacity: dict) -> str:
     mock_remote = Mock()
-    mock_remote.api = mock_api
-
-    with patch("truss.cli.train.core.console", Console(width=200)):
+    mock_remote.api.get_training_capacity.return_value = capacity
+    console = Console(width=200)
+    with patch("truss.cli.train.core.console", console), console.capture() as capture:
         display_training_capacity(mock_remote)
-
-    rows = _capacity_rows(capsys.readouterr().out)
-    # GPU Type, Baseline, Limit, Standard, Spot
-    assert rows["H100"] == ["H100", "16", "64", "24", "16"]
-    assert rows["A10G"] == ["A10G", "0", "8", "0", "0"]
+    return capture.get()
 
 
-def test_display_training_capacity_with_teams(capsys):
-    """Team capacities are rendered in a second table with split usage columns."""
-    mock_api = Mock()
-    mock_api.get_training_capacity.return_value = {
-        "gpu_capacities": [
-            {
-                "gpu_type": "H100",
-                "baseline": 16,
-                "limit": 64,
-                "usage_count": 32,
-                "dedicated_usage_count": 32,
-                "spot_usage_count": 0,
-            }
-        ],
-        "team_gpu_capacities": [
-            {
-                "team_id": "team_abc",
-                "team_name": "ml-research",
-                "gpu_type": "H100",
-                "baseline": 0,
-                "limit": 32,
-                "usage_count": 8,
-                "dedicated_usage_count": 2,
-                "spot_usage_count": 6,
-            }
-        ],
-    }
-    mock_remote = Mock()
-    mock_remote.api = mock_api
-
-    with patch("truss.cli.train.core.console", Console(width=200)):
-        display_training_capacity(mock_remote)
-
-    out = capsys.readouterr().out
+def test_display_training_capacity_spot_enabled():
+    """Spot-enabled orgs see on-demand and spot in-use/cap, plus the shared-cap footnote."""
+    out = _render_capacity(
+        {
+            "spot_enabled": True,
+            "gpu_capacities": [
+                {
+                    "gpu_type": "H100",
+                    "baseline": 16,
+                    "limit": 64,
+                    "on_demand_cap": 16,
+                    "spot_cap": 64,
+                    "usage_count": 40,
+                    "dedicated_usage_count": 12,
+                    "spot_usage_count": 28,
+                }
+            ],
+            "team_gpu_capacities": [
+                {
+                    "team_id": "team_abc",
+                    "team_name": "ml-research",
+                    "gpu_type": "H100",
+                    "baseline": 0,
+                    "limit": 32,
+                    "usage_count": 8,
+                    "dedicated_usage_count": 2,
+                    "spot_usage_count": 6,
+                }
+            ],
+        }
+    )
     rows = _capacity_rows(out)
 
-    assert "Team Training GPU Capacity" in out
-    # Org table keeps Baseline: GPU Type, Baseline, Limit, Standard, Spot
-    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
-    # Team table dropped Baseline (#2539): Team, GPU Type, Limit, Standard, Spot
-    assert rows["ml-research"] == ["ml-research", "H100", "32", "2", "6"]
-    assert "Baseline" not in rows["Team"]
+    assert rows["GPU Type"] == [
+        "GPU Type",
+        "On-Demand (in use / cap)",
+        "Spot (in use / cap*)",
+    ]
+    assert rows["H100"] == ["H100", "12 / 16", "28 / 64*"]
+    assert rows["Team"] == [
+        "Team",
+        "GPU Type",
+        "On-Demand (in use / cap)",
+        "Spot (in use)",
+    ]
+    assert rows["ml-research"] == ["ml-research", "H100", "2 / 32", "6"]
+    assert "Shared with on-demand" in out
 
 
-def test_display_training_capacity_pre_split_backend(capsys):
-    """A pre-split backend (only usage_count) shows the total under Standard."""
-    mock_api = Mock()
-    mock_api.get_training_capacity.return_value = {
-        "gpu_capacities": [
-            {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
-        ]
-    }
-    mock_remote = Mock()
-    mock_remote.api = mock_api
+def test_display_training_capacity_spot_disabled():
+    """Orgs without spot see only on-demand in-use/cap, with no spot columns or footnote."""
+    out = _render_capacity(
+        {
+            "spot_enabled": False,
+            "gpu_capacities": [
+                {
+                    "gpu_type": "H100",
+                    "baseline": 0,
+                    "limit": 64,
+                    "on_demand_cap": 64,
+                    "spot_cap": None,
+                    "usage_count": 32,
+                    "dedicated_usage_count": 32,
+                    "spot_usage_count": 0,
+                }
+            ],
+            "team_gpu_capacities": [
+                {
+                    "team_id": "team_abc",
+                    "team_name": "ml-research",
+                    "gpu_type": "H100",
+                    "baseline": 0,
+                    "limit": 32,
+                    "usage_count": 8,
+                    "dedicated_usage_count": 8,
+                    "spot_usage_count": 0,
+                }
+            ],
+        }
+    )
+    rows = _capacity_rows(out)
 
-    with patch("truss.cli.train.core.console", Console(width=200)):
-        display_training_capacity(mock_remote)
+    assert rows["GPU Type"] == ["GPU Type", "On-Demand (in use / cap)"]
+    assert rows["H100"] == ["H100", "32 / 64"]
+    assert rows["Team"] == ["Team", "GPU Type", "On-Demand (in use / cap)"]
+    assert rows["ml-research"] == ["ml-research", "H100", "8 / 32"]
+    assert "Spot" not in out
 
-    rows = _capacity_rows(capsys.readouterr().out)
-    assert rows["H100"] == ["H100", "16", "64", "32", "0"]
+
+def test_display_training_capacity_older_backend():
+    """A backend without the cap fields falls back to limit and hides spot."""
+    out = _render_capacity(
+        {
+            "gpu_capacities": [
+                {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32}
+            ]
+        }
+    )
+    rows = _capacity_rows(out)
+
+    assert rows["H100"] == ["H100", "32 / 64"]
+    assert "Spot" not in out
 
 
 def test_display_training_capacity_teams_only(capsys):
