@@ -1,3 +1,4 @@
+import json
 import pathlib
 from unittest import mock
 
@@ -882,3 +883,98 @@ def test_create_loops_run_sends_sampler_num_replicas_only_when_set(
         "base_model": "Qwen/Qwen3-8B",
         **expected_fields,
     }
+
+
+# Deliberately adversarial: closes the string and the argument list, and
+# includes a backslash, control characters, and non-ASCII text.
+GRAPHQL_INJECTION_VALUE = 'x") { id } a\\b\n\tc 日本 "'
+
+
+def _graphql_injection_chainlet() -> ChainletDataAtomic:
+    return ChainletDataAtomic(
+        name=GRAPHQL_INJECTION_VALUE,
+        oracle=OracleData(
+            model_name=GRAPHQL_INJECTION_VALUE,
+            s3_key=GRAPHQL_INJECTION_VALUE,
+            encoded_config_str=GRAPHQL_INJECTION_VALUE,
+            semver_bump=GRAPHQL_INJECTION_VALUE,
+            version_name=GRAPHQL_INJECTION_VALUE,
+        ),
+    )
+
+
+def test_graphql_string_arguments_are_escaped(baseten_api):
+    calls = [
+        lambda api: api.create_model_from_truss(
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            b10_types.TrussUserEnv.collect(),
+            deployment_name=GRAPHQL_INJECTION_VALUE,
+            environment=GRAPHQL_INJECTION_VALUE,
+            team_id=GRAPHQL_INJECTION_VALUE,
+        ),
+        lambda api: api.create_model_version_from_truss(
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            b10_types.TrussUserEnv.collect(),
+            deployment_name=GRAPHQL_INJECTION_VALUE,
+            environment=GRAPHQL_INJECTION_VALUE,
+        ),
+        lambda api: api.create_development_model_from_truss(
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            GRAPHQL_INJECTION_VALUE,
+            b10_types.TrussUserEnv.collect(),
+            team_id=GRAPHQL_INJECTION_VALUE,
+        ),
+        lambda api: api.deploy_chain_atomic(
+            entrypoint=_graphql_injection_chainlet(),
+            dependencies=[_graphql_injection_chainlet()],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            chain_id=GRAPHQL_INJECTION_VALUE,
+            chain_name=GRAPHQL_INJECTION_VALUE,
+            environment=GRAPHQL_INJECTION_VALUE,
+            original_source_artifact_s3_key=GRAPHQL_INJECTION_VALUE,
+            deployment_name=GRAPHQL_INJECTION_VALUE,
+            team_id=GRAPHQL_INJECTION_VALUE,
+        ),
+        lambda api: api.get_chains(team_id=GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_chain_deployments(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_chainlets_by_deployment_id(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.models(team_id=GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_models_for_watch(team_id=GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_model_with_versions_by_id(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_truss_watch_state(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_model(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_model_by_id(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.get_model_version_by_id(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.patch_draft_truss_two_step(
+            GRAPHQL_INJECTION_VALUE, mock.Mock(to_dict=lambda: {})
+        ),
+        lambda api: api.sync_draft_truss(GRAPHQL_INJECTION_VALUE),
+        lambda api: api.validate_truss(GRAPHQL_INJECTION_VALUE),
+    ]
+    escaped = json.dumps(GRAPHQL_INJECTION_VALUE, ensure_ascii=False)
+    for call in calls:
+        with mock.patch.object(baseten_api, "_post_graphql_query") as mock_query:
+            call(baseten_api)
+
+        queries = [c.args[0] for c in mock_query.call_args_list]
+        assert queries
+        for query in queries:
+            assert GRAPHQL_INJECTION_VALUE not in query
+            assert escaped in query
+
+
+def test_graphql_string_arguments_unchanged_without_special_characters(baseten_api):
+    # Values without quotes, backslashes, or control characters must render
+    # exactly as plain quoted interpolation did, so existing names still match.
+    for name in ["model-1", "日本語モデル", "model 1 (v2)"]:
+        with mock.patch.object(baseten_api, "_post_graphql_query") as mock_query:
+            baseten_api.get_model(name)
+
+        assert f'model(name: "{name}")' in mock_query.call_args.args[0]

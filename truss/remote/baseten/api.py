@@ -93,18 +93,27 @@ def resolve_rest_api_url(remote_url: str) -> str:
     return API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
 
 
+def _gql_str(value: Any) -> str:
+    """Render a value as a quoted, escaped GraphQL string literal."""
+    # JSON string escapes are a subset of GraphQL's. Without ensure_ascii only
+    # quotes, backslashes, and control characters are escaped, so other values
+    # render exactly as the old '"{value}"' interpolation did. The f-string
+    # keeps that interpolation's formatting (e.g. None as "None").
+    return json.dumps(f"{value}", ensure_ascii=False)
+
+
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
-        f'model_name: "{oracle.model_name}"',
-        f's3_key: "{oracle.s3_key}"',
-        f'encoded_config_str: "{oracle.encoded_config_str}"',
+        f"model_name: {_gql_str(oracle.model_name)}",
+        f"s3_key: {_gql_str(oracle.s3_key)}",
+        f"encoded_config_str: {_gql_str(oracle.encoded_config_str)}",
     ]
 
     if oracle.semver_bump:
-        args.append(f'semver_bump: "{oracle.semver_bump}"')
+        args.append(f"semver_bump: {_gql_str(oracle.semver_bump)}")
 
     if oracle.version_name:
-        args.append(f'version_name: "{oracle.version_name}"')
+        args.append(f"version_name: {_gql_str(oracle.version_name)}")
 
     args_str = ",\n".join(args)
 
@@ -117,7 +126,7 @@ def _chainlet_data_atomic_to_graphql_mutation(
     chainlet: b10_types.ChainletDataAtomic,
 ) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
-    args = [f'name: "{chainlet.name}"', f"oracle: {oracle_data_string}"]
+    args = [f"name: {_gql_str(chainlet.name)}", f"oracle: {oracle_data_string}"]
     args_str = ",\n".join(args)
     return f"""{{
         {args_str}
@@ -219,17 +228,17 @@ class BasetenApi:
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_from_truss(
-                    name: "{model_name}"
-                    s3_key: "{s3_key}"
-                    config: "{config}"
-                    semver_bump: "{semver_bump}"
+                    name: {_gql_str(model_name)}
+                    s3_key: {_gql_str(s3_key)}
+                    config: {_gql_str(config)}
+                    semver_bump: {_gql_str(semver_bump)}
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
-                    {f'version_name: "{deployment_name}"' if deployment_name else ""}
+                    {f"version_name: {_gql_str(deployment_name)}" if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
-                    {f'environment_name: "{environment}"' if environment else ""}
+                    {f"environment_name: {_gql_str(environment)}" if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
-                    {f'team_id: "{team_id}"' if team_id else ""}
+                    {f"team_id: {_gql_str(team_id)}" if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
                 ) {{
@@ -279,15 +288,15 @@ class BasetenApi:
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_version_from_truss(
-                    model_id: "{model_id}"
-                    s3_key: "{s3_key}"
-                    config: "{config}"
-                    semver_bump: "{semver_bump}"
+                    model_id: {_gql_str(model_id)}
+                    s3_key: {_gql_str(s3_key)}
+                    config: {_gql_str(config)}
+                    semver_bump: {_gql_str(semver_bump)}
                     truss_user_env: $trussUserEnv
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
                     preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
-                    {f'name: "{deployment_name}"' if deployment_name else ""}
-                    {f'environment_name: "{environment}"' if environment else ""}
+                    {f"name: {_gql_str(deployment_name)}" if deployment_name else ""}
+                    {f"environment_name: {_gql_str(environment)}" if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
@@ -336,14 +345,14 @@ class BasetenApi:
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
-                deploy_draft_truss(name: "{model_name}"
-                    s3_key: "{s3_key}"
-                    config: "{config}"
+                deploy_draft_truss(name: {_gql_str(model_name)}
+                    s3_key: {_gql_str(s3_key)}
+                    config: {_gql_str(config)}
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
-                    {f'team_id: "{team_id}"' if team_id else ""}
+                    {f"team_id: {_gql_str(team_id)}" if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
                     raw_config: $rawConfig
                 ) {{
@@ -403,23 +412,23 @@ class BasetenApi:
 
         params = []
         if chain_id:
-            params.append(f'chain_id: "{chain_id}"')
+            params.append(f"chain_id: {_gql_str(chain_id)}")
         if chain_name:
-            params.append(f'chain_name: "{chain_name}"')
+            params.append(f"chain_name: {_gql_str(chain_name)}")
         if environment:
-            params.append(f'environment: "{environment}"')
+            params.append(f"environment: {_gql_str(environment)}")
         if original_source_artifact_s3_key:
             params.append(
-                f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
+                f"original_source_artifact_s3_key: {_gql_str(original_source_artifact_s3_key)}"
             )
         if team_id:
-            params.append(f'team_id: "{team_id}"')
+            params.append(f"team_id: {_gql_str(team_id)}")
 
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
             params.append("allow_truss_download: false")
         if deployment_name:
-            params.append(f'deployment_name: "{deployment_name}"')
+            params.append(f"deployment_name: {_gql_str(deployment_name)}")
 
         params_str = PARAMS_INDENT.join(params)
 
@@ -452,7 +461,7 @@ class BasetenApi:
         if team_id:
             query_string = f"""
             {{
-                chains(team_id: "{team_id}") {{
+                chains(team_id: {_gql_str(team_id)}) {{
                     id
                     name
                     team {{
@@ -482,7 +491,7 @@ class BasetenApi:
     def get_chain_deployments(self, chain_id: str):
         query_string = f"""
         {{
-          chain(id: "{chain_id}") {{
+          chain(id: {_gql_str(chain_id)}) {{
             deployments {{
               id
               created
@@ -497,7 +506,7 @@ class BasetenApi:
     def get_chainlets_by_deployment_id(self, chain_deployment_id: str):
         query_string = f"""
         {{
-            chain_deployment(id:"{chain_deployment_id}") {{
+            chain_deployment(id: {_gql_str(chain_deployment_id)}) {{
                 chainlets {{
                     name
                     id
@@ -546,7 +555,7 @@ class BasetenApi:
     def models(self, team_id: Optional[str] = None):
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
-            filter_arg = f'team_id: "{team_id}"'
+            filter_arg = f"team_id: {_gql_str(team_id)}"
         else:
             filter_arg = "all: true"
 
@@ -579,7 +588,7 @@ class BasetenApi:
         """
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
-            filter_arg = f'team_id: "{team_id}"'
+            filter_arg = f"team_id: {_gql_str(team_id)}"
         else:
             filter_arg = "all: true"
 
@@ -611,7 +620,7 @@ class BasetenApi:
         """
         query_string = f"""
         {{
-            model(id: "{model_id}") {{
+            model(id: {_gql_str(model_id)}) {{
                 id
                 name
                 hostname
@@ -639,7 +648,7 @@ class BasetenApi:
     def get_truss_watch_state(self, model_id: str):
         query_string = f"""
         {{
-            truss_watch_state(id: "{model_id}") {{
+            truss_watch_state(id: {_gql_str(model_id)}) {{
                 is_container_built_from_push
                 django_patch_state {{
                     current_hash
@@ -658,7 +667,7 @@ class BasetenApi:
     def get_model(self, model_name: str):
         query_string = f"""
         {{
-            model(name: "{model_name}") {{
+            model(name: {_gql_str(model_name)}) {{
                 id
                 name
                 hostname
@@ -686,7 +695,7 @@ class BasetenApi:
     def get_model_by_id(self, model_id: str):
         query_string = f"""
         {{
-            model(id: "{model_id}") {{
+            model(id: {_gql_str(model_id)}) {{
                 id
                 name
                 hostname
@@ -709,7 +718,7 @@ class BasetenApi:
     def get_model_version_by_id(self, model_version_id: str):
         query_string = f"""
         {{
-            model_version(id: "{model_version_id}") {{
+            model_version(id: {_gql_str(model_version_id)}) {{
                 id
                 is_draft
                 truss_hash
@@ -730,9 +739,9 @@ class BasetenApi:
         query_string = f"""
         mutation ($trussUserEnv: String) {{
             stage_patch_for_draft_truss(
-                id: "{model_id}"
+                id: {_gql_str(model_id)}
                 truss_user_env: $trussUserEnv
-                patch: "{patch}"
+                patch: {_gql_str(patch)}
             ) {{
                 id
                 name
@@ -759,7 +768,7 @@ class BasetenApi:
         query_string = f"""
         mutation ($trussUserEnv: String) {{
             sync_draft_truss(
-                id: "{model_id}"
+                id: {_gql_str(model_id)}
                 truss_user_env: $trussUserEnv
             ) {{
                 id
@@ -785,7 +794,7 @@ class BasetenApi:
         query ($trussUserEnv: String) {{
             truss_validation(
                 truss_user_env: $trussUserEnv
-                config: "{config}"
+                config: {_gql_str(config)}
             ) {{
                 success
                 details
