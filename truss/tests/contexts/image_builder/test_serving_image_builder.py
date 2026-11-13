@@ -841,6 +841,22 @@ def test_model_cache_v1_copy_lines_keep_remote_file_names(tmp_path):
         assert (bucket / name).read_text() == name
 
 
+def test_cache_dockerfile_hf_access_token_renders_unchanged():
+    dockerfile = read_template_from_fs(
+        TEMPLATES_DIR, "cache.Dockerfile.jinja"
+    ).render(hf_access_token="hf_AbCdEf0123456789", models={})
+
+    assert 'ENV HUGGING_FACE_HUB_TOKEN="hf_AbCdEf0123456789"\n' in dockerfile
+
+
+def test_cache_dockerfile_hf_access_token_rejects_line_breaks():
+    # Deliberately adversarial: a secret default that would add a Dockerfile line.
+    template = read_template_from_fs(TEMPLATES_DIR, "cache.Dockerfile.jinja")
+
+    with pytest.raises(ValueError, match="line breaks"):
+        template.render(hf_access_token='x"\nRUN echo injected', models={})
+
+
 @pytest.mark.integration
 def test_test_truss_server_model_cache_v1(test_data_path):
     with ensure_kill_all():
