@@ -1,3 +1,4 @@
+import glob
 import os
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ import requests
 import yaml
 from python_on_whales.exceptions import DockerException
 
+import truss
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
@@ -24,6 +26,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
+from truss.truss_handle.build import init_directory
 from truss.truss_handle.patch.custom_types import PatchRequest
 from truss.truss_handle.truss_handle import (
     DockerURLs,
@@ -563,6 +566,67 @@ def test_add_data_dir(custom_model_truss_dir_with_pre_and_post, tmp_path):
     assert scaf_file_path.exists()
     with scaf_file_path.open() as data_file:
         assert data_file.read() == "test"
+
+
+@pytest.mark.parametrize(
+    "method_name, destination_name",
+    [("add_data", "data_dir"), ("add_bundled_package", "bundled_packages_dir")],
+)
+@pytest.mark.parametrize("pattern", ["package_*", "*"])
+def test_add_files_directory_glob(tmp_path, method_name, destination_name, pattern):
+    th = truss.load(init_directory(tmp_path / "truss"))
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("file")
+    expected = {}
+    for name in ("package_a", "package_b"):
+        nested = source / name / "nested"
+        nested.mkdir(parents=True)
+        (nested / "file.txt").write_text(name)
+        ignored = nested / "__pycache__"
+        ignored.mkdir()
+        (ignored / "ignored.pyc").write_text("ignored")
+        expected[f"{name}/nested/file.txt"] = name
+
+    getattr(th, method_name)(str(source / pattern))
+
+    destination = getattr(th.spec, destination_name)
+    if pattern == "*":
+        expected["file.txt"] = "file"
+    assert {
+        path.relative_to(destination).as_posix(): path.read_text()
+        for path in destination.rglob("*")
+        if path.is_file()
+    } == expected
+    assert not list(destination.rglob("__pycache__"))
+
+
+@pytest.mark.parametrize(
+    "method_name, destination_name",
+    [("add_data", "data_dir"), ("add_bundled_package", "bundled_packages_dir")],
+)
+def test_add_files_glob_missing_file(
+    tmp_path, monkeypatch, method_name, destination_name
+):
+    th = truss.load(init_directory(tmp_path / "truss"))
+    source = tmp_path / "source"
+    source.mkdir()
+    file_path = source / "file.txt"
+    file_path.write_text("file")
+    real_glob = glob.glob
+
+    def glob_then_remove(pattern):
+        matches = real_glob(pattern)
+        assert matches == [str(file_path)]
+        file_path.unlink()
+        return matches
+
+    monkeypatch.setattr(glob, "glob", glob_then_remove)
+
+    with pytest.raises(FileNotFoundError):
+        getattr(th, method_name)(str(source / "*.txt"))
+
+    assert not (getattr(th.spec, destination_name) / file_path.name).exists()
 
 
 def test_examples(custom_model_truss_dir_with_pre_and_post):

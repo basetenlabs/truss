@@ -923,7 +923,10 @@ class TrussHandle:
             filenames = glob.glob(item)
             for filename in filenames:
                 filepath = Path(filename)
-                copy_file_path(filepath, destination_dir / filepath.name)
+                if filepath.is_dir():
+                    copy_tree_path(filepath, destination_dir / filepath.name)
+                else:
+                    copy_file_path(filepath, destination_dir / filepath.name)
 
     def _get_serving_labels(self) -> Dict[str, Any]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
