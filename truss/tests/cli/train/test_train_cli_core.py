@@ -554,7 +554,7 @@ def _render_capacity(capacity: dict) -> str:
 
 
 def test_display_training_capacity_spot_enabled():
-    """Spot-enabled orgs see on-demand and spot in-use/cap, plus the shared-cap footnote."""
+    """Spot-enabled orgs see on-demand and spot in-use/quota, plus the shared-quota footnote."""
     out = _render_capacity(
         {
             "spot_enabled": True,
@@ -563,8 +563,8 @@ def test_display_training_capacity_spot_enabled():
                     "gpu_type": "H100",
                     "baseline": 16,
                     "limit": 64,
-                    "on_demand_cap": 16,
-                    "spot_cap": 64,
+                    "on_demand_quota": 16,
+                    "spot_quota": 64,
                     "usage_count": 40,
                     "dedicated_usage_count": 12,
                     "spot_usage_count": 28,
@@ -588,14 +588,14 @@ def test_display_training_capacity_spot_enabled():
 
     assert rows["GPU Type"] == [
         "GPU Type",
-        "On-Demand (in use / cap)",
-        "Spot (in use / cap*)",
+        "On-Demand (in use / quota)",
+        "Spot (in use / quota*)",
     ]
     assert rows["H100"] == ["H100", "12 / 16", "28 / 64*"]
     assert rows["Team"] == [
         "Team",
         "GPU Type",
-        "On-Demand (in use / cap)",
+        "On-Demand (in use / quota)",
         "Spot (in use)",
     ]
     assert rows["ml-research"] == ["ml-research", "H100", "2 / 32", "6"]
@@ -603,7 +603,7 @@ def test_display_training_capacity_spot_enabled():
 
 
 def test_display_training_capacity_spot_disabled():
-    """Orgs without spot see only on-demand in-use/cap, with no spot columns or footnote."""
+    """Orgs without spot see only on-demand in-use/quota, with no spot columns or footnote."""
     out = _render_capacity(
         {
             "spot_enabled": False,
@@ -612,8 +612,8 @@ def test_display_training_capacity_spot_disabled():
                     "gpu_type": "H100",
                     "baseline": 0,
                     "limit": 64,
-                    "on_demand_cap": 64,
-                    "spot_cap": None,
+                    "on_demand_quota": 64,
+                    "spot_quota": None,
                     "usage_count": 32,
                     "dedicated_usage_count": 32,
                     "spot_usage_count": 0,
@@ -635,15 +635,15 @@ def test_display_training_capacity_spot_disabled():
     )
     rows = _capacity_rows(out)
 
-    assert rows["GPU Type"] == ["GPU Type", "On-Demand (in use / cap)"]
+    assert rows["GPU Type"] == ["GPU Type", "On-Demand (in use / quota)"]
     assert rows["H100"] == ["H100", "32 / 64"]
-    assert rows["Team"] == ["Team", "GPU Type", "On-Demand (in use / cap)"]
+    assert rows["Team"] == ["Team", "GPU Type", "On-Demand (in use / quota)"]
     assert rows["ml-research"] == ["ml-research", "H100", "8 / 32"]
     assert "Spot" not in out
 
 
 def test_display_training_capacity_older_backend():
-    """A backend without the cap fields falls back to limit and hides spot."""
+    """A backend without the quota fields falls back to limit and hides spot."""
     out = _render_capacity(
         {
             "gpu_capacities": [
@@ -680,7 +680,7 @@ def test_display_training_capacity_teams_only(capsys):
 
     out = capsys.readouterr().out
     assert "Team Training GPU Capacity" in out
-    assert "No Training GPU capacity limits." not in out
+    assert "No training GPU quotas." not in out
 
 
 def test_display_training_capacity_empty(capsys):
@@ -695,7 +695,7 @@ def test_display_training_capacity_empty(capsys):
 
     display_training_capacity(mock_remote)
 
-    assert "No Training GPU capacity limits." in capsys.readouterr().out
+    assert "No training GPU quotas." in capsys.readouterr().out
 
 
 def test_update_team_training_gpu_capacity_resolves_team_and_calls_api():

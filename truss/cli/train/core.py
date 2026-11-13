@@ -885,8 +885,8 @@ def view_cache_summary_by_project(
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
 
 
-SPOT_CAP_FOOTNOTE = (
-    "* Shared with on-demand: spot can use the cap minus on-demand GPUs in use."
+SPOT_QUOTA_FOOTNOTE = (
+    "* Shared with on-demand: spot can use the quota minus on-demand GPUs in use."
 )
 
 
@@ -896,8 +896,8 @@ def _on_demand_in_use(item: dict) -> int:
     return item.get("usage_count", 0) if on_demand is None else on_demand
 
 
-def _in_use_over_cap(in_use: int, cap: int) -> str:
-    return f"{in_use} / {cap}"
+def _in_use_over_quota(in_use: int, quota: int) -> str:
+    return f"{in_use} / {quota}"
 
 
 def _capacity_table(title: str) -> rich.table.Table:
@@ -911,50 +911,52 @@ def _capacity_table(title: str) -> rich.table.Table:
 
 
 def display_training_capacity(remote_provider: BasetenRemote) -> None:
-    """Fetch and display org- and team-level GPU capacity caps and usage."""
+    """Fetch and display org- and team-level GPU quotas and usage."""
     capacity = remote_provider.api.get_training_capacity()
     gpu_capacities = capacity.get("gpu_capacities", [])
     team_gpu_capacities = capacity.get("team_gpu_capacities", [])
     spot_enabled = capacity.get("spot_enabled", False)
 
     if not gpu_capacities and not team_gpu_capacities:
-        console.print("No Training GPU capacity limits.")
+        console.print("No training GPU quotas.")
         return
 
     if gpu_capacities:
         org_table = _capacity_table("Training GPU Capacity")
         org_table.add_column("GPU Type", style="cyan")
-        org_table.add_column("On-Demand (in use / cap)", justify="right")
+        org_table.add_column("On-Demand (in use / quota)", justify="right")
         if spot_enabled:
-            org_table.add_column("Spot (in use / cap*)", justify="right")
+            org_table.add_column("Spot (in use / quota*)", justify="right")
         for item in gpu_capacities:
-            on_demand_cap = item.get("on_demand_cap", item.get("limit", 0))
+            on_demand_quota = item.get("on_demand_quota", item.get("limit", 0))
             row = [
                 item.get("gpu_type", ""),
-                _in_use_over_cap(_on_demand_in_use(item), on_demand_cap),
+                _in_use_over_quota(_on_demand_in_use(item), on_demand_quota),
             ]
             if spot_enabled:
                 row.append(
-                    _in_use_over_cap(item.get("spot_usage_count", 0), item["spot_cap"])
+                    _in_use_over_quota(
+                        item.get("spot_usage_count", 0), item["spot_quota"]
+                    )
                     + "*"
                 )
             org_table.add_row(*row)
         console.print(org_table)
         if spot_enabled:
-            console.print(SPOT_CAP_FOOTNOTE, style="dim", highlight=False)
+            console.print(SPOT_QUOTA_FOOTNOTE, style="dim", highlight=False)
 
     if team_gpu_capacities:
         team_table = _capacity_table("Team Training GPU Capacity")
         team_table.add_column("Team", style="cyan")
         team_table.add_column("GPU Type", style="cyan")
-        team_table.add_column("On-Demand (in use / cap)", justify="right")
+        team_table.add_column("On-Demand (in use / quota)", justify="right")
         if spot_enabled:
             team_table.add_column("Spot (in use)", justify="right")
         for item in team_gpu_capacities:
             row = [
                 item.get("team_name", ""),
                 item.get("gpu_type", ""),
-                _in_use_over_cap(_on_demand_in_use(item), item.get("limit", 0)),
+                _in_use_over_quota(_on_demand_in_use(item), item.get("limit", 0)),
             ]
             if spot_enabled:
                 row.append(str(item.get("spot_usage_count", 0)))
