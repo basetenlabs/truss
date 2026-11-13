@@ -31,7 +31,14 @@ from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
-from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
+from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
+    ApiKeyCredential,
+    AuthService,
+    OAuthSession,
+    WorkloadIdentityCredential,
+    workload_identity_from_env,
+)
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -157,12 +164,22 @@ class BasetenRemote(TrussRemote):
                 )
             )
         else:
-            api_key = api_key or os.environ.get("BASETEN_API_KEY")
-            if not api_key:
+            api_key = api_key or os.environ.get(BASETEN_API_KEY_ENV)
+            if api_key:
+                self._auth_service = AuthService(
+                    ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
+                )
+            elif workload_identity := workload_identity_from_env():
+                identity_token_file, trust_rule_id = workload_identity
+                self._auth_service = AuthService(
+                    WorkloadIdentityCredential(
+                        api_url=resolve_rest_api_url(remote_url),
+                        identity_token_file=identity_token_file,
+                        trust_rule_id=trust_rule_id,
+                    )
+                )
+            else:
                 raise AuthorizationError("No credentials provided.")
-            self._auth_service = AuthService(
-                ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
-            )
         self._api = BasetenApi(remote_url, self._auth_service)
 
     def fetch_auth_header(self) -> dict[str, str]:
