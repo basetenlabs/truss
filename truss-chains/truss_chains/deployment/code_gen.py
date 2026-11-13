@@ -251,7 +251,8 @@ def _stub_endpoint_signature_src(
     for arg in endpoint.input_args:
         arg_ref = _gen_type_import_and_ref(arg.type)
         imports.update(arg_ref.imports)
-        args.append(f"{arg.name}: {arg_ref.src}")
+        default = " = stub.NOT_SET" if arg.is_optional else ""
+        args.append(f"{arg.name}: {arg_ref.src}{default}")
 
     if endpoint.is_streaming:
         streaming_src = _gen_streaming_type_import_and_ref(endpoint.streaming_type)
@@ -295,7 +296,10 @@ def _stub_endpoint_body_src(
     else:
         args = [f"{arg.name}={arg.name}" for arg in endpoint.input_args]
         if args:
-            inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)})"
+            inputs = (
+                f"{_get_input_model_name(chainlet_name)}"
+                f"(**stub.provided_args({', '.join(args)}))"
+            )
         else:
             inputs = "{}"
 
