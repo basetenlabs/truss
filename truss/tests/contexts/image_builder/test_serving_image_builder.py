@@ -842,9 +842,9 @@ def test_model_cache_v1_copy_lines_keep_remote_file_names(tmp_path):
 
 
 def test_cache_dockerfile_hf_access_token_renders_unchanged():
-    dockerfile = read_template_from_fs(
-        TEMPLATES_DIR, "cache.Dockerfile.jinja"
-    ).render(hf_access_token="hf_AbCdEf0123456789", models={})
+    dockerfile = read_template_from_fs(TEMPLATES_DIR, "cache.Dockerfile.jinja").render(
+        hf_access_token="hf_AbCdEf0123456789", models={}
+    )
 
     assert 'ENV HUGGING_FACE_HUB_TOKEN="hf_AbCdEf0123456789"\n' in dockerfile
 

@@ -83,7 +83,9 @@ _DOCKERFILE_ESCAPE_FILTER_RE = re.compile(
 def test_dockerfile_template_expressions_are_allowlisted():
     found = set()
     for path in TEMPLATES_DIR.rglob("*Dockerfile*.jinja"):
-        for expression in re.findall(r"\{\{-?\s*(.*?)\s*-?\}\}", path.read_text(), re.S):
+        for expression in re.findall(
+            r"\{\{-?\s*(.*?)\s*-?\}\}", path.read_text(), re.S
+        ):
             normalized = " ".join(expression.split())
             if not _DOCKERFILE_ESCAPE_FILTER_RE.search(normalized):
                 found.add(normalized)
