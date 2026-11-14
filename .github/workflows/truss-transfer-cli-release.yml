@@ -31,13 +31,13 @@ jobs:
       NAME: truss-transfer-cli-${{ github.ref_name }}-linux-${{ matrix.target }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
 
       - name: Install musl-tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
 
       - name: Install Rust with musl target
-        uses: actions-rs/toolchain@v1
+        uses: chainguard-actions/actions-rs-toolchain@373f2110a0bcee6b9753eed8510b849bfc55d020 # v1.0.7
         with:
           toolchain: stable
           override: true
@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Upload CLI to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: chainguard-actions/softprops-action-gh-release@b42eabd8e3a3ea584a56ea240e20bee8991643bd # v2.6.2
         with:
           files: truss-transfer/dist/cli/truss-transfer-cli-*
         env:

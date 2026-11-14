@@ -33,7 +33,7 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
           fetch-depth: 2

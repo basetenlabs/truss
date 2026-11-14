@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           lfs: true
       - name: Setup Python
@@ -45,7 +45,7 @@ jobs:
           --junitxml=report.xml \
           -s --log-cli-level=INFO
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
+        uses: chainguard-actions/mikepenz-action-junit-report@228f0699eea06c35caf88f2d751661cb0841d02a # v6.7.1
         if: always()
         with:
            commit: ${{ github.sha }}

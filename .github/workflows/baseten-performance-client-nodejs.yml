@@ -105,22 +105,22 @@ jobs:
     name: stable - ${{ matrix.settings.target }} - node@20
     runs-on: ${{ matrix.settings.host }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         if: ${{ !matrix.settings.docker }}
         with:
           node-version: 20
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
       - name: Install
-        uses: dtolnay/rust-toolchain@stable
+        uses: chainguard-actions/dtolnay-rust-toolchain@7b7b95556805186e9eb5b44efdafea3a47dbaa56 # v1
         if: ${{ !matrix.settings.docker }}
         with:
           toolchain: stable
           targets: ${{ matrix.settings.target }}
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: chainguard-actions/actions-cache@1a492a110f951652a0d2d3327bc20ee36867788e # v4
         with:
           path: |
             ~/.cargo/registry/index/
@@ -129,7 +129,7 @@ jobs:
             .cargo-cache
             target/
           key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2
         if: ${{ matrix.settings.target == 'armv7-unknown-linux-gnueabihf' || matrix.settings.target == 'armv7-unknown-linux-musleabihf' }}
         with:
           version: 0.13.0
@@ -144,7 +144,7 @@ jobs:
       - name: Install dependencies
         run: yarn install
       - name: Setup node x86
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         if: matrix.settings.target == 'i686-pc-windows-msvc'
         with:
           node-version: 20
@@ -208,7 +208,7 @@ jobs:
           find . -name "*.node" -type f
         shell: bash
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: chainguard-actions/actions-upload-artifact@61ae9717c37cd5ac5fcaa5599c0dab961d043ecc # v4.6.2
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
@@ -221,10 +221,10 @@ jobs:
     if: false # we currently do not compile this
     name: Build FreeBSD
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Build
         id: build
-        uses: cross-platform-actions/action@v0.24.0
+        uses: cross-platform-actions/action@b2e15da1e667187766fff4945d20b98ac7055576 # v0.24.0
         env:
           DEBUG: napi:*
           RUSTUP_IO_THREADS: 1
@@ -263,7 +263,7 @@ jobs:
           find . -name "*.node" -type f
         shell: bash
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: chainguard-actions/actions-upload-artifact@61ae9717c37cd5ac5fcaa5599c0dab961d043ecc # v4.6.2
         with:
           name: bindings-freebsd
           path: |
@@ -288,9 +288,9 @@ jobs:
           - '20'
     runs-on: ${{ matrix.settings.host }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: yarn
@@ -299,7 +299,7 @@ jobs:
       - name: Install dependencies
         run: yarn install
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-${{ matrix.settings.target }}
           path: baseten-performance-client/node_bindings
@@ -324,9 +324,9 @@ jobs:
           - '20'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: yarn
@@ -334,7 +334,7 @@ jobs:
       - name: Install dependencies
         run: yarn install
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-x86_64-unknown-linux-gnu
           path: baseten-performance-client/node_bindings
@@ -355,9 +355,9 @@ jobs:
           - '20'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: yarn
@@ -367,7 +367,7 @@ jobs:
           yarn config set supportedArchitectures.libc "musl"
           yarn install
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-x86_64-unknown-linux-musl
           path: baseten-performance-client/node_bindings
@@ -389,9 +389,9 @@ jobs:
           - '20'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-aarch64-unknown-linux-gnu
           path: baseten-performance-client/node_bindings
@@ -404,7 +404,7 @@ jobs:
           yarn config set supportedArchitectures.libc "glibc"
           yarn install
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: chainguard-actions/docker-setup-qemu-action@d40f3f46f039b23a2d9d13c16b9aee07ad52e5b2 # v3
         with:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
@@ -421,9 +421,9 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-aarch64-unknown-linux-musl
           path: baseten-performance-client/node_bindings
@@ -436,7 +436,7 @@ jobs:
           yarn config set supportedArchitectures.libc "musl"
           yarn install
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: chainguard-actions/docker-setup-qemu-action@d40f3f46f039b23a2d9d13c16b9aee07ad52e5b2 # v3
         with:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
@@ -459,9 +459,9 @@ jobs:
           - '20'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-armv7-unknown-linux-gnueabihf
           path: baseten-performance-client/node_bindings
@@ -473,7 +473,7 @@ jobs:
           yarn config set supportedArchitectures.cpu "arm"
           yarn install
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: chainguard-actions/docker-setup-qemu-action@d40f3f46f039b23a2d9d13c16b9aee07ad52e5b2 # v3
         with:
           platforms: arm
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
@@ -490,9 +490,9 @@ jobs:
       - build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         with:
           node-version: 20
           cache: yarn
@@ -500,12 +500,12 @@ jobs:
       - name: Install dependencies
         run: yarn install
       - name: Download macOS x64 artifact
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-x86_64-apple-darwin
           path: baseten-performance-client/node_bindings
       - name: Download macOS arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           name: bindings-aarch64-apple-darwin
           path: baseten-performance-client/node_bindings
@@ -524,7 +524,7 @@ jobs:
           find . -name "*.node" -type f
         shell: bash
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: chainguard-actions/actions-upload-artifact@61ae9717c37cd5ac5fcaa5599c0dab961d043ecc # v4.6.2
         with:
           name: bindings-universal-apple-darwin
           path: '**/*darwin-universal.node'
@@ -544,10 +544,10 @@ jobs:
       - universal-macOS
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
 
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: chainguard-actions/actions-setup-node@031fc9bd73e651da81e6a7294b2af29e64d5f39c # v4.4.0
         with:
           node-version: 20
           registry-url: "https://registry.npmjs.org"
@@ -562,7 +562,7 @@ jobs:
         run: yarn install
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: chainguard-actions/actions-download-artifact@75db10217d80f4a4c7e15d54b2dd9adfc6c78f83 # v4.3.0
         with:
           path: baseten-performance-client/node_bindings/artifacts
 
