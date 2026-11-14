@@ -51,8 +51,15 @@ def _download_external_data_using_b10cp(
         proc = _download_from_url_using_b10cp(b10cp_path, item.url, path)
         procs.append(proc)
 
-    for proc in procs:
-        proc.wait()
+    failed_downloads = []
+    for item, proc in zip(external_data.items, procs):
+        return_code = proc.wait()
+        if return_code != 0:
+            failed_downloads.append(f"{item.local_data_path} (exit code {return_code})")
+
+    if failed_downloads:
+        failed_paths = ", ".join(failed_downloads)
+        raise RuntimeError(f"Failed to download external data: {failed_paths}")
 
 
 def _download_from_url_using_b10cp(b10cp_path: str, url: str, download_to: Path):

@@ -213,7 +213,12 @@ class S3File(RepositoryFile):
 def download_file_using_b10cp(url, dst_file, file_name):
     try:
         proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
-        proc.wait()
+        return_code = proc.wait()
+        if return_code != 0:
+            raise RuntimeError(
+                f"Failed to download model cache file ({file_name}): "
+                f"b10cp exited with code {return_code}"
+            )
 
     except FileNotFoundError as file_error:
         raise RuntimeError(f"Failure due to file ({file_name}) not found: {file_error}")
