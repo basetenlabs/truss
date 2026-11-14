@@ -22,7 +22,7 @@ runs:
         fi
 
     - name: Install Python
-      uses: actions/setup-python@v5
+      uses: chainguard-actions/actions-setup-python@ace3254bb5011efbd0650a7120a0441ebd1f9400 # v5.6.0
       with:
         python-version: ${{ steps.determine-version.outputs.version }}
 
@@ -33,9 +33,10 @@ runs:
         echo "version=$VERSION" >> $GITHUB_ENV
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: chainguard-actions/astral-sh-setup-uv@d074662c6bd48040f94d5f5eeae1479d285f0177 # v10.3.3
       with:
         version: "0.7.12"
         enable-cache: true
+        prune-cache: true
         # NB(nikhil): Only search for top level `uv.lock` file.
         cache-dependency-glob: "uv.lock"

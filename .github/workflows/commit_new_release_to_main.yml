@@ -12,7 +12,7 @@ jobs:
 
     steps:
     - name: Check out code
-      uses: actions/checkout@v4
+      uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       with:
         token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
 
