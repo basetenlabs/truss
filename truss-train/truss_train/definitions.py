@@ -309,7 +309,7 @@ class Workspace(custom_types.SafeModelNoExtra):
 class BDNConfig(custom_types.SafeModelNoExtra):
     """Existing read-only BDN datasets mounted into every training worker.
 
-    References are pinned at submission and preserved across retries and recreation.
+    References use the same BDN resolution semantics as dedicated inference.
     Sync the volume before submitting the job. Access grants and hotload are not
     part of training's dataset mount API.
     """

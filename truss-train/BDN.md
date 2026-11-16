@@ -30,15 +30,15 @@ uses on-demand reads and BDN's existing read-ahead. Neither waits for the whole
 dataset to fit on local disk. Benchmark both with your actual data loader;
 neither guarantees a particular throughput.
 
-Submission resolves each tag, head, or digest prefix to a full immutable digest.
-Every worker and retry uses that version, and recreating a job preserves it.
-The job response includes `resolved_source` alongside each requested `source`.
-To use a newly synced dataset, submit a new job. Files are ordinary read-only
-files at the requested path; write checkpoints elsewhere using the existing
-checkpoint configuration.
+Training passes the requested source directly to BDN, just like dedicated
+inference. Tags and head references retain BDN's normal resolution behavior;
+training does not pin them at submission. Use an explicit immutable digest when
+you want a fixed dataset version. Retries and recreated jobs preserve the
+requested reference. Files are ordinary read-only files at the requested path;
+write checkpoints elsewhere using the existing checkpoint configuration.
 
 The platform support must be deployed before using these fields. BDN mounts
-require a personal or creator service account API key and a supported Baseten
-Cloud workload plane/GPU. Private/customer-installed hosting remains subject to
+require a supported Baseten Cloud workload plane/GPU.
+Private/customer-installed hosting remains subject to
 the existing BDN restrictions. This feature does not increase volume sync limits
 or add checkpoint publication to BDN.
