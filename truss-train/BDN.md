@@ -14,7 +14,6 @@ job = train.TrainingJob(
             train.BDNVolumeMount(
                 source="bdn:datasets/plaid:prod",
                 path="/data/training",
-                fetch_mode="eager",
             )
         ]
     ),
@@ -23,12 +22,11 @@ job = train.TrainingJob(
 ```
 
 The API payload uses the same `bdn.mounts` shape as dedicated inference. Each
-mount accepts `source`, `path`, `fetch_mode`, and optional `include`/`exclude`
-relative glob lists. `fetch_mode` defaults to `eager`: fetch the volume in the
-background while allowing reads immediately. `lazy` skips the bulk download and
-uses on-demand reads and BDN's existing read-ahead. Neither waits for the whole
-dataset to fit on local disk. Benchmark both with your actual data loader;
-neither guarantees a particular throughput.
+mount accepts `source`, `path`, and optional `include`/`exclude` relative glob
+lists. Training mounts always use lazy fetching: BDN serves data on demand with
+its existing read-ahead instead of bulk-downloading the dataset. This policy is
+set by the platform and is not a job configuration option. Benchmark with your
+actual data loader to establish throughput.
 
 Training passes the requested source directly to BDN, just like dedicated
 inference. Tags and head references retain BDN's normal resolution behavior;

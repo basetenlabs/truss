@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from truss.base import truss_config
-from truss.base.truss_config import Accelerator
+from truss.base.truss_config import Accelerator, BDNVolumeMount
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
@@ -10,7 +10,6 @@ from truss_train.definitions import (
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
     BDNConfig,
-    BDNVolumeMount,
     CacheConfig,
     CheckpointList,
     Compute,
@@ -29,8 +28,7 @@ from truss_train.definitions import (
 )
 
 
-@pytest.mark.parametrize("mode", ["eager", "lazy"])
-def test_bdn_mount_serialization(mode):
+def test_bdn_mount_serialization():
     job = TrainingJob(
         image=Image(base_image="python:3.12"),
         bdn=BDNConfig(
@@ -38,26 +36,19 @@ def test_bdn_mount_serialization(mode):
                 BDNVolumeMount(
                     source="bdn:datasets/plaid:prod",
                     path="/data/train",
-                    fetch_mode=mode,
                     include=["*.parquet"],
                 )
             ]
         ),
     )
     payload = job.model_dump()["bdn"]
-    assert payload["mounts"][0]["fetch_mode"] == mode
+    assert "fetch_mode" not in payload["mounts"][0]
     assert payload["mounts"][0]["include"] == ["*.parquet"]
     assert TrainingJob.model_validate(job.model_dump()).bdn == job.bdn
 
 
 def test_training_without_bdn_preserves_legacy_payload():
     assert "bdn" not in TrainingJob(image=Image(base_image="python:3.12")).model_dump()
-
-
-@pytest.mark.parametrize("mode", ["resident", "typo"])
-def test_bdn_rejects_unknown_fetch_mode(mode):
-    with pytest.raises(ValidationError):
-        BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train", fetch_mode=mode)
 
 
 def test_training_bdn_rejects_overlapping_mounts():

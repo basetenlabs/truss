@@ -4,12 +4,12 @@ from unittest import mock
 import pytest
 
 from truss.base import truss_config
+from truss.base.truss_config import BDNVolumeMount
 from truss.remote.baseten import custom_types as b10_types
 from truss_train import deployment
 from truss_train.definitions import (
     AvailabilityModel,
     BDNConfig,
-    BDNVolumeMount,
     CacheConfig,
     Compute,
     Image,
@@ -70,11 +70,7 @@ def test_prepare_push(
             image=Image(base_image="hello-world"),
             bdn=BDNConfig(
                 mounts=[
-                    BDNVolumeMount(
-                        source="bdn:datasets/plaid:prod",
-                        path="/data/train",
-                        fetch_mode="lazy",
-                    )
+                    BDNVolumeMount(source="bdn:datasets/plaid:prod", path="/data/train")
                 ]
             ),
             compute=compute,
@@ -87,7 +83,7 @@ def test_prepare_push(
         truss_user_env=truss_user_env,
     )
     assert len(prepared_job.runtime_artifacts) == 1
-    assert prepared_job.model_dump()["bdn"]["mounts"][0]["fetch_mode"] == "lazy"
+    assert "fetch_mode" not in prepared_job.model_dump()["bdn"]["mounts"][0]
     assert prepared_job.bdn.mounts[0].source == "bdn:datasets/plaid:prod"
     assert prepared_job.runtime_artifacts[0].s3_key == "test-s3-key"
     assert prepared_job.runtime_artifacts[0].s3_bucket == "test-s3-bucket"

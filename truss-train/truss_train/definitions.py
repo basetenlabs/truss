@@ -306,13 +306,6 @@ class Workspace(custom_types.SafeModelNoExtra):
     exclude_dirs: List[str] = []
 
 
-class BDNVolumeMount(truss_config.BDNVolumeMount):
-    fetch_mode: Literal["eager", "lazy"] = pydantic.Field(
-        default="eager",
-        description="Fetch the volume in the background (eager), or on demand with read-ahead (lazy).",
-    )
-
-
 class BDNConfig(custom_types.SafeModelNoExtra):
     """Existing read-only BDN datasets mounted into every training worker.
 
@@ -321,7 +314,9 @@ class BDNConfig(custom_types.SafeModelNoExtra):
     part of training's dataset mount API.
     """
 
-    mounts: List[BDNVolumeMount] = pydantic.Field(default_factory=list, max_length=32)
+    mounts: List[truss_config.BDNVolumeMount] = pydantic.Field(
+        default_factory=list, max_length=32
+    )
 
     @model_validator(mode="after")
     def _validate_mount_paths(self) -> "BDNConfig":
