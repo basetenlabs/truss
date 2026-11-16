@@ -307,12 +307,7 @@ class Workspace(custom_types.SafeModelNoExtra):
 
 
 class BDNConfig(custom_types.SafeModelNoExtra):
-    """Existing read-only BDN datasets mounted into every training worker.
-
-    References use the same BDN resolution semantics as dedicated inference.
-    Sync the volume before submitting the job. Access grants and hotload are not
-    part of training's dataset mount API.
-    """
+    """Read-only BDN datasets mounted into every training worker."""
 
     mounts: List[truss_config.BDNVolumeMount] = pydantic.Field(
         default_factory=list, max_length=32

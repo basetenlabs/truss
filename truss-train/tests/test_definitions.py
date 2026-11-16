@@ -34,7 +34,7 @@ def test_bdn_mount_serialization():
         bdn=BDNConfig(
             mounts=[
                 BDNVolumeMount(
-                    source="bdn:datasets/plaid:prod",
+                    source="bdn:datasets/training-data:prod",
                     path="/data/train",
                     include=["*.parquet"],
                 )
@@ -55,8 +55,10 @@ def test_training_bdn_rejects_overlapping_mounts():
     with pytest.raises(ValidationError, match="overlap"):
         BDNConfig(
             mounts=[
-                BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train"),
-                BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train/subset"),
+                BDNVolumeMount(source="bdn:datasets/training-data", path="/data/train"),
+                BDNVolumeMount(
+                    source="bdn:datasets/training-data", path="/data/train/subset"
+                ),
             ]
         )
 

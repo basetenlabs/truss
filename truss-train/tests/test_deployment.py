@@ -70,7 +70,9 @@ def test_prepare_push(
             image=Image(base_image="hello-world"),
             bdn=BDNConfig(
                 mounts=[
-                    BDNVolumeMount(source="bdn:datasets/plaid:prod", path="/data/train")
+                    BDNVolumeMount(
+                        source="bdn:datasets/training-data:prod", path="/data/train"
+                    )
                 ]
             ),
             compute=compute,
@@ -84,7 +86,7 @@ def test_prepare_push(
     )
     assert len(prepared_job.runtime_artifacts) == 1
     assert "fetch_mode" not in prepared_job.model_dump()["bdn"]["mounts"][0]
-    assert prepared_job.bdn.mounts[0].source == "bdn:datasets/plaid:prod"
+    assert prepared_job.bdn.mounts[0].source == "bdn:datasets/training-data:prod"
     assert prepared_job.runtime_artifacts[0].s3_key == "test-s3-key"
     assert prepared_job.runtime_artifacts[0].s3_bucket == "test-s3-bucket"
     if compute.accelerator:

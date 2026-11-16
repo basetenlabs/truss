@@ -12,7 +12,7 @@ job = train.TrainingJob(
     bdn=train.BDNConfig(
         mounts=[
             train.BDNVolumeMount(
-                source="bdn:datasets/plaid:prod",
+                source="bdn:datasets/training-data:prod",
                 path="/data/training",
             )
         ]
