@@ -158,16 +158,6 @@
           },
           "title": "Exclude",
           "type": "array"
-        },
-        "fetch_mode": {
-          "default": "eager",
-          "description": "Fetch the volume in the background (eager), or on demand with read-ahead (lazy).",
-          "enum": [
-            "eager",
-            "lazy"
-          ],
-          "title": "Fetch Mode",
-          "type": "string"
         }
       },
       "required": [

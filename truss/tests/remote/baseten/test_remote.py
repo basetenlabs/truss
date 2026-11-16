@@ -874,7 +874,6 @@ _BDN_SOURCE = "bdn:weights/llama@b3:" + "a" * 64
                     {
                         "source": _BDN_SOURCE,
                         "path": "/models/llama",
-                        "fetch_mode": "eager",
                         "include": [],
                         "exclude": [],
                     }

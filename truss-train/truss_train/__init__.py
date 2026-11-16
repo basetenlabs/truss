@@ -1,4 +1,4 @@
-from truss.base.truss_config import BDNVolumeMount, WeightsSource
+from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
@@ -6,6 +6,7 @@ from truss_train.definitions import (
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
     BDNConfig,
+    BDNVolumeMount,
     CacheConfig,
     CheckpointingConfig,
     CheckpointList,

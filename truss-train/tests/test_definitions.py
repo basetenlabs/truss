@@ -10,6 +10,7 @@ from truss_train.definitions import (
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
     BDNConfig,
+    BDNVolumeMount,
     CacheConfig,
     CheckpointList,
     Compute,
@@ -34,7 +35,7 @@ def test_bdn_mount_serialization(mode):
         image=Image(base_image="python:3.12"),
         bdn=BDNConfig(
             mounts=[
-                truss_config.BDNVolumeMount(
+                BDNVolumeMount(
                     source="bdn:datasets/plaid:prod",
                     path="/data/train",
                     fetch_mode=mode,
@@ -56,21 +57,15 @@ def test_training_without_bdn_preserves_legacy_payload():
 @pytest.mark.parametrize("mode", ["resident", "typo"])
 def test_bdn_rejects_unknown_fetch_mode(mode):
     with pytest.raises(ValidationError):
-        truss_config.BDNVolumeMount(
-            source="bdn:datasets/plaid", path="/data/train", fetch_mode=mode
-        )
+        BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train", fetch_mode=mode)
 
 
 def test_training_bdn_rejects_overlapping_mounts():
     with pytest.raises(ValidationError, match="overlap"):
         BDNConfig(
             mounts=[
-                truss_config.BDNVolumeMount(
-                    source="bdn:datasets/plaid", path="/data/train"
-                ),
-                truss_config.BDNVolumeMount(
-                    source="bdn:datasets/plaid", path="/data/train/subset"
-                ),
+                BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train"),
+                BDNVolumeMount(source="bdn:datasets/plaid", path="/data/train/subset"),
             ]
         )
 

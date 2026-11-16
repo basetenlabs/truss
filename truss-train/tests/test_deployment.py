@@ -9,6 +9,7 @@ from truss_train import deployment
 from truss_train.definitions import (
     AvailabilityModel,
     BDNConfig,
+    BDNVolumeMount,
     CacheConfig,
     Compute,
     Image,
@@ -69,7 +70,7 @@ def test_prepare_push(
             image=Image(base_image="hello-world"),
             bdn=BDNConfig(
                 mounts=[
-                    truss_config.BDNVolumeMount(
+                    BDNVolumeMount(
                         source="bdn:datasets/plaid:prod",
                         path="/data/train",
                         fetch_mode="lazy",
