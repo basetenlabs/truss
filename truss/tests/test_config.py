@@ -1,3 +1,4 @@
+import re
 import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
@@ -2843,3 +2844,67 @@ class TestEgressRestrictions:
             config.runtime.egress_restrictions = EgressRestrictions(
                 ip_allow_list=["999.999.999.999/32"]
             )
+
+
+def _dockerfile_fields_config() -> dict:
+    return {
+        "base_image": {"image": "img:1", "python_executable_path": "/usr/bin/python3"},
+        "model_cache": [{"repo_id": "org/m", "revision": "main", "use_volume": False}],
+        "environment_variables": {"PORT": "8080", "HOSTNAME": "host"},
+        "build": {"secret_to_path_mapping": {"hf-token": "/secrets/hf"}},
+    }
+
+
+def test_dockerfile_rendered_fields_accept_normal_config():
+    TrussConfig.model_validate(_dockerfile_fields_config())
+
+
+def test_dockerfile_rendered_fields_reject_line_breaks():
+    setters = {
+        "data_dir": lambda c, v: c.update(data_dir=v),
+        "model_module_dir": lambda c, v: c.update(model_module_dir=v),
+        "bundled_packages_dir": lambda c, v: c.update(bundled_packages_dir=v),
+        "environment_variables.PORT": lambda c, v: c["environment_variables"].update(
+            PORT=v
+        ),
+        "environment_variables.HOSTNAME": lambda c, v: c[
+            "environment_variables"
+        ].update(HOSTNAME=v),
+        "base_image.image": lambda c, v: c["base_image"].update(image=v),
+        "base_image.python_executable_path": lambda c, v: c["base_image"].update(
+            python_executable_path="/usr/bin/" + v
+        ),
+        "model_cache[0].repo_id": lambda c, v: c["model_cache"][0].update(repo_id=v),
+        "model_cache[0].revision": lambda c, v: c["model_cache"][0].update(revision=v),
+    }
+    for field, set_value in setters.items():
+        for line_break in ("\n", "\r"):
+            config = _dockerfile_fields_config()
+            set_value(config, f"x{line_break}RUN echo injected")
+            with pytest.raises(
+                pydantic.ValidationError, match=f"{re.escape(field)} must not"
+            ):
+                TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_reject_line_breaks_in_hf_cache():
+    config = _dockerfile_fields_config()
+    config["hf_cache"] = config.pop("model_cache")
+    config["hf_cache"][0]["revision"] = "main\nRUN echo injected"
+
+    with pytest.raises(pydantic.ValidationError, match="line breaks"):
+        TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_reject_unsafe_secret_mount_paths():
+    # 0x85 and 0xA0 end a BuildKit flag word like ASCII whitespace does.
+    for unsafe in (" ", ",", '"', "\x85", "\xa0", "\n"):
+        config = _dockerfile_fields_config()
+        config["build"]["secret_to_path_mapping"]["hf-token"] = f"/secrets/a{unsafe}b"
+        with pytest.raises(pydantic.ValidationError, match="printable ASCII"):
+            TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_checked_for_python_constructed_config():
+    with pytest.raises(pydantic.ValidationError, match="base_image.image"):
+        TrussConfig(base_image=BaseImage(image="img:1\nRUN echo injected"))

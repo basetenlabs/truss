@@ -5,7 +5,7 @@ RUN mkdir -p ${APP_HOME}/model_cache
 WORKDIR ${APP_HOME}
 
 {% if hf_access_token %}
-ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
+ENV HUGGING_FACE_HUB_TOKEN={{ hf_access_token | dockerfile_env_value }}
 {% endif %}
 
 {%- if cache_mount_id %}
