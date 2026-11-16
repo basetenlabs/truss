@@ -1,6 +1,8 @@
+import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
+import pytest
 from baseten_performance_client import (
     PerformanceClient,
     RequestProcessingPreference,
@@ -263,14 +265,27 @@ def test_get_wrapper_from_client_and_reuse():
     assert client2 is not None
 
 
-def _record_request_headers(run):
-    """Runs run(client) against a local server and returns each request's headers."""
+def _record_request_headers(run, rejected_tokens=(), **client_kwargs):
+    """Runs run(client) against a local server and returns each request's headers.
+
+    Bearer tokens in rejected_tokens get a 401 with error="invalid_token".
+    """
     seen = []
+    client_kwargs.setdefault(
+        "api_key", None if "token_provider" in client_kwargs else "test-key"
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             seen.append(dict(self.headers))
             self.rfile.read(int(self.headers["Content-Length"]))
+            token = self.headers["authorization"][len("Bearer ") :]
+            if token in rejected_tokens:
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Bearer error="invalid_token"')
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -282,7 +297,9 @@ def _record_request_headers(run):
         try:
             run(
                 PerformanceClient(
-                    f"http://127.0.0.1:{server.server_port}", "test-key", http_version=1
+                    f"http://127.0.0.1:{server.server_port}",
+                    http_version=1,
+                    **client_kwargs,
                 )
             )
         finally:
@@ -323,3 +340,72 @@ def test_send_batch_key():
     for headers in keyed:
         assert headers["x-baseten-customer-request-id"].startswith(f"{key}-")
     assert "x-baseten-batch-key" not in unkeyed
+
+
+def test_token_provider_supplies_the_bearer_token_of_every_request():
+    tokens = iter(["token-1", "token-2", "token-3"])
+
+    def run(client):
+        client.batch_post(
+            "/echo",
+            [{}, {}, {}],
+            preference=RequestProcessingPreference(max_concurrent_requests=1),
+        )
+
+    seen = _record_request_headers(run, token_provider=lambda: next(tokens))
+    assert sorted(headers["authorization"] for headers in seen) == [
+        "Bearer token-1",
+        "Bearer token-2",
+        "Bearer token-3",
+    ]
+
+
+def test_token_provider_is_asked_again_after_invalid_token():
+    tokens = iter(["stale", "fresh"])
+
+    def run(client):
+        client.batch_post(
+            "/echo", [{}], preference=RequestProcessingPreference(max_retries=0)
+        )
+
+    seen = _record_request_headers(
+        run, rejected_tokens={"stale"}, token_provider=lambda: next(tokens)
+    )
+    assert [headers["authorization"] for headers in seen] == [
+        "Bearer stale",
+        "Bearer fresh",
+    ]
+
+
+def test_token_provider_works_with_async_methods():
+    def run(client):
+        async def call():
+            await client.async_batch_post("/echo", [{}])
+
+        asyncio.run(call())
+
+    seen = _record_request_headers(run, token_provider=lambda: "async-token")
+    assert seen[0]["authorization"] == "Bearer async-token"
+
+
+def test_token_provider_exception_fails_the_call():
+    def provider():
+        raise RuntimeError("identity provider unavailable")
+
+    def run(client):
+        with pytest.raises(ValueError, match="identity provider unavailable"):
+            client.batch_post("/echo", [{}])
+
+    assert _record_request_headers(run, token_provider=provider) == []
+
+
+def test_token_provider_validation():
+    with pytest.raises(ValueError, match="either api_key or token_provider"):
+        PerformanceClient(
+            "http://127.0.0.1:1", api_key="key", token_provider=lambda: "token"
+        )
+    with pytest.raises(TypeError, match="callable"):
+        PerformanceClient("http://127.0.0.1:1", token_provider="not-callable")
+    client = PerformanceClient("http://127.0.0.1:1", token_provider=lambda: "token")
+    with pytest.raises(ValueError, match="token_provider"):
+        client.api_key

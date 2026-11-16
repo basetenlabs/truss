@@ -5,11 +5,15 @@ use baseten_performance_client_core::{
   CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse, Endpoint as CoreEndpoint,
   EndpointConfig as CoreEndpointConfig, EndpointPool as CoreEndpointPool, EndpointPoolConfig,
   HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-  RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE,
-  HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
+  RequestProcessingPreference as RustRequestProcessingPreference, TokenProvider,
+  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
+  DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
 };
 
+use async_trait::async_trait;
+use napi::bindgen_prelude::Promise;
+use napi::threadsafe_function::{ErrorStrategy, ThreadSafeCallContext, ThreadsafeFunction};
+use napi::{Env, JsFunction, JsUnknown};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -44,6 +48,62 @@ fn convert_core_error_to_napi_error(error: ClientError) -> napi::Error {
       format!("Remote timeout: {}", msg),
     ),
     ClientError::Cancellation(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
+    ClientError::TokenProvider(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
+  }
+}
+
+// A throw or rejection must come back as data: napi aborts the process when a
+// threadsafe function's JS callback throws.
+const SETTLE_TOKEN_PROVIDER_JS: &str = r#"(provider) => () => {
+  try {
+    return Promise.resolve(provider()).then(
+      (token) => typeof token === 'string'
+        ? { token }
+        : { error: `tokenProvider must return a string, got ${typeof token}` },
+      (err) => ({ error: `tokenProvider rejected: ${err}` }),
+    )
+  } catch (err) {
+    return Promise.resolve({ error: `tokenProvider threw: ${err}` })
+  }
+}"#;
+
+/// Calls a JS `tokenProvider()` on the main thread for the bearer token of each request.
+struct JsTokenProvider {
+  settled_provider: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
+}
+
+impl JsTokenProvider {
+  fn new(env: &Env, provider: JsFunction) -> napi::Result<Self> {
+    let settle: JsFunction = env.run_script(SETTLE_TOKEN_PROVIDER_JS)?;
+    let settled: JsFunction = settle.call(None, &[provider])?.try_into()?;
+    let mut settled_provider = settled
+      .create_threadsafe_function(0, |_ctx: ThreadSafeCallContext<()>| {
+        Ok(Vec::<JsUnknown>::new())
+      })?;
+    // The provider alone must not keep the Node.js process alive.
+    settled_provider.unref(env)?;
+    Ok(Self { settled_provider })
+  }
+}
+
+#[async_trait]
+impl TokenProvider for JsTokenProvider {
+  async fn token(&self) -> Result<String, ClientError> {
+    let outcome: Promise<JsonValue> = self
+      .settled_provider
+      .call_async(())
+      .await
+      .map_err(|err| ClientError::TokenProvider(format!("tokenProvider call failed: {err}")))?;
+    let outcome = outcome
+      .await
+      .map_err(|err| ClientError::TokenProvider(format!("tokenProvider call failed: {err}")))?;
+    match (outcome.get("token"), outcome.get("error")) {
+      (Some(JsonValue::String(token)), _) => Ok(token.clone()),
+      (_, Some(JsonValue::String(error))) => Err(ClientError::TokenProvider(error.clone())),
+      _ => Err(ClientError::TokenProvider(format!(
+        "unexpected tokenProvider outcome: {outcome}"
+      ))),
+    }
   }
 }
 
@@ -506,24 +566,41 @@ pub struct PerformanceClient {
 impl PerformanceClient {
   #[napi(constructor)]
   pub fn new(
+    env: Env,
     base_url: String,
     api_key: Option<String>,
     http_version: Option<u8>,
     client_wrapper: Option<&HttpClientWrapper>,
     proxy: Option<String>,
     endpoint_pool: Option<&EndpointPool>,
+    #[napi(ts_arg_type = "() => string | Promise<string>")] token_provider: Option<JsFunction>,
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
     let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
-    let core_client = PerformanceClientCore::new(
-      base_url,
-      api_key,
-      http_version,
-      wrapper,
-      proxy,
-      endpoint_pool,
-    )
+    let core_client = match token_provider {
+      Some(_) if api_key.is_some() => {
+        return Err(create_napi_error(
+          "pass either apiKey or tokenProvider, not both",
+        ));
+      }
+      Some(provider) => PerformanceClientCore::new_with_token_provider(
+        base_url,
+        Arc::new(JsTokenProvider::new(&env, provider)?),
+        http_version,
+        wrapper,
+        proxy,
+        endpoint_pool,
+      ),
+      None => PerformanceClientCore::new(
+        base_url,
+        api_key,
+        http_version,
+        wrapper,
+        proxy,
+        endpoint_pool,
+      ),
+    }
     .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })

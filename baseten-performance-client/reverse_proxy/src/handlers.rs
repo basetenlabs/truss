@@ -79,6 +79,10 @@ impl UnifiedHandler {
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("Message from upstream: {}", message),
             ),
+            ClientError::TokenProvider(message) => (
+                StatusCode::BAD_GATEWAY,
+                format!("Message from upstream: {}", message),
+            ),
         }
     }
 

@@ -4,18 +4,19 @@ use baseten_performance_client_core::{
     CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
-    Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
+    Credential, Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
-    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-    RETRY_BUDGET_PERCENTAGE,
+    TokenProvider, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES,
+    DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE,
+    INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
 };
 
+use async_trait::async_trait;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 use std::collections::HashSet;
@@ -72,6 +73,25 @@ where
 
         // Run the actual future
         result = future => result,
+    }
+}
+
+/// Calls a Python `token_provider()` for the bearer token of each request.
+struct PyTokenProvider {
+    callable: Arc<Py<PyAny>>,
+}
+
+#[async_trait]
+impl TokenProvider for PyTokenProvider {
+    async fn token(&self) -> Result<String, ClientError> {
+        let callable = Arc::clone(&self.callable);
+        // A blocking thread waits for the GIL, so a busy interpreter cannot stall a runtime worker.
+        tokio::task::spawn_blocking(move || {
+            Python::with_gil(|py| callable.call0(py)?.extract::<String>(py))
+                .map_err(|err| ClientError::TokenProvider(format!("token_provider raised {err}")))
+        })
+        .await
+        .map_err(|err| ClientError::TokenProvider(format!("token_provider task failed: {err}")))?
     }
 }
 
@@ -755,6 +775,7 @@ impl PerformanceClient {
             ClientError::Network(msg) => PyValueError::new_err(msg),
             ClientError::Cancellation(msg) => PyValueError::new_err(msg),
             ClientError::Connect(msg) => PyValueError::new_err(msg),
+            ClientError::TokenProvider(msg) => PyValueError::new_err(msg),
         }
     }
 }
@@ -762,25 +783,51 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None, token_provider = None))]
     fn new(
+        py: Python<'_>,
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
         proxy: Option<String>,
         endpoint_pool: Option<&PyEndpointPool>,
+        token_provider: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
         let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
-        let core_client = PerformanceClientCore::new(
-            base_url,
-            api_key,
-            http_version,
-            wrapper,
-            proxy,
-            endpoint_pool,
-        )
+        let core_client = match token_provider {
+            Some(_) if api_key.is_some() => {
+                return Err(PyValueError::new_err(
+                    "pass either api_key or token_provider, not both",
+                ));
+            }
+            Some(callable) => {
+                if !callable.bind(py).is_callable() {
+                    return Err(PyTypeError::new_err(
+                        "token_provider must be a callable returning the bearer token",
+                    ));
+                }
+                PerformanceClientCore::new_with_token_provider(
+                    base_url,
+                    Arc::new(PyTokenProvider {
+                        callable: Arc::new(callable),
+                    }),
+                    http_version,
+                    wrapper,
+                    proxy,
+                    endpoint_pool,
+                )
+            }
+            None => PerformanceClientCore::new(
+                base_url,
+                api_key,
+                http_version,
+                wrapper,
+                proxy,
+                endpoint_pool,
+            ),
+        }
         .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
@@ -791,6 +838,11 @@ impl PerformanceClient {
 
     #[getter]
     fn api_key(&self) -> PyResult<String> {
+        if let Credential::TokenProvider(_) = self.core_client.credential() {
+            return Err(PyValueError::new_err(
+                "this client authenticates with token_provider and has no static api_key",
+            ));
+        }
         Ok(self.core_client.api_key.clone())
     }
 

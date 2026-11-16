@@ -104,6 +104,84 @@ const httpWrapper = new HttpClientWrapper(2); // HTTP/2
 const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrapper);
 ```
 
+### Short-lived tokens
+
+Short-lived credentials, such as Baseten access tokens obtained through workload identity
+federation, can expire while a long-running client is still in use. Instead of an API key, pass
+`token_provider`, a function that takes no arguments and returns the current token. The client sends it as `Authorization: Bearer <token>`.
+
+- The client calls the provider from a worker thread, with the GIL held before every HTTP attempt, so it should cache the token and
+  fetch a new one only shortly before it expires.
+- If the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, the client asks
+  the provider again and retries that request once, right away and outside `max_retries`. If the
+  provider returns the same token, the `401` is returned instead.
+- If it raises, the call fails with `ValueError` without sending the request.
+- It cannot be combined with `api_key`, and the API key environment variables are not read.
+  A per-call `primary_api_key_override` still takes precedence.
+- `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
+
+Python:
+
+```python
+import threading
+import time
+
+from baseten_performance_client import PerformanceClient
+
+
+class CachedToken:
+    """Calls fetch() for a new (token, expires_at) only when the cached one is about to expire."""
+
+    def __init__(self, fetch, refresh_before_s=30):
+        self._fetch = fetch
+        self._refresh_before_s = refresh_before_s
+        self._lock = threading.Lock()
+        self._token, self._expires_at = None, 0.0
+
+    def __call__(self) -> str:
+        with self._lock:
+            if time.time() >= self._expires_at - self._refresh_before_s:
+                self._token, self._expires_at = self._fetch()
+            return self._token
+
+
+# fetch_access_token is yours: for example, exchange a workload identity token for a
+# Baseten access token and return it with its expiry as a Unix timestamp.
+client = PerformanceClient(
+    base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+    token_provider=CachedToken(fetch_access_token),
+)
+```
+
+Node.js (`tokenProvider` is the seventh constructor argument; same behavior):
+
+```javascript
+const { PerformanceClient } = require('@basetenlabs/performance-client');
+
+// fetchAccessToken is yours: for example, exchange a workload identity token for a
+// Baseten access token and resolve to { token, expiresAt } with expiresAt in milliseconds.
+let cached = { token: null, expiresAt: 0 };
+async function tokenProvider() {
+  if (Date.now() >= cached.expiresAt - 30_000) {
+    cached = await fetchAccessToken();
+  }
+  return cached.token;
+}
+
+const client = new PerformanceClient(
+  "https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+  undefined, // apiKey
+  undefined, // httpVersion
+  undefined, // clientWrapper
+  undefined, // proxy
+  undefined, // endpointPool
+  tokenProvider,
+);
+```
+
+Rust: implement the `TokenProvider` trait and create the client with
+`PerformanceClientCore::new_with_token_provider`.
+
 ### EndpointPool
 
 `EndpointPool` lets a `PerformanceClient` route requests across reusable `Endpoint` objects.

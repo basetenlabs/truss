@@ -104,17 +104,29 @@ test('HttpClientWrapper from one client can be used in another', (t) => {
 })
 
 // Runs run(client) against a local server and returns each request's headers.
-async function recordRequestHeaders(t, run) {
+// Bearer tokens in rejectedTokens get a 401 with error="invalid_token".
+async function recordRequestHeaders(t, run, {tokenProvider, rejectedTokens = []} = {}) {
   const seen = []
   const server = createServer((req, res) => {
     seen.push(req.headers)
     req.resume()
+    if (rejectedTokens.includes(req.headers.authorization.replace(/^Bearer /, ''))) {
+      res.statusCode = 401
+      res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token"')
+      res.end()
+      return
+    }
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ok: true}))
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   t.teardown(() => server.close())
-  await run(new PerformanceClient(`http://127.0.0.1:${server.address().port}`, 'test-key'))
+  const baseUrl = `http://127.0.0.1:${server.address().port}`
+  await run(
+    tokenProvider
+      ? new PerformanceClient(baseUrl, undefined, 1, undefined, undefined, undefined, tokenProvider)
+      : new PerformanceClient(baseUrl, 'test-key'),
+  )
   return seen
 }
 
@@ -151,4 +163,65 @@ test('sendBatchKey sends the call request ID as the batch key on every request',
     t.true(headers['x-baseten-customer-request-id'].startsWith(`${key}-`))
   }
   t.is(seen[3]['x-baseten-batch-key'], undefined)
+})
+
+test('tokenProvider supplies the bearer token of every request', async (t) => {
+  let calls = 0
+  const seen = await recordRequestHeaders(
+    t,
+    async (client) => {
+      const maxConcurrentRequests = 1
+      const preference = new RequestProcessingPreference(maxConcurrentRequests)
+      await client.batchPost('/echo', [{}, {}, {}], preference)
+    },
+    {tokenProvider: () => `token-${++calls}`},
+  )
+  t.deepEqual(seen.map((headers) => headers.authorization).sort(), [
+    'Bearer token-1',
+    'Bearer token-2',
+    'Bearer token-3',
+  ])
+})
+
+test('an async tokenProvider is asked again after an invalid_token 401', async (t) => {
+  const tokens = ['stale', 'fresh']
+  const seen = await recordRequestHeaders(
+    t,
+    async (client) => {
+      // maxRetries=0: the refresh retry does not depend on the retry settings.
+      const maxRetries = 0
+      const preference = new RequestProcessingPreference(...Array(9).fill(undefined), maxRetries)
+      t.is(preference.maxRetries, 0)
+      await client.batchPost('/echo', [{}], preference)
+    },
+    {tokenProvider: async () => tokens.shift(), rejectedTokens: ['stale']},
+  )
+  t.deepEqual(
+    seen.map((headers) => headers.authorization),
+    ['Bearer stale', 'Bearer fresh'],
+  )
+})
+
+test('tokenProvider failures fail the call without sending it', async (t) => {
+  for (const [tokenProvider, message] of [
+    [() => { throw new Error('identity provider unavailable') }, /threw: Error: identity provider unavailable/],
+    [async () => { throw new Error('identity provider unavailable') }, /rejected: Error: identity provider unavailable/],
+    [() => 42, /must return a string, got number/],
+  ]) {
+    const seen = await recordRequestHeaders(
+      t,
+      async (client) => {
+        await t.throwsAsync(client.batchPost('/echo', [{}]), {message})
+      },
+      {tokenProvider},
+    )
+    t.deepEqual(seen, [])
+  }
+})
+
+test('apiKey and tokenProvider cannot be combined', (t) => {
+  t.throws(
+    () => new PerformanceClient('http://127.0.0.1:1', 'key', 1, undefined, undefined, undefined, () => 'token'),
+    {message: /either apiKey or tokenProvider/},
+  )
 })

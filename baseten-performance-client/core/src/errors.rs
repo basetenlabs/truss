@@ -15,6 +15,7 @@ pub enum ClientError {
     InvalidParameter(String),
     Serialization(String),
     Cancellation(String),
+    TokenProvider(String),
 }
 
 impl fmt::Display for ClientError {
@@ -46,6 +47,7 @@ impl fmt::Display for ClientError {
             ClientError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
             ClientError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             ClientError::Cancellation(msg) => write!(f, "Cancellation error: {}", msg),
+            ClientError::TokenProvider(msg) => write!(f, "Token provider error: {}", msg),
         }
     }
 }

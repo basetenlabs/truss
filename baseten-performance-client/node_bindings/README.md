@@ -436,6 +436,46 @@ const client = new PerformanceClient(
 );
 ```
 
+#### Short-lived Tokens
+
+Short-lived credentials, such as Baseten access tokens obtained through workload identity
+federation, can expire while a long-running client is still in use. Instead of an API key, pass
+`tokenProvider`, a function that takes no arguments and returns the current token or a Promise of it. The client sends it as `Authorization: Bearer <token>`.
+
+- The client calls the provider on the main thread before every HTTP attempt, so it should cache the token and
+  fetch a new one only shortly before it expires.
+- If the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, the client asks
+  the provider again and retries that request once, right away and outside `maxRetries`. If the
+  provider returns the same token, the `401` is returned instead.
+- If it throws, rejects or returns something other than a string, the call rejects without sending the request.
+- It cannot be combined with `apiKey`, and the API key environment variables are not read.
+  A per-call `primaryApiKeyOverride` still takes precedence.
+- `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
+
+```javascript
+const { PerformanceClient } = require('@basetenlabs/performance-client');
+
+// fetchAccessToken is yours: for example, exchange a workload identity token for a
+// Baseten access token and resolve to { token, expiresAt } with expiresAt in milliseconds.
+let cached = { token: null, expiresAt: 0 };
+async function tokenProvider() {
+  if (Date.now() >= cached.expiresAt - 30_000) {
+    cached = await fetchAccessToken();
+  }
+  return cached.token;
+}
+
+const client = new PerformanceClient(
+  "https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+  undefined, // apiKey
+  undefined, // httpVersion
+  undefined, // clientWrapper
+  undefined, // proxy
+  undefined, // endpointPool
+  tokenProvider,
+);
+```
+
 ## API Reference
 
 ### Constructors
@@ -443,7 +483,7 @@ const client = new PerformanceClient(
 #### PerformanceClient
 
 ```javascript
-new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
+new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?, endpointPool?, tokenProvider?)
 ```
 
 - `baseUrl` (string): The base URL for the API endpoint
@@ -451,6 +491,8 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 - `httpVersion` (number, optional): HTTP version to use (1 for HTTP/1.1, 2 for HTTP/2). Default: 2
 - `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
 - `proxy` (string, optional): Proxy URL to route all HTTP requests through (e.g., "http://proxy:8080")
+- `endpointPool` (EndpointPool, optional): Weighted endpoint routing with background health checks
+- `tokenProvider` (function, optional): Returns the current bearer token, or a Promise of it, for short-lived credentials. Cannot be combined with `apiKey`. See [Short-lived Tokens](#short-lived-tokens)
 
 #### RequestProcessingPreference
 

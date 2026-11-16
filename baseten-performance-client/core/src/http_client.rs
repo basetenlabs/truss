@@ -1,3 +1,4 @@
+use crate::auth::is_invalid_token_response;
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
@@ -35,7 +36,6 @@ pub(crate) async fn send_http_request_with_retry<T, R>(
     client: &Client,
     request_suffix: String,
     payload: T,
-    api_key: String,
     request_timeout: Duration,
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
@@ -45,10 +45,10 @@ where
     R: serde::de::DeserializeOwned,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
+    let response = send_request_with_retry(&request_suffix, config, |attempt_url, token| {
         let mut request_builder = client
             .post(attempt_url)
-            .bearer_auth(&api_key)
+            .bearer_auth(token)
             .json(&payload)
             .timeout(request_timeout)
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
@@ -89,7 +89,6 @@ pub(crate) async fn send_http_request_with_headers<T>(
     client: &Client,
     request_suffix: String,
     payload: T,
-    api_key: String,
     request_timeout: Duration,
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
@@ -99,10 +98,10 @@ where
     T: serde::Serialize,
 {
     let customer_request_id_header = customer_request_id.to_string();
-    let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
+    let response = send_request_with_retry(&request_suffix, config, |attempt_url, token| {
         let mut request_builder = client
             .request(method.into(), attempt_url)
-            .bearer_auth(&api_key)
+            .bearer_auth(token)
             .timeout(request_timeout)
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
@@ -235,14 +234,21 @@ async fn ensure_successful_response(
 async fn send_request_with_retry(
     request_suffix: &str,
     config: &RequestProcessingConfig,
-    build_request: impl Fn(&str) -> reqwest::RequestBuilder,
+    build_request: impl Fn(&str, &str) -> reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, ClientError> {
     let mut retries_done = 0;
     let mut current_backoff = config.initial_backoff;
     let max_retries = config.max_retries;
     let mut attempted_endpoint_indices: HashSet<usize> = HashSet::new();
+    let mut refreshed_token: Option<String> = None;
+    let mut token_refresh_used = false;
 
     loop {
+        // Asked per attempt so retries after a long backoff do not reuse an expired token.
+        let token = match refreshed_token.take() {
+            Some(token) => token,
+            None => config.credential.token().await?,
+        };
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint) =
             config.select_attempt_url(request_suffix, &indices_vec);
@@ -273,16 +279,19 @@ async fn send_request_with_retry(
         }
 
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
-            let request_builder = build_request(&attempt_url);
+            let request_builder = build_request(&attempt_url, &token);
             let (hedge_url, hedge_selection) =
                 config.select_hedge_url(request_suffix, selected_endpoint_index);
-            let hedge_builder = build_request(&hedge_url);
+            let hedge_builder = build_request(&hedge_url, &token);
             let _ = hedge_selection;
             send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {
-            build_request(&attempt_url).send().await.map_err(|e| {
-                convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
-            })
+            build_request(&attempt_url, &token)
+                .send()
+                .await
+                .map_err(|e| {
+                    convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
+                })
         };
 
         // Decide retry exactly once per iteration.
@@ -292,6 +301,25 @@ async fn send_request_with_retry(
 
                 if status.is_success() {
                     return Ok(resp);
+                }
+
+                // One immediate retry outside max_retries: the rejection is about the
+                // token, not the server, so it should not wait or spend the retry budget.
+                if !token_refresh_used
+                    && config.credential.can_refresh()
+                    && is_invalid_token_response(&resp)
+                {
+                    token_refresh_used = true;
+                    let fresh_token = config.credential.token().await?;
+                    if fresh_token != token {
+                        tracing::debug!(
+                            "server rejected the bearer token, retrying once with a fresh one {}",
+                            config.customer_request_id.to_string()
+                        );
+                        let _ = resp.bytes().await;
+                        refreshed_token = Some(fresh_token);
+                        continue;
+                    }
                 }
 
                 let retryable = is_retryable_status(status.as_u16(), config);

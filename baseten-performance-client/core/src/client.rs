@@ -1,3 +1,4 @@
+use crate::auth::{Credential, TokenProvider};
 use crate::cancellation::JoinSetGuard;
 use crate::client_spans::start_call_span;
 use crate::constants::*;
@@ -163,8 +164,11 @@ pub struct PerformanceClientCore {
     /// API key for authentication
     ///
     /// This can be set during client creation or read from the
-    /// `PERFORMANCE_CLIENT_API_KEY` environment variable.
+    /// `PERFORMANCE_CLIENT_API_KEY` environment variable. Empty when the client
+    /// was created with a token provider.
     pub api_key: String,
+
+    token_provider: Option<Arc<dyn TokenProvider>>,
 
     /// Base URL for the API endpoint
     ///
@@ -192,7 +196,47 @@ impl PerformanceClientCore {
         endpoint_pool: Option<Arc<EndpointPool>>,
     ) -> Result<Self, ClientError> {
         let api_key = Self::get_api_key(api_key)?;
+        Self::build(
+            base_url,
+            api_key,
+            None,
+            http_version,
+            client_wrapper,
+            proxy,
+            endpoint_pool,
+        )
+    }
 
+    /// Create a client that authenticates every request with a token from `token_provider`,
+    /// for short-lived credentials that must be refreshed while the client is in use.
+    pub fn new_with_token_provider(
+        base_url: String,
+        token_provider: Arc<dyn TokenProvider>,
+        http_version: u8,
+        client_wrapper: Option<Arc<HttpClientWrapper>>,
+        proxy: Option<String>,
+        endpoint_pool: Option<Arc<EndpointPool>>,
+    ) -> Result<Self, ClientError> {
+        Self::build(
+            base_url,
+            String::new(),
+            Some(token_provider),
+            http_version,
+            client_wrapper,
+            proxy,
+            endpoint_pool,
+        )
+    }
+
+    fn build(
+        base_url: String,
+        api_key: String,
+        token_provider: Option<Arc<dyn TokenProvider>>,
+        http_version: u8,
+        client_wrapper: Option<Arc<HttpClientWrapper>>,
+        proxy: Option<String>,
+        endpoint_pool: Option<Arc<EndpointPool>>,
+    ) -> Result<Self, ClientError> {
         let client_wrapper = if let Some(wrapper) = client_wrapper {
             wrapper
         } else {
@@ -216,12 +260,21 @@ impl PerformanceClientCore {
 
         let client = PerformanceClientCore {
             api_key,
+            token_provider,
             base_url: base_url.into(),
             client_wrapper,
             endpoint_router,
         };
 
         Ok(client)
+    }
+
+    /// The credential requests use unless a call overrides it.
+    pub fn credential(&self) -> Credential {
+        match &self.token_provider {
+            Some(provider) => Credential::TokenProvider(Arc::clone(provider)),
+            None => Credential::ApiKey(self.api_key.clone()),
+        }
     }
 
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {
@@ -409,8 +462,6 @@ impl PerformanceClientCore {
 
             // Only clone what's needed inside the async block
             let client_wrapper = self.client_wrapper.clone();
-            // Per-call key: the preference override if set, otherwise the client key.
-            let api_key = config_clone.api_key_primary.clone();
             let semaphore = Arc::clone(&semaphore);
 
             // Create payload and URL outside async block
@@ -433,7 +484,6 @@ impl PerformanceClientCore {
                     &client,
                     request_suffix,
                     payload,
-                    api_key,
                     request_timeout_duration,
                     &config_clone,
                     request_customer_id,
@@ -568,10 +618,10 @@ impl PerformanceClientCore {
     > {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(
+            .pair_with_credential_validate_and_convert(
                 self.base_url.to_string(),
                 texts.len(),
-                self.api_key.clone(),
+                self.credential(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
         let mut config = self.maybe_pin_initial_endpoint(config);
@@ -631,10 +681,10 @@ impl PerformanceClientCore {
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(
+            .pair_with_credential_validate_and_convert(
                 self.base_url.to_string(),
                 texts.len(),
-                self.api_key.clone(),
+                self.credential(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
         let mut config = self.maybe_pin_initial_endpoint(config);
@@ -705,10 +755,10 @@ impl PerformanceClientCore {
     > {
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(
+            .pair_with_credential_validate_and_convert(
                 self.base_url.to_string(),
                 inputs.len(),
-                self.api_key.clone(),
+                self.credential(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
         let mut config = self.maybe_pin_initial_endpoint(config);
@@ -793,10 +843,10 @@ impl PerformanceClientCore {
 
         // Create and validate config from preference
         let config = preference
-            .pair_with_request_validate_and_convert(
+            .pair_with_credential_validate_and_convert(
                 self.base_url.to_string(),
                 total_payloads,
-                self.api_key.clone(),
+                self.credential(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
         let mut config = self.maybe_pin_initial_endpoint(config);
@@ -817,8 +867,6 @@ impl PerformanceClientCore {
             // Clone config for this iteration
             let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
-            // Per-call key: the preference override if set, otherwise the client key.
-            let api_key = config_clone.api_key_primary.clone();
             let request_suffix = normalize_request_suffix(&url_path);
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
@@ -838,7 +886,6 @@ impl PerformanceClientCore {
                     &client,
                     request_suffix,
                     payload_item_json,
-                    api_key,
                     individual_request_timeout,
                     &config_clone,
                     request_customer_id,
