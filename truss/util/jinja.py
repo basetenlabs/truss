@@ -1,3 +1,4 @@
+import json
 import shlex
 from pathlib import Path
 
@@ -31,9 +32,21 @@ def dockerfile_shell_value(value: str) -> str:
     return shlex.quote(value)
 
 
+def dockerfile_copy_path(value: str) -> str:
+    """Quote a path as one element of a JSON-form Dockerfile COPY.
+
+    The JSON form keeps whitespace and `<<` in paths literal. Buildkit still
+    runs each decoded path through word expansion, which treats \\ $ ' and "
+    specially, so those are backslash-escaped before JSON encoding.
+    """
+    escaped = "".join(f"\\{c}" if c in "\\$'\"" else c for c in value)
+    return json.dumps(escaped)
+
+
 def read_template_from_fs(base_dir: Path, template_file_name: str) -> Template:
     template_loader = FileSystemLoader(str(base_dir))
     template_env = Environment(loader=template_loader)
     template_env.filters["dockerfile_env_value"] = dockerfile_env_value
     template_env.filters["dockerfile_shell_value"] = dockerfile_shell_value
+    template_env.filters["dockerfile_copy_path"] = dockerfile_copy_path
     return template_env.get_template(template_file_name)

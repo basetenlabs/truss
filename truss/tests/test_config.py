@@ -1,3 +1,4 @@
+import re
 import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
@@ -47,13 +48,92 @@ from truss.base.truss_config import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-@pytest.mark.parametrize("accelerator", [None, *Accelerator])
+@pytest.mark.parametrize(
+    "accelerator",
+    [
+        None,
+        *(
+            accelerator
+            for accelerator in Accelerator
+            if accelerator not in (Accelerator.TPU_V6E, Accelerator.TPU_V7)
+        ),
+    ],
+)
 def test_non_tpu_resources(accelerator):
     resources = Resources(accelerator=AcceleratorSpec(accelerator=accelerator))
     assert not resources.is_tpu
     assert resources.use_gpu == (accelerator is not None)
     assert "is_tpu" not in resources.model_dump()
     assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator, count", [("TPU_V6E", 8), ("TPU_V7", 4)])
+def test_tpu_resources_roundtrip(accelerator, count):
+    resources = Resources.model_validate({"accelerator": f"{accelerator}:{count}"})
+    assert resources.is_tpu
+    assert resources.use_gpu
+    assert "is_tpu" not in resources.model_dump()
+    assert resources.accelerator.count == count
+    assert resources.model_dump()["accelerator"] == f"{accelerator}:{count}"
+    assert Resources.model_validate(resources.model_dump()) == resources
+
+
+@pytest.mark.parametrize("accelerator", ["TPU_V6E:0", "TPU_V6E:abc"])
+def test_tpu_rejects_invalid_accelerator_count(accelerator):
+    with pytest.raises(ValueError, match="Invalid count"):
+        Resources.model_validate({"accelerator": accelerator})
+
+
+def test_tpu_rejects_missing_custom_base_image():
+    with pytest.raises(ValueError, match="custom base_image"):
+        TrussConfig.model_validate({"resources": {"accelerator": "TPU_V6E:8"}})
+
+
+def test_tpu_bei_does_not_require_custom_base_image():
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8"},
+            "bei": {
+                "backend": "tpu",
+                "configuration": [{"checkpoint": "BAAI/bge-small-en-v1.5"}],
+            },
+            "runtime": {
+                "health_checks": {
+                    "restart_threshold_seconds": 5,
+                    "stop_traffic_threshold_seconds": 5,
+                }
+            },
+        }
+    )
+    assert config.resources.is_tpu
+    assert config.base_image is None
+
+
+@pytest.mark.parametrize(
+    "resource_settings", [{"node_count": 2}, {"fabric": {"use_rdma": True}}]
+)
+def test_tpu_node_and_fabric_settings_warn(resource_settings, caplog):
+    config = TrussConfig.model_validate(
+        {
+            "resources": {"accelerator": "TPU_V6E:8", **resource_settings},
+            "base_image": {"image": "example.com/tpu-runtime:preview"},
+        }
+    )
+    resources = config.resources.model_dump()
+    for key, value in resource_settings.items():
+        if key == "fabric":
+            for fabric_key, fabric_value in value.items():
+                assert resources[key][fabric_key] == fabric_value
+        else:
+            assert resources[key] == value
+    assert "Support is validated server side during deployment." in caplog.text
+
+
+def test_tpu_rejects_nvidia_inference_engine(trtllm_config):
+    trtllm_config["resources"]["accelerator"] = "TPU_V6E:8"
+    trtllm_config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    with pytest.raises(ValueError, match="NVIDIA inference engines"):
+        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize(
@@ -1080,6 +1160,103 @@ def test_secret_to_path_mapping_incorrect_type(default_config):
             TrussConfig.from_yaml(yaml_path)
 
 
+@pytest.mark.parametrize(
+    "config_fixture", ["trtllm_config", "trtllm_config_v2", "trtllm_config_encoder"]
+)
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        None,
+        {},
+        {"health_checks": {}},
+        {
+            "health_checks": {
+                "stop_traffic_threshold_seconds": None,
+                "restart_threshold_seconds": None,
+            }
+        },
+    ],
+)
+def test_trt_llm_health_check_defaults(config_fixture, runtime, request, tmp_path):
+    data = request.getfixturevalue(config_fixture)
+    if runtime is None:
+        data.pop("runtime", None)
+    else:
+        data["runtime"] = runtime
+    config = TrussConfig.from_dict(data)
+
+    path = tmp_path / "config.yaml"
+    config.write_to_yaml_file(path, verbose=False)
+    serialized = yaml.safe_load(path.read_text())
+    assert serialized["runtime"]["health_checks"] == {
+        "stop_traffic_threshold_seconds": 30,
+        "restart_threshold_seconds": 60,
+    }
+    assert (
+        TrussConfig.from_yaml(path).runtime.health_checks
+        == config.runtime.health_checks
+    )
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "stop_traffic, restart", [(10, 10), (30, 60), (None, 20), (20, None)]
+)
+def test_trt_llm_health_check_overrides(config_fixture, stop_traffic, restart, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {
+        "predict_concurrency": 8,
+        "health_checks": {
+            "stop_traffic_threshold_seconds": stop_traffic,
+            "restart_threshold_seconds": restart,
+            "startup_threshold_seconds": 2400,
+        },
+    }
+    config = TrussConfig.model_validate(data)
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == (
+        stop_traffic if stop_traffic is not None else 30
+    )
+    assert config.runtime.health_checks.restart_threshold_seconds == (
+        restart if restart is not None else 60
+    )
+    assert config.runtime.health_checks.startup_threshold_seconds == 2400
+    assert config.runtime.predict_concurrency == 8
+
+
+@pytest.mark.parametrize("config_fixture", ["trtllm_config", "trtllm_config_v2"])
+@pytest.mark.parametrize(
+    "field, value, limit",
+    [
+        ("stop_traffic_threshold_seconds", 31, 30),
+        ("restart_threshold_seconds", 61, 60),
+        ("stop_traffic_threshold_seconds", 1800, 30),
+        ("restart_threshold_seconds", 1800, 60),
+    ],
+)
+def test_trt_llm_health_check_limits(config_fixture, field, value, limit, request):
+    data = request.getfixturevalue(config_fixture)
+    data["runtime"] = {"health_checks": {field: value}}
+    with pytest.raises(
+        ValueError,
+        match=rf"runtime\.health_checks\.{field} must be <= {limit} seconds when trt_llm is configured",
+    ):
+        TrussConfig.model_validate(data)
+
+
+@pytest.mark.parametrize("threshold", [None, 1800])
+def test_health_check_limits_without_trt_llm(threshold):
+    config = TrussConfig(
+        runtime={
+            "health_checks": {
+                "stop_traffic_threshold_seconds": threshold,
+                "restart_threshold_seconds": threshold,
+            }
+        }
+    )
+    assert config.runtime.health_checks.stop_traffic_threshold_seconds == threshold
+    assert config.runtime.health_checks.restart_threshold_seconds == threshold
+
+
 def test_max_beam_width_check(trtllm_config):
     trtllm_config["trt_llm"]["build"]["max_beam_width"] = 2
     with pytest.raises(ValueError):
@@ -1145,9 +1322,17 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
+    expected = {
+        **trtllm_config,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
-        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose)
-        == trtllm_config
+        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose) == expected
     ) == expect_equal
 
 
@@ -1155,11 +1340,20 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
 def test_to_dict_trtllm_spec_dec(
     verbose, expect_equal, trtllm_spec_dec_config_lookahead_v1
 ):
+    expected = {
+        **trtllm_spec_dec_config_lookahead_v1,
+        "runtime": Runtime(
+            health_checks={
+                "stop_traffic_threshold_seconds": 30,
+                "restart_threshold_seconds": 60,
+            }
+        ).to_dict(verbose=False),
+    }
     assert (
         TrussConfig.model_validate(trtllm_spec_dec_config_lookahead_v1).to_dict(
             verbose=verbose
         )
-        == trtllm_spec_dec_config_lookahead_v1
+        == expected
     ) == expect_equal
 
 
@@ -2650,3 +2844,67 @@ class TestEgressRestrictions:
             config.runtime.egress_restrictions = EgressRestrictions(
                 ip_allow_list=["999.999.999.999/32"]
             )
+
+
+def _dockerfile_fields_config() -> dict:
+    return {
+        "base_image": {"image": "img:1", "python_executable_path": "/usr/bin/python3"},
+        "model_cache": [{"repo_id": "org/m", "revision": "main", "use_volume": False}],
+        "environment_variables": {"PORT": "8080", "HOSTNAME": "host"},
+        "build": {"secret_to_path_mapping": {"hf-token": "/secrets/hf"}},
+    }
+
+
+def test_dockerfile_rendered_fields_accept_normal_config():
+    TrussConfig.model_validate(_dockerfile_fields_config())
+
+
+def test_dockerfile_rendered_fields_reject_line_breaks():
+    setters = {
+        "data_dir": lambda c, v: c.update(data_dir=v),
+        "model_module_dir": lambda c, v: c.update(model_module_dir=v),
+        "bundled_packages_dir": lambda c, v: c.update(bundled_packages_dir=v),
+        "environment_variables.PORT": lambda c, v: c["environment_variables"].update(
+            PORT=v
+        ),
+        "environment_variables.HOSTNAME": lambda c, v: c[
+            "environment_variables"
+        ].update(HOSTNAME=v),
+        "base_image.image": lambda c, v: c["base_image"].update(image=v),
+        "base_image.python_executable_path": lambda c, v: c["base_image"].update(
+            python_executable_path="/usr/bin/" + v
+        ),
+        "model_cache[0].repo_id": lambda c, v: c["model_cache"][0].update(repo_id=v),
+        "model_cache[0].revision": lambda c, v: c["model_cache"][0].update(revision=v),
+    }
+    for field, set_value in setters.items():
+        for line_break in ("\n", "\r"):
+            config = _dockerfile_fields_config()
+            set_value(config, f"x{line_break}RUN echo injected")
+            with pytest.raises(
+                pydantic.ValidationError, match=f"{re.escape(field)} must not"
+            ):
+                TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_reject_line_breaks_in_hf_cache():
+    config = _dockerfile_fields_config()
+    config["hf_cache"] = config.pop("model_cache")
+    config["hf_cache"][0]["revision"] = "main\nRUN echo injected"
+
+    with pytest.raises(pydantic.ValidationError, match="line breaks"):
+        TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_reject_unsafe_secret_mount_paths():
+    # 0x85 and 0xA0 end a BuildKit flag word like ASCII whitespace does.
+    for unsafe in (" ", ",", '"', "\x85", "\xa0", "\n"):
+        config = _dockerfile_fields_config()
+        config["build"]["secret_to_path_mapping"]["hf-token"] = f"/secrets/a{unsafe}b"
+        with pytest.raises(pydantic.ValidationError, match="printable ASCII"):
+            TrussConfig.model_validate(config)
+
+
+def test_dockerfile_rendered_fields_checked_for_python_constructed_config():
+    with pytest.raises(pydantic.ValidationError, match="base_image.image"):
+        TrussConfig(base_image=BaseImage(image="img:1\nRUN echo injected"))

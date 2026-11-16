@@ -98,6 +98,8 @@ class Accelerator(str, enum.Enum):
     RTX_PRO_6000 = "RTX_PRO_6000"
     B300 = "B300"
     GB300 = "GB300"
+    TPU_V6E = "TPU_V6E"
+    TPU_V7 = "TPU_V7"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -864,11 +866,11 @@ class HealthChecks(custom_types.ConfigModel):
     )
     restart_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which an unhealthy instance is restarted. With trt_llm, defaults to 60 and must be <= 60. Otherwise defaults to platform-determined value when not set.",
     )
     stop_traffic_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
-        description="The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+        description="The time in seconds after which traffic is stopped to an unhealthy instance. With trt_llm, defaults to 30 and must be <= 30. Otherwise defaults to platform-determined value when not set.",
     )
     startup_threshold_seconds: Optional[int] = pydantic.Field(
         default=None,
@@ -1244,8 +1246,7 @@ class Resources(custom_types.ConfigModel):
 
     @property
     def is_tpu(self) -> bool:
-        # Concrete TPU accelerator types are introduced separately.
-        return self.accelerator.accelerator in []
+        return self.accelerator.accelerator in [Accelerator.TPU_V6E, Accelerator.TPU_V7]
 
     @property
     def memory_in_bytes(self) -> int:
@@ -1556,6 +1557,76 @@ def to_dotted_python_version(truss_python_version: str) -> str:
     e.g. py39 to 3.9
     """
     return f"{truss_python_version[2]}.{truss_python_version[3:]}"
+
+
+_DOCKERFILE_LINE_BREAK_RE = re.compile(r"[\n\r]")
+_DOCKERFILE_LEADING_FLAG_RE = re.compile(r"^\s*-")
+# BuildKit splits RUN flag words per byte with unicode.IsSpace, so the UTF-8 bytes
+# 0x85 and 0xA0 also end a flag; only printable ASCII is safe inside a --mount spec.
+_DOCKERFILE_MOUNT_OPTION_UNSAFE_RE = re.compile(r'[^\x21-\x7e]|[,"]')
+
+
+def validate_dockerfile_rendered_fields(config: Mapping[str, Any]) -> None:
+    """Raise ValueError if a config value would inject syntax into the generated Dockerfile."""
+    line_values: list[tuple[str, Any]] = [
+        ("python_version", config.get("python_version")),
+        ("data_dir", config.get("data_dir")),
+        ("model_module_dir", config.get("model_module_dir")),
+        ("bundled_packages_dir", config.get("bundled_packages_dir")),
+    ]
+
+    environment_variables = config.get("environment_variables")
+    if isinstance(environment_variables, Mapping):
+        for key in ("PORT", "HOSTNAME"):
+            line_values.append(
+                (f"environment_variables.{key}", environment_variables.get(key))
+            )
+
+    base_image = config.get("base_image")
+    if isinstance(base_image, Mapping):
+        line_values.append(("base_image.image", base_image.get("image")))
+        python_executable_path = base_image.get("python_executable_path")
+        line_values.append(
+            ("base_image.python_executable_path", python_executable_path)
+        )
+        if python_executable_path is not None and _DOCKERFILE_LEADING_FLAG_RE.match(
+            str(python_executable_path)
+        ):
+            raise ValueError(
+                "base_image.python_executable_path must not start with '-'."
+            )
+
+    # Truss falls back to the deprecated hf_cache key, so both are rendered.
+    for cache_key in ("model_cache", "hf_cache"):
+        cache_entries = config.get(cache_key)
+        if isinstance(cache_entries, list):
+            for i, entry in enumerate(cache_entries):
+                if isinstance(entry, Mapping):
+                    line_values.append(
+                        (f"{cache_key}[{i}].repo_id", entry.get("repo_id"))
+                    )
+                    line_values.append(
+                        (f"{cache_key}[{i}].revision", entry.get("revision"))
+                    )
+
+    for field, value in line_values:
+        if value is not None and _DOCKERFILE_LINE_BREAK_RE.search(str(value)):
+            raise ValueError(f"{field} must not contain line breaks.")
+
+    build = config.get("build")
+    secret_to_path_mapping = (
+        build.get("secret_to_path_mapping") if isinstance(build, Mapping) else None
+    )
+    if isinstance(secret_to_path_mapping, Mapping):
+        for secret_name, path in secret_to_path_mapping.items():
+            for value in (secret_name, path):
+                if value is not None and _DOCKERFILE_MOUNT_OPTION_UNSAFE_RE.search(
+                    str(value)
+                ):
+                    raise ValueError(
+                        f"build.secret_to_path_mapping entry {str(secret_name)!r} must use only "
+                        "printable ASCII without spaces, commas or double quotes."
+                    )
 
 
 class TrussConfig(custom_types.ConfigModel):
@@ -1870,12 +1941,20 @@ class TrussConfig(custom_types.ConfigModel):
         return self
 
     @pydantic.model_validator(mode="after")
+    def _validate_dockerfile_rendered_fields(self) -> "TrussConfig":
+        # Dump so Python-constructed nested models are checked like YAML dicts.
+        validate_dockerfile_rendered_fields(self.model_dump())
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
         if self.resources.is_tpu:
             if self.trt_llm is not None:
                 raise ValueError(
                     "TPU accelerators do not support NVIDIA inference engines (trt_llm)."
                 )
+            # BEI resolves its own image from the platform
+            # (bei_v3_image-{backend}), so it does not need a user base_image.
             if self.bei is None and (not self.base_image or not self.base_image.image):
                 raise ValueError(
                     "TPU accelerators require a TPU-compatible custom base_image."
@@ -2007,6 +2086,26 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_trt_llm_health_checks(self) -> "TrussConfig":
+        if self.trt_llm is None:
+            return self
+
+        health_checks = self.runtime.health_checks
+        for field, limit in (
+            ("stop_traffic_threshold_seconds", 30),
+            ("restart_threshold_seconds", 60),
+        ):
+            threshold = getattr(health_checks, field)
+            if threshold is None:
+                setattr(health_checks, field, limit)
+            elif threshold > limit:
+                raise ValueError(
+                    f"runtime.health_checks.{field} must be <= {limit} seconds "
+                    "when trt_llm is configured."
+                )
+        return self
 
     @pydantic.field_serializer("trt_llm")
     def _serialize_trt_llm(

@@ -1147,7 +1147,7 @@ def capacity():
 @common.common_options()
 @click.option("--remote", type=str, required=False, help="Name of the remote to use")
 def view_capacity(remote: Optional[str]):
-    """Show GPU capacity limits and current usage for the organization."""
+    """Show GPU quotas and current usage for the organization."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
@@ -1173,12 +1173,12 @@ def view_capacity(remote: Optional[str]):
     "team_capacity",
     type=int,
     required=True,
-    help="Max concurrent GPUs of this type the team may use. Org-admin only.",
+    help="GPU quota for this type: the most GPUs the team's on-demand jobs can use at once. Org-admin only.",
 )
 def update_capacity(
     remote: Optional[str], team: str, gpu_type: str, team_capacity: int
 ):
-    """Update a team's GPU capacity limit. Org-admin only."""
+    """Update a team's GPU quota. Org-admin only."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider: BasetenRemote = cast(
@@ -1198,7 +1198,7 @@ def update_capacity(
         sys.exit(1)
     console.print(
         f"Updated {updated_capacity['team_name']}'s {updated_capacity['gpu_type']} "
-        f"capacity to {updated_capacity['limit']}.",
+        f"GPU quota to {updated_capacity['limit']}.",
         style="green",
     )
 

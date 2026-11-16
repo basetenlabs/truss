@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+import yaml
 from python_on_whales.exceptions import DockerException
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
@@ -31,6 +32,24 @@ from truss.truss_handle.truss_handle import (
     wait_for_truss,
 )
 from truss.util.docker import Docker, DockerStates
+
+
+@pytest.mark.parametrize("operation", ["docker_run", "run_python_script"])
+def test_tpu_local_execution_rejected_before_docker(custom_model_truss_dir, operation):
+    config_path = custom_model_truss_dir / "config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["resources"] = {"accelerator": "TPU_V6E:8"}
+    config["base_image"] = {"image": "example.com/tpu-runtime:preview"}
+    config_path.write_text(yaml.safe_dump(config))
+    handle = TrussHandle(custom_model_truss_dir)
+
+    with patch.object(handle, "build_serving_docker_image") as build:
+        with pytest.raises(ValueError, match="Local TPU execution is not supported"):
+            if operation == "docker_run":
+                handle.docker_run()
+            else:
+                handle.run_python_script(Path("script.py"))
+        build.assert_not_called()
 
 
 def test_spec(custom_model_truss_dir_with_pre_and_post):

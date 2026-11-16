@@ -19,7 +19,10 @@ concurrency:
 jobs:
   detect-version-changed:
     uses: ./.github/workflows/_detect_version_changed_shared.yml
-    secrets: inherit
+    permissions:
+      contents: read
+    secrets:
+      BASETENBOT_GITHUB_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
 
   build-truss-server-base-images-if-needed:
     needs: detect-version-changed
@@ -30,7 +33,13 @@ jobs:
     with:
       new_base_image_version: ${{ needs.detect-version-changed.outputs.new_base_image_version }}
       build_base_images: ${{ needs.detect-version-changed.outputs.build_base_images }}
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      BUILD_PLATFORM_API_BASE_URL: ${{ secrets.BUILD_PLATFORM_API_BASE_URL }}
+      BUILD_PLATFORM_TAILSCALE_CLIENT_ID: ${{ secrets.BUILD_PLATFORM_TAILSCALE_CLIENT_ID }}
+      BUILD_PLATFORM_TAILSCALE_AUDIENCE: ${{ secrets.BUILD_PLATFORM_TAILSCALE_AUDIENCE }}
+      BUILD_PLATFORM_TAILSCALE_TAGS: ${{ secrets.BUILD_PLATFORM_TAILSCALE_TAGS }}
 
   all-tests:
     needs: [detect-version-changed, build-truss-server-base-images-if-needed]
@@ -68,6 +77,7 @@ jobs:
     if: ${{ !failure() && !cancelled() && ((needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true') || github.event.inputs.force_pypi == 'true') }}
     runs-on: ubuntu-22.04
     permissions:
+      contents: read
       # this permission is mandatory for Trusted Publishing
       id-token: write
     steps:

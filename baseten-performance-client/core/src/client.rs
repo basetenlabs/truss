@@ -409,7 +409,8 @@ impl PerformanceClientCore {
 
             // Only clone what's needed inside the async block
             let client_wrapper = self.client_wrapper.clone();
-            let api_key = self.api_key.clone();
+            // Per-call key: the preference override if set, otherwise the client key.
+            let api_key = config_clone.api_key_primary.clone();
             let semaphore = Arc::clone(&semaphore);
 
             // Create payload and URL outside async block
@@ -816,7 +817,8 @@ impl PerformanceClientCore {
             // Clone config for this iteration
             let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
-            let api_key = self.api_key.clone();
+            // Per-call key: the preference override if set, otherwise the client key.
+            let api_key = config_clone.api_key_primary.clone();
             let request_suffix = normalize_request_suffix(&url_path);
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;

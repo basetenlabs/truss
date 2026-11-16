@@ -382,6 +382,11 @@ async fn test_msgpack_handler(
     request_headers: AxumHeaderMap,
     Json(request): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    state
+        .request_headers
+        .lock()
+        .await
+        .push(request_headers.clone());
     state.request_count.fetch_add(1, Ordering::SeqCst);
     let accept = request_headers
         .get("accept")
@@ -1112,5 +1117,55 @@ fn test_trace_context_rejects_conflicting_or_unsafe_headers() {
             "test-key".into(),
         )
         .is_err());
+    }
+}
+
+#[tokio::test]
+async fn test_primary_api_key_override_is_sent_as_bearer() {
+    for (preference, expected) in [
+        (single_request_preference(), "Bearer client-key"),
+        (
+            single_request_preference().with_primary_api_key_override("override-key".into()),
+            "Bearer override-key",
+        ),
+    ] {
+        let server = start_test_server("api-key-override", Duration::ZERO, 0, true).await;
+        let client = PerformanceClientCore::new(
+            server.base_url.clone(),
+            Some("client-key".into()),
+            1,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // Typed path (embed, rerank and classify share it).
+        client
+            .process_embeddings_requests(
+                vec!["hello".into()],
+                "test-model".into(),
+                None,
+                None,
+                None,
+                &preference,
+            )
+            .await
+            .unwrap();
+        // Generic batch_post path.
+        client
+            .process_batch_post_requests(
+                "/batch-msgpack".to_string(),
+                vec![json!({"value": 42})],
+                &preference,
+                HttpMethod::POST,
+            )
+            .await
+            .unwrap();
+
+        let headers = server.request_headers.lock().await;
+        assert_eq!(headers.len(), 2);
+        for request in headers.iter() {
+            assert_eq!(request["authorization"].to_str().unwrap(), expected);
+        }
     }
 }
