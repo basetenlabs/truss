@@ -9,6 +9,7 @@ from truss_train.definitions import (
     AWSIAMDockerAuth,
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
+    BDNConfig,
     CacheConfig,
     CheckpointList,
     Compute,
@@ -25,6 +26,53 @@ from truss_train.definitions import (
     TrainingJob,
     TrainingProject,
 )
+
+
+@pytest.mark.parametrize("mode", ["eager", "lazy"])
+def test_bdn_mount_serialization(mode):
+    job = TrainingJob(
+        image=Image(base_image="python:3.12"),
+        bdn=BDNConfig(
+            mounts=[
+                truss_config.BDNVolumeMount(
+                    source="bdn:datasets/plaid:prod",
+                    path="/data/train",
+                    fetch_mode=mode,
+                    include=["*.parquet"],
+                )
+            ]
+        ),
+    )
+    payload = job.model_dump()["bdn"]
+    assert payload["mounts"][0]["fetch_mode"] == mode
+    assert payload["mounts"][0]["include"] == ["*.parquet"]
+    assert TrainingJob.model_validate(job.model_dump()).bdn == job.bdn
+
+
+def test_training_without_bdn_preserves_legacy_payload():
+    assert "bdn" not in TrainingJob(image=Image(base_image="python:3.12")).model_dump()
+
+
+@pytest.mark.parametrize("mode", ["resident", "typo"])
+def test_bdn_rejects_unknown_fetch_mode(mode):
+    with pytest.raises(ValidationError):
+        truss_config.BDNVolumeMount(
+            source="bdn:datasets/plaid", path="/data/train", fetch_mode=mode
+        )
+
+
+def test_training_bdn_rejects_overlapping_mounts():
+    with pytest.raises(ValidationError, match="overlap"):
+        BDNConfig(
+            mounts=[
+                truss_config.BDNVolumeMount(
+                    source="bdn:datasets/plaid", path="/data/train"
+                ),
+                truss_config.BDNVolumeMount(
+                    source="bdn:datasets/plaid", path="/data/train/subset"
+                ),
+            ]
+        )
 
 
 @pytest.mark.parametrize(

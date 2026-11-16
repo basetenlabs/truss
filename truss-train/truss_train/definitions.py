@@ -306,6 +306,32 @@ class Workspace(custom_types.SafeModelNoExtra):
     exclude_dirs: List[str] = []
 
 
+class BDNConfig(custom_types.SafeModelNoExtra):
+    """Existing read-only BDN datasets mounted into every training worker.
+
+    References are pinned at submission and preserved across retries and recreation.
+    Sync the volume before submitting the job. Access grants and hotload are not
+    part of training's dataset mount API.
+    """
+
+    mounts: List[truss_config.BDNVolumeMount] = pydantic.Field(
+        default_factory=list, max_length=32
+    )
+
+    @model_validator(mode="after")
+    def _validate_mount_paths(self) -> "BDNConfig":
+        paths = [mount.path for mount in self.mounts]
+        for index, path in enumerate(paths):
+            for other in paths[:index]:
+                if (
+                    path == other
+                    or path.startswith(other + "/")
+                    or other.startswith(path + "/")
+                ):
+                    raise ValueError("BDN volume mount paths must not overlap")
+        return self
+
+
 class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
@@ -317,6 +343,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
     enable_baseten_workdir: bool = True
+    bdn: Optional[BDNConfig] = None
 
     @model_validator(mode="after")
     def _validate_weights_auth_method(self) -> "TrainingJob":
@@ -342,6 +369,8 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
         data["compute"] = self.compute.model_dump()
+        if self.bdn is None:
+            data.pop("bdn", None)
         return data
 
 

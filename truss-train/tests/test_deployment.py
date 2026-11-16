@@ -8,6 +8,7 @@ from truss.remote.baseten import custom_types as b10_types
 from truss_train import deployment
 from truss_train.definitions import (
     AvailabilityModel,
+    BDNConfig,
     CacheConfig,
     Compute,
     Image,
@@ -66,6 +67,15 @@ def test_prepare_push(
         pathlib.Path(__file__).parent,
         TrainingJob(
             image=Image(base_image="hello-world"),
+            bdn=BDNConfig(
+                mounts=[
+                    truss_config.BDNVolumeMount(
+                        source="bdn:datasets/plaid:prod",
+                        path="/data/train",
+                        fetch_mode="lazy",
+                    )
+                ]
+            ),
             compute=compute,
             runtime=Runtime(
                 cache_config=CacheConfig(
@@ -76,6 +86,8 @@ def test_prepare_push(
         truss_user_env=truss_user_env,
     )
     assert len(prepared_job.runtime_artifacts) == 1
+    assert prepared_job.model_dump()["bdn"]["mounts"][0]["fetch_mode"] == "lazy"
+    assert prepared_job.bdn.mounts[0].source == "bdn:datasets/plaid:prod"
     assert prepared_job.runtime_artifacts[0].s3_key == "test-s3-key"
     assert prepared_job.runtime_artifacts[0].s3_bucket == "test-s3-bucket"
     if compute.accelerator:

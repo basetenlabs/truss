@@ -708,6 +708,11 @@ class BDNVolumeMount(custom_types.ConfigModel):
                 )
         return patterns
 
+    fetch_mode: Literal["eager", "lazy"] = pydantic.Field(
+        default="eager",
+        description="Fetch the volume in the background (eager), or on demand with read-ahead (lazy).",
+    )
+
     @pydantic.field_validator("source")
     @classmethod
     def _validate_source(cls, value: str) -> str:
