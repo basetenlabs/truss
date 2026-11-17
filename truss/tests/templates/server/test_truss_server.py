@@ -112,6 +112,24 @@ def _make_connected_request(request_id=None):
     return mock_request
 
 
+@pytest.mark.asyncio
+async def test_load_failure_shutdown_marks_inference_server_failed(
+    app_path, tmp_path, monkeypatch
+):
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        server_module = importlib.import_module("truss_server")
+        crash_file = tmp_path / "inference_server_crashed.txt"
+        monkeypatch.setattr(server_module, "INFERENCE_SERVER_FAILED_FILE", crash_file)
+        server = server_module.TrussServer(8080, app_path / "config.yaml")
+        server._model = MagicMock(ready=False, load_failed=True)
+        server._server = MagicMock(should_exit=False)
+
+        await server._shutdown_if_load_fails()
+
+        assert crash_file.exists()
+        assert server._server.should_exit
+
+
 def test_prediction_health_check_preserves_startup_logging(app_path):
     with _clear_truss_server_modules(), _change_directory(app_path):
         truss_server_module = importlib.import_module("truss_server")

@@ -465,6 +465,7 @@ class TrussServer:
             if self._model.load_failed:
                 assert self._server is not None
                 logging.info("Trying shut down after failed model load.")
+                INFERENCE_SERVER_FAILED_FILE.touch()
                 self._server.should_exit = True
                 return
 

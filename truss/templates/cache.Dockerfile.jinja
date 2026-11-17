@@ -5,7 +5,7 @@ RUN mkdir -p ${APP_HOME}/model_cache
 WORKDIR ${APP_HOME}
 
 {% if hf_access_token %}
-ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
+ENV HUGGING_FACE_HUB_TOKEN={{ hf_access_token | dockerfile_env_value }}
 {% endif %}
 
 {%- if cache_mount_id %}
@@ -26,6 +26,6 @@ COPY ./{{credential}} ${APP_HOME}/{{credential}}
 
 {% for repo, hf_dir in models.items() %}
         {% for file in hf_dir.files %}
-{{ "RUN --mount=type=secret,id=" + hf_access_token_file_name + ",dst=/etc/secrets/" + hf_access_token_file_name if use_hf_secret else "RUN" }} python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision %}{{hf_dir.revision}}{% endif %}
+{{ "RUN --mount=type=secret,id=" + hf_access_token_file_name + ",dst=/etc/secrets/" + hf_access_token_file_name if use_hf_secret else "RUN" }} python3 /cache_warmer.py {{ file | dockerfile_shell_value }} {{ repo | dockerfile_shell_value }} {% if hf_dir.revision %}{{ hf_dir.revision | dockerfile_shell_value }}{% endif %}
         {% endfor %}
 {% endfor %}

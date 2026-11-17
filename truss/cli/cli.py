@@ -46,7 +46,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.user_agent import set_client_name
-from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory, write_trussrc
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
@@ -323,8 +323,7 @@ def configure():
     edited_content = click.edit(original_content)
 
     if edited_content is not None and edited_content != original_content:
-        USER_TRUSSRC_PATH.parent.mkdir(parents=True, exist_ok=True)
-        USER_TRUSSRC_PATH.write_text(edited_content)
+        write_trussrc(edited_content)
         click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
     else:
         click.echo("No changes made.")
@@ -1065,9 +1064,11 @@ def push(
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    exc = RuntimeError(
-                        f"Deployment failed with status {deployment_status}."
-                    )
+                    message = f"Deployment failed with status {deployment_status}."
+                    # Older backends don't return failure_reason.
+                    if failure_reason := deployment.get("failure_reason"):
+                        message += f" Reason: {failure_reason}"
+                    exc = RuntimeError(message)
                     setattr(exc, "json_data", {"deployment": deployment})
                     raise exc
 
@@ -1331,6 +1332,13 @@ def download(
                 f"Directory is not empty: {out_path}. Use --overwrite to write into it."
             )
 
+    # Extraction filters exist in all 3.12+ and were backported to 3.9.17,
+    # 3.10.12 and 3.11.4.
+    if out_dir and not hasattr(tarfile, "data_filter"):
+        raise click.ClickException(
+            "Extracting requires a newer Python. Please upgrade Python."
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
@@ -1353,11 +1361,7 @@ def download(
         else:
             out_path.mkdir(exist_ok=True)
             with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
-                # filter="data" prevents path traversal; only available in 3.12+
-                if sys.version_info >= (3, 12):
-                    tar.extractall(path=out_path, filter="data")
-                else:
-                    tar.extractall(path=out_path)
+                tar.extractall(path=out_path, filter="data")
             console.print(f"Extracted to {out_path}")
 
 

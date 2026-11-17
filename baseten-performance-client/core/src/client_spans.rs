@@ -2,7 +2,9 @@
 use crate::{split_policy::RequestProcessingConfig, ClientError};
 use opentelemetry::{
     propagation::TextMapPropagator,
-    trace::{Span as _, SpanContext, SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
+    trace::{
+        Link, Span as _, SpanContext, SpanKind, Status, TraceContextExt, Tracer, TracerProvider,
+    },
     Context, TraceFlags,
 };
 use opentelemetry_http::{HttpClient, HttpError};
@@ -17,7 +19,18 @@ use std::{collections::HashMap, sync::OnceLock, time::Duration};
 
 const ENDPOINT: &str = "BASETEN_PERFORMANCE_CLIENT_OTLP_ENDPOINT";
 const HEADERS: &str = "BASETEN_PERFORMANCE_CLIENT_OTLP_HEADERS";
-static TRACER: OnceLock<Option<SdkTracer>> = OnceLock::new();
+const CALLER_CONTEXT: &str = "BASETEN_PERFORMANCE_CLIENT_OTLP_CALLER_CONTEXT";
+static TRACER: OnceLock<Option<(SdkTracer, CallerContext)>> = OnceLock::new();
+
+/// How a supplied sampled caller context relates to the client span.
+#[derive(Clone, Copy)]
+enum CallerContext {
+    /// The client span continues the caller's trace as its child.
+    Parent,
+    /// The client span roots a new trace that links to the caller's span, for
+    /// collectors that never receive the caller's own spans.
+    Link,
+}
 
 #[derive(Debug)]
 struct CollectorTransport {
@@ -43,11 +56,16 @@ impl HttpClient for CollectorTransport {
     }
 }
 
-fn init_tracer() -> Result<Option<SdkTracer>, String> {
+fn init_tracer() -> Result<Option<(SdkTracer, CallerContext)>, String> {
     let endpoint = std::env::var(ENDPOINT).unwrap_or_default();
     if endpoint.trim().is_empty() {
         return Ok(None);
     }
+    let caller_context = match std::env::var(CALLER_CONTEXT).unwrap_or_default().trim() {
+        "" | "parent" => CallerContext::Parent,
+        "link" => CallerContext::Link,
+        _ => return Err(format!("{CALLER_CONTEXT} must be parent or link")),
+    };
     let mut url =
         reqwest::Url::parse(endpoint.trim()).map_err(|_| format!("invalid {ENDPOINT}"))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
@@ -109,7 +127,10 @@ fn init_tracer() -> Result<Option<SdkTracer>, String> {
                         .build(),
                 )
                 .build();
-            Ok(Some(provider.tracer("baseten_performance_client")))
+            Ok(Some((
+                provider.tracer("baseten_performance_client"),
+                caller_context,
+            )))
         })
         .map_err(|e| e.to_string())?
         .join()
@@ -120,7 +141,7 @@ pub(crate) fn start_call_span(
     config: &mut RequestProcessingConfig,
     name: &'static str,
 ) -> Result<Option<Span>, ClientError> {
-    let Some(tracer) = TRACER.get_or_init(|| match init_tracer() {
+    let Some((tracer, caller_context)) = TRACER.get_or_init(|| match init_tracer() {
         Ok(tracer) => tracer,
         Err(error) => {
             tracing::warn!(%error, "Performance client tracing disabled");
@@ -155,6 +176,7 @@ pub(crate) fn start_call_span(
         .unwrap_or_default();
     let propagator = TraceContextPropagator::new();
     let mut parent = propagator.extract_with_context(&Context::new(), &carrier);
+    let mut links = Vec::new();
     if carrier.contains_key("traceparent") {
         let context = parent.span().span_context().clone();
         if !context.is_valid() {
@@ -165,17 +187,25 @@ pub(crate) fn start_call_span(
         if !context.is_sampled() {
             return Ok(None);
         }
-        parent = Context::new().with_remote_span_context(SpanContext::new(
+        let context = SpanContext::new(
             context.trace_id(),
             context.span_id(),
             TraceFlags::new(flags & 3),
             true,
             context.trace_state().clone(),
-        ));
+        );
+        parent = match caller_context {
+            CallerContext::Parent => Context::new().with_remote_span_context(context),
+            CallerContext::Link => {
+                links.push(Link::with_context(context));
+                Context::new()
+            }
+        };
     }
     let mut span = tracer
         .span_builder(name)
         .with_kind(SpanKind::Client)
+        .with_links(links)
         .start_with_context(tracer, &parent);
     headers.retain(|key, _| {
         !key.eq_ignore_ascii_case("traceparent") && !key.eq_ignore_ascii_case("tracestate")
@@ -190,11 +220,14 @@ pub(crate) fn start_call_span(
             context.trace_flags(),
         ),
     );
-    if let Some(state) = carrier
-        .remove("tracestate")
-        .filter(|state| !state.is_empty())
-    {
-        headers.insert("tracestate".into(), state);
+    // tracestate belongs to the caller's trace, so a linked root starts without it.
+    if let CallerContext::Parent = caller_context {
+        if let Some(state) = carrier
+            .remove("tracestate")
+            .filter(|state| !state.is_empty())
+        {
+            headers.insert("tracestate".into(), state);
+        }
     }
     // SDK Drop exports on early return or cancellation; successful calls overwrite this status.
     span.set_status(Status::error("call failed or was cancelled"));

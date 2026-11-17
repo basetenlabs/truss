@@ -103,8 +103,8 @@ test('HttpClientWrapper from one client can be used in another', (t) => {
   t.truthy(client2, 'Second client should be initialized with wrapper from first client')
 })
 
-test('explicit trace context reaches the server and can be disabled', async (t) => {
-  const parent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+// Runs run(client) against a local server and returns each request's headers.
+async function recordRequestHeaders(t, run) {
   const seen = []
   const server = createServer((req, res) => {
     seen.push(req.headers)
@@ -114,14 +114,41 @@ test('explicit trace context reaches the server and can be disabled', async (t) 
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   t.teardown(() => server.close())
-  const client = new PerformanceClient(`http://127.0.0.1:${server.address().port}`, 'test-key')
-  const preference = new RequestProcessingPreference()
-  preference.traceContext = {traceparent: parent, tracestate: 'vendor=value'}
-  await client.batchPost('/echo', [{}], preference)
-  preference.traceContext = undefined
-  await client.batchPost('/echo', [{}], preference)
+  await run(new PerformanceClient(`http://127.0.0.1:${server.address().port}`, 'test-key'))
+  return seen
+}
+
+test('explicit trace context reaches the server and can be disabled', async (t) => {
+  const parent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+  const seen = await recordRequestHeaders(t, async (client) => {
+    const preference = new RequestProcessingPreference()
+    preference.traceContext = {traceparent: parent, tracestate: 'vendor=value'}
+    await client.batchPost('/echo', [{}], preference)
+    preference.traceContext = undefined
+    await client.batchPost('/echo', [{}], preference)
+  })
   t.is(seen[0].traceparent, parent)
   t.is(seen[0].tracestate, 'vendor=value')
   t.is(seen[1].traceparent, undefined)
   t.is(seen[1].tracestate, undefined)
+})
+
+test('sendBatchKey sends the call request ID as the batch key on every request', async (t) => {
+  const preference = new RequestProcessingPreference()
+  t.false(preference.sendBatchKey)
+  preference.sendBatchKey = true
+  t.true(preference.sendBatchKey)
+  const seen = await recordRequestHeaders(t, async (client) => {
+    await client.batchPost('/echo', [{}, {}, {}], preference)
+    await client.batchPost('/echo', [{}])
+  })
+  const keyed = seen.slice(0, 3)
+  const keys = new Set(keyed.map((headers) => headers['x-baseten-batch-key']))
+  t.is(keys.size, 1)
+  const [key] = keys
+  t.truthy(key)
+  for (const headers of keyed) {
+    t.true(headers['x-baseten-customer-request-id'].startsWith(`${key}-`))
+  }
+  t.is(seen[3]['x-baseten-batch-key'], undefined)
 })

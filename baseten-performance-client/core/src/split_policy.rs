@@ -37,6 +37,7 @@ pub struct RequestProcessingPreference {
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
     pub non_retryable_status_codes: Option<HashSet<u16>>,
     pub trace_context: Option<TraceContext>,
+    pub send_batch_key: Option<bool>,
 }
 
 impl RequestProcessingPreference {
@@ -66,6 +67,7 @@ impl RequestProcessingPreference {
             extra_headers: self.extra_headers.clone(),
             non_retryable_status_codes: self.non_retryable_status_codes.clone(),
             trace_context: self.trace_context.clone(),
+            send_batch_key: self.send_batch_key.or(Some(false)),
         }
     }
 }
@@ -150,6 +152,13 @@ impl RequestProcessingPreference {
 
     pub fn with_trace_context(mut self, context: TraceContext) -> Self {
         self.trace_context = Some(context);
+        self
+    }
+
+    /// Builder pattern: send the call's request ID as `x-baseten-batch-key` on every request,
+    /// so a deployment running active-active across clusters serves the whole call from one.
+    pub fn with_send_batch_key(mut self, value: bool) -> Self {
+        self.send_batch_key = Some(value);
         self
     }
 
@@ -488,6 +497,21 @@ impl RequestProcessingConfig {
                     headers.insert(name.into(), value.clone());
                 }
             }
+        }
+        if pref.send_batch_key.unwrap() {
+            let headers = extra_headers.get_or_insert_with(HashMap::new);
+            if headers
+                .keys()
+                .any(|key| key.eq_ignore_ascii_case(BATCH_KEY_HEADER_NAME))
+            {
+                return Err(ClientError::InvalidParameter(format!(
+                    "send_batch_key cannot be combined with {BATCH_KEY_HEADER_NAME} in extra_headers"
+                )));
+            }
+            headers.insert(
+                BATCH_KEY_HEADER_NAME.into(),
+                customer_request_id.to_string(),
+            );
         }
 
         Ok(RequestProcessingConfig {
@@ -1095,6 +1119,7 @@ mod tests {
         assert_eq!(pref.timeout_s, None);
         assert!(pref.max_chars_per_request.is_none());
         assert_eq!(pref.pin_initial_endpoint_once, None);
+        assert_eq!(pref.send_batch_key, None);
         assert!(pref.hedge_delay.is_none());
         assert!(pref.total_timeout_s.is_none());
         assert_eq!(pref.hedge_budget_pct, None);
@@ -1116,6 +1141,7 @@ mod tests {
             Some(DEFAULT_MAX_CHARS_PER_REQUEST)
         );
         assert_eq!(pref_with_defaults.pin_initial_endpoint_once, Some(false));
+        assert_eq!(pref_with_defaults.send_batch_key, Some(false));
         assert!(pref_with_defaults.hedge_delay.is_none());
         assert!(pref_with_defaults.total_timeout_s.is_none());
         assert_eq!(
@@ -1134,6 +1160,7 @@ mod tests {
             .with_max_concurrent_requests(64)
             .with_batch_size(32)
             .with_pin_initial_endpoint_once(true)
+            .with_send_batch_key(true)
             .with_timeout_s(30.0)
             .with_hedge_delay(0.5)
             .with_total_timeout_s(120.0)
@@ -1143,11 +1170,33 @@ mod tests {
         assert_eq!(pref.max_concurrent_requests, Some(64));
         assert_eq!(pref.batch_size, Some(32));
         assert_eq!(pref.pin_initial_endpoint_once, Some(true));
+        assert_eq!(pref.send_batch_key, Some(true));
         assert_eq!(pref.timeout_s, Some(30.0));
         assert_eq!(pref.hedge_delay, Some(0.5));
         assert_eq!(pref.total_timeout_s, Some(120.0));
         assert_eq!(pref.hedge_budget_pct, Some(0.15));
         assert_eq!(pref.retry_budget_pct, Some(0.08));
+    }
+
+    #[test]
+    fn test_send_batch_key_conflicts_with_explicit_header() {
+        let pref = RequestProcessingPreference::new()
+            .with_send_batch_key(true)
+            .with_extra_headers(HashMap::from([(
+                "X-Baseten-Batch-Key".to_string(),
+                "caller-key".to_string(),
+            )]));
+        let err = pref
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                1,
+                "test_api_key".to_string(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(&err, ClientError::InvalidParameter(msg) if msg.contains("send_batch_key")),
+            "got {err:?}"
+        );
     }
 
     #[test]

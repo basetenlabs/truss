@@ -110,7 +110,10 @@ RUN {{ python_exec_path }} -c "import sys; \
 {%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
 {%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
 RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
-    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|{{ apt_mirror_url }}|g' {{ ubuntu_sources_list_file }}; \
+    sed -i.bak \
+        -e 's|http://archive\.ubuntu\.com/ubuntu/*|{{ apt_mirror_url }}|g' \
+        -e 's|http://security\.ubuntu\.com/ubuntu/*|https://security.ubuntu.com/ubuntu/|g' \
+        {{ ubuntu_sources_list_file }}; \
 fi
 {%- endfor %}
 

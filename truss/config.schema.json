@@ -167,6 +167,96 @@
       "title": "BDNVolumeMount",
       "type": "object"
     },
+    "BEIConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "backend": {
+          "enum": [
+            "nvidia",
+            "tpu"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "version_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Override"
+        },
+        "configuration": {
+          "items": {
+            "$ref": "#/$defs/BEIModelConfiguration"
+          },
+          "minItems": 1,
+          "title": "Configuration",
+          "type": "array"
+        }
+      },
+      "required": [
+        "backend",
+        "configuration"
+      ],
+      "title": "BEIConfiguration",
+      "type": "object"
+    },
+    "BEIModelConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "checkpoint": {
+          "description": "Hugging Face repository to download through weights, or an absolute path to manually mounted weights.",
+          "minLength": 1,
+          "title": "Checkpoint",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "served_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Served Model Name"
+        },
+        "quantization": {
+          "default": "none",
+          "enum": [
+            "none",
+            "fp8",
+            "mxfp8",
+            "nvfp4"
+          ],
+          "title": "Quantization",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "title": "BEIModelConfiguration",
+      "type": "object"
+    },
     "BISLLM": {
       "additionalProperties": true,
       "description": "Configuration options for BIS LLM deployments.",
@@ -519,7 +609,7 @@
           "title": "Start Command"
         },
         "server_port": {
-          "description": "The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used.",
+          "description": "The port where the server runs. Port 8080 is reserved when Truss installs its internal reverse proxy; no_build deployments can use 8080.",
           "title": "Server Port",
           "type": "integer"
         },
@@ -783,7 +873,7 @@
             }
           ],
           "default": null,
-          "description": "The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+          "description": "The time in seconds after which an unhealthy instance is restarted. With trt_llm, defaults to 60 and must be <= 60. Otherwise defaults to platform-determined value when not set.",
           "title": "Restart Threshold Seconds"
         },
         "stop_traffic_threshold_seconds": {
@@ -796,7 +886,7 @@
             }
           ],
           "default": null,
-          "description": "The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+          "description": "The time in seconds after which traffic is stopped to an unhealthy instance. With trt_llm, defaults to 30 and must be <= 30. Otherwise defaults to platform-determined value when not set.",
           "title": "Stop Traffic Threshold Seconds"
         },
         "startup_threshold_seconds": {
@@ -1059,7 +1149,7 @@
         },
         "accelerator": {
           "$ref": "#/$defs/AcceleratorSpec",
-          "description": "The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+          "description": "The accelerator type for your instance. To request multiple accelerators, use the ':' operator (e.g. L4:4).",
           "examples": [
             "A100",
             "T4:2",
@@ -2157,6 +2247,19 @@
           "default": null,
           "description": "Baseten secret name containing credentials for accessing the source.",
           "title": "Auth Secret Name"
+        },
+        "hf_oidc_resource": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hugging Face repository (namespace/name) or username for OIDC token exchange.",
+          "title": "Hf Oidc Resource"
         }
       },
       "required": [
@@ -2171,6 +2274,7 @@
         "CUSTOM_SECRET",
         "AWS_OIDC",
         "GCP_OIDC",
+        "HF_OIDC",
         "AWS_ASSUME_ROLE"
       ],
       "title": "WeightsAuthMethod",
@@ -2481,6 +2585,18 @@
       ],
       "default": null,
       "description": "TensorRT-LLM configuration for optimized LLM inference."
+    },
+    "bei": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BEIConfiguration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "BEIv3 encoder serving without an engine-build job. Hugging Face checkpoints use runtime weights mounts. Requires explicit restart and stop-traffic health thresholds of 1\u201360 seconds."
     },
     "training_checkpoints": {
       "anyOf": [

@@ -1,6 +1,11 @@
+import io
 import json
+import os
+import stat
 import sys
+import tarfile
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import click
@@ -1580,8 +1585,35 @@ def test_push_json_output_wait_deploy_failed(
     assert result.exit_code == 1
     data = json.loads(result.stdout)
     assert "error" in data
-    assert "DEPLOY_FAILED" in data["error"]["message"]
+    assert data["error"]["message"] == "Deployment failed with status DEPLOY_FAILED."
     assert data["error"]["deployment"] == failed_deployment
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="needs click>=8.2 CliRunner stdout/stderr split, only available on Python 3.10+",
+)
+def test_push_json_output_wait_deploy_failed_includes_failure_reason(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    failed_deployment = {
+        "status": "DEPLOY_FAILED",
+        "id": "deploy_id",
+        "failure_reason": "hf://org/repo@main: No files found to mirror",
+    }
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter([failed_deployment])
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["error"]["message"] == (
+        "Deployment failed with status DEPLOY_FAILED. "
+        "Reason: hf://org/repo@main: No files found to mirror"
+    )
 
 
 def _invoke_download(args):
@@ -1672,6 +1704,46 @@ def test_download_allows_existing_empty_dir(tmp_path):
         )
     assert result.exit_code == 0
     assert "Extracted to" in result.output
+
+
+def _invoke_download_with_tar(out: Path, members: dict[str, bytes]):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_download_url.return_value = (
+        "https://presigned.example.com"
+    )
+    mock_response = MagicMock()
+    mock_response.raw = buf
+    mock_response.__enter__.return_value = mock_response
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+        patch("truss.cli.cli.requests.get", return_value=mock_response),
+    ):
+        return _invoke_download(
+            ["--model-id", "m", "--deployment-id", "d", "--out-dir", str(out)]
+        )
+
+
+def test_download_extracts_out_dir(tmp_path):
+    out = tmp_path / "model"
+    result = _invoke_download_with_tar(out, {"model/model.py": b"hello"})
+    assert result.exit_code == 0, result.output
+    assert (out / "model" / "model.py").read_bytes() == b"hello"
+
+
+def test_download_out_dir_rejects_path_traversal(tmp_path):
+    out = tmp_path / "model"
+    result = _invoke_download_with_tar(out, {"../escape.txt": b"x"})
+    assert result.exit_code != 0
+    assert "OutsideDestinationError" in result.output
+    assert not (tmp_path / "escape.txt").exists()
 
 
 def _invoke_model_config(args):
@@ -1905,3 +1977,19 @@ class TestExtractRequestData:
     def test_invalid_json_raises(self):
         with pytest.raises(click.UsageError, match="valid json"):
             _extract_request_data(data="{not json}", file=None)
+
+
+def test_configure_writes_owner_only(trussrc, monkeypatch):
+    monkeypatch.setenv("TRUSS_NO_UPDATE_CHECK", "1")
+    monkeypatch.setattr("truss.cli.cli.USER_TRUSSRC_PATH", trussrc)
+    # Existing file left world-readable by an older truss version.
+    trussrc.write_text("[old]\napi_key = old\n")
+    os.chmod(trussrc, 0o644)
+    edited = "[new]\napi_key = new\n"
+    with patch("truss.cli.cli.click.edit", return_value=edited):
+        result = CliRunner().invoke(truss_cli, ["configure"])
+    assert result.exit_code == 0, result.output
+    # Windows has no POSIX permission bits, so only check the mode elsewhere.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(trussrc.stat().st_mode) == 0o600
+    assert trussrc.read_text() == edited

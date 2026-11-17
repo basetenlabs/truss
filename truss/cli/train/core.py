@@ -1,8 +1,8 @@
 import base64
+import io
 import json
 import os
 import tarfile
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -514,8 +514,11 @@ def display_training_job(
     console.print(table)
 
 
-def _generate_job_artifact_name(project_name: str, job_id: str) -> str:
-    return f"{project_name}_{job_id}"
+def _generate_job_download_artifact_name(project_name: str, job_id: str) -> str:
+    # Project names can contain path separators; keep the result a single
+    # path component.
+    safe_project_name = project_name.replace("/", "-").replace("\\", "-")
+    return f"{safe_project_name}_{job_id}"
 
 
 def download_training_job_data(
@@ -524,6 +527,12 @@ def download_training_job_data(
     target_directory: Optional[str],
     unzip: bool,
 ) -> Path:
+    # Extraction filters exist in all 3.12+ and were backported to 3.9.17,
+    # 3.10.12 and 3.11.4.
+    if unzip and not hasattr(tarfile, "data_filter"):
+        raise click.ClickException(
+            "Unzipping requires a newer Python. Please upgrade Python."
+        )
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -533,7 +542,7 @@ def download_training_job_data(
     project_id = project["id"]
     project_name = project["name"]
 
-    artifact_base_name = _generate_job_artifact_name(project_name, job_id)
+    artifact_base_name = _generate_job_download_artifact_name(project_name, job_id)
     file_name = f"{artifact_base_name}.tgz"
     target_path = output_dir / file_name
 
@@ -543,23 +552,19 @@ def download_training_job_data(
     content = remote_provider.api.get_from_presigned_url(presigned_url)
 
     if unzip:
-        with tempfile.NamedTemporaryFile() as temp_file:
-            temp_path = Path(temp_file.name)
-            temp_path.write_bytes(content)
+        unzip_dir = output_dir / artifact_base_name
+        unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
+        if unzip_dir.exists():
+            raise click.ClickException(
+                f"Directory '{unzip_dir}' already exists. "
+                "Please remove it or specify a different target directory."
+            )
 
-            unzip_dir = output_dir / artifact_base_name
-            unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
-            if unzip_dir.exists():
-                raise click.ClickException(
-                    f"Directory '{unzip_dir}' already exists. "
-                    "Please remove it or specify a different target directory."
-                )
+        unzip_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(content), mode="r:*") as tar:
+            tar.extractall(path=unzip_dir, filter="data")
 
-            unzip_dir.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(temp_path, "r:*") as tar:
-                tar.extractall(path=unzip_dir)
-
-            return unzip_dir
+        return unzip_dir
     else:
         target_path = Path(str(target_path).replace(" ", "-"))
         target_path.write_bytes(content)
@@ -599,9 +604,8 @@ def download_checkpoint_artifacts(
         "checkpoint_artifacts": checkpoint_artifacts,
     }
 
-    urls_file = (
-        output_dir / f"{project_name.replace(' ', '-')}_{job_id}_checkpoints.json"
-    )
+    artifact_base_name = _generate_job_download_artifact_name(project_name, job_id)  # type: ignore[arg-type]
+    urls_file = output_dir / f"{artifact_base_name.replace(' ', '-')}_checkpoints.json"
     with open(urls_file, "w") as f:
         json.dump(output, f, indent=2)
 
@@ -881,76 +885,84 @@ def view_cache_summary_by_project(
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
 
 
-def _usage_split(item: dict) -> Tuple[str, str]:
-    """Return (standard, spot) usage cells for a capacity item.
+SPOT_QUOTA_FOOTNOTE = (
+    "* Shared with on-demand: spot can use the quota minus on-demand GPUs in use."
+)
 
-    The backend splits usage_count into standard and spot. A pre-split backend
-    omits the breakdown; fall back to showing the total under standard so the
-    column still reflects real usage.
-    """
-    standard = item.get("dedicated_usage_count")
-    spot = item.get("spot_usage_count")
-    if standard is None and spot is None:
-        return str(item.get("usage_count", 0)), "0"
-    return str(standard or 0), str(spot or 0)
+
+def _on_demand_in_use(item: dict) -> int:
+    """On-demand GPUs in use; a backend that predates the split reports only the total."""
+    on_demand = item.get("dedicated_usage_count")
+    return item.get("usage_count", 0) if on_demand is None else on_demand
+
+
+def _in_use_over_quota(in_use: int, quota: int) -> str:
+    return f"{in_use} / {quota}"
+
+
+def _capacity_table(title: str) -> rich.table.Table:
+    return rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title=title,
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
 
 
 def display_training_capacity(remote_provider: BasetenRemote) -> None:
-    """Fetch and display org- and team-level GPU capacity limits and usage."""
+    """Fetch and display org- and team-level GPU quotas and usage."""
     capacity = remote_provider.api.get_training_capacity()
     gpu_capacities = capacity.get("gpu_capacities", [])
     team_gpu_capacities = capacity.get("team_gpu_capacities", [])
+    spot_enabled = capacity.get("spot_enabled", False) and all(
+        item.get("spot_quota") is not None for item in gpu_capacities
+    )
 
     if not gpu_capacities and not team_gpu_capacities:
-        console.print("No Training GPU capacity limits.")
+        console.print("No training GPU quotas.")
         return
 
     if gpu_capacities:
-        org_table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title="Training GPU Capacity",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
+        org_table = _capacity_table("Training GPU Capacity")
         org_table.add_column("GPU Type", style="cyan")
-        org_table.add_column("Baseline", justify="right")
-        org_table.add_column("Limit", justify="right")
-        org_table.add_column("Standard", justify="right")
-        org_table.add_column("Spot", justify="right")
+        org_table.add_column("On-Demand (in use / quota)", justify="right")
+        if spot_enabled:
+            org_table.add_column("Spot (in use / quota*)", justify="right")
         for item in gpu_capacities:
-            on_demand, spot = _usage_split(item)
-            org_table.add_row(
+            on_demand_quota = item.get("on_demand_quota", item.get("limit", 0))
+            row = [
                 item.get("gpu_type", ""),
-                str(item.get("baseline", 0)),
-                str(item.get("limit", 0)),
-                on_demand,
-                spot,
-            )
+                _in_use_over_quota(_on_demand_in_use(item), on_demand_quota),
+            ]
+            if spot_enabled:
+                row.append(
+                    _in_use_over_quota(
+                        item.get("spot_usage_count", 0), item["spot_quota"]
+                    )
+                    + "*"
+                )
+            org_table.add_row(*row)
         console.print(org_table)
+        if spot_enabled:
+            console.print(SPOT_QUOTA_FOOTNOTE, style="dim", highlight=False)
 
     if team_gpu_capacities:
-        team_table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title="Team Training GPU Capacity",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
+        team_table = _capacity_table("Team Training GPU Capacity")
         team_table.add_column("Team", style="cyan")
         team_table.add_column("GPU Type", style="cyan")
-        team_table.add_column("Limit", justify="right")
-        team_table.add_column("Standard", justify="right")
-        team_table.add_column("Spot", justify="right")
+        team_table.add_column("On-Demand (in use / quota)", justify="right")
+        if spot_enabled:
+            team_table.add_column("Spot (in use)", justify="right")
         for item in team_gpu_capacities:
-            on_demand, spot = _usage_split(item)
-            team_table.add_row(
+            row = [
                 item.get("team_name", ""),
                 item.get("gpu_type", ""),
-                str(item.get("limit", 0)),
-                on_demand,
-                spot,
-            )
+                _in_use_over_quota(_on_demand_in_use(item), item.get("limit", 0)),
+            ]
+            if spot_enabled:
+                row.append(str(item.get("spot_usage_count", 0)))
+            team_table.add_row(*row)
         console.print(team_table)
 
 
