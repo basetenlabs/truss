@@ -52,6 +52,21 @@ class Secrets(Mapping):
 
         return found_secret
 
+    # Mapping's default __contains__ and get() only catch KeyError, so they would
+    # let SecretNotFound escape instead of returning False / the default.
+    def __contains__(self, key: object) -> bool:
+        try:
+            self[key]  # type: ignore[index]
+        except SecretNotFound:
+            return False
+        return True
+
+    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:  # type: ignore[override]
+        try:
+            return self[key]
+        except SecretNotFound:
+            return default
+
     def __iter__(self):
         raise NotImplementedError(
             "Secrets are meant for lookup and can't be iterated on"
