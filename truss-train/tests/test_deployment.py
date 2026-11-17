@@ -4,12 +4,11 @@ from unittest import mock
 import pytest
 
 from truss.base import truss_config
-from truss.base.truss_config import BDNVolumeMount
+from truss.base.truss_config import BDNConfig, BDNVolumeMount
 from truss.remote.baseten import custom_types as b10_types
 from truss_train import deployment
 from truss_train.definitions import (
     AvailabilityModel,
-    BDNConfig,
     CacheConfig,
     Compute,
     Image,

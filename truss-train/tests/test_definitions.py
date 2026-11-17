@@ -1,15 +1,17 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 
 from truss.base import truss_config
-from truss.base.truss_config import Accelerator, BDNVolumeMount
+from truss.base.truss_config import Accelerator, BDNConfig, BDNVolumeMount
+from truss_train import BDNConfig as TrainingBDNConfig
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
     AWSIAMDockerAuth,
     AWSOIDCDockerAuth,
     BasetenCheckpoint,
-    BDNConfig,
     CacheConfig,
     CheckpointList,
     Compute,
@@ -29,6 +31,7 @@ from truss_train.definitions import (
 
 
 def test_bdn_mount_serialization():
+    assert TrainingBDNConfig is BDNConfig
     job = TrainingJob(
         image=Image(base_image="python:3.12"),
         bdn=BDNConfig(
@@ -42,6 +45,8 @@ def test_bdn_mount_serialization():
         ),
     )
     payload = job.model_dump()["bdn"]
+    assert set(payload) == {"mounts"}
+    assert json.loads(job.model_dump_json())["bdn"] == payload
     assert "fetch_mode" not in payload["mounts"][0]
     assert payload["mounts"][0]["include"] == ["*.parquet"]
     assert TrainingJob.model_validate(job.model_dump()).bdn == job.bdn
@@ -51,15 +56,49 @@ def test_training_without_bdn_preserves_legacy_payload():
     assert "bdn" not in TrainingJob(image=Image(base_image="python:3.12")).model_dump()
 
 
-def test_training_bdn_rejects_overlapping_mounts():
+@pytest.mark.parametrize(
+    "paths",
+    [["/data/train", "/data/train/subset"], ["/data/train/subset", "/data/train"]],
+)
+def test_training_bdn_rejects_overlapping_mounts(paths):
     with pytest.raises(ValidationError, match="overlap"):
-        BDNConfig(
-            mounts=[
-                BDNVolumeMount(source="bdn:datasets/training-data", path="/data/train"),
-                BDNVolumeMount(
-                    source="bdn:datasets/training-data", path="/data/train/subset"
-                ),
-            ]
+        TrainingJob(
+            image=Image(base_image="python:3.12"),
+            bdn=BDNConfig(
+                mounts=[
+                    BDNVolumeMount(source="bdn:datasets/training-data", path=path)
+                    for path in paths
+                ]
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"access": [{"namespace": "datasets", "grants": ["pull"]}]},
+        {"hotload": {"enabled": True}},
+    ],
+)
+def test_training_bdn_rejects_unsupported_options(config):
+    with pytest.raises(ValidationError, match="not supported for training jobs"):
+        TrainingJob(image=Image(base_image="python:3.12"), bdn=BDNConfig(**config))
+
+
+@pytest.mark.parametrize("count", [32, 33])
+def test_training_bdn_mount_limit(count):
+    config = BDNConfig(
+        mounts=[
+            BDNVolumeMount(source="bdn:datasets/training-data", path=f"/data/train-{i}")
+            for i in range(count)
+        ]
+    )
+    if count == 33:
+        with pytest.raises(ValidationError, match="at most 32"):
+            TrainingJob(image=Image(base_image="python:3.12"), bdn=config)
+    else:
+        assert (
+            TrainingJob(image=Image(base_image="python:3.12"), bdn=config).bdn == config
         )
 
 
