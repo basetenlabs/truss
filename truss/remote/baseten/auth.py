@@ -1,14 +1,17 @@
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
 import pydantic
+import requests
 
 from truss.remote.baseten.oauth import (
     AccessToken,
     OAuthCredential,
+    OAuthError,
     exchange_identity_token,
     refresh,
 )
@@ -123,8 +126,23 @@ class AuthService:
         token = self._workload_identity_token
         if token is not None and not token.is_expired():
             return token
-        token = exchange_identity_token(
-            credential.api_url, credential.identity_token_file, credential.trust_rule_id
-        )
+        try:
+            token = exchange_identity_token(
+                credential.api_url,
+                credential.identity_token_file,
+                credential.trust_rule_id,
+            )
+        except (OAuthError, requests.RequestException) as exc:
+            # Refreshes start before expiry, so a failed one can keep using the
+            # current token until it actually expires.
+            previous = self._workload_identity_token
+            if previous is None or time.time() >= previous.expires_at:
+                raise
+            logger.warning(
+                "Refreshing the workload identity access token failed; using "
+                "the current one until it expires: %s",
+                exc,
+            )
+            return previous
         self._workload_identity_token = token
         return token

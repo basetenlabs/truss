@@ -260,8 +260,25 @@ def test_exchange_identity_token_invalid_grant(tmp_path):
     token_file.write_text("idp-jwt")
     with requests_mock.Mocker() as m:
         m.post(TOKEN_EXCHANGE_URL, status_code=400, json={"error": "invalid_grant"})
-        with pytest.raises(oauth.OAuthError, match="refused.*rule-1.*Check"):
+        with pytest.raises(
+            oauth.OAuthError, match="refused.*rule-1.*Check.*400.*invalid_grant"
+        ):
             oauth.exchange_identity_token(API_URL, token_file, "rule-1")
+
+
+def test_exchange_identity_token_does_not_follow_redirects(tmp_path):
+    token_file = tmp_path / "token"
+    token_file.write_text("idp-jwt")
+    with requests_mock.Mocker() as m:
+        m.post(
+            TOKEN_EXCHANGE_URL,
+            status_code=307,
+            headers={"Location": "https://elsewhere.example/token"},
+        )
+        elsewhere = m.post("https://elsewhere.example/token", json={})
+        with pytest.raises(oauth.OAuthError, match="307"):
+            oauth.exchange_identity_token(API_URL, token_file, "rule-1")
+    assert not elsewhere.called
 
 
 def test_exchange_identity_token_other_error(tmp_path):

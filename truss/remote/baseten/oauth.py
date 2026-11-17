@@ -215,8 +215,10 @@ def exchange_identity_token(
         },
         headers={"User-Agent": user_agent_header()},
         timeout=30,
+        # A redirect would resend the identity token to wherever it points.
+        allow_redirects=False,
     )
-    if resp.ok:
+    if 200 <= resp.status_code < 300:
         return AccessToken.from_token_response(resp.json())
     try:
         code = resp.json().get("error")
@@ -227,7 +229,8 @@ def exchange_identity_token(
         raise OAuthError(
             f"Baseten refused to exchange the identity token for trust rule "
             f"{trust_rule_id!r}. Check that the trust rule exists and that the "
-            f"token in {identity_token_file} is current and matches the rule."
+            f"token in {identity_token_file} is current and matches the rule. The "
+            f"server answered {resp.status_code}: {resp.text.strip()}"
         )
     raise OAuthError(
         f"Identity token exchange failed ({resp.status_code}): {resp.text.strip()}"

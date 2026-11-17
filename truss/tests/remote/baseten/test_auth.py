@@ -109,6 +109,37 @@ def test_workload_identity_re_exchanges_near_expiry_with_rotated_token(
     assert [assertion for _, assertion, _ in exchanges] == ["jwt-1", "jwt-2"]
 
 
+def test_workload_identity_failed_refresh_keeps_unexpired_token(tmp_path, monkeypatch):
+    auth_service, _, _ = _workload_identity_service(
+        tmp_path, monkeypatch, expires_in_seconds=oauth_mod.EXPIRY_LEEWAY_SECONDS - 1
+    )
+    assert auth_service.fetch_auth_header() == {"Authorization": "Bearer at-1"}
+
+    def failing_exchange(*args):
+        raise oauth_mod.OAuthError("exchange failed")
+
+    monkeypatch.setattr(
+        "truss.remote.baseten.auth.exchange_identity_token", failing_exchange
+    )
+    assert auth_service.fetch_auth_header() == {"Authorization": "Bearer at-1"}
+
+
+def test_workload_identity_failed_refresh_raises_once_expired(tmp_path, monkeypatch):
+    auth_service, _, _ = _workload_identity_service(
+        tmp_path, monkeypatch, expires_in_seconds=0
+    )
+    auth_service.fetch_auth_header()
+
+    def failing_exchange(*args):
+        raise oauth_mod.OAuthError("exchange failed")
+
+    monkeypatch.setattr(
+        "truss.remote.baseten.auth.exchange_identity_token", failing_exchange
+    )
+    with pytest.raises(oauth_mod.OAuthError, match="exchange failed"):
+        auth_service.fetch_auth_header()
+
+
 @pytest.mark.parametrize(
     "env",
     [{"BASETEN_IDENTITY_TOKEN_FILE": "/token"}, {"BASETEN_TRUST_RULE_ID": "rule-1"}],
