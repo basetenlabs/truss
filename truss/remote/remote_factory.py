@@ -1,5 +1,6 @@
 import enum
 import inspect
+import io
 import json
 import logging
 import os
@@ -64,8 +65,25 @@ def load_config() -> ConfigParser:
 
 
 def update_config(config: ConfigParser):
-    with open(USER_TRUSSRC_PATH, "w") as configfile:
-        config.write(configfile)
+    content = io.StringIO()
+    config.write(content)
+    write_trussrc(content.getvalue())
+
+
+def write_trussrc(content: str):
+    """Write the trussrc with owner-only permissions."""
+    # The trussrc holds API keys. The chmod tightens files written by older truss
+    # versions, and runs before the truncating open so a chmod failure loses
+    # nothing. The open mode only applies when the file is created.
+    USER_TRUSSRC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(USER_TRUSSRC_PATH, 0o600)
+    except FileNotFoundError:
+        pass
+    # O_BINARY (Windows only) matches open(); otherwise newlines get translated twice.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+    with os.fdopen(os.open(USER_TRUSSRC_PATH, flags, 0o600), "w") as f:
+        f.write(content)
 
 
 def env_remote_config() -> Optional[RemoteConfig]:
