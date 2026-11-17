@@ -1,8 +1,6 @@
 use crate::errors::ClientError;
 
 use async_trait::async_trait;
-use reqwest::header::WWW_AUTHENTICATE;
-use reqwest::StatusCode;
 use std::fmt;
 use std::sync::Arc;
 
@@ -38,11 +36,6 @@ impl Credential {
             }
         }
     }
-
-    /// Whether asking again can yield a different token after the server rejects one.
-    pub(crate) fn can_refresh(&self) -> bool {
-        matches!(self, Credential::TokenProvider(_))
-    }
 }
 
 impl fmt::Debug for Credential {
@@ -52,16 +45,4 @@ impl fmt::Debug for Credential {
             Credential::TokenProvider(_) => f.write_str("Credential::TokenProvider"),
         }
     }
-}
-
-/// RFC 6750 signals an expired or revoked bearer token with `error="invalid_token"`,
-/// which a fresh token can fix; other 401s (unknown key, wrong audience) cannot.
-pub(crate) fn is_invalid_token_response(response: &reqwest::Response) -> bool {
-    response.status() == StatusCode::UNAUTHORIZED
-        && response
-            .headers()
-            .get_all(WWW_AUTHENTICATE)
-            .iter()
-            .filter_map(|value| value.to_str().ok())
-            .any(|value| value.contains("error=\"invalid_token\""))
 }

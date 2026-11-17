@@ -1296,10 +1296,6 @@ async fn post_auth(
         .map(|_| ())
 }
 
-fn no_retry_preference() -> RequestProcessingPreference {
-    single_request_preference().with_max_retries(0)
-}
-
 #[tokio::test]
 async fn test_token_provider_is_asked_for_every_request() {
     let server = start_auth_server(&[], None).await;
@@ -1323,44 +1319,9 @@ async fn test_token_provider_is_asked_for_every_request() {
 }
 
 #[tokio::test]
-async fn test_invalid_token_is_refreshed_and_retried_once() {
-    let server = start_auth_server(&["stale"], Some(INVALID_TOKEN)).await;
-    let provider = CountingTokenProvider::new(vec!["stale", "fresh"]);
-    let client = token_provider_client(&server.base_url, provider.clone());
-
-    // max_retries=0: the refresh retry does not depend on the retry settings.
-    post_auth(&client, 1, &no_retry_preference()).await.unwrap();
-
-    assert_eq!(
-        *server.seen_authorization.lock().await,
-        vec!["Bearer stale", "Bearer fresh"]
-    );
-    assert_eq!(provider.calls(), 2);
-}
-
-#[tokio::test]
-async fn test_invalid_token_refresh_happens_at_most_once_per_request() {
-    let server = start_auth_server(&["token-1", "token-2", "token-3"], Some(INVALID_TOKEN)).await;
-    let provider = CountingTokenProvider::new(vec![]);
-    let client = token_provider_client(&server.base_url, provider.clone());
-
-    let error = post_auth(&client, 1, &no_retry_preference())
-        .await
-        .unwrap_err();
-
-    assert!(
-        matches!(error, ClientError::Http { status: 401, .. }),
-        "{error}"
-    );
-    assert_eq!(
-        *server.seen_authorization.lock().await,
-        vec!["Bearer token-1", "Bearer token-2"]
-    );
-}
-
-#[tokio::test]
-async fn test_unauthorized_without_invalid_token_is_not_retried() {
-    for www_authenticate in [None, Some(r#"Bearer error="insufficient_scope""#)] {
+async fn test_unauthorized_is_not_retried_with_a_new_token() {
+    // A 401 can come from the model itself, so even invalid_token is returned as is.
+    for www_authenticate in [None, Some(INVALID_TOKEN)] {
         let server = start_auth_server(&["token-1"], www_authenticate).await;
         let provider = CountingTokenProvider::new(vec![]);
         let client = token_provider_client(&server.base_url, provider.clone());
@@ -1379,54 +1340,6 @@ async fn test_unauthorized_without_invalid_token_is_not_retried() {
         );
         assert_eq!(provider.calls(), 1);
     }
-}
-
-#[tokio::test]
-async fn test_invalid_token_is_not_retried_when_the_provider_returns_the_same_token() {
-    let server = start_auth_server(&["stale"], Some(INVALID_TOKEN)).await;
-    let provider = CountingTokenProvider::new(vec!["stale", "stale"]);
-    let client = token_provider_client(&server.base_url, provider.clone());
-
-    let error = post_auth(&client, 1, &no_retry_preference())
-        .await
-        .unwrap_err();
-
-    assert!(
-        matches!(error, ClientError::Http { status: 401, .. }),
-        "{error}"
-    );
-    assert_eq!(
-        *server.seen_authorization.lock().await,
-        vec!["Bearer stale"]
-    );
-    assert_eq!(provider.calls(), 2);
-}
-
-#[tokio::test]
-async fn test_static_api_key_is_not_retried_on_invalid_token() {
-    let server = start_auth_server(&["static-key"], Some(INVALID_TOKEN)).await;
-    let client = PerformanceClientCore::new(
-        server.base_url.clone(),
-        Some("static-key".into()),
-        1,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-
-    let error = post_auth(&client, 1, &no_retry_preference())
-        .await
-        .unwrap_err();
-
-    assert!(
-        matches!(error, ClientError::Http { status: 401, .. }),
-        "{error}"
-    );
-    assert_eq!(
-        *server.seen_authorization.lock().await,
-        vec!["Bearer static-key"]
-    );
 }
 
 #[tokio::test]

@@ -360,21 +360,21 @@ def test_token_provider_supplies_the_bearer_token_of_every_request():
     ]
 
 
-def test_token_provider_is_asked_again_after_invalid_token():
+def test_token_provider_is_not_asked_again_after_401():
+    import requests
+
     tokens = iter(["stale", "fresh"])
 
     def run(client):
-        client.batch_post(
-            "/echo", [{}], preference=RequestProcessingPreference(max_retries=0)
-        )
+        with pytest.raises(requests.exceptions.HTTPError):
+            client.batch_post(
+                "/echo", [{}], preference=RequestProcessingPreference(max_retries=0)
+            )
 
     seen = _record_request_headers(
         run, rejected_tokens={"stale"}, token_provider=lambda: next(tokens)
     )
-    assert [headers["authorization"] for headers in seen] == [
-        "Bearer stale",
-        "Bearer fresh",
-    ]
+    assert [headers["authorization"] for headers in seen] == ["Bearer stale"]
 
 
 def test_token_provider_works_with_async_methods():

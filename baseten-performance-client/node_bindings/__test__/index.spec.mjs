@@ -183,22 +183,21 @@ test('tokenProvider supplies the bearer token of every request', async (t) => {
   ])
 })
 
-test('an async tokenProvider is asked again after an invalid_token 401', async (t) => {
+test('an async tokenProvider is not asked again after a 401', async (t) => {
   const tokens = ['stale', 'fresh']
   const seen = await recordRequestHeaders(
     t,
     async (client) => {
-      // maxRetries=0: the refresh retry does not depend on the retry settings.
       const maxRetries = 0
       const preference = new RequestProcessingPreference(...Array(9).fill(undefined), maxRetries)
       t.is(preference.maxRetries, 0)
-      await client.batchPost('/echo', [{}], preference)
+      await t.throwsAsync(client.batchPost('/echo', [{}], preference), {message: /401/})
     },
     {tokenProvider: async () => tokens.shift(), rejectedTokens: ['stale']},
   )
   t.deepEqual(
     seen.map((headers) => headers.authorization),
-    ['Bearer stale', 'Bearer fresh'],
+    ['Bearer stale'],
   )
 })
 

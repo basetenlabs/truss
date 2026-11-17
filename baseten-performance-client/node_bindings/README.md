@@ -444,9 +444,8 @@ federation, can expire while a long-running client is still in use. Instead of a
 
 - The client calls the provider on the main thread before every HTTP attempt, so it should cache the token and
   fetch a new one only shortly before it expires.
-- If the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, the client asks
-  the provider again and retries that request once, right away and outside `maxRetries`. If the
-  provider returns the same token, the `401` is returned instead.
+- A `401` is returned as is, without asking the provider again: on a model endpoint it can come
+  from the model itself.
 - If it throws, rejects or returns something other than a string, the call rejects without sending the request.
 - It cannot be combined with `apiKey`, and the API key environment variables are not read.
   A per-call `primaryApiKeyOverride` still takes precedence.

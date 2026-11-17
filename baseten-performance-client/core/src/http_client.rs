@@ -1,4 +1,3 @@
-use crate::auth::is_invalid_token_response;
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
@@ -240,15 +239,10 @@ async fn send_request_with_retry(
     let mut current_backoff = config.initial_backoff;
     let max_retries = config.max_retries;
     let mut attempted_endpoint_indices: HashSet<usize> = HashSet::new();
-    let mut refreshed_token: Option<String> = None;
-    let mut token_refresh_used = false;
 
     loop {
         // Asked per attempt so retries after a long backoff do not reuse an expired token.
-        let token = match refreshed_token.take() {
-            Some(token) => token,
-            None => config.credential.token().await?,
-        };
+        let token = config.credential.token().await?;
         let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint) =
             config.select_attempt_url(request_suffix, &indices_vec);
@@ -301,25 +295,6 @@ async fn send_request_with_retry(
 
                 if status.is_success() {
                     return Ok(resp);
-                }
-
-                // One immediate retry outside max_retries: the rejection is about the
-                // token, not the server, so it should not wait or spend the retry budget.
-                if !token_refresh_used
-                    && config.credential.can_refresh()
-                    && is_invalid_token_response(&resp)
-                {
-                    token_refresh_used = true;
-                    let fresh_token = config.credential.token().await?;
-                    if fresh_token != token {
-                        tracing::debug!(
-                            "server rejected the bearer token, retrying once with a fresh one {}",
-                            config.customer_request_id.to_string()
-                        );
-                        let _ = resp.bytes().await;
-                        refreshed_token = Some(fresh_token);
-                        continue;
-                    }
                 }
 
                 let retryable = is_retryable_status(status.as_u16(), config);

@@ -112,9 +112,8 @@ federation, can expire while a long-running client is still in use. Instead of a
 
 - The client calls the provider from a worker thread, with the GIL held before every HTTP attempt, so it should cache the token and
   fetch a new one only shortly before it expires.
-- If the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, the client asks
-  the provider again and retries that request once, right away and outside `max_retries`. If the
-  provider returns the same token, the `401` is returned instead.
+- A `401` is returned as is, without asking the provider again: on a model endpoint it can come
+  from the model itself.
 - If it raises, the call fails with `ValueError` without sending the request.
 - It cannot be combined with `api_key`, and the API key environment variables are not read.
   A per-call `primary_api_key_override` still takes precedence.

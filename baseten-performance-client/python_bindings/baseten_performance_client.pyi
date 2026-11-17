@@ -551,9 +551,8 @@ class PerformanceClient:
             endpoint_pool: Optional EndpointPool for weighted endpoint routing and background health checks.
             token_provider: Optional function returning the current bearer token, for short-lived
                 credentials. Called from a worker thread before every HTTP attempt, so it should
-                cache the token and only fetch a new one when it is about to expire. If the server
-                answers 401 with `error="invalid_token"`, the request is retried once with a new
-                token. Cannot be combined with `api_key`, and environment variables are not read.
+                cache the token and only fetch a new one when it is about to expire. Cannot be
+                combined with `api_key`, and environment variables are not read.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)
