@@ -288,6 +288,8 @@ class TrussHandle:
             container_name_prefix: optional docker container name prefix.
             secrets_dir: Mostly for testing, a directory of secret files to mount
                          at /secrets, where the model server reads secrets.
+                         Ignored if an existing live-reload container is
+                         patched instead of recreated.
 
         Returns:
             Container, which can be used to get information about the running,
