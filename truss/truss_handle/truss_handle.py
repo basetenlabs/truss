@@ -211,7 +211,6 @@ class TrussHandle:
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
-        secrets_mount_dir_path = _prepare_secrets_mount_dir()
 
         envs: Dict[str, str] = {}
         # Add bundled packages to the PYTHONPATH. Note
@@ -234,14 +233,9 @@ class TrussHandle:
                 mounts=[
                     [
                         "type=bind",
-                        f"src={str(secrets_mount_dir_path)}",
-                        "target=/secrets",
-                    ],
-                    [
-                        "type=bind",
                         f"src={str(script_path.absolute())}",
                         "target=/app/script.py",
-                    ],
+                    ]
                 ],
                 gpus=gpus,
                 envs=envs,
@@ -274,6 +268,7 @@ class TrussHandle:
         container_name_prefix: Optional[str] = None,
         model_server_stop_retry_override=None,
         disable_json_logging: bool = False,
+        secrets_dir: Optional[Path] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -291,6 +286,8 @@ class TrussHandle:
               probe before returning.
             network: docker network name.
             container_name_prefix: optional docker container name prefix.
+            secrets_dir: Mostly for testing, a directory of secret files to mount
+                         at /secrets, where the model server reads secrets.
 
         Returns:
             Container, which can be used to get information about the running,
@@ -307,7 +304,6 @@ class TrussHandle:
             image = self.build_serving_docker_image(
                 build_dir=build_dir, tag=tag, network=network
             )
-            secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = (
                 [[local_port, INFERENCE_SERVER_PORT]]
                 if local_port is not None
@@ -334,30 +330,31 @@ class TrussHandle:
             else:
                 name = None
 
+            mounts = [
+                [
+                    "type=bind",
+                    f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
+                    "target=/bptr",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(LocalConfigHandler.dynamic_config_path())}",
+                    "target=/etc/b10_dynamic_config",
+                    "readonly=false",
+                ],
+            ]
+            if secrets_dir is not None:
+                mounts.append(
+                    ["type=bind", f"src={str(secrets_dir)}", "target=/secrets"]
+                )
+
             def _run_docker(gpus: Optional[str] = None):
                 return Docker.client().run(
                     image.id,
                     publish=publish_ports,
                     detach=detach,
                     labels=labels,
-                    mounts=[
-                        [
-                            "type=bind",
-                            f"src={str(secrets_mount_dir_path)}",
-                            "target=/secrets",
-                        ],
-                        [
-                            "type=bind",
-                            f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
-                            "target=/bptr",
-                        ],
-                        [
-                            "type=bind",
-                            f"src={str(LocalConfigHandler.dynamic_config_path())}",
-                            "target=/etc/b10_dynamic_config",
-                            "readonly=false",
-                        ],
-                    ],
+                    mounts=mounts,
                     gpus=gpus,
                     envs=envs,
                     add_hosts=[("host.docker.internal", "host-gateway")],
@@ -392,7 +389,10 @@ class TrussHandle:
         return container
 
     def docker_run_for_test(
-        self, wait_for_server_ready=True, model_server_stop_retry_override=None
+        self,
+        wait_for_server_ready=True,
+        model_server_stop_retry_override=None,
+        secrets_dir: Optional[Path] = None,
     ) -> tuple["Container", DockerURLs]:
         container = self.docker_run(
             local_port=None,
@@ -400,6 +400,7 @@ class TrussHandle:
             wait_for_server_ready=wait_for_server_ready,
             network="host",
             model_server_stop_retry_override=model_server_stop_retry_override,
+            secrets_dir=secrets_dir,
         )
         return container, get_docker_urls(container)
 
@@ -1109,11 +1110,6 @@ def wait_for_truss(
             stop = model_server_stop_retry_override
 
         _wait_for_model_server(urls.predict_url, stop)
-
-
-def _prepare_secrets_mount_dir() -> Path:
-    LocalConfigHandler.sync_secrets_mount_dir()
-    return LocalConfigHandler.secrets_dir_path()
 
 
 def _find_example_by_name(examples: List[Example], example_name: str) -> Optional[int]:
