@@ -321,12 +321,15 @@ impl PerformanceClientCore {
                 .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
                 .http2_max_frame_size(65_536)
                 .http2_prior_knowledge()
+                .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+                .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
                 .pool_max_idle_per_host(16);
         } else {
             client_builder = client_builder.http1_only().pool_max_idle_per_host(512);
         }
 
         client_builder
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
             .pool_idle_timeout(Duration::from_secs(30))
             .tcp_nodelay(true)
             .user_agent(concat!(
