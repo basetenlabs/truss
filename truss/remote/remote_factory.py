@@ -64,7 +64,12 @@ def load_config() -> ConfigParser:
 
 
 def update_config(config: ConfigParser):
-    with open(USER_TRUSSRC_PATH, "w") as configfile:
+    # The trussrc holds API keys, so keep it owner-only. The open mode only applies
+    # on creation; the chmod tightens files written by older truss versions.
+    # O_BINARY (Windows only) matches open(); otherwise newlines get translated twice.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+    with os.fdopen(os.open(USER_TRUSSRC_PATH, flags, 0o600), "w") as configfile:
+        os.chmod(USER_TRUSSRC_PATH, 0o600)
         config.write(configfile)
 
 

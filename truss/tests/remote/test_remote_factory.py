@@ -1,4 +1,8 @@
+import configparser
 import json
+import os
+import stat
+import sys
 from unittest import mock
 
 import pytest
@@ -202,6 +206,25 @@ def test_get_remote_team_returns_none_when_remote_not_found(mock_exists, mock_op
 def test_get_remote_team_returns_team_with_spaces(mock_exists, mock_open):
     team = RemoteFactory.get_remote_team("test_team_spaces")
     assert team == "my team with spaces"
+
+
+def test_update_config_writes_owner_only(trussrc):
+    def write_and_check(api_key):
+        config = configparser.ConfigParser()
+        config["test"] = {"api_key": api_key, "remote_url": "http://x"}
+        rf_module.update_config(config)
+        # Windows has no POSIX permission bits, so only check the mode elsewhere.
+        if sys.platform != "win32":
+            assert stat.S_IMODE(trussrc.stat().st_mode) == 0o600
+        # Newlines must be translated once, like open(), not doubled on Windows.
+        assert b"\r\r\n" not in trussrc.read_bytes()
+        assert rf_module.load_config()["test"]["api_key"] == api_key
+
+    # New file.
+    write_and_check("first")
+    # Existing file left world-readable by an older truss version.
+    os.chmod(trussrc, 0o644)
+    write_and_check("second")
 
 
 def test_legacy_plaintext_round_trip(trussrc):
