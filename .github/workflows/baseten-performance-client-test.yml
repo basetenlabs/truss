@@ -27,14 +27,14 @@ jobs:
   test-baseten-performance-client:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
+      - uses: chainguard-actions/actions-setup-python@ace3254bb5011efbd0650a7120a0441ebd1f9400 # v5.6.0
         with:
           python-version: "3.10"
       - name: Create venv
         run: python3 -m venv .venv
       - name: Build wheels for python
-        uses: PyO3/maturin-action@v1
+        uses: chainguard-actions/PyO3-maturin-action@23815a064f2267de38d5031b668fde459a80a7e5 # v1.51.0
         with:
           command: develop
           sccache: "false"
@@ -56,7 +56,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
 
       - name: Install Rust with musl target
-        uses: actions-rs/toolchain@v1
+        uses: chainguard-actions/actions-rs-toolchain@373f2110a0bcee6b9753eed8510b849bfc55d020 # v1.0.7
         with:
           toolchain: stable
           override: true
