@@ -136,6 +136,22 @@ def test_patch_applier_config_patch_update(
     assert new_config.model_name == "foobar"
 
 
+def test_patch_applier_config_patch_rejects_path_traversal(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
+    patch = Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            config={"model_name": "foobar"},
+            path="../escaped.yaml",
+        ),
+    )
+    with pytest.raises(ValueError):
+        patch_applier(patch, os.environ.copy())
+    assert not (truss_container_fs / "escaped.yaml").exists()
+
+
 def test_patch_applier_env_var_patch_update(patch_applier: ModelContainerPatchApplier):
     env_var_dict = {"FOO": "BAR"}
     patch = Patch(
