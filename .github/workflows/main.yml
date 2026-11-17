@@ -115,7 +115,7 @@ jobs:
 
       - name: Publish package to PyPI (Trusted Publishing)
         if: ${{ github.event_name != 'pull_request' }}
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        uses: chainguard-actions/pypa-gh-action-pypi-publish@3281eae6a06d4b96e24616f7821380f05fa50296 # release/v1
         with:
           verbose: true
           print-hash: true
