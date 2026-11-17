@@ -22,7 +22,9 @@ def download_external_data(external_data: Optional[ExternalData], data_dir: Path
     # ensure parent directories exist
     for item in external_data.items:
         path = data_dir / item.local_data_path
-        if data_dir not in path.parents:
+        # Normalize both sides so `..` segments can't escape data_dir. Symlinks are
+        # deliberately not resolved, so symlinked subdirectories keep working.
+        if Path(os.path.normpath(data_dir)) not in Path(os.path.normpath(path)).parents:
             raise ValueError(
                 "Local data path of external data cannot point to outside data directory"
             )

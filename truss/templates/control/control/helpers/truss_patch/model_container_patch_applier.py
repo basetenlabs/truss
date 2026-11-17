@@ -17,7 +17,10 @@ from helpers.custom_types import (
     SystemPackagePatch,
 )
 from helpers.errors import UnsupportedPatch
-from helpers.truss_patch.model_code_patch_applier import apply_code_patch
+from helpers.truss_patch.model_code_patch_applier import (
+    _validate_within,
+    apply_code_patch,
+)
 
 from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.util.download import download_external_data
@@ -135,7 +138,7 @@ class ModelContainerPatchApplier:
     def _apply_config_patch(self, config_patch: ConfigPatch):
         self._app_logger.debug(f"Applying config patch {config_patch.to_dict()}")
         TrussConfig.from_dict(config_patch.config).write_to_yaml_file(
-            Path(self._inference_server_home / config_patch.path)
+            _validate_within(self._inference_server_home, config_patch.path)
         )
 
     def _apply_env_var_patch(self, env_var_patch: EnvVarPatch, inf_env: dict):
