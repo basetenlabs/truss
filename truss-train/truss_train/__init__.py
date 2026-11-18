@@ -1,4 +1,4 @@
-from truss.base.truss_config import WeightsSource
+from truss.base.truss_config import BDNConfig, BDNVolumeMount, WeightsSource
 from truss_train.definitions import (
     AvailabilityModel,
     AWSAssumeRoleDockerAuth,
@@ -59,5 +59,7 @@ __all__ = [
     "DockerAuth",
     "Image",
     "WeightsSource",
+    "BDNConfig",
+    "BDNVolumeMount",
     "Workspace",
 ]
