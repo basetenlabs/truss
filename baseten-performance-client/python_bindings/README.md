@@ -151,6 +151,19 @@ for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, resp
     print(f"  Time taken: {time_taken:.4f}s")
 ```
 
+#### Pre-encoded JSON payloads
+
+A payload can also be `bytes` holding UTF-8 JSON. The client sends those bytes unchanged, byte for byte, and skips the Python-to-JSON conversion, which otherwise runs while holding the GIL. Use this for large payloads that you already hold as bytes or encode elsewhere. `bytes` and regular objects can be mixed in one call; invalid JSON raises `ValueError`.
+
+```python
+import orjson
+
+response_obj = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=[orjson.dumps(payload1), payload2],
+)
+```
+
 #### Asynchronous Batch POST
 
 ```python

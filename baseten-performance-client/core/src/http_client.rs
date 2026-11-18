@@ -83,21 +83,31 @@ where
     Ok((response_data, headers_map))
 }
 
+/// One batch_post request body.
+pub enum BatchPayload {
+    Json(serde_json::Value),
+    /// Already encoded JSON; sent byte for byte, not validated here.
+    Raw(bytes::Bytes),
+}
+
+impl From<serde_json::Value> for BatchPayload {
+    fn from(value: serde_json::Value) -> Self {
+        BatchPayload::Json(value)
+    }
+}
+
 // Unified HTTP request helper with headers extraction
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn send_http_request_with_headers<T>(
+pub(crate) async fn send_http_request_with_headers(
     client: &Client,
     request_suffix: String,
-    payload: T,
+    payload: BatchPayload,
     api_key: String,
     request_timeout: Duration,
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
     method: crate::http::HttpMethod,
-) -> Result<(rmpv::Value, std::collections::HashMap<String, String>), ClientError>
-where
-    T: serde::Serialize,
-{
+) -> Result<(rmpv::Value, std::collections::HashMap<String, String>), ClientError> {
     let customer_request_id_header = customer_request_id.to_string();
     let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
         let mut request_builder = client
@@ -111,7 +121,12 @@ where
         request_builder = add_response_negotiation_headers(request_builder, config);
 
         if method.has_body() {
-            request_builder = request_builder.json(&payload);
+            request_builder = match &payload {
+                BatchPayload::Json(value) => request_builder.json(value),
+                BatchPayload::Raw(body) => request_builder
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(body.clone()),
+            };
         }
 
         if let Some(ref headers) = config.extra_headers {

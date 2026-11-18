@@ -12,12 +12,14 @@ use baseten_performance_client_core::{
     RETRY_BUDGET_PERCENTAGE,
 };
 
+use baseten_performance_client_core::http_client::BatchPayload;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyType;
+use pyo3::pybacked::PyBackedBytes;
+use pyo3::types::{PyBytes, PyType};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -759,6 +761,42 @@ impl PerformanceClient {
     }
 }
 
+/// Runs with the GIL held: `bytes` items are only referenced, everything else is depythonized.
+fn collect_batch_payloads(py: Python, payloads: Vec<PyObject>) -> PyResult<Vec<BatchPayload>> {
+    let mut out = Vec::with_capacity(payloads.len());
+    for (idx, py_obj) in payloads.into_iter().enumerate() {
+        let bound_obj = py_obj.bind(py);
+        out.push(match bound_obj.downcast::<PyBytes>() {
+            // No copy: the request body borrows the Python bytes object and keeps it alive.
+            Ok(bytes) => {
+                BatchPayload::Raw(bytes::Bytes::from_owner(PyBackedBytes::from(bytes.clone())))
+            }
+            Err(_) => BatchPayload::Json(pythonize::depythonize(bound_obj).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to depythonize payload at index {}: {}",
+                    idx, e
+                ))
+            })?),
+        });
+    }
+    Ok(out)
+}
+
+/// Checks that `bytes` payloads are UTF-8 JSON. Needs no GIL, so call it with the GIL released.
+fn validate_raw_batch_payloads(payloads: &[BatchPayload]) -> Result<(), String> {
+    for (idx, payload) in payloads.iter().enumerate() {
+        if let BatchPayload::Raw(bytes) = payload {
+            std::str::from_utf8(bytes)
+                .map_err(|e| e.to_string())
+                .and_then(|s| {
+                    serde_json::from_str::<serde::de::IgnoredAny>(s).map_err(|e| e.to_string())
+                })
+                .map_err(|e| format!("Payload at index {} is not valid UTF-8 JSON: {}", idx, e))?;
+        }
+    }
+    Ok(())
+}
+
 #[pymethods]
 impl PerformanceClient {
     #[new]
@@ -1233,17 +1271,7 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
-        for (idx, py_obj) in payloads.into_iter().enumerate() {
-            let bound_obj = py_obj.bind(py);
-            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to depythonize payload at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            payloads_json.push(json_val);
-        }
+        let payloads_json = collect_batch_payloads(py, payloads)?;
 
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
@@ -1255,6 +1283,9 @@ impl PerformanceClient {
         let http_method =
             baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
                 .map_err(PyValueError::new_err)?;
+
+        py.allow_threads(|| validate_raw_batch_payloads(&payloads_json))
+            .map_err(PyValueError::new_err)?;
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1325,17 +1356,7 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
-        for (idx, py_obj) in payloads.into_iter().enumerate() {
-            let bound_obj = py_obj.bind(py);
-            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to depythonize payload at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            payloads_json.push(json_val);
-        }
+        let payloads_json = collect_batch_payloads(py, payloads)?;
 
         let core_client = self.core_client.clone();
 
@@ -1348,6 +1369,7 @@ impl PerformanceClient {
                 .map_err(PyValueError::new_err)?;
 
         let future = async move {
+            validate_raw_batch_payloads(&payloads_json).map_err(PyValueError::new_err)?;
             let (response_data_with_times_and_headers, total_time) = core_client
                 .process_batch_post_requests(url_path, payloads_json, &rust_preference, http_method)
                 .await

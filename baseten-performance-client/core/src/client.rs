@@ -781,13 +781,16 @@ impl PerformanceClientCore {
 
     // Core batch post processing - optimized with JoinSetGuard
     // Cancellation: dropping this future will automatically abort all in-flight requests
-    pub async fn process_batch_post_requests(
+    pub async fn process_batch_post_requests<T>(
         &self,
         url_path: String,
-        payloads_json: Vec<serde_json::Value>,
+        payloads_json: Vec<T>,
         preference: &RequestProcessingPreference,
         method: crate::http::HttpMethod,
-    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError> {
+    ) -> Result<(Vec<(rmpv::Value, HeaderMap, Duration)>, Duration), ClientError>
+    where
+        T: Into<crate::http_client::BatchPayload> + Send + 'static,
+    {
         let start_time = std::time::Instant::now();
         let total_payloads = payloads_json.len();
 
@@ -837,7 +840,7 @@ impl PerformanceClientCore {
                 let result_tuple = send_http_request_with_headers(
                     &client,
                     request_suffix,
-                    payload_item_json,
+                    payload_item_json.into(),
                     api_key,
                     individual_request_timeout,
                     &config_clone,
