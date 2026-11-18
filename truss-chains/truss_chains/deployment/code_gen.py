@@ -428,8 +428,20 @@ def _make_chainlet_dir(
         )
     # Tighten permissions on dirs created by older versions.
     os.chmod(gen_dir, 0o700)
-    dir_name = f"chainlet_{chainlet_descriptor.name}"
-    chainlet_dir = gen_dir / _name_to_dirname(chain_name) / dir_name
+    # Dirs created by older versions may have been writable by others, who could have
+    # planted symlinks below that the chmod does not remove. Deeper entries are safe
+    # since rmtree does not follow symlinks inside the tree it removes.
+    chain_dir = gen_dir / _name_to_dirname(chain_name)
+    chainlet_dir = chain_dir / f"chainlet_{chainlet_descriptor.name}"
+    for path in (chain_dir, chainlet_dir):
+        try:
+            path_stat = os.lstat(path)
+        except FileNotFoundError:
+            break
+        if not stat.S_ISDIR(path_stat.st_mode):
+            raise public_types.ChainsUsageError(
+                f"`{path}` exists but is not a directory. Remove it and try again."
+            )
     if chainlet_dir.exists():
         shutil.rmtree(chainlet_dir)
     chainlet_dir.mkdir(exist_ok=False, parents=True)

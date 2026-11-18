@@ -54,6 +54,29 @@ def test_make_chainlet_dir_rejects_symlinked_gen_dir(tmp_path):
     assert list(target.iterdir()) == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges")
+@pytest.mark.parametrize(
+    "link_name, target_name",
+    [
+        ("My_Chain", "outside"),
+        ("My_Chain/chainlet_MyChainlet", "outside/chainlet_MyChainlet"),
+    ],
+)
+def test_make_chainlet_dir_rejects_symlink_below_gen_dir(
+    tmp_path, link_name, target_name
+):
+    marker = tmp_path / "outside" / "chainlet_MyChainlet" / "marker"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("keep")
+    link = tmp_path / private_types.GENERATED_CODE_DIR / link_name
+    link.parent.mkdir(parents=True)
+    link.symlink_to(tmp_path / target_name)
+
+    with pytest.raises(public_types.ChainsUsageError, match="is not a directory"):
+        code_gen._make_chainlet_dir("My Chain", _DESCRIPTOR, tmp_path)
+    assert marker.read_text() == "keep"
+
+
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="no POSIX uids")
 def test_make_chainlet_dir_rejects_gen_dir_owned_by_other_user(tmp_path, monkeypatch):
     (tmp_path / private_types.GENERATED_CODE_DIR).mkdir()
