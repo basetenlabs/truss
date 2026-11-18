@@ -1513,6 +1513,28 @@ class DockerServer(custom_types.ConfigModel):
         return self
 
 
+class Metrics(custom_types.ConfigModel):
+    """Where Baseten scrapes the model server's Prometheus metrics."""
+
+    port: Optional[int] = pydantic.Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="The container port that serves metrics. Defaults to the model server's port.",
+    )
+    path: Optional[str] = pydantic.Field(
+        default=None,
+        description="The URL path that serves metrics. Defaults to /metrics.",
+    )
+
+    @pydantic.field_validator("path")
+    @classmethod
+    def _validate_path(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.startswith("/"):
+            raise ValueError(f"metrics path must start with '/', got {v!r}")
+        return v
+
+
 class TrainingArtifactReference(custom_types.ConfigModel):
     training_job_id: str = pydantic.Field(
         ..., description="The training job id that the artifact reference belongs to."
@@ -1718,6 +1740,10 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = pydantic.Field(
         default=None,
         description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    metrics: Optional[Metrics] = pydantic.Field(
+        default=None,
+        description="Where Baseten scrapes the model server's Prometheus metrics, when not the server's port at /metrics.",
     )
     model_cache: ModelCache = pydantic.Field(
         default_factory=lambda: ModelCache([]),

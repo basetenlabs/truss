@@ -1798,6 +1798,25 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
         assert docker_server.run_as_user_id == expected
 
 
+def test_metrics_passes_push_validation_and_reaches_the_pushed_config():
+    config = TrussConfig.from_dict({"metrics": {"port": 8002, "path": "/prom"}})
+    config.validate_forbid_extra()
+    assert config.to_dict()["metrics"] == {"port": 8002, "path": "/prom"}
+
+
+@pytest.mark.parametrize(
+    "metrics,match",
+    [
+        pytest.param({"port": 0}, "greater than or equal to 1", id="port_zero"),
+        pytest.param({"port": 65536}, "less than or equal to 65535", id="port_too_big"),
+        pytest.param({"path": "metrics"}, "must start with '/'", id="relative_path"),
+    ],
+)
+def test_metrics_rejects_invalid_endpoint(metrics, match):
+    with pytest.raises(pydantic.ValidationError, match=match):
+        TrussConfig.from_dict({"metrics": metrics})
+
+
 # =============================================================================
 # Weights Configuration Tests
 # =============================================================================

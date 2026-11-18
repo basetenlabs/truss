@@ -906,6 +906,42 @@
       "title": "HealthChecks",
       "type": "object"
     },
+    "Metrics": {
+      "additionalProperties": true,
+      "description": "Where Baseten scrapes the model server's Prometheus metrics.",
+      "properties": {
+        "port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The container port that serves metrics. Defaults to the model server's port.",
+          "title": "Port"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The URL path that serves metrics. Defaults to /metrics.",
+          "title": "Path"
+        }
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
     "ModelCache": {
       "items": {
         "$ref": "#/$defs/ModelRepo"
@@ -2561,6 +2597,18 @@
       ],
       "default": null,
       "description": "Deploy a custom Docker image that has its own HTTP server, without writing a Model class."
+    },
+    "metrics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Metrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where Baseten scrapes the model server's Prometheus metrics, when not the server's port at /metrics."
     },
     "model_cache": {
       "$ref": "#/$defs/ModelCache",
