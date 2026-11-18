@@ -54,7 +54,8 @@ where
             .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
-        request_builder = add_response_negotiation_headers(request_builder, config);
+        request_builder =
+            add_response_negotiation_headers(request_builder, config, ACCEPT_JSON_OR_MSGPACK);
 
         if let Some(ref headers) = config.extra_headers {
             for (key, value) in headers {
@@ -107,7 +108,14 @@ pub(crate) async fn send_http_request_with_headers(
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
     method: crate::http::HttpMethod,
+    raw_response: bool,
 ) -> Result<(rmpv::Value, std::collections::HashMap<String, String>), ClientError> {
+    // Raw mode returns the body undecoded, so ask for JSON only.
+    let accept = if raw_response {
+        "application/json"
+    } else {
+        ACCEPT_JSON_OR_MSGPACK
+    };
     let customer_request_id_header = customer_request_id.to_string();
     let response = send_request_with_retry(&request_suffix, config, |attempt_url| {
         let mut request_builder = client
@@ -118,7 +126,7 @@ pub(crate) async fn send_http_request_with_headers(
 
         request_builder = add_timeout_headers(request_builder, request_timeout);
 
-        request_builder = add_response_negotiation_headers(request_builder, config);
+        request_builder = add_response_negotiation_headers(request_builder, config, accept);
 
         if method.has_body() {
             request_builder = match &payload {
@@ -151,22 +159,29 @@ pub(crate) async fn send_http_request_with_headers(
         );
     }
 
-    let response_value: rmpv::Value =
-        if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
-            parse_response_body(successful_response).await?
-        } else {
-            rmpv::Value::Map(Vec::new())
-        };
+    let response_value: rmpv::Value = if raw_response {
+        let body = successful_response.bytes().await.map_err(|e| {
+            ClientError::Serialization(format!("Failed to read response body: {}", e))
+        })?;
+        rmpv::Value::Binary(body.into())
+    } else if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
+        parse_response_body(successful_response).await?
+    } else {
+        rmpv::Value::Map(Vec::new())
+    };
 
     Ok((response_value, headers_map))
 }
 
+const ACCEPT_JSON_OR_MSGPACK: &str = "application/json, application/msgpack";
+
 fn add_response_negotiation_headers(
     mut request_builder: reqwest::RequestBuilder,
     config: &RequestProcessingConfig,
+    accept: &'static str,
 ) -> reqwest::RequestBuilder {
     if !extra_headers_contains(config, ACCEPT.as_str()) {
-        request_builder = request_builder.header(ACCEPT, "application/json, application/msgpack");
+        request_builder = request_builder.header(ACCEPT, accept);
     }
 
     if !extra_headers_contains(config, ACCEPT_ENCODING.as_str()) {

@@ -164,6 +164,21 @@ response_obj = client.batch_post(
 )
 ```
 
+#### Raw response bytes
+
+With `raw_bytes=True`, each item of `response_obj.data` is the response body as `bytes` instead of a Python object. The client asks the server for JSON only and skips the conversion to Python objects, which otherwise runs while holding the GIL. Use this for large responses that you parse selectively.
+
+```python
+import orjson
+
+response_obj = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=[orjson.dumps(payload1), payload2],
+    raw_bytes=True,
+)
+first = orjson.loads(response_obj.data[0])
+```
+
 #### Asynchronous Batch POST
 
 ```python

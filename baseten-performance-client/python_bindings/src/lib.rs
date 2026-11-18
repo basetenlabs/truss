@@ -1238,6 +1238,7 @@ impl PerformanceClient {
             requests,
             preference,
             None,
+            false,
         )
     }
 
@@ -1255,10 +1256,11 @@ impl PerformanceClient {
             requests,
             preference,
             None,
+            false,
         )
     }
 
-    #[pyo3(signature = (url_path, payloads, preference = None, method = None))]
+    #[pyo3(signature = (url_path, payloads, preference = None, method = None, raw_bytes = false))]
     fn batch_post(
         &self,
         py: Python,
@@ -1266,6 +1268,7 @@ impl PerformanceClient {
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
         method: Option<String>,
+        raw_bytes: bool,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -1290,11 +1293,12 @@ impl PerformanceClient {
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
                 core_client
-                    .process_batch_post_requests(
+                    .process_batch_post_requests_with(
                         url_path,
                         payloads_json,
                         &rust_preference,
                         http_method,
+                        raw_bytes,
                     )
                     .await
             }))
@@ -1343,7 +1347,7 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, method = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, method = None, raw_bytes = false))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
@@ -1351,6 +1355,7 @@ impl PerformanceClient {
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
         method: Option<String>,
+        raw_bytes: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -1371,7 +1376,13 @@ impl PerformanceClient {
         let future = async move {
             validate_raw_batch_payloads(&payloads_json).map_err(PyValueError::new_err)?;
             let (response_data_with_times_and_headers, total_time) = core_client
-                .process_batch_post_requests(url_path, payloads_json, &rust_preference, http_method)
+                .process_batch_post_requests_with(
+                    url_path,
+                    payloads_json,
+                    &rust_preference,
+                    http_method,
+                    raw_bytes,
+                )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 
