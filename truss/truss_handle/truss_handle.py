@@ -211,7 +211,6 @@ class TrussHandle:
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
-        secrets_mount_dir_path = _prepare_secrets_mount_dir()
 
         envs: Dict[str, str] = {}
         # Add bundled packages to the PYTHONPATH. Note
@@ -234,14 +233,9 @@ class TrussHandle:
                 mounts=[
                     [
                         "type=bind",
-                        f"src={str(secrets_mount_dir_path)}",
-                        "target=/secrets",
-                    ],
-                    [
-                        "type=bind",
                         f"src={str(script_path.absolute())}",
                         "target=/app/script.py",
-                    ],
+                    ]
                 ],
                 gpus=gpus,
                 envs=envs,
@@ -261,7 +255,6 @@ class TrussHandle:
             # a GPU, but the host does not have one that can attach.
             return _docker_run(None)
 
-    @proxy_to_shadow_if_scattered
     def docker_run(
         self,
         build_dir: Optional[Path] = None,
@@ -296,6 +289,37 @@ class TrussHandle:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
+        return self._docker_run(
+            build_dir=build_dir,
+            tag=tag,
+            local_port=local_port,
+            detach=detach,
+            patch_ping_url=patch_ping_url,
+            wait_for_server_ready=wait_for_server_ready,
+            network=network,
+            container_name_prefix=container_name_prefix,
+            model_server_stop_retry_override=model_server_stop_retry_override,
+            disable_json_logging=disable_json_logging,
+        )
+
+    @proxy_to_shadow_if_scattered
+    def _docker_run(
+        self,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
+        detach=True,
+        patch_ping_url: Optional[str] = None,
+        wait_for_server_ready: bool = True,
+        network: Optional[str] = None,
+        container_name_prefix: Optional[str] = None,
+        model_server_stop_retry_override=None,
+        disable_json_logging: bool = False,
+        secrets_dir: Optional[Path] = None,
+    ):
+        """Same as `docker_run`, plus an optional `secrets_dir` to mount at /secrets."""
+        # `secrets_dir` is for internal tests only. It is ignored if an existing
+        # live-reload container is patched instead of recreated.
         from python_on_whales.exceptions import DockerException
 
         self._validate_local_accelerator()
@@ -307,7 +331,6 @@ class TrussHandle:
             image = self.build_serving_docker_image(
                 build_dir=build_dir, tag=tag, network=network
             )
-            secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = (
                 [[local_port, INFERENCE_SERVER_PORT]]
                 if local_port is not None
@@ -334,30 +357,31 @@ class TrussHandle:
             else:
                 name = None
 
+            mounts = [
+                [
+                    "type=bind",
+                    f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
+                    "target=/bptr",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(LocalConfigHandler.dynamic_config_path())}",
+                    "target=/etc/b10_dynamic_config",
+                    "readonly=false",
+                ],
+            ]
+            if secrets_dir is not None:
+                mounts.append(
+                    ["type=bind", f"src={str(secrets_dir)}", "target=/secrets"]
+                )
+
             def _run_docker(gpus: Optional[str] = None):
                 return Docker.client().run(
                     image.id,
                     publish=publish_ports,
                     detach=detach,
                     labels=labels,
-                    mounts=[
-                        [
-                            "type=bind",
-                            f"src={str(secrets_mount_dir_path)}",
-                            "target=/secrets",
-                        ],
-                        [
-                            "type=bind",
-                            f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
-                            "target=/bptr",
-                        ],
-                        [
-                            "type=bind",
-                            f"src={str(LocalConfigHandler.dynamic_config_path())}",
-                            "target=/etc/b10_dynamic_config",
-                            "readonly=false",
-                        ],
-                    ],
+                    mounts=mounts,
                     gpus=gpus,
                     envs=envs,
                     add_hosts=[("host.docker.internal", "host-gateway")],
@@ -392,14 +416,18 @@ class TrussHandle:
         return container
 
     def docker_run_for_test(
-        self, wait_for_server_ready=True, model_server_stop_retry_override=None
+        self,
+        wait_for_server_ready=True,
+        model_server_stop_retry_override=None,
+        secrets_dir: Optional[Path] = None,
     ) -> tuple["Container", DockerURLs]:
-        container = self.docker_run(
+        container = self._docker_run(
             local_port=None,
             detach=True,
             wait_for_server_ready=wait_for_server_ready,
             network="host",
             model_server_stop_retry_override=model_server_stop_retry_override,
+            secrets_dir=secrets_dir,
         )
         return container, get_docker_urls(container)
 
@@ -1109,11 +1137,6 @@ def wait_for_truss(
             stop = model_server_stop_retry_override
 
         _wait_for_model_server(urls.predict_url, stop)
-
-
-def _prepare_secrets_mount_dir() -> Path:
-    LocalConfigHandler.sync_secrets_mount_dir()
-    return LocalConfigHandler.secrets_dir_path()
 
 
 def _find_example_by_name(examples: List[Example], example_name: str) -> Optional[int]:

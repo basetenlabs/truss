@@ -13,7 +13,6 @@ from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.base.truss_config import map_local_to_supported_python_version
 from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG
-from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
@@ -327,18 +326,15 @@ def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
 
 
 @pytest.mark.integration
-def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
+def test_docker_predict_secrets(custom_model_truss_dir_for_secrets, tmp_path):
     th = TrussHandle(custom_model_truss_dir_for_secrets)
-    tag = "test-docker-predict-secrets-tag:0.0.1"
-    LocalConfigHandler.set_secret("secret_name", "secret_value")
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir()
+    (secrets_dir / "secret_name").write_text("secret_value")
     with ensure_kill_all():
-        try:
-            result = th.docker_predict(
-                {"instances": ["secret_name"]}, tag=tag, local_port=None
-            )
-            assert result["predictions"][0] == "secret_value"
-        finally:
-            LocalConfigHandler.remove_secret("secret_name")
+        _, urls = th.docker_run_for_test(secrets_dir=secrets_dir)
+        response = requests.post(urls.predict_url, json={"instances": ["secret_name"]})
+        assert response.json()["predictions"][0] == "secret_value"
 
 
 @pytest.mark.integration
