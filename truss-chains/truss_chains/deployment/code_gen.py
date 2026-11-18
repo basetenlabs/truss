@@ -28,6 +28,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -409,13 +410,26 @@ def _make_chainlet_dir(
     chainlet_descriptor: private_types.ChainletAPIDescriptor,
     root: pathlib.Path,
 ) -> pathlib.Path:
+    # The generated code dir is a fixed, documented path in the shared temp dir, so
+    # another local user could pre-create it (or a symlink) to read or swap generated
+    # files before upload. Only use it if it is a real directory owned by us.
+    gen_dir = root / private_types.GENERATED_CODE_DIR
+    try:
+        os.mkdir(gen_dir, 0o700)
+    except FileExistsError:
+        pass
+    gen_stat = os.lstat(gen_dir)
+    if not stat.S_ISDIR(gen_stat.st_mode) or (
+        hasattr(os, "getuid") and gen_stat.st_uid != os.getuid()
+    ):
+        raise public_types.ChainsUsageError(
+            f"`{gen_dir}` exists but is not a directory owned by the current user. "
+            "Remove it and try again."
+        )
+    # Tighten permissions on dirs created by older versions.
+    os.chmod(gen_dir, 0o700)
     dir_name = f"chainlet_{chainlet_descriptor.name}"
-    chainlet_dir = (
-        root
-        / private_types.GENERATED_CODE_DIR
-        / _name_to_dirname(chain_name)
-        / dir_name
-    )
+    chainlet_dir = gen_dir / _name_to_dirname(chain_name) / dir_name
     if chainlet_dir.exists():
         shutil.rmtree(chainlet_dir)
     chainlet_dir.mkdir(exist_ok=False, parents=True)
