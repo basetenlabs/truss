@@ -2,6 +2,7 @@ import pathlib
 import tempfile
 from unittest import mock
 
+from truss.remote.remote_factory import API_KEY_ENV, ENV_REMOTE_NAME, REMOTE_URL_ENV
 from truss_train.definitions import (
     Compute,
     Image,
@@ -100,3 +101,38 @@ class TestPushWithPath:
         assert call_args[0][1] == config_path
 
         config_path.unlink()
+
+
+def _project() -> TrainingProject:
+    return TrainingProject(
+        name="my-project",
+        job=TrainingJob(
+            image=Image(base_image="hello-world"), compute=Compute(), runtime=Runtime()
+        ),
+    )
+
+
+@mock.patch("truss_train.public_api._upsert_project_and_create_job")
+@mock.patch("truss.remote.remote_factory.RemoteFactory.create")
+def test_push_without_a_remote_uses_the_env_remote(
+    mock_create_remote, mock_upsert, monkeypatch
+):
+    monkeypatch.setenv(REMOTE_URL_ENV, "https://app.test.com")
+    monkeypatch.setenv(API_KEY_ENV, "env_key")
+
+    push(_project())
+
+    mock_create_remote.assert_called_once_with(remote=ENV_REMOTE_NAME)
+
+
+@mock.patch("truss_train.public_api._upsert_project_and_create_job")
+@mock.patch("truss.remote.remote_factory.RemoteFactory.create")
+def test_push_without_a_remote_defaults_to_baseten(
+    mock_create_remote, mock_upsert, monkeypatch
+):
+    monkeypatch.delenv(REMOTE_URL_ENV, raising=False)
+    monkeypatch.delenv(API_KEY_ENV, raising=False)
+
+    push(_project())
+
+    mock_create_remote.assert_called_once_with(remote="baseten")

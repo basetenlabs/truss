@@ -11,6 +11,7 @@ from typing import (
     overload,
 )
 
+from truss.remote.remote_factory import RemoteFactory
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import deployment_client
 from truss_chains.remote_chainlet.truss_chainlet import TrussHandle
@@ -171,7 +172,7 @@ def push(
     publish: bool = True,
     promote: bool = True,
     only_generate_trusses: bool = False,
-    remote: str = "baseten",
+    remote: Optional[str] = None,
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
@@ -190,8 +191,8 @@ def push(
         only_generate_trusses: Used for debugging purposes. If set to True, only the
           underlying Truss models for the chainlets are generated in
           ``/tmp/.chains_generated``.
-        remote: name of a remote config in `.trussrc`. If not provided, it will be
-          inquired.
+        remote: name of a remote config in `.trussrc`. Defaults to the remote set by
+          the BASETEN_TRUSS_AUTH_* environment variables if any, otherwise "baseten".
         environment: The name of an environment to promote deployment into.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
@@ -208,7 +209,7 @@ def push(
         publish=publish,
         promote=promote,
         only_generate_trusses=only_generate_trusses,
-        remote=remote,
+        remote=remote or RemoteFactory.default_remote_name(),
         environment=environment,
         include_git_info=include_git_info,
         working_dir=pathlib.Path(inspect.getfile(entrypoint)).parent,

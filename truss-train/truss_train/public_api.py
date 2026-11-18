@@ -10,7 +10,7 @@ from truss_train.deployment import _upsert_project_and_create_job, create_traini
 
 @overload
 def push(
-    config: Path, *, remote: str = "baseten", team_id: Optional[str] = None
+    config: Path, *, remote: Optional[str] = None, team_id: Optional[str] = None
 ) -> dict: ...
 
 
@@ -18,7 +18,7 @@ def push(
 def push(
     config: TrainingProject,
     *,
-    remote: str = "baseten",
+    remote: Optional[str] = None,
     source_dir: Optional[Path] = None,
     team_id: Optional[str] = None,
 ) -> dict: ...
@@ -27,7 +27,7 @@ def push(
 def push(
     config: Union[Path, TrainingProject],
     *,
-    remote: str = "baseten",
+    remote: Optional[str] = None,
     source_dir: Optional[Path] = None,
     team_id: Optional[str] = None,
 ) -> dict:
@@ -36,7 +36,8 @@ def push(
     Args:
         config: Either a Path to a Python config file that defines the training
             project and job, or a TrainingProject instance constructed in code.
-        remote: The remote provider to use. Defaults to "baseten".
+        remote: The remote to use. Defaults to the remote set by the
+            BASETEN_TRUSS_AUTH_* environment variables if any, otherwise "baseten".
         source_dir: Base directory for workspace path resolution and archiving.
             Only used when config is a TrainingProject. Defaults to Path.cwd().
         team_id: Team to create the training project under. Required for API keys
@@ -47,7 +48,8 @@ def push(
         dict: A dictionary containing the created training project and job.
     """
     remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
+        BasetenRemote,
+        RemoteFactory.create(remote=remote or RemoteFactory.default_remote_name()),
     )
 
     if isinstance(config, Path):
