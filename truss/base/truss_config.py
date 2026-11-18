@@ -1743,7 +1743,7 @@ class TrussConfig(custom_types.ConfigModel):
     )
     metrics: Optional[Metrics] = pydantic.Field(
         default=None,
-        description="Where Baseten scrapes the model server's Prometheus metrics, when not the server's port at /metrics.",
+        description="Overrides where Baseten scrapes Prometheus metrics from your model server. By default, Baseten scrapes /metrics on the server's port.",
     )
     model_cache: ModelCache = pydantic.Field(
         default_factory=lambda: ModelCache([]),
