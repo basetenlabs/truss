@@ -411,40 +411,31 @@ def _make_chainlet_dir(
     root: pathlib.Path,
 ) -> pathlib.Path:
     # The generated code dir is a fixed, documented path in the shared temp dir, so
-    # another local user could pre-create it (or a symlink) to read or swap generated
-    # files before upload. Only use it if it is a real directory owned by us.
+    # another local user could pre-create it, its subdirs (if an older version left
+    # it writable to others), or symlinks there to read or swap generated files
+    # before upload. Only use each dir on the path if it is a real directory owned
+    # by us, and tighten permissions on dirs created by older versions. Entries
+    # deeper in the chainlet dir are safe since rmtree does not follow symlinks.
     gen_dir = root / private_types.GENERATED_CODE_DIR
-    try:
-        os.mkdir(gen_dir, 0o700)
-    except FileExistsError:
-        pass
-    gen_stat = os.lstat(gen_dir)
-    if not stat.S_ISDIR(gen_stat.st_mode) or (
-        hasattr(os, "getuid") and gen_stat.st_uid != os.getuid()
-    ):
-        raise public_types.ChainsUsageError(
-            f"`{gen_dir}` exists but is not a directory owned by the current user. "
-            "Remove it and try again."
-        )
-    # Tighten permissions on dirs created by older versions.
-    os.chmod(gen_dir, 0o700)
-    # Dirs created by older versions may have been writable by others, who could have
-    # planted symlinks below that the chmod does not remove. Deeper entries are safe
-    # since rmtree does not follow symlinks inside the tree it removes.
     chain_dir = gen_dir / _name_to_dirname(chain_name)
     chainlet_dir = chain_dir / f"chainlet_{chainlet_descriptor.name}"
-    for path in (chain_dir, chainlet_dir):
+    for path in (gen_dir, chain_dir, chainlet_dir):
         try:
-            path_stat = os.lstat(path)
-        except FileNotFoundError:
-            break
-        if not stat.S_ISDIR(path_stat.st_mode):
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        path_stat = os.lstat(path)
+        if not stat.S_ISDIR(path_stat.st_mode) or (
+            hasattr(os, "getuid") and path_stat.st_uid != os.getuid()
+        ):
             raise public_types.ChainsUsageError(
-                f"`{path}` exists but is not a directory. Remove it and try again."
+                f"`{path}` exists but is not a directory owned by the current user. "
+                "Remove it and try again."
             )
-    if chainlet_dir.exists():
-        shutil.rmtree(chainlet_dir)
-    chainlet_dir.mkdir(exist_ok=False, parents=True)
+        os.chmod(path, 0o700)
+    # Start from an empty chainlet dir.
+    shutil.rmtree(chainlet_dir)
+    os.mkdir(chainlet_dir, 0o700)
     return chainlet_dir
 
 

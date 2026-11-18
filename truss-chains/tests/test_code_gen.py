@@ -21,19 +21,23 @@ def test_make_chainlet_dir_creates_owner_only_gen_dir(tmp_path):
         assert stat.S_IMODE(os.stat(gen_dir).st_mode) == 0o700
 
 
-def test_make_chainlet_dir_reuses_and_tightens_existing_gen_dir(tmp_path):
+def test_make_chainlet_dir_reuses_and_tightens_existing_dirs(tmp_path):
     gen_dir = tmp_path / private_types.GENERATED_CODE_DIR
-    gen_dir.mkdir(mode=0o755)
-    stale = gen_dir / "My_Chain" / "chainlet_MyChainlet" / "stale.txt"
-    stale.parent.mkdir(parents=True)
+    chain_dir = gen_dir / "My_Chain"
+    old_chainlet_dir = chain_dir / "chainlet_MyChainlet"
+    for path in (gen_dir, chain_dir, old_chainlet_dir):
+        path.mkdir(mode=0o755)
+    stale = old_chainlet_dir / "stale.txt"
     stale.write_text("old")
 
     chainlet_dir = code_gen._make_chainlet_dir("My Chain", _DESCRIPTOR, tmp_path)
 
+    assert chainlet_dir == old_chainlet_dir
     assert chainlet_dir.is_dir()
     assert not stale.exists()
     if sys.platform != "win32":
-        assert stat.S_IMODE(os.stat(gen_dir).st_mode) == 0o700
+        for path in (gen_dir, chain_dir, chainlet_dir):
+            assert stat.S_IMODE(os.stat(path).st_mode) == 0o700
 
 
 def test_make_chainlet_dir_rejects_non_dir_gen_path(tmp_path):
@@ -72,16 +76,28 @@ def test_make_chainlet_dir_rejects_symlink_below_gen_dir(
     link.parent.mkdir(parents=True)
     link.symlink_to(tmp_path / target_name)
 
-    with pytest.raises(public_types.ChainsUsageError, match="is not a directory"):
+    with pytest.raises(public_types.ChainsUsageError, match="not a directory owned"):
         code_gen._make_chainlet_dir("My Chain", _DESCRIPTOR, tmp_path)
     assert marker.read_text() == "keep"
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="no POSIX uids")
-def test_make_chainlet_dir_rejects_gen_dir_owned_by_other_user(tmp_path, monkeypatch):
-    (tmp_path / private_types.GENERATED_CODE_DIR).mkdir()
-    other_uid = os.getuid() + 1
-    monkeypatch.setattr(os, "getuid", lambda: other_uid)
+@pytest.mark.parametrize(
+    "foreign_name",
+    [private_types.GENERATED_CODE_DIR, "My_Chain", "chainlet_MyChainlet"],
+)
+def test_make_chainlet_dir_rejects_dir_owned_by_other_user(
+    tmp_path, monkeypatch, foreign_name
+):
+    real_lstat = os.lstat
+
+    def lstat_with_foreign_owner(path):
+        st = real_lstat(path)
+        if os.path.basename(path) != foreign_name:
+            return st
+        return SimpleNamespace(st_mode=st.st_mode, st_uid=st.st_uid + 1)
+
+    monkeypatch.setattr(os, "lstat", lstat_with_foreign_owner)
 
     with pytest.raises(public_types.ChainsUsageError, match="not a directory owned"):
         code_gen._make_chainlet_dir("My Chain", _DESCRIPTOR, tmp_path)
