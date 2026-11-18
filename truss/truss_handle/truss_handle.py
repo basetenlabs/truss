@@ -255,7 +255,6 @@ class TrussHandle:
             # a GPU, but the host does not have one that can attach.
             return _docker_run(None)
 
-    @proxy_to_shadow_if_scattered
     def docker_run(
         self,
         build_dir: Optional[Path] = None,
@@ -268,7 +267,6 @@ class TrussHandle:
         container_name_prefix: Optional[str] = None,
         model_server_stop_retry_override=None,
         disable_json_logging: bool = False,
-        secrets_dir: Optional[Path] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -286,15 +284,42 @@ class TrussHandle:
               probe before returning.
             network: docker network name.
             container_name_prefix: optional docker container name prefix.
-            secrets_dir: Mostly for testing, a directory of secret files to mount
-                         at /secrets, where the model server reads secrets.
-                         Ignored if an existing live-reload container is
-                         patched instead of recreated.
 
         Returns:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
+        return self._docker_run(
+            build_dir=build_dir,
+            tag=tag,
+            local_port=local_port,
+            detach=detach,
+            patch_ping_url=patch_ping_url,
+            wait_for_server_ready=wait_for_server_ready,
+            network=network,
+            container_name_prefix=container_name_prefix,
+            model_server_stop_retry_override=model_server_stop_retry_override,
+            disable_json_logging=disable_json_logging,
+        )
+
+    @proxy_to_shadow_if_scattered
+    def _docker_run(
+        self,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
+        detach=True,
+        patch_ping_url: Optional[str] = None,
+        wait_for_server_ready: bool = True,
+        network: Optional[str] = None,
+        container_name_prefix: Optional[str] = None,
+        model_server_stop_retry_override=None,
+        disable_json_logging: bool = False,
+        secrets_dir: Optional[Path] = None,
+    ):
+        """Same as `docker_run`, plus an optional `secrets_dir` to mount at /secrets."""
+        # `secrets_dir` is for internal tests only. It is ignored if an existing
+        # live-reload container is patched instead of recreated.
         from python_on_whales.exceptions import DockerException
 
         self._validate_local_accelerator()
@@ -396,7 +421,7 @@ class TrussHandle:
         model_server_stop_retry_override=None,
         secrets_dir: Optional[Path] = None,
     ) -> tuple["Container", DockerURLs]:
-        container = self.docker_run(
+        container = self._docker_run(
             local_port=None,
             detach=True,
             wait_for_server_ready=wait_for_server_ready,
