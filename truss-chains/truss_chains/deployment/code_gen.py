@@ -417,7 +417,13 @@ def _make_chainlet_dir(
     # by us, and tighten permissions on dirs created by older versions. Entries
     # deeper in the chainlet dir are safe since rmtree does not follow symlinks.
     gen_dir = root / private_types.GENERATED_CODE_DIR
-    chain_dir = gen_dir / _name_to_dirname(chain_name)
+    chain_dirname = _name_to_dirname(chain_name)
+    # `..` would resolve to the temp root and get chmodded below.
+    if chain_dirname in (".", ".."):
+        raise public_types.ChainsUsageError(
+            f"Chain name `{chain_name}` cannot be used as a directory name."
+        )
+    chain_dir = gen_dir / chain_dirname
     chainlet_dir = chain_dir / f"chainlet_{chainlet_descriptor.name}"
     for path in (gen_dir, chain_dir, chainlet_dir):
         try:

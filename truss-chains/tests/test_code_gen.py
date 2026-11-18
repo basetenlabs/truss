@@ -40,6 +40,15 @@ def test_make_chainlet_dir_reuses_and_tightens_existing_dirs(tmp_path):
             assert stat.S_IMODE(os.stat(path).st_mode) == 0o700
 
 
+@pytest.mark.parametrize("chain_name", [".", "..", " .. "])
+def test_make_chainlet_dir_rejects_path_special_chain_names(tmp_path, chain_name):
+    root_mode = os.stat(tmp_path).st_mode
+
+    with pytest.raises(public_types.ChainsUsageError, match="cannot be used"):
+        code_gen._make_chainlet_dir(chain_name, _DESCRIPTOR, tmp_path)
+    assert os.stat(tmp_path).st_mode == root_mode
+
+
 def test_make_chainlet_dir_rejects_non_dir_gen_path(tmp_path):
     (tmp_path / private_types.GENERATED_CODE_DIR).write_text("not a dir")
 
