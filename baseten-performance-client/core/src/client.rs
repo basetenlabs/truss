@@ -323,6 +323,7 @@ impl PerformanceClientCore {
                 .http2_prior_knowledge()
                 .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
                 .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
+                .http2_keep_alive_while_idle(true)
                 .pool_max_idle_per_host(16);
         } else {
             client_builder = client_builder.http1_only().pool_max_idle_per_host(512);
