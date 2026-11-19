@@ -292,6 +292,7 @@ def prepare_push(
         interactive_session=training_job.interactive_session,
         workspace=training_job.workspace,
         weights=training_job.weights,
+        bdn=training_job.bdn,
         enable_baseten_workdir=training_job.enable_baseten_workdir,
         runtime_artifacts=[
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])

@@ -1169,3 +1169,29 @@ async fn test_primary_api_key_override_is_sent_as_bearer() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_http2_keep_alive_closes_silent_connection() {
+    // A server that accepts the connection and then never sends a byte.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            held.push(socket);
+        }
+    });
+
+    let client = PerformanceClientCore::get_http_client(2, None).unwrap();
+    let started = std::time::Instant::now();
+    // No request timeout: without keepalive this request would hang forever.
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.get(format!("http://{addr}/")).send(),
+    )
+    .await
+    .expect("keepalive should close the silent connection (10s interval + 5s timeout)");
+
+    assert!(result.is_err(), "silent connection must fail the request");
+    assert!(started.elapsed() >= Duration::from_secs(10));
+}

@@ -19,7 +19,7 @@ jobs:
     outputs:
       version: ${{ steps.versions.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
@@ -34,14 +34,14 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [detect-version]
     steps:
-    - uses: actions/checkout@v4
+    - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: chainguard-actions/docker-setup-buildx-action@6d415f71ab3ef9a7738ade671313ffac4ba9f06c # v3
 
 
     - name: Login to Docker Hub
-      uses: docker/login-action@v3
+      uses: chainguard-actions/docker-login-action@aefdd94d7a26b90dba6146f32d376ef273113621 # v3.7.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -59,13 +59,13 @@ jobs:
 
     - name: Docker meta
       id: meta
-      uses: docker/metadata-action@v5
+      uses: chainguard-actions/docker-metadata-action@f00cce7d85a292451bbab8346cddfdfb3a7b0ea4 # v6.2.0
       with:
         images: baseten/truss-context-builder
 
     - name: Docker Build
       id: docker_build
-      uses: docker/build-push-action@v5
+      uses: chainguard-actions/docker-build-push-action@7a9792a1d0d1c43df643ef18b1f3a4a495833b23 # v7.4.0
       with:
         context: ./
         file: ./context_builder.Dockerfile

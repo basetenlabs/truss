@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import stat
 import sys
 import tarfile
 import threading
@@ -1975,3 +1977,19 @@ class TestExtractRequestData:
     def test_invalid_json_raises(self):
         with pytest.raises(click.UsageError, match="valid json"):
             _extract_request_data(data="{not json}", file=None)
+
+
+def test_configure_writes_owner_only(trussrc, monkeypatch):
+    monkeypatch.setenv("TRUSS_NO_UPDATE_CHECK", "1")
+    monkeypatch.setattr("truss.cli.cli.USER_TRUSSRC_PATH", trussrc)
+    # Existing file left world-readable by an older truss version.
+    trussrc.write_text("[old]\napi_key = old\n")
+    os.chmod(trussrc, 0o644)
+    edited = "[new]\napi_key = new\n"
+    with patch("truss.cli.cli.click.edit", return_value=edited):
+        result = CliRunner().invoke(truss_cli, ["configure"])
+    assert result.exit_code == 0, result.output
+    # Windows has no POSIX permission bits, so only check the mode elsewhere.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(trussrc.stat().st_mode) == 0o600
+    assert trussrc.read_text() == edited

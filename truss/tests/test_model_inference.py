@@ -402,7 +402,7 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
 
 
 @pytest.mark.integration
-def test_secrets_truss():
+def test_secrets_truss(tmp_path):
     class Model:
         def __init__(self, **kwargs):
             self._secrets = kwargs["secrets"]
@@ -419,9 +419,12 @@ secrets:
     missing_secret_error_message = """Secret 'secret' not found. Please ensure that:
   * Secret 'secret' is defined in the 'secrets' section of the Truss config file"""
 
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir()
+    (secrets_dir / "secret").write_text("secret_value")
+
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
-        LocalConfigHandler.set_secret("secret", "secret_value")
-        container, urls = tr.docker_run_for_test()
+        container, urls = tr.docker_run_for_test(secrets_dir=secrets_dir)
 
         response = requests.post(urls.predict_url, json={})
 
@@ -432,8 +435,7 @@ secrets:
         ensure_kill_all(),
         _temp_truss(inspect.getsource(Model), config_with_no_secret) as tr,
     ):
-        LocalConfigHandler.set_secret("secret", "secret_value")
-        container, urls = tr.docker_run_for_test()
+        container, urls = tr.docker_run_for_test(secrets_dir=secrets_dir)
 
         response = requests.post(urls.predict_url, json={})
         assert "error" in response.json()
@@ -444,7 +446,6 @@ secrets:
 
     # Case where the secret is not mounted
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
-        LocalConfigHandler.remove_secret("secret")
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={})

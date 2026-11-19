@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 /// Typed-decision endpoint shared by Jev, Infinity, and vLLM.
 pub const SYSTEM_ONE_PATH: &str = "/v1/systemone";
 
@@ -39,6 +41,15 @@ pub(crate) const MAX_BUDGET_PERCENTAGE: f64 = 3.0; // 300%
 pub(crate) const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
 pub(crate) const HTTP2_CLIENT_POOL_SIZE: usize = 64;
 pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
+
+// Detect dead connections instead of waiting for the per-request timeout.
+// Bounds TCP connect plus TLS handshake.
+pub(crate) const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+// A connection with open requests that receives no frame for the interval is
+// pinged, and closed when the ping is not acknowledged within the timeout.
+// Keep the interval conservative: some servers reject frequent pings.
+pub(crate) const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 // Slow providers where customers have reported issues
 pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];

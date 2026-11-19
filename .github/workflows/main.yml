@@ -57,7 +57,7 @@ jobs:
       - name: get-branch
         run: echo ${{ github.ref }}
       - name: show-slack-status
-        uses: 8398a7/action-slack@v3
+        uses: chainguard-actions/8398a7-action-slack@f61be439726281ffef6ba03905e077117d05df89 # v3.19.0
         with:
           status: custom
           fields: author, job, commit, repo
@@ -82,7 +82,7 @@ jobs:
       id-token: write
     steps:
       - name: "Git tag release"
-        uses: actions/checkout@v4
+        uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
@@ -102,7 +102,7 @@ jobs:
         run: uv build
 
       - name: Create Release
-        uses: ncipollo/release-action@v1
+        uses: chainguard-actions/ncipollo-release-action@28076a84406b6ec1cbcd5d2f918bec300ea1f891 # v1.21.0
         with:
           artifacts: "dist/*"
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
@@ -115,7 +115,7 @@ jobs:
 
       - name: Publish package to PyPI (Trusted Publishing)
         if: ${{ github.event_name != 'pull_request' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           verbose: true
           print-hash: true
