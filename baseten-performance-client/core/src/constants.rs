@@ -45,7 +45,7 @@ pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 // Detect dead connections instead of waiting for the per-request timeout.
 // Bounds TCP connect plus TLS handshake.
 pub(crate) const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-// A connection with open requests that receives no frame for the interval is
+// A connection, idle or not, that receives no frame for the interval is
 // pinged, and closed when the ping is not acknowledged within the timeout.
 // Keep the interval conservative: some servers reject frequent pings.
 pub(crate) const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
