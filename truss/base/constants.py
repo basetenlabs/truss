@@ -57,7 +57,9 @@ FILENAME_CONSTANTS_MAP = {
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 NO_BUILD_DOCKERFILE_TEMPLATE_NAME = "no_build.Dockerfile.jinja"
-REBUILD_FREE_DOCKERFILE_TEMPLATE_NAME = "rebuild_free.Dockerfile.jinja"
+NO_BUILD_WITH_START_SCRIPT_DOCKERFILE_TEMPLATE_NAME = (
+    "no_build_with_start_script.Dockerfile.jinja"
+)
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 MODEL_CACHE_PATH = pathlib.PurePosixPath("/app/model_cache")
 README_TEMPLATE_NAME = "README.md.jinja"
