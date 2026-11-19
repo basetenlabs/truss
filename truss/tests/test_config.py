@@ -1403,42 +1403,26 @@ def test_docker_server_no_build_allows_install_fields():
     )
 
 
-@pytest.mark.parametrize("key", ["no_build_with_start_script", "rebuild_free"])
-def test_docker_server_rejects_no_build_with_start_script_and_no_build(key):
+def test_docker_server_rejects_no_build_with_start_script_and_no_build():
     with pytest.raises(ValueError, match="cannot both be true"):
-        TrussConfig.model_validate(
-            {
-                "docker_server": {**_DOCKER_SERVER, "no_build": True, key: True},
-                "base_image": _BASE_IMAGE,
-            }
-        )
-
-
-def test_docker_server_rebuild_free_is_read_as_no_build_with_start_script(caplog):
-    with caplog.at_level("WARNING"):
-        config = TrussConfig.model_validate(
-            {
-                "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
-                "base_image": _BASE_IMAGE,
-            }
-        )
-    assert "docker_server.rebuild_free is deprecated" in caplog.text
-    assert config.docker_server.no_build_with_start_script is True
-    dumped = config.to_dict(verbose=False)["docker_server"]
-    assert dumped["no_build_with_start_script"] is True
-    assert "rebuild_free" not in dumped
-    config.validate_forbid_extra()
-
-
-def test_docker_server_rejects_rebuild_free_with_no_build_with_start_script():
-    with pytest.raises(ValueError, match="deprecated name"):
         TrussConfig.model_validate(
             {
                 "docker_server": {
                     **_DOCKER_SERVER,
-                    "rebuild_free": True,
+                    "no_build": True,
                     "no_build_with_start_script": True,
                 },
+                "base_image": _BASE_IMAGE,
+            }
+        )
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_docker_server_rejects_rebuild_free(value):
+    with pytest.raises(ValueError, match="renamed to"):
+        TrussConfig.model_validate(
+            {
+                "docker_server": {**_DOCKER_SERVER, "rebuild_free": value},
                 "base_image": _BASE_IMAGE,
             }
         )

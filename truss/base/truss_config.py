@@ -1502,20 +1502,12 @@ class DockerServer(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="before")
     @classmethod
-    def _handle_legacy_input(cls, values: Any) -> Any:
-        if not isinstance(values, dict) or "rebuild_free" not in values:
-            return values
-        if "no_build_with_start_script" in values:
+    def _reject_rebuild_free(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "rebuild_free" in values:
             raise ValueError(
-                "Set only docker_server.no_build_with_start_script. "
-                "rebuild_free is its deprecated name."
+                "docker_server.rebuild_free was renamed to "
+                "docker_server.no_build_with_start_script."
             )
-        logger.warning(
-            "docker_server.rebuild_free is deprecated. "
-            "Use docker_server.no_build_with_start_script."
-        )
-        values = dict(values)
-        values["no_build_with_start_script"] = values.pop("rebuild_free")
         return values
 
     @pydantic.field_validator("run_as_user_id")
