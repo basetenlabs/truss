@@ -893,16 +893,19 @@ class BasetenApi:
         project_id: Optional[str] = None,
         job_id: Optional[str] = None,
         order_by: List[dict[str, str]] = [{"field": "created_at", "order": "desc"}],
+        limit: Optional[int] = None,
     ):
-        resp_json = self._rest_api_client.post(
-            "v1/training_jobs/search",
-            body={
-                "statuses": statuses,
-                "project_id": project_id,
-                "job_id": job_id,
-                "order_by": order_by,
-            },
-        )
+        body: dict[str, Any] = {
+            "statuses": statuses,
+            "project_id": project_id,
+            "job_id": job_id,
+            "order_by": order_by,
+        }
+        # Without a limit the server returns its largest page; ask for less when only the
+        # newest jobs are needed.
+        if limit is not None:
+            body["limit"] = limit
+        resp_json = self._rest_api_client.post("v1/training_jobs/search", body=body)
         return resp_json["training_jobs"]
 
     def get_training_job(self, project_id: str, job_id: str):
