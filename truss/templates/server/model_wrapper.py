@@ -17,7 +17,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Optional, Union, cast
+from typing import Any, Callable, Optional, Union, cast, get_type_hints
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -144,6 +144,33 @@ async def raise_if_disconnected(
         raise HTTPException(status_code=499, detail=error_message)
 
 
+def _resolved_signature(method: Any) -> inspect.Signature:
+    """Like `inspect.signature`, but evaluates annotations stored as strings.
+
+    `from __future__ import annotations` and quoted annotations leave strings on the
+    signature, which would hide `Request` and pydantic types from the checks here.
+    """
+    signature = inspect.signature(method)
+    try:
+        hints = get_type_hints(method, include_extras=True)
+    except Exception:
+        # For example a name that is only imported under `TYPE_CHECKING`.
+        return signature
+
+    def resolve(annotation: Any, name: str) -> Any:
+        return (
+            hints.get(name, annotation) if isinstance(annotation, str) else annotation
+        )
+
+    return signature.replace(
+        parameters=[
+            param.replace(annotation=resolve(param.annotation, param.name))
+            for param in signature.parameters.values()
+        ],
+        return_annotation=resolve(signature.return_annotation, "return"),
+    )
+
+
 class ArgConfig(enum.Enum):
     NONE = enum.auto()
     INPUTS_ONLY = enum.auto()
@@ -152,7 +179,7 @@ class ArgConfig(enum.Enum):
 
     @classmethod
     def from_method(cls, method: Any, method_name: MethodName) -> "ArgConfig":
-        signature = inspect.signature(method)
+        signature = _resolved_signature(method)
         parameters = list(signature.parameters.values())
         if len(parameters) == 0:
             return cls.NONE
@@ -266,15 +293,10 @@ class ModelDescriptor:
         preprocess: Optional[MethodDescriptor],
         postprocess: Optional[MethodDescriptor],
     ) -> TrussSchema:
-        if preprocess:
-            parameters = inspect.signature(preprocess.method).parameters
-        else:
-            parameters = inspect.signature(predict.method).parameters
-
-        if postprocess:
-            return_annotation = inspect.signature(postprocess.method).return_annotation
-        else:
-            return_annotation = inspect.signature(predict.method).return_annotation
+        parameters = _resolved_signature((preprocess or predict).method).parameters
+        return_annotation = _resolved_signature(
+            (postprocess or predict).method
+        ).return_annotation
 
         return TrussSchema.from_signature(parameters, return_annotation)
 
