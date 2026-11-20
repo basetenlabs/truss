@@ -7,6 +7,8 @@ import time
 import pytest
 
 import truss_chains as chains
+from truss_chains import framework
+from truss_chains.deployment import code_gen
 
 
 @pytest.fixture
@@ -160,3 +162,39 @@ async def test_no_waiting_logging_async(stub_session, caplog):
     logs = [r.message for r in caplog.records]
 
     assert any("No queueing" in m for m in logs), logs
+
+
+@pytest.mark.asyncio
+async def test_generated_stub_omits_unpassed_optional_args():
+    class Dep(chains.ChainletBase):
+        async def run_remote(self, a: int, b: int = 5) -> int:
+            return a + b
+
+    framework.raise_validation_errors()
+    stub_src = code_gen._gen_stub_src(framework.get_descriptor(Dep))
+    namespace: dict = {}
+    exec("\n".join(stub_src.imports) + "\n" + stub_src.src, namespace)
+    dep_stub = namespace["Dep"](
+        service_descriptor=chains.DeployedServiceDescriptor(
+            name="Dep",
+            internal_url=None,
+            predict_url="dummy-URL",
+            options=chains.RPCOptions(),
+            display_name="Dep",
+        ),
+        api_key="dummy-API-key",
+    )
+
+    sent = []
+
+    async def fake_predict_async(inputs, output_model):
+        sent.append(dep_stub._make_request_params(inputs)["data"])
+        return output_model(0)
+
+    dep_stub.predict_async = fake_predict_async
+
+    await dep_stub.run_remote(1)
+    await dep_stub.run_remote(1, 2)
+    await dep_stub.run_remote(1, None)
+
+    assert sent == ['{"a":1}', '{"a":1,"b":2}', '{"a":1,"b":null}']
