@@ -156,6 +156,10 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     persistent_home: bool = False
 
 
+class RuntimeOIDC(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+
+
 class InteractiveSessionTrigger(str, enum.Enum):
     ON_STARTUP = "on_startup"
     ON_FAILURE = "on_failure"
@@ -189,6 +193,7 @@ class Runtime(custom_types.SafeModelNoExtra):
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
     load_checkpoint_config: Optional[LoadCheckpointConfig] = None
     cache_config: Optional[CacheConfig] = None
+    oidc: RuntimeOIDC = RuntimeOIDC()
 
     @model_validator(mode="before")
     @classmethod
