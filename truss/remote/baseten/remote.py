@@ -380,6 +380,9 @@ class BasetenRemote(TrussRemote):
                 environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
+            # The BIS LLM request body is built field by field and has no metrics_endpoint.
+            if config.metrics_endpoint is not None:
+                raise ValueError("metrics_endpoint cannot be set for BIS LLM models.")
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True

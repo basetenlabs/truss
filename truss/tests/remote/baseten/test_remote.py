@@ -12,6 +12,7 @@ from truss.base.truss_config import (
     BISLLM,
     EgressRestrictions,
     FabricRequirement,
+    MetricsEndpoint,
     Runtime,
     TrussConfig,
     Weights,
@@ -977,6 +978,19 @@ def test_push_bis_llm_rejects_disallowed_options(
     with pytest.raises(ValueError, match=re.escape(error_message)):
         remote.push(
             mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
+        )
+
+
+def test_push_bis_llm_rejects_metrics_endpoint(remote, mock_truss_handle):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    mock_truss_handle.spec.config.metrics_endpoint = MetricsEndpoint(
+        disable_scraping=True
+    )
+    with pytest.raises(
+        ValueError, match="metrics_endpoint cannot be set for BIS LLM models"
+    ):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
         )
 
 
