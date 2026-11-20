@@ -1197,6 +1197,30 @@
           ],
           "default": null,
           "description": "Network fabric requirements for this deployment."
+        },
+        "prefill": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkerPoolResources"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resources for the prefill workers of a disaggregated deployment. Set together with `decode`, in place of `accelerator` and `node_count`."
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkerPoolResources"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resources for the decode workers of a disaggregated deployment. Set together with `prefill`, in place of `accelerator` and `node_count`."
         }
       },
       "title": "Resources",
@@ -2359,6 +2383,38 @@
         "mount_location"
       ],
       "title": "WeightsSource",
+      "type": "object"
+    },
+    "WorkerPoolResources": {
+      "additionalProperties": true,
+      "description": "Compute resources for one worker pool of a disaggregated deployment.",
+      "properties": {
+        "accelerator": {
+          "$ref": "#/$defs/AcceleratorSpec",
+          "description": "The accelerator type for each node of this worker pool. To request multiple accelerators, use the ':' operator (e.g. H100:4).",
+          "examples": [
+            "H100:4"
+          ]
+        },
+        "node_count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of nodes for each worker in this pool.",
+          "title": "Node Count"
+        }
+      },
+      "required": [
+        "accelerator"
+      ],
+      "title": "WorkerPoolResources",
       "type": "object"
     }
   },
