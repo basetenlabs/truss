@@ -42,6 +42,10 @@ CLIENT_VERSION = "{{CLIENT_VERSION}}"
 # Empty string means no default was configured.
 DEFAULT_REMOTE = "{{DEFAULT_REMOTE}}"
 
+# Stamped by `truss ssh setup` with truss's remote_url -> REST API mapping, as JSON.
+# Used when the hostname has no api prefix, so the remote's remote_url picks the API.
+_API_URL_MAPPING_JSON = "{{API_URL_MAPPING}}"
+
 BASETEN_SSH_DIR = Path(
     os.environ.get("BASETEN_SSH_DIR", Path.home() / ".ssh" / "baseten")
 )
@@ -58,6 +62,16 @@ WORKLOAD_MODEL = "model"
 BASETEN_REST_API_URL = os.environ.get("BASETEN_BASE_URL", "https://api.baseten.co")
 
 STATUS_OK = 0x00
+
+
+def _load_api_url_mapping():
+    try:
+        return json.loads(_API_URL_MAPPING_JSON)
+    except ValueError:
+        return {}
+
+
+API_URL_MAPPING = _load_api_url_mapping()
 
 
 def error(msg):
@@ -244,14 +258,19 @@ def load_trussrc(remote, config=None):
     return api_key, remote_url
 
 
-def resolve_rest_api_url(api_prefix=None):
+def resolve_rest_api_url(api_prefix=None, remote_url=None):
     """Determine the REST API URL.
 
     If api_prefix is set (from hostname), use https://api.<prefix>.baseten.co.
+    Otherwise map the remote's remote_url, unless BASETEN_BASE_URL overrides it.
     Otherwise use the default production URL.
     """
     if api_prefix:
         return f"https://api.{api_prefix}.baseten.co"
+    if remote_url and "BASETEN_BASE_URL" not in os.environ:
+        mapped = API_URL_MAPPING.get(remote_url.strip("/"))
+        if mapped:
+            return mapped
     return BASETEN_REST_API_URL
 
 
@@ -424,8 +443,8 @@ def main_sign():
     parsed = parse_hostname(hostname)
     config = _read_trussrc()
     remote = resolve_remote(parsed.remote, config)
-    api_key, _ = load_trussrc(remote, config)
-    rest_url = resolve_rest_api_url(parsed.api_prefix)
+    api_key, remote_url = load_trussrc(remote, config)
+    rest_url = resolve_rest_api_url(parsed.api_prefix, remote_url)
 
     jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
     save_jwt_cache(parsed, jwt_token, proxy_address)
@@ -551,8 +570,8 @@ def main_proxy():
         # Fallback: sign here if Match exec didn't run (e.g. old SSH config)
         config = _read_trussrc()
         remote = resolve_remote(parsed.remote, config)
-        api_key, _ = load_trussrc(remote, config)
-        rest_url = resolve_rest_api_url(parsed.api_prefix)
+        api_key, remote_url = load_trussrc(remote, config)
+        rest_url = resolve_rest_api_url(parsed.api_prefix, remote_url)
         jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
 
     # Connect to proxy
