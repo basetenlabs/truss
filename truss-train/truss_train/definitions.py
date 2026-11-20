@@ -304,6 +304,7 @@ class Workspace(custom_types.SafeModelNoExtra):
     workspace_root: Optional[str] = None
     external_dirs: List[str] = []
     exclude_dirs: List[str] = []
+    """Entries directly under workspace_root to leave out of the upload. Files ignored by git or .truss_ignore are always left out."""
 
 
 class TrainingJob(custom_types.SafeModelNoExtra):
