@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 import time
+import weakref
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -50,6 +51,39 @@ async def _safe_close(session: "aiohttp.ClientSession", timeout_sec: float) -> N
         logging.info("Timeout while closing cycled-out aiohttp session.")
     except Exception as e:
         logging.info(f"Unexpected error while closing cycled-out aiohttp session: {e}")
+
+
+class _ResponseStreamIterator(AsyncIterator[bytes]):
+    """Release terminally failed responses even if their RPC frame is retained."""
+
+    def __init__(self, response: "aiohttp.ClientResponse") -> None:
+        self.read_func = response.content.readany
+        self._response_ref = weakref.ref(response)
+
+    async def __anext__(self) -> bytes:
+        try:
+            data = await self.read_func()
+        except BaseException:
+            response = self._response_ref()
+            if response is not None and not response.closed:
+                # Cancellation alone is recoverable, but a payload failure or
+                # an expired deadline leaves no usable response to retain.
+                timed_out = False
+                try:
+                    response._timer.assert_timeout()
+                except asyncio.TimeoutError:
+                    timed_out = True
+                connection = response.connection
+                if (
+                    timed_out
+                    or response.content.exception() is not None
+                    or (connection is not None and connection.closed)
+                ):
+                    response.release()
+            raise
+        if data == b"":
+            raise StopAsyncIteration
+        return data
 
 
 class BasetenSession:
@@ -442,6 +476,7 @@ class StubBase(BasetenSession, abc.ABC):
                     connection.add_callback(
                         functools.partial(self._release_async_client, client)
                     )
+                    return _ResponseStreamIterator(response)
                 return response.content.iter_any()
 
         try:
