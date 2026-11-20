@@ -622,6 +622,25 @@ def test_update_training_job(mock_patch, baseten_api, kwargs, expected_body):
     assert mock_patch.call_args[1]["json"] == expected_body
 
 
+def mock_search_training_jobs_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"training_jobs": [{"id": "job_id"}]})
+    return response
+
+
+@pytest.mark.parametrize("limit", [None, 1])
+@mock.patch("requests.post", return_value=mock_search_training_jobs_response())
+def test_search_training_jobs_sends_limit_only_when_set(mock_post, baseten_api, limit):
+    assert baseten_api.search_training_jobs(limit=limit) == [{"id": "job_id"}]
+
+    body = mock_post.call_args[1]["json"]
+    if limit is None:
+        assert "limit" not in body
+    else:
+        assert body["limit"] == limit
+
+
 # Mock responses for training job logs pagination tests
 def mock_training_job_logs_response(logs, has_more=True):
     """Helper function to create mock training job logs response"""
