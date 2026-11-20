@@ -676,7 +676,9 @@ class BasetenRemote(TrussRemote):
 
     def _get_service_url_path_and_model_ids(
         self, api: BasetenApi, model_identifier: ModelIdentifier, published: bool
-    ) -> Tuple[str, ModelVersionHandle]:
+    ) -> Tuple[str, ModelVersionHandle, bool]:
+        """Returns the service URL path, the resolved version handle, and whether
+        the resolved version is the development deployment."""
         if isinstance(model_identifier, ModelVersionId):
             try:
                 model_version = api.get_model_version_by_id(model_identifier.value)
@@ -685,10 +687,15 @@ class BasetenRemote(TrussRemote):
             model_version_id = model_version["model_version"]["id"]
             hostname = model_version["model_version"]["oracle"]["hostname"]
             model_id = model_version["model_version"]["oracle"]["id"]
+            is_draft = bool(model_version["model_version"].get("is_draft", False))
             service_url_path = f"/model_versions/{model_version_id}"
 
-            return service_url_path, ModelVersionHandle(
-                version_id=model_version_id, model_id=model_id, hostname=hostname
+            return (
+                service_url_path,
+                ModelVersionHandle(
+                    version_id=model_version_id, model_id=model_id, hostname=hostname
+                ),
+                is_draft,
             )
 
         if isinstance(model_identifier, ModelName):
@@ -704,6 +711,7 @@ class BasetenRemote(TrussRemote):
             )
             model_id = model["id"]
             model_version_id = model_version["id"]
+            is_draft = bool(model_version.get("is_draft", not published))
             hostname = model["hostname"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
@@ -715,6 +723,7 @@ class BasetenRemote(TrussRemote):
                 raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
+            is_draft = bool(model["model"]["primary_version"].get("is_draft", False))
             hostname = model["model"]["hostname"]
             service_url_path = f"/models/{model_id}"
         else:
@@ -724,8 +733,12 @@ class BasetenRemote(TrussRemote):
                 "--model-deployment or --model options."
             )
 
-        return service_url_path, ModelVersionHandle(
-            version_id=model_version_id, model_id=model_id, hostname=hostname
+        return (
+            service_url_path,
+            ModelVersionHandle(
+                version_id=model_version_id, model_id=model_id, hostname=hostname
+            ),
+            is_draft,
         )
 
     def get_service(self, **kwargs) -> BasetenService:
@@ -735,7 +748,7 @@ class BasetenRemote(TrussRemote):
             raise ValueError("Baseten Service requires a model_identifier")
 
         published = kwargs.get("published", False)
-        (service_url_path, model_version_handle) = (
+        (service_url_path, model_version_handle, is_draft) = (
             self._get_service_url_path_and_model_ids(
                 self._api, model_identifier, published
             )
@@ -743,7 +756,7 @@ class BasetenRemote(TrussRemote):
 
         return BasetenService(
             model_version_handle=model_version_handle,
-            is_draft=not published,
+            is_draft=is_draft,
             header_provider=self.fetch_auth_header,
             service_url=f"{self._remote_url}{service_url_path}",
             api=self._api,

@@ -277,6 +277,46 @@ def test_get_service_by_model_id(remote):
         assert service.model_version_id == "version_id"
 
 
+@pytest.mark.parametrize(
+    "is_draft, expected_path",
+    [(False, "/deployment/version_id/predict"), (True, "/development/predict")],
+)
+def test_get_service_by_version_id_predict_url(remote, is_draft, expected_path):
+    version = {
+        "id": "version_id",
+        "is_draft": is_draft,
+        "oracle": {"id": "model_id", "hostname": "https://model-model_id.test"},
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json={"data": {"model_version": version}})
+        service = remote.get_service(model_identifier=ModelVersionId("version_id"))
+
+    assert service.is_draft is is_draft
+    assert service.predict_url == f"https://model-model_id.test{expected_path}"
+
+
+def test_get_service_by_model_id_predict_url_targets_primary_version(remote):
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "prod_version_id", "is_draft": False},
+                "hostname": "https://model-model_id.test",
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        service = remote.get_service(model_identifier=ModelId("model_id"))
+
+    assert not service.is_draft
+    assert (
+        service.predict_url
+        == "https://model-model_id.test/deployment/prod_version_id/predict"
+    )
+
+
 def test_get_service_by_model_id_no_model(remote):
     model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
