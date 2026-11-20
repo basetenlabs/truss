@@ -1190,6 +1190,32 @@ class FabricRequirement(custom_types.ConfigModel):
         return result
 
 
+class WorkerPoolResources(custom_types.ConfigModel):
+    """Compute resources for one worker pool of a disaggregated deployment."""
+
+    accelerator: AcceleratorSpec = pydantic.Field(
+        ...,
+        description="The accelerator type for each node of this worker pool. To request multiple accelerators, use the ':' operator (e.g. H100:4).",
+        examples=["H100:4"],
+    )
+    node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = (
+        pydantic.Field(
+            default=None, description="Number of nodes for each worker in this pool."
+        )
+    )
+
+    @pydantic.model_serializer(mode="wrap")
+    def _serialize(
+        self,
+        handler: core_schema.SerializerFunctionWrapHandler,
+        info: core_schema.SerializationInfo,
+    ) -> dict:
+        result = handler(self)
+        if not self.node_count:
+            result.pop("node_count", None)
+        return result
+
+
 class Resources(custom_types.ConfigModel):
     """Compute resources that your model needs, including CPU, memory, and GPU resources."""
 
@@ -1220,6 +1246,14 @@ class Resources(custom_types.ConfigModel):
     )
     fabric: Optional[FabricRequirement] = pydantic.Field(
         default=None, description="Network fabric requirements for this deployment."
+    )
+    prefill: Optional[WorkerPoolResources] = pydantic.Field(
+        default=None,
+        description="Resources for the prefill workers of a disaggregated deployment. Set together with `decode`, in place of `accelerator` and `node_count`.",
+    )
+    decode: Optional[WorkerPoolResources] = pydantic.Field(
+        default=None,
+        description="Resources for the decode workers of a disaggregated deployment. Set together with `prefill`, in place of `accelerator` and `node_count`.",
     )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -1306,6 +1340,10 @@ class Resources(custom_types.ConfigModel):
             result.pop("instance_type", None)
         if self.fabric is None:
             result.pop("fabric", None)
+        if self.prefill is None:
+            result.pop("prefill", None)
+        if self.decode is None:
+            result.pop("decode", None)
         return result
 
 
