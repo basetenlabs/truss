@@ -26,10 +26,17 @@ def multipart_upload_boto3(
 ) -> None:
     # In the CLI flow, ignore any local ~/.aws/config files,
     # which can interfere with uploading the Truss to S3.
+    # We delete all AWS_* env vars AND override the config file paths
+    # to prevent boto3 from reading ~/.aws/config or ~/.aws/credentials.
     aws_env_vars = set(
         env_var for env_var in os.environ.keys() if env_var.startswith("AWS_")
     )
-    with modify_env_vars(deletions=aws_env_vars):
+    # Point config files to /dev/null to prevent boto3 from reading them
+    aws_config_overrides = {
+        "AWS_CONFIG_FILE": "/dev/null",
+        "AWS_SHARED_CREDENTIALS_FILE": "/dev/null",
+    }
+    with modify_env_vars(overrides=aws_config_overrides, deletions=aws_env_vars):
         s3_resource = boto3.resource("s3", **credentials)
         filesize = os.stat(file_path).st_size
 
