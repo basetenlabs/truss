@@ -23,6 +23,7 @@ import keyring.backends.fail
 import keyring.backends.null
 import keyring.errors
 
+from truss.base.constants import DEFAULT_REMOTE_NAME
 from truss.remote.baseten import BasetenRemote
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
@@ -144,6 +145,12 @@ class RemoteFactory:
 
         config = load_config()
         return list(filter(partial(is_not, DEFAULTSECT), config.keys()))
+
+    @staticmethod
+    def default_remote_name() -> str:
+        """The remote for a caller that names none: the env-configured remote if
+        set, since it hides the trussrc, otherwise the trussrc's default section."""
+        return ENV_REMOTE_NAME if env_remote_config() else DEFAULT_REMOTE_NAME
 
     @staticmethod
     def load_remote_config(remote_name: str) -> RemoteConfig:

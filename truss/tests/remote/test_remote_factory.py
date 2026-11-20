@@ -509,3 +509,13 @@ def test_env_remote_cannot_be_written_or_removed(trussrc, env_remote):
             RemoteConfig(name=rf_module.ENV_REMOTE_NAME, configs={})
         )
     assert not trussrc.exists()
+
+
+def test_default_remote_name_is_the_env_remote_when_set(trussrc, env_remote):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    assert RemoteFactory.default_remote_name() == rf_module.ENV_REMOTE_NAME
+
+
+def test_default_remote_name_is_baseten_without_the_env_remote(trussrc):
+    trussrc.write_text(SAMPLE_TRUSSRC)
+    assert RemoteFactory.default_remote_name() == "baseten"
