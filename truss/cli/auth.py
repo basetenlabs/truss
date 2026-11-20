@@ -1,5 +1,6 @@
 """`truss auth` command group: login, logout, status."""
 
+import os
 from typing import Optional
 
 import rich_click as click
@@ -11,6 +12,12 @@ from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
 from truss.remote.baseten import oauth
 from truss.remote.baseten.api import resolve_rest_api_url
+from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
+    IDENTITY_TOKEN_FILE_ENV,
+    TRUST_RULE_ID_ENV,
+    workload_identity_from_env,
+)
 from truss.remote.baseten.oauth import OAuthCredential, OAuthError
 from truss.remote.remote_factory import (
     _INLINE_SECRET_KEYS,
@@ -91,6 +98,9 @@ def auth_status(remote: Optional[str]) -> None:
             )
         console.print(f"remote: {env_config.name}")
         console.print(f"remote_url: {env_config.configs['remote_url']}")
+        if "api_key" not in env_config.configs:
+            _print_workload_identity_status()
+            return
         console.print("auth_type: api_key")
         console.print(f"source: {API_KEY_ENV}")
         return
@@ -100,6 +110,11 @@ def auth_status(remote: Optional[str]) -> None:
     if remote_name not in raw:
         raise click.ClickException(f"No remote {remote_name!r} configured.")
     section = raw[remote_name]
+    if workload_identity_from_env():
+        console.print(f"remote: {remote_name}")
+        console.print(f"remote_url: {section.get('remote_url', '(unset)')}")
+        _print_workload_identity_status()
+        return
     auth_type = section.get("auth_type")
     if not auth_type:
         if "api_key" in section:
@@ -178,3 +193,13 @@ def _existing_remote_url(remote_name: str) -> Optional[str]:
     if remote_name not in raw:
         return None
     return raw[remote_name].get("remote_url")
+
+
+def _print_workload_identity_status() -> None:
+    # Mirrors BasetenRemote, where BASETEN_API_KEY outranks workload identity.
+    if os.environ.get(BASETEN_API_KEY_ENV):
+        console.print("auth_type: api_key")
+        console.print(f"source: {BASETEN_API_KEY_ENV}")
+        return
+    console.print("auth_type: workload_identity")
+    console.print(f"source: {IDENTITY_TOKEN_FILE_ENV}, {TRUST_RULE_ID_ENV}")
