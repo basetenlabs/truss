@@ -28,6 +28,7 @@ from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
 from truss.remote.baseten.service import URLConfig
+from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
@@ -1035,6 +1036,35 @@ def test_push_propagates_raw_config_bytes(
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
     assert kwargs["raw_config"] == expected
+
+
+def test_push_custom_config_with_external_packages(
+    tmp_path,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    truss_dir = init_directory(tmp_path / "truss")
+    (tmp_path / "ext_pkg").mkdir()
+    (tmp_path / "ext_pkg" / "top_module.py").touch()
+    custom_config = truss_dir / "custom.yaml"
+    config = TrussConfig.from_yaml(truss_dir / "config.yaml")
+    config.environment_variables = {"FROM_CUSTOM_CONFIG": "1"}
+    config.external_package_dirs = ["../ext_pkg"]
+    config.write_to_yaml_file(custom_config)
+
+    remote.push(
+        TrussHandle(truss_dir, config_path=custom_config),
+        "model_name",
+        truss_dir,
+        publish=True,
+    )
+
+    _, kwargs = mock_create_truss_service.call_args
+    pushed_config = json.loads(base64.b64decode(kwargs["config"]))
+    assert pushed_config["environment_variables"] == {"FROM_CUSTOM_CONFIG": "1"}
+    assert pushed_config["external_package_dirs"] == []
 
 
 def test_push_drops_oversize_raw_config(
