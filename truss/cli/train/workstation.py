@@ -26,9 +26,11 @@ B300_BASE_IMAGE = "nvidia/cuda:13.0.3-devel-ubuntu24.04"
 SUPPORTED_WORKSTATION_ACCELERATORS = [
     acc.value for acc in Accelerator if acc.value != Accelerator._B10.value
 ]
+CPU_WORKSTATION_CPU_COUNT = 4
+CPU_WORKSTATION_MEMORY = "16Gi"
 
 
-def default_base_image(accelerator: str) -> str:
+def default_base_image(accelerator: Optional[str]) -> str:
     if accelerator in (Accelerator.B300.value, Accelerator.GB300.value):
         return B300_BASE_IMAGE
     return DEFAULT_BASE_IMAGE
@@ -67,7 +69,7 @@ def workstation_ssh_hostnames(
 
 
 def build_workstation_project(
-    accelerator: str,
+    accelerator: Optional[str],
     gpu_count: int,
     project_id: str,
     base_image: Optional[str] = None,
@@ -79,18 +81,31 @@ def build_workstation_project(
     checkpoint_from_job: Optional[str] = None,
     spot: bool = False,
     persistent_home: bool = False,
+    cpu_count: Optional[int] = None,
+    memory: Optional[str] = None,
 ) -> TrainingProject:
-    accel_enum = truss_config.Accelerator(accelerator)
+    """Build the workstation's training project.
 
-    compute = Compute(
-        node_count=node_count,
-        accelerator=truss_config.AcceleratorSpec(
-            accelerator=accel_enum, count=gpu_count
-        ),
-        availability_model=AvailabilityModel.SPOT
-        if spot
-        else AvailabilityModel.STANDARD,
-    )
+    `accelerator` None means a CPU-only workstation, sized by `cpu_count` and
+    `memory` (default 4 CPU / 16Gi). GPU workstations ignore `cpu_count` and
+    `memory` and keep the server's sizing for the accelerator.
+    """
+    availability_model = AvailabilityModel.SPOT if spot else AvailabilityModel.STANDARD
+    if accelerator is None:
+        compute = Compute(
+            node_count=node_count,
+            cpu_count=cpu_count or CPU_WORKSTATION_CPU_COUNT,
+            memory=memory or CPU_WORKSTATION_MEMORY,
+            availability_model=availability_model,
+        )
+    else:
+        compute = Compute(
+            node_count=node_count,
+            accelerator=truss_config.AcceleratorSpec(
+                accelerator=truss_config.Accelerator(accelerator), count=gpu_count
+            ),
+            availability_model=availability_model,
+        )
 
     load_checkpoint_config = None
     if checkpoint_from_job:

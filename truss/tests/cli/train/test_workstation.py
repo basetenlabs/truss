@@ -74,6 +74,33 @@ def test_build_workstation_project_supported_accelerators_multi_gpu(accelerator)
     assert job.compute.accelerator.count == 4
 
 
+def test_build_workstation_project_cpu_only_defaults():
+    project = build_workstation_project(
+        accelerator=None, gpu_count=0, project_id="workstation-CPU"
+    )
+
+    job = project.job
+    assert job.compute.accelerator is None
+    assert job.compute.cpu_count == 4
+    assert job.compute.memory == "16Gi"
+    assert job.image.base_image == "nvidia/cuda:12.9.1-devel-ubuntu24.04"
+    assert job.runtime.start_commands == ["sleep infinity"]
+    assert job.interactive_session.session_provider == InteractiveSessionProvider.SSH
+
+
+def test_build_workstation_project_cpu_only_custom_size():
+    project = build_workstation_project(
+        accelerator=None,
+        gpu_count=0,
+        project_id="workstation-CPU",
+        cpu_count=32,
+        memory="128Gi",
+    )
+
+    assert project.job.compute.cpu_count == 32
+    assert project.job.compute.memory == "128Gi"
+
+
 def test_build_workstation_project_invalid_accelerator():
     with pytest.raises(ValueError):
         build_workstation_project(accelerator="INVALID", gpu_count=1, project_id="test")
@@ -404,3 +431,63 @@ class TestWorkstationJsonOutput:
         assert result.exit_code == 0, result.output
         assert "Workstation created!" in result.output
         assert "ssh training-job-job123-0.test_remote.ssh.baseten.co" in result.output
+
+
+class TestCpuOnlyWorkstation:
+    PUSH_RESPONSE = {
+        "id": "job123",
+        "training_project": {"id": "proj123", "name": "workstation-CPU"},
+    }
+
+    @pytest.mark.parametrize(
+        ("args", "cpu_count", "memory"),
+        [([], 4, "16Gi"), (["--cpu-count", "16", "--memory", "64Gi"], 16, "64Gi")],
+    )
+    @patch("truss_train.public_api.push")
+    @patch("truss.cli.train_commands.RemoteFactory.get_remote_team")
+    @patch("truss.cli.train_commands.RemoteFactory.create")
+    def test_cpu_only_launches_without_accelerator(
+        self,
+        mock_remote_factory,
+        mock_get_remote_team,
+        mock_push,
+        args,
+        cpu_count,
+        memory,
+    ):
+        mock_remote_factory.return_value = (
+            TestWorkstationJsonOutput._setup_mock_remote()
+        )
+        mock_get_remote_team.return_value = None
+        mock_push.return_value = self.PUSH_RESPONSE
+
+        result = TestWorkstationJsonOutput._invoke("--cpu-only", *args)
+
+        assert result.exit_code == 0, result.output
+        config = mock_push.call_args.kwargs["config"]
+        assert config.name == "workstation-CPU"
+        assert config.job.compute.accelerator is None
+        assert config.job.compute.cpu_count == cpu_count
+        assert config.job.compute.memory == memory
+        payload = json.loads(result.stdout)
+        assert payload["accelerator"] is None
+        assert payload["gpu_count"] == 0
+        assert payload["cpu_count"] == cpu_count
+        assert payload["memory"] == memory
+        assert payload["node_count"] == 1
+
+    @pytest.mark.parametrize(
+        "args", [["--accelerator", "H100"], ["--gpu-count", "2"], ["--node-count", "2"]]
+    )
+    def test_cpu_only_rejects_gpu_flags(self, args):
+        result = TestWorkstationJsonOutput._invoke("--cpu-only", *args)
+
+        assert result.exit_code != 0
+        assert "--cpu-only cannot be combined with" in result.output
+
+    @pytest.mark.parametrize("args", [["--cpu-count", "8"], ["--memory", "32Gi"]])
+    def test_cpu_sizing_requires_cpu_only(self, args):
+        result = TestWorkstationJsonOutput._invoke(*args)
+
+        assert result.exit_code != 0
+        assert "require --cpu-only" in result.output

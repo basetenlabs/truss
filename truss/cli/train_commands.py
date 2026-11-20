@@ -33,6 +33,8 @@ from truss.cli.train.cache import (
     SORT_ORDER_DESC,
 )
 from truss.cli.train.workstation import (
+    CPU_WORKSTATION_CPU_COUNT,
+    CPU_WORKSTATION_MEMORY,
     SUPPORTED_WORKSTATION_ACCELERATORS,
     build_workstation_project,
     copy_workstation_templates,
@@ -1240,10 +1242,12 @@ def _print_workstation_json(
     *,
     job_resp: dict,
     hostnames: list[str],
-    accelerator: str,
+    accelerator: Optional[str],
     gpu_count: int,
     node_count: int,
     orchestrator: str,
+    cpu_count: Optional[int] = None,
+    memory: Optional[str] = None,
 ) -> None:
     """Emit the workstation's node addresses as JSON on stdout.
 
@@ -1257,6 +1261,9 @@ def _print_workstation_json(
         "project": {"id": project.get("id"), "name": project.get("name")},
         "accelerator": accelerator,
         "gpu_count": gpu_count,
+        # Only set for CPU-only workstations; GPU ones use the server's sizing.
+        "cpu_count": cpu_count,
+        "memory": memory,
         "node_count": node_count,
         # Only meaningful for multi-node; single-node workstations just sleep.
         "orchestrator": orchestrator if node_count > 1 else None,
@@ -1275,8 +1282,28 @@ def _print_workstation_json(
 @click.option(
     "--accelerator",
     type=click.Choice(SUPPORTED_WORKSTATION_ACCELERATORS, case_sensitive=False),
-    default="H100",
+    default=None,
     help="GPU accelerator type (default: H100).",
+)
+@click.option(
+    "--cpu-only",
+    is_flag=True,
+    help=(
+        "Launch a CPU-only workstation with no GPU. Mutually exclusive with "
+        "--accelerator, --gpu-count and --node-count."
+    ),
+)
+@click.option(
+    "--cpu-count",
+    type=click.IntRange(min=1),
+    default=None,
+    help=f"Number of CPUs for a --cpu-only workstation (default: {CPU_WORKSTATION_CPU_COUNT}).",
+)
+@click.option(
+    "--memory",
+    type=str,
+    default=None,
+    help=f"Memory for a --cpu-only workstation, e.g. 32Gi (default: {CPU_WORKSTATION_MEMORY}).",
 )
 @click.option(
     "--gpu-count",
@@ -1361,7 +1388,10 @@ def _print_workstation_json(
 @common.common_options()
 @json_command
 def workstation(
-    accelerator: str,
+    accelerator: Optional[str],
+    cpu_only: bool,
+    cpu_count: Optional[int],
+    memory: Optional[str],
     gpu_count: Optional[int],
     project_id: Optional[str],
     node_count: Optional[int],
@@ -1386,17 +1416,39 @@ def workstation(
     if gpu_count is not None and node_count is not None:
         raise click.UsageError("--gpu-count and --node-count are mutually exclusive.")
 
-    if node_count is not None:
-        # SLURM mode: each node gets 8 GPUs
-        gpu_count = 8
-    else:
-        # Single-node mode
-        gpu_count = gpu_count or 1
+    if cpu_only:
+        gpu_flags = {
+            "--accelerator": accelerator,
+            "--gpu-count": gpu_count,
+            "--node-count": node_count,
+        }
+        conflicting = [flag for flag, value in gpu_flags.items() if value is not None]
+        if conflicting:
+            raise click.UsageError(
+                f"--cpu-only cannot be combined with {', '.join(conflicting)}."
+            )
+        cpu_count = cpu_count or CPU_WORKSTATION_CPU_COUNT
+        memory = memory or CPU_WORKSTATION_MEMORY
+        gpu_count = 0
         node_count = 1
-
-    accelerator = accelerator.upper()
-    if not project_id:
-        project_id = f"workstation-{accelerator}"
+        if not project_id:
+            project_id = "workstation-CPU"
+        compute_str = f"{cpu_count} CPU / {memory}"
+    else:
+        if cpu_count is not None or memory is not None:
+            raise click.UsageError("--cpu-count and --memory require --cpu-only.")
+        if node_count is not None:
+            # SLURM mode: each node gets 8 GPUs
+            gpu_count = 8
+        else:
+            # Single-node mode
+            gpu_count = gpu_count or 1
+            node_count = 1
+        accelerator = (accelerator or "H100").upper()
+        if not project_id:
+            project_id = f"workstation-{accelerator}"
+        node_str = f"{node_count}x " if node_count > 1 else ""
+        compute_str = f"{node_str}{gpu_count}x {accelerator}"
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -1429,12 +1481,13 @@ def workstation(
         checkpoint_from_job=checkpoint_from_job,
         spot=spot,
         persistent_home=persistent_home,
+        cpu_count=cpu_count,
+        memory=memory,
     )
 
-    node_str = f"{node_count}x " if node_count > 1 else ""
     console.print(
         f"Launching workstation [cyan]{project_id}[/cyan] "
-        f"with [cyan]{node_str}{gpu_count}x {accelerator}[/cyan]..."
+        f"with [cyan]{compute_str}[/cyan]..."
     )
 
     # Use a temp dir as source so we don't upload the user's cwd.
@@ -1460,6 +1513,8 @@ def workstation(
             gpu_count=gpu_count,
             node_count=node_count,
             orchestrator=orchestrator,
+            cpu_count=cpu_count,
+            memory=memory,
         )
     else:
         _print_workstation_text(job_id, hostnames, node_count)
