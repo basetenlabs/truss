@@ -15,15 +15,18 @@ CLOCK_SKEW_BUFFER_MS = 60000
 
 class LogWatcher(ABC):
     api: BasetenApi
-    # NB(nikhil): we add buffer for clock skew, so this helps us detect duplicates.
-    # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
-    _log_hashes: set[str] = set()
 
     _last_poll_time_ms: Optional[int] = None
     _last_log_time_ms: Optional[int] = None
 
     def __init__(self, api: BasetenApi):
         self.api = api
+        # NB(nikhil): we add buffer for clock skew, so this helps us detect duplicates.
+        # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
+        # Per-instance: a class-level set would be shared by every watcher in
+        # the process, so a second watcher would drop logs the first one saw
+        # and skip the "wait for first log" loop in `watch()`.
+        self._log_hashes: set[str] = set()
 
     def _hash_log(self, log: ParsedLog) -> str:
         log_str = f"{log.timestamp}-{log.message}-{log.replica}"
