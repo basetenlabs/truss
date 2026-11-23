@@ -906,6 +906,46 @@
       "title": "HealthChecks",
       "type": "object"
     },
+    "MetricsEndpoint": {
+      "additionalProperties": true,
+      "description": "Where Baseten scrapes your model's metrics endpoint for metrics export.",
+      "properties": {
+        "port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The container port that serves metrics. Defaults to the model's serving port.",
+          "title": "Port"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The URL path that serves metrics, starting with '/'. Defaults to '/metrics'.",
+          "title": "Path"
+        },
+        "disable_scraping": {
+          "default": false,
+          "description": "If true, Baseten doesn't scrape this deployment's metrics endpoint, which turns off metrics export and engine metric graphs for it.",
+          "title": "Disable Scraping",
+          "type": "boolean"
+        }
+      },
+      "title": "MetricsEndpoint",
+      "type": "object"
+    },
     "ModelCache": {
       "items": {
         "$ref": "#/$defs/ModelRepo"
@@ -2561,6 +2601,18 @@
       ],
       "default": null,
       "description": "Deploy a custom Docker image that has its own HTTP server, without writing a Model class."
+    },
+    "metrics_endpoint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MetricsEndpoint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configure the metrics endpoint Baseten scrapes for metrics export."
     },
     "model_cache": {
       "$ref": "#/$defs/ModelCache",

@@ -878,6 +878,26 @@ class HealthChecks(custom_types.ConfigModel):
     )
 
 
+class MetricsEndpoint(custom_types.ConfigModel):
+    """Where Baseten scrapes your model's metrics endpoint for metrics export."""
+
+    # Strict, so a quoted value fails instead of being silently coerced.
+    model_config = pydantic.ConfigDict(strict=True)
+
+    port: Optional[int] = pydantic.Field(
+        default=None,
+        description="The container port that serves metrics. Defaults to the model's serving port.",
+    )
+    path: Optional[str] = pydantic.Field(
+        default=None,
+        description="The URL path that serves metrics, starting with '/'. Defaults to '/metrics'.",
+    )
+    disable_scraping: bool = pydantic.Field(
+        default=False,
+        description="If true, Baseten doesn't scrape this deployment's metrics endpoint, which turns off metrics export and engine metric graphs for it.",
+    )
+
+
 class TransportKind(str, enum.Enum):
     HTTP = "http"
     WEBSOCKET = "websocket"
@@ -1738,6 +1758,10 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = pydantic.Field(
         default=None,
         description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    metrics_endpoint: Optional[MetricsEndpoint] = pydantic.Field(
+        default=None,
+        description="Configure the metrics endpoint Baseten scrapes for metrics export.",
     )
     model_cache: ModelCache = pydantic.Field(
         default_factory=lambda: ModelCache([]),
