@@ -1,4 +1,5 @@
 import configparser
+import importlib.util
 import ssl
 import sys
 import urllib.error
@@ -26,6 +27,7 @@ from truss.cli.ssh import (
     is_setup_complete,
     setup_ssh_config,
 )
+from truss.remote.baseten.api import API_URL_MAPPING
 
 
 class TestParseHostname:
@@ -177,6 +179,38 @@ class TestResolveRestApiUrl:
     def test_staging_prefix(self):
         assert resolve_rest_api_url("staging") == "https://api.staging.baseten.co"
 
+    def test_remote_url_maps_to_api(self):
+        with mock.patch.object(proxy_command, "API_URL_MAPPING", API_URL_MAPPING):
+            assert (
+                resolve_rest_api_url(None, "https://app.dev.baseten.co/")
+                == "https://api.mc-dev.baseten.co"
+            )
+
+    def test_api_prefix_overrides_remote_url(self):
+        with mock.patch.object(proxy_command, "API_URL_MAPPING", API_URL_MAPPING):
+            assert (
+                resolve_rest_api_url("staging", "https://app.dev.baseten.co")
+                == "https://api.staging.baseten.co"
+            )
+
+    def test_unknown_remote_url_is_prod(self):
+        with mock.patch.object(proxy_command, "API_URL_MAPPING", API_URL_MAPPING):
+            assert (
+                resolve_rest_api_url(None, "https://example.com")
+                == "https://api.baseten.co"
+            )
+
+    def test_base_url_env_overrides_remote_url(self, monkeypatch):
+        monkeypatch.setenv("BASETEN_BASE_URL", "http://localhost:9000")
+        monkeypatch.setattr(
+            proxy_command, "BASETEN_REST_API_URL", "http://localhost:9000"
+        )
+        monkeypatch.setattr(proxy_command, "API_URL_MAPPING", API_URL_MAPPING)
+        assert (
+            resolve_rest_api_url(None, "https://app.dev.baseten.co")
+            == "http://localhost:9000"
+        )
+
 
 class TestResolveRemote:
     def test_explicit_remote_passthrough(self):
@@ -317,6 +351,20 @@ class TestInstallProxyCommandScript:
         content = dest.read_text()
         assert 'DEFAULT_REMOTE = ""' in content
         assert "{{DEFAULT_REMOTE}}" not in content
+
+    def test_installed_script_maps_remote_url_to_api(self, tmp_path):
+        key_dir = tmp_path / "ssh" / "baseten"
+        dest = install_proxy_command_script(key_dir)
+
+        assert "{{API_URL_MAPPING}}" not in dest.read_text()
+        spec = importlib.util.spec_from_file_location("installed_proxy", dest)
+        installed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installed)
+        assert installed.API_URL_MAPPING == API_URL_MAPPING
+        assert (
+            installed.resolve_rest_api_url(None, "https://app.dev.baseten.co")
+            == "https://api.mc-dev.baseten.co"
+        )
 
 
 class TestSetupSSHConfig:

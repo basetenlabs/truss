@@ -1,5 +1,6 @@
 """SSH setup logic for `truss train ssh` commands."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 import truss
+from truss.remote.baseten.api import API_URL_MAPPING
 
 BASETEN_SSH_DIR = Path(
     os.environ.get("BASETEN_SSH_DIR", Path.home() / ".ssh" / "baseten")
@@ -181,6 +183,9 @@ def install_proxy_command_script(
     stamped_content = source_content.replace("{{CLIENT_VERSION}}", truss.__version__)
     stamped_content = stamped_content.replace(
         "{{DEFAULT_REMOTE}}", default_remote or ""
+    )
+    stamped_content = stamped_content.replace(
+        '"{{API_URL_MAPPING}}"', json.dumps(json.dumps(API_URL_MAPPING))
     )
 
     dest = key_dir / "proxy-command.py"
