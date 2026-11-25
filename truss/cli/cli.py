@@ -1089,6 +1089,7 @@ def push(
                     model_hostname,
                     bt_remote.fetch_auth_header,
                     ping_path=common.keepalive_ping_path(tr.spec.config),
+                    on_response=bt_remote.note_auth_response,
                 )
             _start_watch_mode(
                 target_directory=target_directory,
@@ -1533,6 +1534,7 @@ def watch(
             model_hostname,
             remote_provider.fetch_auth_header,
             ping_path=common.keepalive_ping_path(tr.spec.config),
+            on_response=remote_provider.note_auth_response,
         )
 
     if tail:

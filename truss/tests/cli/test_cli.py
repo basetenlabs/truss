@@ -1276,6 +1276,7 @@ def test_push_watch_no_sleep_starts_keepalive(
         "https://model.api.baseten.co",
         remote.fetch_auth_header,
         ping_path="v1/models/model",
+        on_response=remote.note_auth_response,
     )
     mock_start_watch.assert_called_once()
 

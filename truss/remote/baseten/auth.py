@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -163,6 +164,25 @@ class AuthService:
         scheme = "Bearer" if self._credential.use_bearer else "Api-Key"
         return {"Authorization": f"{scheme} {self._credential.api_key}"}
 
+    def note_response(self, response: requests.Response) -> None:
+        """Drop a workload identity access token Baseten refused before its
+        expiry, for example after revocation, so the next request exchanges for
+        a new one. The refused request is not sent again, since it may have side
+        effects."""
+        if not isinstance(
+            self._credential, WorkloadIdentityCredential
+        ) or not refused_by_baseten(response):
+            return
+        sent = (
+            response.request.headers.get("Authorization") if response.request else None
+        )
+        with self._refresh_lock:
+            token = self._workload_identity_token
+            # Compared by value, so a refusal of an older token never discards
+            # a newer one.
+            if token is not None and sent == f"Bearer {token.access_token}":
+                self._workload_identity_token = None
+
     def _refresh_if_expired(self, session: OAuthSession) -> OAuthSession:
         if not session.credential.is_expired():
             return session
@@ -232,4 +252,22 @@ def _refresh_at(token: AccessToken) -> float:
     lifetime = token.lifetime_seconds or 0
     return token.expires_at - min(
         WORKLOAD_IDENTITY_REFRESH_LEEWAY_SECONDS, lifetime / 2
+    )
+
+
+def refused_by_baseten(response: requests.Response) -> bool:
+    """Report whether Baseten's auth layer refused the request's access token.
+
+    It signals that with this challenge. A model's own error response cannot
+    carry it, since its headers are not forwarded.
+    """
+    if response.status_code != 401:
+        return False
+    challenge = response.headers.get("WWW-Authenticate", "")
+    # requests joins repeated headers with ", ", so check each challenge.
+    return any(
+        part.strip().startswith("Bearer ")
+        and 'realm="baseten"' in part
+        and 'error="invalid_token"' in part
+        for part in re.split(r",\s*(?=Bearer )", challenge)
     )

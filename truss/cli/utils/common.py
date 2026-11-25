@@ -312,9 +312,10 @@ def wait_for_development_model_ready(
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
     try:
-        requests_lib.post(
+        resp = requests_lib.post(
             wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
         )
+        remote_provider.note_auth_response(resp)
     except requests_lib.RequestException:
         # best effort
         pass
@@ -374,6 +375,7 @@ def start_keepalive(
     is_draft: bool = True,
     deployment_id: Optional[str] = None,
     ping_path: str = KEEPALIVE_DEFAULT_PING_PATH,
+    on_response: Optional[Callable[[requests_lib.Response], None]] = None,
 ) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
     keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id, ping_path)
@@ -381,7 +383,7 @@ def start_keepalive(
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(
         target=keepalive_loop,
-        args=(keepalive_url, header_provider, stop_event),
+        args=(keepalive_url, header_provider, stop_event, on_response),
         daemon=True,
     )
     keepalive_thread.start()
@@ -392,6 +394,7 @@ def keepalive_loop(
     keepalive_url: str,
     header_provider: Callable[[], dict[str, str]],
     stop_event: threading.Event,
+    on_response: Optional[Callable[[requests_lib.Response], None]] = None,
 ) -> None:
     consecutive_failures = 0
     start_time = time.time()
@@ -421,6 +424,8 @@ def keepalive_loop(
             resp = requests_lib.get(
                 keepalive_url, headers=header_provider(), timeout=10
             )
+            if on_response is not None:
+                on_response(resp)
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:

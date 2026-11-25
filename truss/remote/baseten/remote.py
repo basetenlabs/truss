@@ -17,6 +17,7 @@ from typing import (
     Type,
 )
 
+import requests
 import yaml
 from requests import ReadTimeout
 from watchfiles import watch
@@ -191,6 +192,11 @@ class BasetenRemote(TrussRemote):
         so a stored header can become stale.
         """
         return self._auth_service.fetch_auth_header()
+
+    def note_auth_response(self, response: requests.Response) -> None:
+        """Pass each response sent with :meth:`fetch_auth_header` here, so a
+        workload identity access token Baseten refused is replaced."""
+        self._auth_service.note_response(response)
 
     def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
         from truss.remote.remote_factory import AuthType, RemoteFactory
