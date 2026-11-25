@@ -317,6 +317,36 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
     enable_baseten_workdir: bool = True
+    bdn: Optional[truss_config.BDNConfig] = None
+
+    @model_validator(mode="after")
+    def _validate_bdn(self) -> "TrainingJob":
+        if self.bdn is None:
+            return self
+        if self.bdn.access or self.bdn.hotload.enabled:
+            raise ValueError(
+                "BDN access grants and hot-loading are not supported for training jobs"
+            )
+        if len(self.bdn.mounts) > 32:
+            raise ValueError("Training jobs support at most 32 BDN mounts")
+        paths = [mount.path for mount in self.bdn.mounts]
+        for index, path in enumerate(paths):
+            for other in paths[:index]:
+                if (
+                    path == other
+                    or path.startswith(other + "/")
+                    or other.startswith(path + "/")
+                ):
+                    raise ValueError("BDN volume mount paths must not overlap")
+        return self
+
+    @pydantic.field_serializer("bdn", mode="wrap")
+    def _serialize_bdn(self, bdn, handler):
+        data = handler(bdn)
+        if data is not None:
+            data.pop("access", None)
+            data.pop("hotload", None)
+        return data
 
     @model_validator(mode="after")
     def _validate_weights_auth_method(self) -> "TrainingJob":
@@ -342,6 +372,8 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
         data["compute"] = self.compute.model_dump()
+        if self.bdn is None:
+            data.pop("bdn", None)
         return data
 
 

@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client"
-version = "0.1.18"
+version = "0.1.20"
 edition = "2021"
 
 [dependencies]
@@ -15,6 +15,7 @@ futures = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+bytes = "1"
 
 [lib]
 name = "baseten_performance_client"

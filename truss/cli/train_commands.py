@@ -1293,7 +1293,7 @@ def _print_workstation_json(
 @click.option(
     "--node-count",
     "node_count",
-    type=click.IntRange(1, 16),
+    type=click.IntRange(1, 1024),
     default=None,
     help="Number of nodes (each with 8 GPUs). Mutually exclusive with --gpu-count.",
 )

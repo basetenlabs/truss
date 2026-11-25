@@ -878,6 +878,26 @@ class HealthChecks(custom_types.ConfigModel):
     )
 
 
+class MetricsEndpoint(custom_types.ConfigModel):
+    """Where Baseten scrapes your model's metrics endpoint for metrics export."""
+
+    # Strict, so a quoted value fails instead of being silently coerced.
+    model_config = pydantic.ConfigDict(strict=True)
+
+    port: Optional[int] = pydantic.Field(
+        default=None,
+        description="The container port that serves metrics. Defaults to the model's serving port.",
+    )
+    path: Optional[str] = pydantic.Field(
+        default=None,
+        description="The URL path that serves metrics, starting with '/'. Defaults to '/metrics'.",
+    )
+    disable_scraping: bool = pydantic.Field(
+        default=False,
+        description="If true, Baseten doesn't scrape this deployment's metrics endpoint, which turns off metrics export and engine metric graphs for it.",
+    )
+
+
 class TransportKind(str, enum.Enum):
     HTTP = "http"
     WEBSOCKET = "websocket"
@@ -1490,14 +1510,25 @@ class DockerServer(custom_types.ConfigModel):
         default=None,
         description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
     )
-    rebuild_free: Optional[bool] = pydantic.Field(
+    no_build_with_start_script: Optional[bool] = pydantic.Field(
         default=None,
         description=(
-            "Do not install packages or rewrite the image entrypoint. "
-            "Rejects requirements, requirements_file, system_packages, and "
-            "build_commands. The base image must already contain them."
+            "Deploy the base image without a build. start_command runs through a "
+            "start script that uses the image's sh. Rejects requirements, "
+            "requirements_file, system_packages, and build_commands. Cannot be "
+            "set together with no_build."
         ),
     )
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _reject_rebuild_free(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "rebuild_free" in values:
+            raise ValueError(
+                "docker_server.rebuild_free was renamed to "
+                "docker_server.no_build_with_start_script."
+            )
+        return values
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
@@ -1510,6 +1541,15 @@ class DockerServer(custom_types.ConfigModel):
     def _validate_start_command(self) -> "DockerServer":
         if not self.no_build and self.start_command is None:
             raise ValueError("start_command is required when no_build is not true")
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_single_no_build_mode(self) -> "DockerServer":
+        if self.no_build and self.no_build_with_start_script:
+            raise ValueError(
+                "docker_server.no_build and docker_server.no_build_with_start_script "
+                "cannot both be true."
+            )
         return self
 
 
@@ -1718,6 +1758,10 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = pydantic.Field(
         default=None,
         description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    metrics_endpoint: Optional[MetricsEndpoint] = pydantic.Field(
+        default=None,
+        description="Configure the metrics endpoint Baseten scrapes for metrics export.",
     )
     model_cache: ModelCache = pydantic.Field(
         default_factory=lambda: ModelCache([]),
@@ -1980,10 +2024,12 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_docker_server_install_fields(self) -> "TrussConfig":
         server = self.docker_server
-        if server is None or server.no_build is True or server.rebuild_free is not True:
+        if server is None or server.no_build_with_start_script is not True:
             return self
         if self.base_image is None or not self.base_image.image:
-            raise ValueError("docker_server.rebuild_free requires base_image.")
+            raise ValueError(
+                "docker_server.no_build_with_start_script requires base_image."
+            )
         rejected: list[str] = []
         if self.requirements:
             rejected.append("requirements")
@@ -1997,7 +2043,7 @@ class TrussConfig(custom_types.ConfigModel):
             names = ", ".join(rejected)
             raise ValueError(
                 f"docker_server does not install {names}. "
-                "This applies only on rebuild-free docker server deployments. "
+                "This applies when docker_server.no_build_with_start_script is set. "
                 "Include them in the base image."
             )
         return self

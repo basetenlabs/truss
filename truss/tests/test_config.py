@@ -30,6 +30,7 @@ from truss.base.truss_config import (
     EgressRestrictions,
     FabricRequirement,
     HTTPOptions,
+    MetricsEndpoint,
     ModelCache,
     ModelRepo,
     ModelRepoCacheInternal,
@@ -1366,24 +1367,27 @@ _DOCKER_SERVER = {
 }
 
 
+_BASE_IMAGE = {"image": "python:3.11-slim"}
+
+
 def test_docker_server_without_install_fields_is_valid():
     TrussConfig.model_validate({"docker_server": _DOCKER_SERVER})
     TrussConfig.model_validate(
         {
-            "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
-            "base_image": {"image": "python:3.11-slim"},
+            "docker_server": {**_DOCKER_SERVER, "no_build_with_start_script": True},
+            "base_image": _BASE_IMAGE,
         }
     )
 
 
-def test_docker_server_rebuild_free_requires_base_image():
+def test_docker_server_no_build_with_start_script_requires_base_image():
     with pytest.raises(ValueError, match="base_image"):
         TrussConfig.model_validate(
-            {"docker_server": {**_DOCKER_SERVER, "rebuild_free": True}}
+            {"docker_server": {**_DOCKER_SERVER, "no_build_with_start_script": True}}
         )
 
 
-def test_docker_server_allows_install_fields_without_rebuild_free():
+def test_docker_server_allows_install_fields_without_no_build_with_start_script():
     TrussConfig.model_validate(
         {"docker_server": _DOCKER_SERVER, "requirements": ["numpy"]}
     )
@@ -1392,12 +1396,37 @@ def test_docker_server_allows_install_fields_without_rebuild_free():
 def test_docker_server_no_build_allows_install_fields():
     TrussConfig.model_validate(
         {
-            "docker_server": {**_DOCKER_SERVER, "no_build": True, "rebuild_free": True},
+            "docker_server": {**_DOCKER_SERVER, "no_build": True},
             "requirements": ["numpy"],
             "system_packages": ["curl"],
             "build_commands": ["echo hi"],
         }
     )
+
+
+def test_docker_server_rejects_no_build_with_start_script_and_no_build():
+    with pytest.raises(ValueError, match="cannot both be true"):
+        TrussConfig.model_validate(
+            {
+                "docker_server": {
+                    **_DOCKER_SERVER,
+                    "no_build": True,
+                    "no_build_with_start_script": True,
+                },
+                "base_image": _BASE_IMAGE,
+            }
+        )
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_docker_server_rejects_rebuild_free(value):
+    with pytest.raises(ValueError, match="renamed to"):
+        TrussConfig.model_validate(
+            {
+                "docker_server": {**_DOCKER_SERVER, "rebuild_free": value},
+                "base_image": _BASE_IMAGE,
+            }
+        )
 
 
 @pytest.mark.parametrize(
@@ -1411,12 +1440,12 @@ def test_docker_server_no_build_allows_install_fields():
         ("build_commands", ["echo hi"]),
     ],
 )
-def test_docker_server_rebuild_free_rejects_install_fields(field, value):
+def test_docker_server_no_build_with_start_script_rejects_install_fields(field, value):
     with pytest.raises(ValueError, match=field):
         TrussConfig.model_validate(
             {
-                "docker_server": {**_DOCKER_SERVER, "rebuild_free": True},
-                "base_image": {"image": "python:3.11-slim"},
+                "docker_server": {**_DOCKER_SERVER, "no_build_with_start_script": True},
+                "base_image": _BASE_IMAGE,
                 field: value,
             }
         )
@@ -2680,6 +2709,41 @@ class TestCheckpointListNoMixing:
         ckpt_list = CheckpointList()
         assert ckpt_list.artifact_references == []
         assert ckpt_list.loops_checkpoint_ids == []
+
+
+class TestMetricsEndpoint:
+    """The metrics_endpoint block."""
+
+    def test_default_is_none(self):
+        assert TrussConfig().metrics_endpoint is None
+
+    def test_from_yaml_round_trip(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "metrics_endpoint:\n  port: 8002\n  path: /custom/metrics\n  disable_scraping: true\n"
+        )
+
+        config = TrussConfig.from_yaml(config_path)
+        config.validate_forbid_extra()
+
+        assert config.metrics_endpoint == MetricsEndpoint(
+            port=8002, path="/custom/metrics", disable_scraping=True
+        )
+        assert config.to_dict(verbose=False)["metrics_endpoint"] == {
+            "port": 8002,
+            "path": "/custom/metrics",
+            "disable_scraping": True,
+        }
+
+    @pytest.mark.parametrize(
+        "block", ['port: "8002"', 'disable_scraping: "true"', "path: 8002"]
+    )
+    def test_rejects_quoted_or_mistyped_values(self, tmp_path, block):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"metrics_endpoint:\n  {block}\n")
+
+        with pytest.raises(pydantic.ValidationError):
+            TrussConfig.from_yaml(config_path)
 
 
 class TestEgressRestrictions:

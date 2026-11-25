@@ -720,6 +720,7 @@ class PerformanceClient:
         ] = None,
         preference: typing.Optional[RequestProcessingPreference] = None,
         method: typing.Optional[builtins.str] = None,
+        raw_bytes: builtins.bool = False,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -731,9 +732,14 @@ class PerformanceClient:
             url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
                       Each object will be the body of the request (ignored for GET requests).
+                      A `bytes` item must be UTF-8 encoded JSON (e.g. from orjson.dumps). It is
+                      sent byte for byte and skips the conversion that runs while holding the GIL.
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
             method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
+            raw_bytes: If True, each item of `data` is the undecoded response body as `bytes`,
+                       and the server is asked for JSON only. Skips the conversion to Python
+                       objects that runs while holding the GIL. Defaults to False.
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -896,6 +902,7 @@ class PerformanceClient:
         ] = None,
         preference: typing.Optional[RequestProcessingPreference] = None,
         method: typing.Optional[builtins.str] = None,
+        raw_bytes: builtins.bool = False,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -904,9 +911,14 @@ class PerformanceClient:
             url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
                       Each object will be the body of the request (ignored for GET requests).
+                      A `bytes` item must be UTF-8 encoded JSON (e.g. from orjson.dumps). It is
+                      sent byte for byte and skips the conversion that runs while holding the GIL.
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
             method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
+            raw_bytes: If True, each item of `data` is the undecoded response body as `bytes`,
+                       and the server is asked for JSON only. Skips the conversion to Python
+                       objects that runs while holding the GIL. Defaults to False.
 
         Returns:
             An awaitable BatchPostResponse object.

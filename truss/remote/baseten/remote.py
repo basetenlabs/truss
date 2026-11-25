@@ -26,7 +26,7 @@ from truss.base.constants import (
     DEFAULT_REMOTE_NAME,
     PRODUCTION_ENVIRONMENT_NAME,
 )
-from truss.base.truss_config import ModelServer
+from truss.base.truss_config import ModelServer, TrussConfig
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
@@ -316,6 +316,23 @@ class BasetenRemote(TrussRemote):
                 "Deploy timeout minutes is not supported for BIS LLM models."
             )
 
+    def _validate_bis_llm_no_training_checkpoints(self, config: TrussConfig) -> None:
+        training_checkpoints = config.training_checkpoints
+        if training_checkpoints is None:
+            return
+        # `checkpoints` is not a declared field, but the backend accepts it and the
+        # config model keeps undeclared keys as extras.
+        extra_checkpoints = (training_checkpoints.model_extra or {}).get("checkpoints")
+        if (
+            training_checkpoints.artifact_references
+            or training_checkpoints.loops_checkpoint_ids
+            or extra_checkpoints
+        ):
+            raise ValueError(
+                "training_checkpoints is not supported for BIS-LLM models. "
+                "Use weights instead."
+            )
+
     def _prepare_bis_llm_request_body(
         self,
         config: Any,
@@ -397,6 +414,10 @@ class BasetenRemote(TrussRemote):
                 environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
+            # The BIS LLM request body is built field by field and has no metrics_endpoint.
+            if config.metrics_endpoint is not None:
+                raise ValueError("metrics_endpoint cannot be set for BIS LLM models.")
+            self._validate_bis_llm_no_training_checkpoints(config)
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
