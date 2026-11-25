@@ -1,4 +1,4 @@
-use crate::cancellation::JoinSetGuard;
+use crate::cancellation::{CancellationToken, JoinSetGuard};
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
@@ -415,12 +415,17 @@ async fn send_request_with_retry(
 
 fn spawn_hedged_request_cleanup(
     mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>>,
+    cancel_token: CancellationToken,
 ) {
     join_set.abort_all();
     tokio::spawn(async move {
         while let Some(result) = join_set.join_next().await {
             if let Ok(Ok(response)) = result {
-                let _ = response.bytes().await;
+                tokio::select! {
+                    biased;
+                    _ = cancel_token.cancelled() => break,
+                    _ = response.bytes() => {}
+                }
             }
         }
     });
@@ -501,7 +506,7 @@ pub(crate) async fn send_request_with_hedging(
         }
     };
 
-    spawn_hedged_request_cleanup(join_set);
+    spawn_hedged_request_cleanup(join_set, config.cancel_token.clone());
     response_result
 }
 

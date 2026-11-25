@@ -830,7 +830,7 @@ impl PerformanceClientCore {
         let request_timeout_duration = config.timeout_duration();
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
 
-        // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
+        // Dropping the guard aborts this batch's remaining tasks.
         let mut join_set: JoinSetGuard<
             Result<(usize, rmpv::Value, HeaderMap, Duration), ClientError>,
         > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());

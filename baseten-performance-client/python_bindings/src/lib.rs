@@ -973,17 +973,7 @@ impl PerformanceClient {
         // Use provided preference or create default
         let rust_preference = rust_preference_from_py(preference);
 
-        // Extract cancellation token if present
-        let cancel_token = preference.and_then(|p| p.cancel_token.clone());
-
         let future = async move {
-            // Check for cancellation before starting the request
-            if let Some(ref token) = cancel_token {
-                if token.is_cancelled() {
-                    return Err(PyValueError::new_err("Operation cancelled by token"));
-                }
-            }
-
             let (core_response, batch_durations, headers, core_total_time) = core_client
                 .process_embeddings_requests(
                     input,

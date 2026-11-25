@@ -530,7 +530,9 @@ impl RequestProcessingConfig {
             hedge_budget,
             retry_budget_pct,
             hedge_budget_pct,
-            cancel_token: pref.cancel_token.unwrap_or_default(),
+            cancel_token: pref
+                .cancel_token
+                .unwrap_or_else(CancellationToken::inactive),
             api_key_primary,
             extra_headers,
             non_retryable_status_codes,
