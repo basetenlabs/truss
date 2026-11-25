@@ -199,6 +199,8 @@ def exchange_identity_token(
     (workload identity federation, RFC 8693 token exchange with the trust rule
     as the audience). ``assertion_source`` names where the JWT came from, for
     error messages."""
+    # Taken before sending, so the computed expiry errs early.
+    issued_at = int(time.time())
     resp = requests.post(
         api_url.rstrip("/") + TOKEN_EXCHANGE_PATH,
         json={
@@ -213,7 +215,7 @@ def exchange_identity_token(
         allow_redirects=False,
     )
     if 200 <= resp.status_code < 300:
-        return AccessToken.from_token_response(resp.json())
+        return _parse_exchange_response(resp.json(), issued_at)
     try:
         code = resp.json().get("error")
     except ValueError:
@@ -228,6 +230,27 @@ def exchange_identity_token(
         )
     raise OAuthError(
         f"Identity token exchange failed ({resp.status_code}): {resp.text.strip()}"
+    )
+
+
+def _parse_exchange_response(payload: dict, issued_at: int) -> AccessToken:
+    access_token = payload.get("access_token")
+    token_type = payload.get("token_type")
+    expires_in = payload.get("expires_in")
+    if not isinstance(access_token, str) or not access_token:
+        raise OAuthError(
+            "Identity token exchange: the response carried no access_token."
+        )
+    if not isinstance(token_type, str) or token_type.lower() != "bearer":
+        raise OAuthError(
+            f"Identity token exchange: unsupported token_type {token_type!r}."
+        )
+    if not isinstance(expires_in, int) or expires_in <= 0:
+        raise OAuthError(f"Identity token exchange: invalid expires_in {expires_in!r}.")
+    return AccessToken(
+        access_token=access_token,
+        expires_at=issued_at + expires_in,
+        lifetime_seconds=expires_in,
     )
 
 

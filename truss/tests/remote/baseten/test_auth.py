@@ -66,7 +66,9 @@ def test_oauth_refresh_when_expired(monkeypatch):
     assert persisted[0].access_token == "new"
 
 
-def _workload_identity_service(tmp_path, monkeypatch, expires_in_seconds=3600):
+def _workload_identity_service(
+    tmp_path, monkeypatch, expires_in_seconds=3600, lifetime_seconds=3600
+):
     token_file = tmp_path / "token"
     token_file.write_text("jwt-1")
     exchanges = []
@@ -76,6 +78,7 @@ def _workload_identity_service(tmp_path, monkeypatch, expires_in_seconds=3600):
         return oauth_mod.AccessToken(
             access_token=f"at-{len(exchanges)}",
             expires_at=int(time.time()) + expires_in_seconds,
+            lifetime_seconds=lifetime_seconds,
         )
 
     monkeypatch.setattr(
@@ -104,7 +107,7 @@ def test_workload_identity_re_exchanges_near_expiry_with_rotated_token(
 ):
     # Inside the refresh leeway, so every call exchanges again.
     auth_service, token_file, exchanges = _workload_identity_service(
-        tmp_path, monkeypatch, expires_in_seconds=oauth_mod.EXPIRY_LEEWAY_SECONDS - 1
+        tmp_path, monkeypatch, expires_in_seconds=100
     )
     assert auth_service.fetch_auth_header() == {"Authorization": "Bearer at-1"}
     token_file.write_text("jwt-2")
@@ -112,9 +115,50 @@ def test_workload_identity_re_exchanges_near_expiry_with_rotated_token(
     assert [assertion for _, assertion, _ in exchanges] == ["jwt-1", "jwt-2"]
 
 
+def test_workload_identity_short_lived_token_is_reused(tmp_path, monkeypatch):
+    # The five-minute leeway is capped at half the lifetime, so a two-minute
+    # token is reused for its first minute.
+    auth_service, _, exchanges = _workload_identity_service(
+        tmp_path, monkeypatch, expires_in_seconds=120, lifetime_seconds=120
+    )
+    auth_service.fetch_auth_header()
+    auth_service.fetch_auth_header()
+    assert len(exchanges) == 1
+
+
+def test_workload_identity_inline_token_is_trimmed_and_must_not_be_empty(monkeypatch):
+    assertions = []
+
+    def fake_exchange(api_url, assertion, trust_rule_id, assertion_source):
+        assertions.append(assertion)
+        return oauth_mod.AccessToken(
+            access_token="at-1", expires_at=int(time.time()) + 3600
+        )
+
+    monkeypatch.setattr(
+        "truss.remote.baseten.auth.exchange_identity_token", fake_exchange
+    )
+    for token, expected in (("  jwt \n", ["jwt"]), (" \n", [])):
+        assertions.clear()
+        auth_service = AuthService(
+            WorkloadIdentityCredential(
+                api_url="https://api.baseten.co",
+                config=WorkloadIdentityConfig(
+                    trust_rule_id="rule-1", identity_token=token
+                ),
+            )
+        )
+        if expected:
+            auth_service.fetch_auth_header()
+        else:
+            with pytest.raises(oauth_mod.OAuthError, match="is empty"):
+                auth_service.fetch_auth_header()
+        assert assertions == expected
+
+
 def test_workload_identity_failed_refresh_keeps_unexpired_token(tmp_path, monkeypatch):
     auth_service, _, _ = _workload_identity_service(
-        tmp_path, monkeypatch, expires_in_seconds=oauth_mod.EXPIRY_LEEWAY_SECONDS - 1
+        tmp_path, monkeypatch, expires_in_seconds=100
     )
     assert auth_service.fetch_auth_header() == {"Authorization": "Bearer at-1"}
 

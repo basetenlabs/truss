@@ -251,6 +251,28 @@ def test_exchange_identity_token_request_shape():
     assert m.last_request.timeout == oauth.EXCHANGE_TIMEOUT_SECONDS
     assert token.access_token == "at"
     assert token.expires_at > int(time.time()) + 3500
+    assert token.lifetime_seconds == 3600
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        ({"token_type": "Bearer", "expires_in": 3600}, "no access_token"),
+        (
+            {"access_token": "at", "token_type": "mac", "expires_in": 3600},
+            "unsupported token_type",
+        ),
+        (
+            {"access_token": "at", "token_type": "Bearer", "expires_in": 0},
+            "invalid expires_in",
+        ),
+    ],
+)
+def test_exchange_identity_token_rejects_bad_response(payload, message):
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, json=payload)
+        with pytest.raises(oauth.OAuthError, match=message):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
 
 
 def test_exchange_identity_token_invalid_grant():

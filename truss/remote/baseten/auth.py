@@ -37,6 +37,10 @@ class OAuthSession(pydantic.BaseModel):
     on_token_refresh: Optional[Callable[[OAuthCredential], None]] = None
 
 
+# How long before expiry a workload identity access token is replaced, capped
+# at half its lifetime; as in the Baseten SDKs.
+WORKLOAD_IDENTITY_REFRESH_LEEWAY_SECONDS = 300
+
 BASETEN_API_KEY_ENV = "BASETEN_API_KEY"
 # Set by the baseten CLI when it hands its credential to truss.
 TRUSS_AUTH_API_KEY_ENV = "BASETEN_TRUSS_AUTH_API_KEY"
@@ -176,7 +180,7 @@ class AuthService:
         self, credential: WorkloadIdentityCredential
     ) -> AccessToken:
         token = self._workload_identity_token
-        if token is not None and not token.is_expired():
+        if token is not None and time.time() < _refresh_at(token):
             return token
         try:
             config = credential.config
@@ -206,7 +210,10 @@ def _read_identity_token(config: WorkloadIdentityConfig) -> str:
     """Return the identity token, re-reading the file on every exchange because
     platforms such as Kubernetes rotate it in place."""
     if config.identity_token is not None:
-        return config.identity_token.get_secret_value()
+        token = config.identity_token.get_secret_value().strip()
+        if not token:
+            raise OAuthError(f"{IDENTITY_TOKEN_ENV} is empty.")
+        return token
     assert config.identity_token_file is not None
     try:
         token = config.identity_token_file.read_text().strip()
@@ -219,3 +226,10 @@ def _read_identity_token(config: WorkloadIdentityConfig) -> str:
             f"The identity token file {config.identity_token_file} is empty."
         )
     return token
+
+
+def _refresh_at(token: AccessToken) -> float:
+    lifetime = token.lifetime_seconds or 0
+    return token.expires_at - min(
+        WORKLOAD_IDENTITY_REFRESH_LEEWAY_SECONDS, lifetime / 2
+    )
