@@ -34,4 +34,4 @@ def handle_client_error(
     except Exception as exc:
         raise RuntimeError(
             f"Unexpected error `{exc}` during `{operation_description}`\nOriginal exception: {str(exc)}"
-        )
+        ) from exc
