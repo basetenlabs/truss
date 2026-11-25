@@ -17,6 +17,7 @@ from typing import (
     Type,
 )
 
+import requests
 import yaml
 from requests import ReadTimeout
 from watchfiles import watch
@@ -31,7 +32,14 @@ from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
-from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
+from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
+    ApiKeyCredential,
+    AuthService,
+    OAuthSession,
+    WorkloadIdentityCredential,
+    workload_identity_from_env,
+)
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -157,12 +165,23 @@ class BasetenRemote(TrussRemote):
                 )
             )
         else:
-            api_key = api_key or os.environ.get("BASETEN_API_KEY")
-            if not api_key:
+            # Read first so BASETEN_API_KEY alongside workload identity errors
+            # instead of silently winning.
+            workload_identity = workload_identity_from_env()
+            api_key = api_key or os.environ.get(BASETEN_API_KEY_ENV)
+            if api_key:
+                self._auth_service = AuthService(
+                    ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
+                )
+            elif workload_identity:
+                self._auth_service = AuthService(
+                    WorkloadIdentityCredential(
+                        api_url=resolve_rest_api_url(remote_url),
+                        config=workload_identity,
+                    )
+                )
+            else:
                 raise AuthorizationError("No credentials provided.")
-            self._auth_service = AuthService(
-                ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
-            )
         self._api = BasetenApi(remote_url, self._auth_service)
 
     def fetch_auth_header(self) -> dict[str, str]:
@@ -173,6 +192,11 @@ class BasetenRemote(TrussRemote):
         so a stored header can become stale.
         """
         return self._auth_service.fetch_auth_header()
+
+    def note_auth_response(self, response: requests.Response) -> None:
+        """Pass each response sent with :meth:`fetch_auth_header` here, so a
+        workload identity access token Baseten refused is replaced."""
+        self._auth_service.note_response(response)
 
     def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
         from truss.remote.remote_factory import AuthType, RemoteFactory

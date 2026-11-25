@@ -150,7 +150,12 @@ class BasetenApi:
         self._rest_api_client = RestAPIClient(
             base_url=self._rest_api_url,
             header_provider=self._auth_service.fetch_auth_header,
+            on_response=self._auth_service.note_response,
         )
+
+    def note_auth_response(self, response: requests.Response) -> None:
+        """See :meth:`AuthService.note_response`."""
+        self._auth_service.note_response(response)
 
     @property
     def app_url(self) -> str:
@@ -177,6 +182,7 @@ class BasetenApi:
         resp = requests.post(
             self._graphql_api_url, json=payload, headers=headers, timeout=120
         )
+        self._auth_service.note_response(resp)
 
         if not resp.ok:
             logger.error(f"GraphQL endpoint failed with error: {str(resp.content)}")

@@ -256,6 +256,7 @@ def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
     mock_keepalive.assert_any_call(
         "https://model-def.api.baseten.co",
@@ -263,6 +264,7 @@ def test_prepare_chainlet_models_for_watch_waits_and_starts_keepalive():
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
 
 
@@ -292,6 +294,7 @@ def test_prepare_chainlet_models_for_watch_keeps_all_chainlets_warm_with_subset(
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
     mock_keepalive.assert_any_call(
         "https://model-def.api.baseten.co",
@@ -299,6 +302,7 @@ def test_prepare_chainlet_models_for_watch_keeps_all_chainlets_warm_with_subset(
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
 
 
@@ -357,6 +361,7 @@ def test_prepare_chainlet_models_for_watch_recovers_missing_hostname():
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
 
 
@@ -392,6 +397,7 @@ def test_start_keepalives_warms_ready_chainlets_including_published():
         is_draft=False,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
 
 
@@ -418,6 +424,7 @@ def test_start_keepalives_uses_ping_path_override():
         is_draft=True,
         deployment_id="version_id",
         ping_path="ready",
+        on_response=remote_provider.note_auth_response,
     )
     mock_keepalive.assert_any_call(
         "https://model-abc.api.baseten.co",
@@ -425,6 +432,7 @@ def test_start_keepalives_uses_ping_path_override():
         is_draft=True,
         deployment_id="version_id",
         ping_path="v1/models/model",
+        on_response=remote_provider.note_auth_response,
     )
 
 
