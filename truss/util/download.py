@@ -19,22 +19,27 @@ def download_external_data(external_data: Optional[ExternalData], data_dir: Path
     data_dir.mkdir(exist_ok=True)
     b10cp_path = _b10cp_path()
 
-    # ensure parent directories exist
+    # Normalize lexically so `..` can't escape data_dir, and download to exactly the
+    # checked path. Symlinks are deliberately not resolved, so symlinked
+    # subdirectories keep working, but `..` after a symlink can't escape either.
+    abs_data_dir = Path(os.path.abspath(data_dir))
+    downloads: list[tuple[str, Path]] = []
     for item in external_data.items:
-        path = data_dir / item.local_data_path
-        if data_dir not in path.parents:
+        path = Path(os.path.abspath(data_dir / item.local_data_path))
+        if abs_data_dir not in path.parents:
             raise ValueError(
                 "Local data path of external data cannot point to outside data directory"
             )
         path.parent.mkdir(exist_ok=True, parents=True)
+        downloads.append((item.url, path))
 
     if b10cp_path is not None:
         print("b10cp found, using it to download external data")
-        _download_external_data_using_b10cp(b10cp_path, data_dir, external_data)
+        _download_external_data_using_b10cp(b10cp_path, downloads)
         return
 
     # slow path
-    _download_external_data_using_requests(data_dir, external_data)
+    _download_external_data_using_requests(downloads)
 
 
 def _b10cp_path() -> Optional[str]:
@@ -42,13 +47,12 @@ def _b10cp_path() -> Optional[str]:
 
 
 def _download_external_data_using_b10cp(
-    b10cp_path: str, data_dir: Path, external_data: ExternalData
+    b10cp_path: str, downloads: list[tuple[str, Path]]
 ):
     procs = []
     # TODO(pankaj) Limit concurrency here
-    for item in external_data.items:
-        path = (data_dir / item.local_data_path).resolve()
-        proc = _download_from_url_using_b10cp(b10cp_path, item.url, path)
+    for url, path in downloads:
+        proc = _download_from_url_using_b10cp(b10cp_path, url, path)
         procs.append(proc)
 
     for proc in procs:
@@ -67,11 +71,9 @@ def _download_from_url_using_b10cp(b10cp_path: str, url: str, download_to: Path)
     )
 
 
-def _download_external_data_using_requests(data_dir: Path, external_data: ExternalData):
-    for item in external_data.items:
-        download_from_url_using_requests(
-            item.url, (data_dir / item.local_data_path).resolve()
-        )
+def _download_external_data_using_requests(downloads: list[tuple[str, Path]]):
+    for url, path in downloads:
+        download_from_url_using_requests(url, path)
 
 
 def download_from_url_using_requests(URL: str, download_to: Path):

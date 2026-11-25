@@ -618,6 +618,7 @@ class BasetenChainService(ChainService):
         response = requests.post(
             self.run_remote_url, json=json_data, headers=headers, stream=True
         )
+        self._remote.note_auth_response(response)
         if response.status_code == 401:
             raise ValueError(
                 f"Authentication failed with status code {response.status_code}"
@@ -1194,6 +1195,7 @@ def _start_keepalives_for_ready_chainlets(
             ping_path=ping_paths.get(
                 chainlet.name, cli_common.KEEPALIVE_DEFAULT_PING_PATH
             ),
+            on_response=remote_provider.note_auth_response,
         )
 
 

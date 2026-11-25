@@ -841,6 +841,22 @@ def test_model_cache_v1_copy_lines_keep_remote_file_names(tmp_path):
         assert (bucket / name).read_text() == name
 
 
+def test_cache_dockerfile_hf_access_token_renders_unchanged():
+    dockerfile = read_template_from_fs(TEMPLATES_DIR, "cache.Dockerfile.jinja").render(
+        hf_access_token="hf_AbCdEf0123456789", models={}
+    )
+
+    assert 'ENV HUGGING_FACE_HUB_TOKEN="hf_AbCdEf0123456789"\n' in dockerfile
+
+
+def test_cache_dockerfile_hf_access_token_rejects_line_breaks():
+    # Deliberately adversarial: a secret default that would add a Dockerfile line.
+    template = read_template_from_fs(TEMPLATES_DIR, "cache.Dockerfile.jinja")
+
+    with pytest.raises(ValueError, match="line breaks"):
+        template.render(hf_access_token='x"\nRUN echo injected', models={})
+
+
 @pytest.mark.integration
 def test_test_truss_server_model_cache_v1(test_data_path):
     with ensure_kill_all():
@@ -1402,8 +1418,7 @@ class TestDockerServerSlimBuild:
         tmp_path,
         transport_kind="http",
         start_command="python main.py --port 8000",
-        rebuild_free=None,
-        no_build=None,
+        no_build_with_start_script=None,
     ):
         truss_dir = tmp_path / f"docker_server_truss_{transport_kind}"
         th = TrussHandle(init_directory(truss_dir))
@@ -1416,8 +1431,7 @@ class TestDockerServerSlimBuild:
             predict_endpoint="/predict",
             readiness_endpoint="/health",
             liveness_endpoint="/health",
-            rebuild_free=rebuild_free,
-            no_build=no_build,
+            no_build_with_start_script=no_build_with_start_script,
         )
         config.runtime.transport = {"kind": transport_kind}
         with (truss_dir / "config.yaml").open("w") as f:
@@ -1520,8 +1534,12 @@ class TestDockerServerSlimBuild:
         assert "supervisord" not in dockerfile.lower()
 
     @pytest.mark.parametrize("slim", ["true", "false"])
-    def test_rebuild_free_dockerfile_is_from_base_image(self, tmp_path, slim):
-        truss_dir = self._make_docker_server_truss(tmp_path, rebuild_free=True)
+    def test_no_build_with_start_script_dockerfile_is_from_base_image(
+        self, tmp_path, slim
+    ):
+        truss_dir = self._make_docker_server_truss(
+            tmp_path, no_build_with_start_script=True
+        )
         with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": slim}):
             builder = ServingImageBuilderContext.run(truss_dir)
             build_dir = tmp_path / f"build_{slim}"
@@ -1532,17 +1550,3 @@ class TestDockerServerSlimBuild:
         assert not (build_dir / "proxy.conf").exists()
         assert not (build_dir / "supervisord.conf").exists()
         assert not (build_dir / "docker_server_requirements.txt").exists()
-
-    def test_no_build_dockerfile_when_rebuild_free_also_set(self, tmp_path):
-        truss_dir = self._make_docker_server_truss(
-            tmp_path, rebuild_free=True, no_build=True
-        )
-        with patch.dict(os.environ, {"BT_USE_DOCKER_SERVER_SLIM": "true"}):
-            builder = ServingImageBuilderContext.run(truss_dir)
-            build_dir = tmp_path / "build_no_build_rebuild_free"
-            builder.prepare_image_build_dir(build_dir)
-
-        dockerfile = (build_dir / "Dockerfile").read_text()
-        assert dockerfile.startswith("FROM python:3.11-slim")
-        assert 'ENTRYPOINT ["sh", "-c"]' in dockerfile
-        assert dockerfile != "FROM python:3.11-slim"

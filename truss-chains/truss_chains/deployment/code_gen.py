@@ -28,6 +28,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -409,16 +410,38 @@ def _make_chainlet_dir(
     chainlet_descriptor: private_types.ChainletAPIDescriptor,
     root: pathlib.Path,
 ) -> pathlib.Path:
-    dir_name = f"chainlet_{chainlet_descriptor.name}"
-    chainlet_dir = (
-        root
-        / private_types.GENERATED_CODE_DIR
-        / _name_to_dirname(chain_name)
-        / dir_name
-    )
-    if chainlet_dir.exists():
-        shutil.rmtree(chainlet_dir)
-    chainlet_dir.mkdir(exist_ok=False, parents=True)
+    # The generated code dir is a fixed, documented path in the shared temp dir, so
+    # another local user could pre-create it, its subdirs (if an older version left
+    # it writable to others), or symlinks there to read or swap generated files
+    # before upload. Only use each dir on the path if it is a real directory owned
+    # by us, and tighten permissions on dirs created by older versions. Entries
+    # deeper in the chainlet dir are safe since rmtree does not follow symlinks.
+    gen_dir = root / private_types.GENERATED_CODE_DIR
+    chain_dirname = _name_to_dirname(chain_name)
+    # `..` would resolve to the temp root and get chmodded below.
+    if chain_dirname in (".", ".."):
+        raise public_types.ChainsUsageError(
+            f"Chain name `{chain_name}` cannot be used as a directory name."
+        )
+    chain_dir = gen_dir / chain_dirname
+    chainlet_dir = chain_dir / f"chainlet_{chainlet_descriptor.name}"
+    for path in (gen_dir, chain_dir, chainlet_dir):
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        path_stat = os.lstat(path)
+        if not stat.S_ISDIR(path_stat.st_mode) or (
+            hasattr(os, "getuid") and path_stat.st_uid != os.getuid()
+        ):
+            raise public_types.ChainsUsageError(
+                f"`{path}` exists but is not a directory owned by the current user. "
+                "Remove it and try again."
+            )
+        os.chmod(path, 0o700)
+    # Start from an empty chainlet dir.
+    shutil.rmtree(chainlet_dir)
+    os.mkdir(chainlet_dir, 0o700)
     return chainlet_dir
 
 

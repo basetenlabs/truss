@@ -4,10 +4,7 @@ from typing import Any
 
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
-from truss.contexts.local_loader.utils import (
-    prepare_secrets,
-    signature_accepts_keyword_arg,
-)
+from truss.contexts.local_loader.utils import signature_accepts_keyword_arg
 from truss.contexts.truss_context import TrussContext
 from truss.templates.server._truss_common.patches import apply_patches
 
@@ -37,7 +34,7 @@ class LoadModelLocal(TrussContext):
             if signature_accepts_keyword_arg(model_class_signature, "data_dir"):
                 model_init_params["data_dir"] = truss_dir / "data"
             if signature_accepts_keyword_arg(model_class_signature, "secrets"):
-                model_init_params["secrets"] = prepare_secrets(spec)
+                model_init_params["secrets"] = spec.config.secret_defaults()
             apply_patches(spec.apply_library_patches, spec.requirements)
             model = model_class(**model_init_params)
             if hasattr(model, "load"):

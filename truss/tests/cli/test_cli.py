@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import stat
 import sys
 import tarfile
 import threading
@@ -168,6 +170,29 @@ def test_exits_after_max_consecutive_failures():
                         stop_event,
                     )
     mock_exit.assert_called_once_with(1)
+
+
+def test_failed_token_exchange_counts_as_failure():
+    """A failed access token exchange must not end the keepalive thread."""
+    from truss.remote.baseten.oauth import OAuthError
+
+    stop_event = threading.Event()
+
+    def failing_header_provider():
+        raise OAuthError("exchange failed")
+
+    with patch("truss.cli.utils.common.requests_lib.get") as mock_get:
+        with patch("truss.cli.utils.common.console"):
+            with patch(
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    common.keepalive_loop(
+                        "http://fake", failing_header_provider, stop_event
+                    )
+    mock_exit.assert_called_once_with(1)
+    mock_get.assert_not_called()
 
 
 def test_request_exception_counts_as_failure():
@@ -379,6 +404,33 @@ def test_watch_sends_wake_request():
         headers={"Authorization": "Api-Key test_key"},
         timeout=10,
     )
+
+
+def test_watch_resends_wake_once_when_baseten_refuses_the_token():
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    refused = Mock(
+        status_code=401,
+        headers={"WWW-Authenticate": 'Bearer realm="baseten", error="invalid_token"'},
+    )
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_requests.post.side_effect = [refused, refused, refused]
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.utils.common.start_keepalive"):
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    CliRunner().invoke(
+                        truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
+                    )
+
+    # One resend, not a loop.
+    assert mock_requests.post.call_count == 2
 
 
 def test_watch_no_sleep_starts_keepalive_thread():
@@ -1274,6 +1326,7 @@ def test_push_watch_no_sleep_starts_keepalive(
         "https://model.api.baseten.co",
         remote.fetch_auth_header,
         ping_path="v1/models/model",
+        on_response=remote.note_auth_response,
     )
     mock_start_watch.assert_called_once()
 
@@ -1975,3 +2028,19 @@ class TestExtractRequestData:
     def test_invalid_json_raises(self):
         with pytest.raises(click.UsageError, match="valid json"):
             _extract_request_data(data="{not json}", file=None)
+
+
+def test_configure_writes_owner_only(trussrc, monkeypatch):
+    monkeypatch.setenv("TRUSS_NO_UPDATE_CHECK", "1")
+    monkeypatch.setattr("truss.cli.cli.USER_TRUSSRC_PATH", trussrc)
+    # Existing file left world-readable by an older truss version.
+    trussrc.write_text("[old]\napi_key = old\n")
+    os.chmod(trussrc, 0o644)
+    edited = "[new]\napi_key = new\n"
+    with patch("truss.cli.cli.click.edit", return_value=edited):
+        result = CliRunner().invoke(truss_cli, ["configure"])
+    assert result.exit_code == 0, result.output
+    # Windows has no POSIX permission bits, so only check the mode elsewhere.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(trussrc.stat().st_mode) == 0o600
+    assert trussrc.read_text() == edited

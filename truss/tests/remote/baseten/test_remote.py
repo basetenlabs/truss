@@ -10,9 +10,12 @@ import requests_mock
 
 from truss.base.truss_config import (
     BISLLM,
+    CheckpointList,
     EgressRestrictions,
     FabricRequirement,
+    MetricsEndpoint,
     Runtime,
+    TrainingArtifactReference,
     TrussConfig,
     Weights,
     WeightsSource,
@@ -978,6 +981,91 @@ def test_push_bis_llm_rejects_disallowed_options(
         remote.push(
             mock_truss_handle, "model_name", mock_truss_handle.truss_dir, **kwargs
         )
+
+
+def test_push_bis_llm_rejects_metrics_endpoint(remote, mock_truss_handle):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    mock_truss_handle.spec.config.metrics_endpoint = MetricsEndpoint(
+        disable_scraping=True
+    )
+    with pytest.raises(
+        ValueError, match="metrics_endpoint cannot be set for BIS LLM models"
+    ):
+        remote.push(
+            mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+        )
+
+
+@pytest.mark.parametrize(
+    "training_checkpoints",
+    [
+        CheckpointList(
+            artifact_references=[
+                TrainingArtifactReference(
+                    training_job_id="job123", paths=["checkpoint-10/*"]
+                )
+            ]
+        ),
+        CheckpointList(loops_checkpoint_ids=["loops-checkpoint-id"]),
+        # `checkpoints` is not a declared field; the config model keeps it as an extra.
+        CheckpointList.model_validate(
+            {"checkpoints": [{"training_job_id": "job123", "id": "checkpoint-10"}]}
+        ),
+    ],
+)
+def test_push_bis_llm_rejects_training_checkpoints(
+    remote, mock_upload_truss, mock_truss_handle, training_checkpoints
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    mock_truss_handle.spec.config.training_checkpoints = training_checkpoints
+
+    with patch("truss.remote.baseten.remote.exists_model") as mock_exists_model:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "training_checkpoints is not supported for BIS-LLM models. "
+                "Use weights instead."
+            ),
+        ):
+            remote.push(
+                mock_truss_handle,
+                "model_name",
+                mock_truss_handle.truss_dir,
+                publish=True,
+            )
+
+    mock_exists_model.assert_not_called()
+    mock_upload_truss.assert_not_called()
+
+
+@pytest.mark.parametrize("training_checkpoints", [None, CheckpointList()])
+def test_push_bis_llm_allows_empty_training_checkpoints(
+    remote, mock_upload_truss, mock_truss_handle, training_checkpoints
+):
+    mock_truss_handle.spec.config.bis_llm = BISLLM(config={"model": "x"})
+    mock_truss_handle.spec.config.training_checkpoints = training_checkpoints
+    bis_llm_handle = mock.Mock(
+        version_id="bis-llm-deployment-id",
+        model_id="bis-llm-model-id",
+        hostname="hostname",
+        instance_type_name=None,
+    )
+
+    with patch(
+        "truss.remote.baseten.remote.exists_model", return_value="bis-llm-model-id"
+    ):
+        with patch(
+            "truss.remote.baseten.remote.create_bis_llm_service",
+            return_value=bis_llm_handle,
+        ) as mock_create_bis_llm_service:
+            remote.push(
+                mock_truss_handle,
+                "model_name",
+                mock_truss_handle.truss_dir,
+                publish=True,
+            )
+
+    mock_create_bis_llm_service.assert_called_once()
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(

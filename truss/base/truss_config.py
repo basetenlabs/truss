@@ -878,6 +878,26 @@ class HealthChecks(custom_types.ConfigModel):
     )
 
 
+class MetricsEndpoint(custom_types.ConfigModel):
+    """Where Baseten scrapes your model's metrics endpoint for metrics export."""
+
+    # Strict, so a quoted value fails instead of being silently coerced.
+    model_config = pydantic.ConfigDict(strict=True)
+
+    port: Optional[int] = pydantic.Field(
+        default=None,
+        description="The container port that serves metrics. Defaults to the model's serving port.",
+    )
+    path: Optional[str] = pydantic.Field(
+        default=None,
+        description="The URL path that serves metrics, starting with '/'. Defaults to '/metrics'.",
+    )
+    disable_scraping: bool = pydantic.Field(
+        default=False,
+        description="If true, Baseten doesn't scrape this deployment's metrics endpoint, which turns off metrics export and engine metric graphs for it.",
+    )
+
+
 class TransportKind(str, enum.Enum):
     HTTP = "http"
     WEBSOCKET = "websocket"
@@ -1490,14 +1510,25 @@ class DockerServer(custom_types.ConfigModel):
         default=None,
         description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
     )
-    rebuild_free: Optional[bool] = pydantic.Field(
+    no_build_with_start_script: Optional[bool] = pydantic.Field(
         default=None,
         description=(
-            "Do not install packages or rewrite the image entrypoint. "
-            "Rejects requirements, requirements_file, system_packages, and "
-            "build_commands. The base image must already contain them."
+            "Deploy the base image without a build. start_command runs through a "
+            "start script that uses the image's sh. Rejects requirements, "
+            "requirements_file, system_packages, and build_commands. Cannot be "
+            "set together with no_build."
         ),
     )
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _reject_rebuild_free(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "rebuild_free" in values:
+            raise ValueError(
+                "docker_server.rebuild_free was renamed to "
+                "docker_server.no_build_with_start_script."
+            )
+        return values
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
@@ -1510,6 +1541,15 @@ class DockerServer(custom_types.ConfigModel):
     def _validate_start_command(self) -> "DockerServer":
         if not self.no_build and self.start_command is None:
             raise ValueError("start_command is required when no_build is not true")
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_single_no_build_mode(self) -> "DockerServer":
+        if self.no_build and self.no_build_with_start_script:
+            raise ValueError(
+                "docker_server.no_build and docker_server.no_build_with_start_script "
+                "cannot both be true."
+            )
         return self
 
 
@@ -1557,6 +1597,76 @@ def to_dotted_python_version(truss_python_version: str) -> str:
     e.g. py39 to 3.9
     """
     return f"{truss_python_version[2]}.{truss_python_version[3:]}"
+
+
+_DOCKERFILE_LINE_BREAK_RE = re.compile(r"[\n\r]")
+_DOCKERFILE_LEADING_FLAG_RE = re.compile(r"^\s*-")
+# BuildKit splits RUN flag words per byte with unicode.IsSpace, so the UTF-8 bytes
+# 0x85 and 0xA0 also end a flag; only printable ASCII is safe inside a --mount spec.
+_DOCKERFILE_MOUNT_OPTION_UNSAFE_RE = re.compile(r'[^\x21-\x7e]|[,"]')
+
+
+def validate_dockerfile_rendered_fields(config: Mapping[str, Any]) -> None:
+    """Raise ValueError if a config value would inject syntax into the generated Dockerfile."""
+    line_values: list[tuple[str, Any]] = [
+        ("python_version", config.get("python_version")),
+        ("data_dir", config.get("data_dir")),
+        ("model_module_dir", config.get("model_module_dir")),
+        ("bundled_packages_dir", config.get("bundled_packages_dir")),
+    ]
+
+    environment_variables = config.get("environment_variables")
+    if isinstance(environment_variables, Mapping):
+        for key in ("PORT", "HOSTNAME"):
+            line_values.append(
+                (f"environment_variables.{key}", environment_variables.get(key))
+            )
+
+    base_image = config.get("base_image")
+    if isinstance(base_image, Mapping):
+        line_values.append(("base_image.image", base_image.get("image")))
+        python_executable_path = base_image.get("python_executable_path")
+        line_values.append(
+            ("base_image.python_executable_path", python_executable_path)
+        )
+        if python_executable_path is not None and _DOCKERFILE_LEADING_FLAG_RE.match(
+            str(python_executable_path)
+        ):
+            raise ValueError(
+                "base_image.python_executable_path must not start with '-'."
+            )
+
+    # Truss falls back to the deprecated hf_cache key, so both are rendered.
+    for cache_key in ("model_cache", "hf_cache"):
+        cache_entries = config.get(cache_key)
+        if isinstance(cache_entries, list):
+            for i, entry in enumerate(cache_entries):
+                if isinstance(entry, Mapping):
+                    line_values.append(
+                        (f"{cache_key}[{i}].repo_id", entry.get("repo_id"))
+                    )
+                    line_values.append(
+                        (f"{cache_key}[{i}].revision", entry.get("revision"))
+                    )
+
+    for field, value in line_values:
+        if value is not None and _DOCKERFILE_LINE_BREAK_RE.search(str(value)):
+            raise ValueError(f"{field} must not contain line breaks.")
+
+    build = config.get("build")
+    secret_to_path_mapping = (
+        build.get("secret_to_path_mapping") if isinstance(build, Mapping) else None
+    )
+    if isinstance(secret_to_path_mapping, Mapping):
+        for secret_name, path in secret_to_path_mapping.items():
+            for value in (secret_name, path):
+                if value is not None and _DOCKERFILE_MOUNT_OPTION_UNSAFE_RE.search(
+                    str(value)
+                ):
+                    raise ValueError(
+                        f"build.secret_to_path_mapping entry {str(secret_name)!r} must use only "
+                        "printable ASCII without spaces, commas or double quotes."
+                    )
 
 
 class TrussConfig(custom_types.ConfigModel):
@@ -1648,6 +1758,10 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = pydantic.Field(
         default=None,
         description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    metrics_endpoint: Optional[MetricsEndpoint] = pydantic.Field(
+        default=None,
+        description="Configure the metrics endpoint Baseten scrapes for metrics export.",
     )
     model_cache: ModelCache = pydantic.Field(
         default_factory=lambda: ModelCache([]),
@@ -1871,6 +1985,12 @@ class TrussConfig(custom_types.ConfigModel):
         return self
 
     @pydantic.model_validator(mode="after")
+    def _validate_dockerfile_rendered_fields(self) -> "TrussConfig":
+        # Dump so Python-constructed nested models are checked like YAML dicts.
+        validate_dockerfile_rendered_fields(self.model_dump())
+        return self
+
+    @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":
         if self.resources.is_tpu:
             if self.trt_llm is not None:
@@ -1904,10 +2024,12 @@ class TrussConfig(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_docker_server_install_fields(self) -> "TrussConfig":
         server = self.docker_server
-        if server is None or server.no_build is True or server.rebuild_free is not True:
+        if server is None or server.no_build_with_start_script is not True:
             return self
         if self.base_image is None or not self.base_image.image:
-            raise ValueError("docker_server.rebuild_free requires base_image.")
+            raise ValueError(
+                "docker_server.no_build_with_start_script requires base_image."
+            )
         rejected: list[str] = []
         if self.requirements:
             rejected.append("requirements")
@@ -1921,7 +2043,7 @@ class TrussConfig(custom_types.ConfigModel):
             names = ", ".join(rejected)
             raise ValueError(
                 f"docker_server does not install {names}. "
-                "This applies only on rebuild-free docker server deployments. "
+                "This applies when docker_server.no_build_with_start_script is set. "
                 "Include them in the base image."
             )
         return self

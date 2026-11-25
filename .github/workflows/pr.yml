@@ -12,7 +12,7 @@ jobs:
   lint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
@@ -32,7 +32,7 @@ jobs:
       min_supported_python_version: ${{ steps.extract.outputs.min_supported_python_version }}
       max_supported_python_version: ${{ steps.extract.outputs.max_supported_python_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
       - name: Install dependencies for version extraction
         run: pip install tomlkit packaging
       - name: Extract Python Version Range
@@ -54,7 +54,7 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
@@ -70,7 +70,7 @@ jobs:
       - name: run tests
         run: uv run pytest --durations=0  -m 'not integration' --junitxml=report.xml --basetemp=$RUNNER_TEMP/pytest-temp
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
+        uses: chainguard-actions/mikepenz-action-junit-report@228f0699eea06c35caf88f2d751661cb0841d02a # v6.7.1
         if: always()
         with:
           commit: ${{ github.event.workflow_run.head_sha }}
@@ -84,7 +84,7 @@ jobs:
     needs: determine-python-versions
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
@@ -101,7 +101,7 @@ jobs:
       - name: run tests
         run: uv run --no-sync pytest --durations=0 -m 'not integration' --junitxml=report-lowest.xml --basetemp=$RUNNER_TEMP/pytest-temp
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
+        uses: chainguard-actions/mikepenz-action-junit-report@228f0699eea06c35caf88f2d751661cb0841d02a # v6.7.1
         if: always()
         with:
           commit: ${{ github.event.workflow_run.head_sha }}
@@ -110,8 +110,8 @@ jobs:
   markdown-link-check:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@master
-      - uses: gaurav-nelson/github-action-markdown-link-check@v1
+      - uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4.4.0
+      - uses: chainguard-actions/gaurav-nelson-github-action-markdown-link-check@2749542f1ad765f3ea51ceeba9739524735ad7df # 1.0.17
         with:
           use-verbose-mode: "yes"
           folder-path: "docs"

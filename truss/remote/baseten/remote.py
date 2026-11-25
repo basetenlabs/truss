@@ -17,6 +17,7 @@ from typing import (
     Type,
 )
 
+import requests
 import yaml
 from requests import ReadTimeout
 from watchfiles import watch
@@ -26,12 +27,19 @@ from truss.base.constants import (
     DEFAULT_REMOTE_NAME,
     PRODUCTION_ENVIRONMENT_NAME,
 )
-from truss.base.truss_config import ModelServer
+from truss.base.truss_config import ModelServer, TrussConfig
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi, resolve_rest_api_url
-from truss.remote.baseten.auth import ApiKeyCredential, AuthService, OAuthSession
+from truss.remote.baseten.auth import (
+    BASETEN_API_KEY_ENV,
+    ApiKeyCredential,
+    AuthService,
+    OAuthSession,
+    WorkloadIdentityCredential,
+    workload_identity_from_env,
+)
 from truss.remote.baseten.core import (
     ChainDeploymentHandleAtomic,
     ModelId,
@@ -157,12 +165,23 @@ class BasetenRemote(TrussRemote):
                 )
             )
         else:
-            api_key = api_key or os.environ.get("BASETEN_API_KEY")
-            if not api_key:
+            # Read first so BASETEN_API_KEY alongside workload identity errors
+            # instead of silently winning.
+            workload_identity = workload_identity_from_env()
+            api_key = api_key or os.environ.get(BASETEN_API_KEY_ENV)
+            if api_key:
+                self._auth_service = AuthService(
+                    ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
+                )
+            elif workload_identity:
+                self._auth_service = AuthService(
+                    WorkloadIdentityCredential(
+                        api_url=resolve_rest_api_url(remote_url),
+                        config=workload_identity,
+                    )
+                )
+            else:
                 raise AuthorizationError("No credentials provided.")
-            self._auth_service = AuthService(
-                ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
-            )
         self._api = BasetenApi(remote_url, self._auth_service)
 
     def fetch_auth_header(self) -> dict[str, str]:
@@ -173,6 +192,11 @@ class BasetenRemote(TrussRemote):
         so a stored header can become stale.
         """
         return self._auth_service.fetch_auth_header()
+
+    def note_auth_response(self, response: requests.Response) -> None:
+        """Pass each response sent with :meth:`fetch_auth_header` here, so a
+        workload identity access token Baseten refused is replaced."""
+        self._auth_service.note_response(response)
 
     def _persist_refreshed_credential(self, credential: OAuthCredential) -> None:
         from truss.remote.remote_factory import AuthType, RemoteFactory
@@ -299,6 +323,23 @@ class BasetenRemote(TrussRemote):
                 "Deploy timeout minutes is not supported for BIS LLM models."
             )
 
+    def _validate_bis_llm_no_training_checkpoints(self, config: TrussConfig) -> None:
+        training_checkpoints = config.training_checkpoints
+        if training_checkpoints is None:
+            return
+        # `checkpoints` is not a declared field, but the backend accepts it and the
+        # config model keeps undeclared keys as extras.
+        extra_checkpoints = (training_checkpoints.model_extra or {}).get("checkpoints")
+        if (
+            training_checkpoints.artifact_references
+            or training_checkpoints.loops_checkpoint_ids
+            or extra_checkpoints
+        ):
+            raise ValueError(
+                "training_checkpoints is not supported for BIS-LLM models. "
+                "Use weights instead."
+            )
+
     def _prepare_bis_llm_request_body(
         self,
         config: Any,
@@ -380,6 +421,10 @@ class BasetenRemote(TrussRemote):
                 environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
             )
+            # The BIS LLM request body is built field by field and has no metrics_endpoint.
+            if config.metrics_endpoint is not None:
+                raise ValueError("metrics_endpoint cannot be set for BIS LLM models.")
+            self._validate_bis_llm_no_training_checkpoints(config)
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True

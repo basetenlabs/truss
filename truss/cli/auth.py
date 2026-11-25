@@ -11,6 +11,12 @@ from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
 from truss.remote.baseten import oauth
 from truss.remote.baseten.api import resolve_rest_api_url
+from truss.remote.baseten.auth import (
+    IDENTITY_TOKEN_ENV,
+    IDENTITY_TOKEN_FILE_ENV,
+    WorkloadIdentityConfig,
+    workload_identity_from_env,
+)
 from truss.remote.baseten.oauth import OAuthCredential, OAuthError
 from truss.remote.remote_factory import (
     _INLINE_SECRET_KEYS,
@@ -83,6 +89,10 @@ def auth_logout(remote: Optional[str]) -> None:
 def auth_status(remote: Optional[str]) -> None:
     """Show the active authentication for a remote."""
     remote_name = remote or inquire_remote_name(allow_create=False)
+    try:
+        workload_identity = workload_identity_from_env()
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
     if env_config := env_remote_config():
         if remote_name != env_config.name:
             raise click.ClickException(
@@ -91,6 +101,9 @@ def auth_status(remote: Optional[str]) -> None:
             )
         console.print(f"remote: {env_config.name}")
         console.print(f"remote_url: {env_config.configs['remote_url']}")
+        if workload_identity:
+            _print_workload_identity_status(workload_identity)
+            return
         console.print("auth_type: api_key")
         console.print(f"source: {API_KEY_ENV}")
         return
@@ -100,6 +113,11 @@ def auth_status(remote: Optional[str]) -> None:
     if remote_name not in raw:
         raise click.ClickException(f"No remote {remote_name!r} configured.")
     section = raw[remote_name]
+    if workload_identity:
+        console.print(f"remote: {remote_name}")
+        console.print(f"remote_url: {section.get('remote_url', '(unset)')}")
+        _print_workload_identity_status(workload_identity)
+        return
     auth_type = section.get("auth_type")
     if not auth_type:
         if "api_key" in section:
@@ -178,3 +196,13 @@ def _existing_remote_url(remote_name: str) -> Optional[str]:
     if remote_name not in raw:
         return None
     return raw[remote_name].get("remote_url")
+
+
+def _print_workload_identity_status(config: WorkloadIdentityConfig) -> None:
+    console.print("auth_type: workload_identity")
+    console.print(f"trust_rule_id: {config.trust_rule_id}")
+    # The inline token is a credential, so only its variable is named.
+    if config.identity_token is not None:
+        console.print(f"source: {IDENTITY_TOKEN_ENV}")
+    else:
+        console.print(f"source: {IDENTITY_TOKEN_FILE_ENV}={config.identity_token_file}")

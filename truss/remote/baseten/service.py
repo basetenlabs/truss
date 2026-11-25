@@ -103,6 +103,9 @@ class BasetenService(TrussService):
         self._truss_handle = truss_handle
         self._url_config = url_config
 
+    def _on_response(self, response: requests.Response) -> None:
+        self._api.note_auth_response(response)
+
     def is_live(self) -> bool:
         raise NotImplementedError
 

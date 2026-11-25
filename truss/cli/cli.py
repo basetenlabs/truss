@@ -46,7 +46,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.user_agent import set_client_name
-from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory, write_trussrc
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
@@ -323,8 +323,7 @@ def configure():
     edited_content = click.edit(original_content)
 
     if edited_content is not None and edited_content != original_content:
-        USER_TRUSSRC_PATH.parent.mkdir(parents=True, exist_ok=True)
-        USER_TRUSSRC_PATH.write_text(edited_content)
+        write_trussrc(edited_content)
         click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
     else:
         click.echo("No changes made.")
@@ -1090,6 +1089,7 @@ def push(
                     model_hostname,
                     bt_remote.fetch_auth_header,
                     ping_path=common.keepalive_ping_path(tr.spec.config),
+                    on_response=bt_remote.note_auth_response,
                 )
             _start_watch_mode(
                 target_directory=target_directory,
@@ -1534,6 +1534,7 @@ def watch(
             model_hostname,
             remote_provider.fetch_auth_header,
             ping_path=common.keepalive_ping_path(tr.spec.config),
+            on_response=remote_provider.note_auth_response,
         )
 
     if tail:

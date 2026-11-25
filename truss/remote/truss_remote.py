@@ -83,12 +83,16 @@ class TrussService(ABC):
         else:
             raise ValueError(f"Unsupported method: {method}")
 
+        self._on_response(response)
         if response.status_code == 401:
             raise ValueError(
                 f"Authentication failed with status code {response.status_code}"
             )
 
         return response
+
+    def _on_response(self, response: requests.Response) -> None:
+        """Called with each response from :meth:`_send_request`."""
 
     @property
     def is_draft(self) -> bool:

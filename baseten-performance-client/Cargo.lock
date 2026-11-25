@@ -203,7 +203,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baseten-performance-client"
-version = "0.1.18"
+version = "0.1.20"
 dependencies = [
  "async-trait",
  "baseten_performance_client_core",
@@ -241,10 +241,11 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client"
-version = "0.1.18"
+version = "0.1.20"
 dependencies = [
  "async-trait",
  "baseten_performance_client_core",
+ "bytes",
  "futures",
  "ndarray",
  "numpy",
@@ -259,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client_core"
-version = "0.1.18"
+version = "0.1.20"
 dependencies = [
  "async-trait",
  "axum",
