@@ -317,6 +317,41 @@ def test_fabric_requirements_allow_all_deployment_types(fabric_requirement, bis_
     )
 
 
+def test_parse_resource_worker_pools():
+    worker_pools = {
+        "prefill": {"accelerator": "H100:2"},
+        "decode": {"accelerator": "H100:4", "node_count": 8},
+    }
+    config = TrussConfig.model_validate(
+        {"resources": worker_pools, "bis_llm": {"config": {"is_disaggregated": True}}}
+    )
+
+    assert config.resources.prefill is not None
+    assert config.resources.prefill.accelerator.count == 2
+    assert config.resources.prefill.node_count is None
+    assert config.resources.decode is not None
+    assert config.resources.decode.node_count == 8
+    resources = config.resources.to_dict(verbose=True)
+    assert {key: resources[key] for key in worker_pools} == worker_pools
+    assert not resources.get("accelerator")
+    assert "node_count" not in resources
+
+
+def test_resource_worker_pools_not_serialized_when_unset():
+    resources = Resources().to_dict(verbose=True)
+
+    assert "prefill" not in resources
+    assert "decode" not in resources
+
+
+@pytest.mark.parametrize(
+    "worker_pool", [{}, {"node_count": 2}, {"accelerator": "H100", "node_count": 0}]
+)
+def test_parse_resource_worker_pool_rejects_invalid(worker_pool):
+    with pytest.raises(pydantic.ValidationError):
+        Resources.model_validate({"prefill": worker_pool})
+
+
 def test_use_rdma_true_and_fabric_preferences_can_be_combined():
     resources = Resources.model_validate(
         {"fabric": {"use_rdma": True, "preferences": ["infiniband"]}}
