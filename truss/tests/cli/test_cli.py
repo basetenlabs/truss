@@ -172,6 +172,29 @@ def test_exits_after_max_consecutive_failures():
     mock_exit.assert_called_once_with(1)
 
 
+def test_failed_token_exchange_counts_as_failure():
+    """A failed access token exchange must not end the keepalive thread."""
+    from truss.remote.baseten.oauth import OAuthError
+
+    stop_event = threading.Event()
+
+    def failing_header_provider():
+        raise OAuthError("exchange failed")
+
+    with patch("truss.cli.utils.common.requests_lib.get") as mock_get:
+        with patch("truss.cli.utils.common.console"):
+            with patch(
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    common.keepalive_loop(
+                        "http://fake", failing_header_provider, stop_event
+                    )
+    mock_exit.assert_called_once_with(1)
+    mock_get.assert_not_called()
+
+
 def test_request_exception_counts_as_failure():
     """Network errors should count toward consecutive failures."""
     stop_event = threading.Event()
@@ -381,6 +404,33 @@ def test_watch_sends_wake_request():
         headers={"Authorization": "Api-Key test_key"},
         timeout=10,
     )
+
+
+def test_watch_resends_wake_once_when_baseten_refuses_the_token():
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    refused = Mock(
+        status_code=401,
+        headers={"WWW-Authenticate": 'Bearer realm="baseten", error="invalid_token"'},
+    )
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_requests.post.side_effect = [refused, refused, refused]
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.utils.common.start_keepalive"):
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    CliRunner().invoke(
+                        truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
+                    )
+
+    # One resend, not a loop.
+    assert mock_requests.post.call_count == 2
 
 
 def test_watch_no_sleep_starts_keepalive_thread():

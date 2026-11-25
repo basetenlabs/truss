@@ -27,7 +27,9 @@ from truss.cli.utils import self_upgrade
 if TYPE_CHECKING:
     from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
+from truss.remote.baseten.auth import refused_by_baseten
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.oauth import OAuthError
 from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
@@ -311,14 +313,19 @@ def wait_for_development_model_ready(
 ) -> None:
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
-    try:
-        resp = requests_lib.post(
-            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
-        )
+    # Sent once more with a fresh token if Baseten refused the first one; the
+    # wake is safe to repeat, and a missed wake leaves the model scaled to zero.
+    for _ in range(2):
+        try:
+            resp = requests_lib.post(
+                wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+            )
+        except (requests_lib.RequestException, OAuthError):
+            # best effort
+            break
         remote_provider.note_auth_response(resp)
-    except requests_lib.RequestException:
-        # best effort
-        pass
+        if not refused_by_baseten(resp):
+            break
 
     # Wait for model to be ready before starting keepalive
     with console.status(
@@ -434,7 +441,8 @@ def keepalive_loop(
             else:
                 # Count 5xx errors as failures
                 consecutive_failures += 1
-        except requests_lib.RequestException:
+        except (requests_lib.RequestException, OAuthError):
+            # OAuthError: getting a new access token failed.
             consecutive_failures += 1
 
         if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:
