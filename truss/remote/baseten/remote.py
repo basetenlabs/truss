@@ -164,18 +164,19 @@ class BasetenRemote(TrussRemote):
                 )
             )
         else:
+            # Read first so BASETEN_API_KEY alongside workload identity errors
+            # instead of silently winning.
+            workload_identity = workload_identity_from_env()
             api_key = api_key or os.environ.get(BASETEN_API_KEY_ENV)
             if api_key:
                 self._auth_service = AuthService(
                     ApiKeyCredential(api_key=api_key, use_bearer=api_key_use_bearer)
                 )
-            elif workload_identity := workload_identity_from_env():
-                identity_token_file, trust_rule_id = workload_identity
+            elif workload_identity:
                 self._auth_service = AuthService(
                     WorkloadIdentityCredential(
                         api_url=resolve_rest_api_url(remote_url),
-                        identity_token_file=identity_token_file,
-                        trust_rule_id=trust_rule_id,
+                        config=workload_identity,
                     )
                 )
             else:

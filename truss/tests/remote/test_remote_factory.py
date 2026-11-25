@@ -537,11 +537,11 @@ remote_url=https://app.baseten.co
 def workload_identity(tmp_path, monkeypatch):
     token_file = tmp_path / "identity-token"
     token_file.write_text("idp-jwt")
-    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
     exchanges = []
 
-    def fake_exchange(api_url, identity_token_file, trust_rule_id):
+    def fake_exchange(api_url, assertion, trust_rule_id, assertion_source):
         exchanges.append(api_url)
         return AccessToken(access_token="wif_token", expires_at=9999999999)
 
@@ -558,13 +558,13 @@ def test_workload_identity_wins_over_trussrc(trussrc, workload_identity):
     assert workload_identity == ["https://api.baseten.co"]
 
 
-def test_baseten_api_key_wins_over_workload_identity(
+def test_baseten_api_key_with_workload_identity_raises(
     trussrc, workload_identity, monkeypatch
 ):
     trussrc.write_text(BASETEN_TRUSSRC)
     monkeypatch.setenv("BASETEN_API_KEY", "env_key")
-    remote = RemoteFactory.create("baseten")
-    assert remote.fetch_auth_header() == {"Authorization": "Api-Key env_key"}
+    with pytest.raises(ValueError, match="Both BASETEN_API_KEY and workload identity"):
+        RemoteFactory.create("baseten")
     assert workload_identity == []
 
 
@@ -577,6 +577,6 @@ def test_env_remote_url_with_workload_identity(trussrc, workload_identity, monke
 
 def test_half_configured_workload_identity_raises(trussrc, monkeypatch):
     trussrc.write_text(BASETEN_TRUSSRC)
-    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
-    with pytest.raises(ValueError, match="BASETEN_IDENTITY_TOKEN_FILE"):
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
+    with pytest.raises(ValueError, match="BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE"):
         RemoteFactory.create("baseten")

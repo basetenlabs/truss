@@ -1,4 +1,3 @@
-import re
 import time
 
 import pytest
@@ -236,39 +235,34 @@ def test_run_device_flow_browser_open_failure_still_prints(monkeypatch, capsys):
 TOKEN_EXCHANGE_URL = API_URL + oauth.TOKEN_EXCHANGE_PATH
 
 
-def test_exchange_identity_token_request_shape(tmp_path):
-    token_file = tmp_path / "token"
-    token_file.write_text("idp-jwt\n")
+def test_exchange_identity_token_request_shape():
     with requests_mock.Mocker() as m:
         m.post(
             TOKEN_EXCHANGE_URL,
             json={"access_token": "at", "token_type": "Bearer", "expires_in": 3600},
         )
-        token = oauth.exchange_identity_token(API_URL, token_file, "rule-1")
+        token = oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
     assert m.last_request.json() == {
         "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
         "subject_token": "idp-jwt",
         "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
         "audience": "rule-1",
     }
+    assert m.last_request.timeout == oauth.EXCHANGE_TIMEOUT_SECONDS
     assert token.access_token == "at"
     assert token.expires_at > int(time.time()) + 3500
 
 
-def test_exchange_identity_token_invalid_grant(tmp_path):
-    token_file = tmp_path / "token"
-    token_file.write_text("idp-jwt")
+def test_exchange_identity_token_invalid_grant():
     with requests_mock.Mocker() as m:
         m.post(TOKEN_EXCHANGE_URL, status_code=400, json={"error": "invalid_grant"})
         with pytest.raises(
-            oauth.OAuthError, match="refused.*rule-1.*Check.*400.*invalid_grant"
+            oauth.OAuthError, match="refused.*rule-1.*/token.*400.*invalid_grant"
         ):
-            oauth.exchange_identity_token(API_URL, token_file, "rule-1")
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
 
 
-def test_exchange_identity_token_does_not_follow_redirects(tmp_path):
-    token_file = tmp_path / "token"
-    token_file.write_text("idp-jwt")
+def test_exchange_identity_token_does_not_follow_redirects():
     with requests_mock.Mocker() as m:
         m.post(
             TOKEN_EXCHANGE_URL,
@@ -277,28 +271,15 @@ def test_exchange_identity_token_does_not_follow_redirects(tmp_path):
         )
         elsewhere = m.post("https://elsewhere.example/token", json={})
         with pytest.raises(oauth.OAuthError, match="307"):
-            oauth.exchange_identity_token(API_URL, token_file, "rule-1")
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
     assert not elsewhere.called
 
 
-def test_exchange_identity_token_other_error(tmp_path):
-    token_file = tmp_path / "token"
-    token_file.write_text("idp-jwt")
+def test_exchange_identity_token_other_error():
     with requests_mock.Mocker() as m:
         m.post(TOKEN_EXCHANGE_URL, status_code=503, text="unavailable")
         with pytest.raises(oauth.OAuthError, match="503"):
-            oauth.exchange_identity_token(API_URL, token_file, "rule-1")
-
-
-@pytest.mark.parametrize("contents", [None, "  \n"])
-def test_exchange_identity_token_unreadable_file(tmp_path, contents):
-    token_file = tmp_path / "token"
-    if contents is not None:
-        token_file.write_text(contents)
-    with requests_mock.Mocker() as m:
-        with pytest.raises(oauth.OAuthError, match=re.escape(str(token_file))):
-            oauth.exchange_identity_token(API_URL, token_file, "rule-1")
-        assert not m.called
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
 
 
 @pytest.mark.parametrize("expires_in", [60, 90])

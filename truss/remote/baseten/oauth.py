@@ -7,7 +7,6 @@ Tokens are returned as :class:`OAuthCredential` with an absolute Unix
 import logging
 import time
 import webbrowser
-from pathlib import Path
 from typing import Optional, Type, TypeVar
 
 import pydantic
@@ -30,6 +29,8 @@ JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 REFRESH_GRANT_TYPE = "refresh_token"
 
 DEFAULT_POLL_INTERVAL_SECONDS = 5
+# As in the Baseten SDKs.
+EXCHANGE_TIMEOUT_SECONDS = 10
 EXPIRY_LEEWAY_SECONDS = 60
 
 
@@ -192,19 +193,12 @@ def refresh(api_url: str, credential: OAuthCredential) -> OAuthCredential:
 
 
 def exchange_identity_token(
-    api_url: str, identity_token_file: Path, trust_rule_id: str
+    api_url: str, assertion: str, trust_rule_id: str, assertion_source: str
 ) -> AccessToken:
     """Trade a workload's identity provider JWT for a Baseten access token
     (workload identity federation, RFC 8693 token exchange with the trust rule
-    as the audience)."""
-    try:
-        assertion = identity_token_file.read_text().strip()
-    except OSError as exc:
-        raise OAuthError(
-            f"Cannot read the identity token file {identity_token_file}: {exc}"
-        ) from exc
-    if not assertion:
-        raise OAuthError(f"The identity token file {identity_token_file} is empty.")
+    as the audience). ``assertion_source`` names where the JWT came from, for
+    error messages."""
     resp = requests.post(
         api_url.rstrip("/") + TOKEN_EXCHANGE_PATH,
         json={
@@ -214,7 +208,7 @@ def exchange_identity_token(
             "audience": trust_rule_id,
         },
         headers={"User-Agent": user_agent_header()},
-        timeout=30,
+        timeout=EXCHANGE_TIMEOUT_SECONDS,
         # A redirect would resend the identity token to wherever it points.
         allow_redirects=False,
     )
@@ -229,7 +223,7 @@ def exchange_identity_token(
         raise OAuthError(
             f"Baseten refused to exchange the identity token for trust rule "
             f"{trust_rule_id!r}. Check that the trust rule exists and that the "
-            f"token in {identity_token_file} is current and matches the rule. The "
+            f"token from {assertion_source} is current and matches the rule. The "
             f"server answered {resp.status_code}: {resp.text.strip()}"
         )
     raise OAuthError(

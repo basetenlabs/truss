@@ -90,8 +90,8 @@ def test_logout_oauth_with_workload_identity_set(
 ):
     token_file = tmp_path / "identity-token"
     token_file.write_text("idp-jwt")
-    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
     RemoteFactory.update_remote_config(
         rf_module.RemoteConfig(
             name="baseten",
@@ -255,8 +255,36 @@ def test_status_reports_workload_identity_over_trussrc(trussrc, monkeypatch):
         "[baseten]\nremote_provider = baseten\napi_key = k\n"
         "remote_url = https://app.baseten.co\n"
     )
-    monkeypatch.setenv("BASETEN_IDENTITY_TOKEN_FILE", "/token")
-    monkeypatch.setenv("BASETEN_TRUST_RULE_ID", "rule-1")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE", "/token")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
     result = CliRunner().invoke(truss_cli, ["auth", "status"])
     assert result.exit_code == 0, result.output
     assert "auth_type: workload_identity" in result.output
+
+
+def test_status_reports_inline_workload_identity_without_the_token(
+    trussrc, monkeypatch
+):
+    trussrc.write_text(
+        "[baseten]\nremote_provider = baseten\napi_key = k\n"
+        "remote_url = https://app.baseten.co\n"
+    )
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN", "idp-jwt-secret")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
+    result = CliRunner().invoke(truss_cli, ["auth", "status"])
+    assert result.exit_code == 0, result.output
+    assert "source: BASETEN_WORKLOAD_IDENTITY_TOKEN" in result.output
+    assert "idp-jwt-secret" not in result.output
+
+
+def test_status_with_api_key_and_workload_identity_errors(trussrc, monkeypatch):
+    trussrc.write_text(
+        "[baseten]\nremote_provider = baseten\napi_key = k\n"
+        "remote_url = https://app.baseten.co\n"
+    )
+    monkeypatch.setenv("BASETEN_API_KEY", "env-key")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE", "/token")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
+    result = CliRunner().invoke(truss_cli, ["auth", "status"])
+    assert result.exit_code != 0
+    assert "Both BASETEN_API_KEY and workload identity" in result.output

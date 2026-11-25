@@ -1,3 +1,4 @@
+import re
 import time
 
 import pydantic
@@ -8,6 +9,7 @@ from truss.remote.baseten.auth import (
     ApiKeyCredential,
     AuthService,
     OAuthSession,
+    WorkloadIdentityConfig,
     WorkloadIdentityCredential,
     workload_identity_from_env,
 )
@@ -69,8 +71,8 @@ def _workload_identity_service(tmp_path, monkeypatch, expires_in_seconds=3600):
     token_file.write_text("jwt-1")
     exchanges = []
 
-    def fake_exchange(api_url, identity_token_file, trust_rule_id):
-        exchanges.append((api_url, identity_token_file.read_text(), trust_rule_id))
+    def fake_exchange(api_url, assertion, trust_rule_id, assertion_source):
+        exchanges.append((api_url, assertion, trust_rule_id))
         return oauth_mod.AccessToken(
             access_token=f"at-{len(exchanges)}",
             expires_at=int(time.time()) + expires_in_seconds,
@@ -82,8 +84,9 @@ def _workload_identity_service(tmp_path, monkeypatch, expires_in_seconds=3600):
     auth_service = AuthService(
         WorkloadIdentityCredential(
             api_url="https://api.baseten.co",
-            identity_token_file=token_file,
-            trust_rule_id="rule-1",
+            config=WorkloadIdentityConfig(
+                trust_rule_id="rule-1", identity_token_file=token_file
+            ),
         )
     )
     return auth_service, token_file, exchanges
@@ -140,14 +143,105 @@ def test_workload_identity_failed_refresh_raises_once_expired(tmp_path, monkeypa
         auth_service.fetch_auth_header()
 
 
+def test_workload_identity_unreadable_file_raises_before_exchange(
+    tmp_path, monkeypatch
+):
+    auth_service, token_file, exchanges = _workload_identity_service(
+        tmp_path, monkeypatch
+    )
+    token_file.write_text("  \n")
+    with pytest.raises(oauth_mod.OAuthError, match="is empty"):
+        auth_service.fetch_auth_header()
+    token_file.unlink()
+    with pytest.raises(oauth_mod.OAuthError, match="Cannot read"):
+        auth_service.fetch_auth_header()
+    assert exchanges == []
+
+
+def test_workload_identity_inline_token(monkeypatch):
+    exchanges = []
+
+    def fake_exchange(api_url, assertion, trust_rule_id, assertion_source):
+        exchanges.append((assertion, trust_rule_id, assertion_source))
+        return oauth_mod.AccessToken(
+            access_token="at-1", expires_at=int(time.time()) + 3600
+        )
+
+    monkeypatch.setattr(
+        "truss.remote.baseten.auth.exchange_identity_token", fake_exchange
+    )
+    _clear_workload_identity_env(monkeypatch)
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TOKEN", "jwt-inline")
+    monkeypatch.setenv("BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID", "rule-1")
+    config = workload_identity_from_env()
+    assert "jwt-inline" not in repr(config)
+    auth_service = AuthService(
+        WorkloadIdentityCredential(api_url="https://api.baseten.co", config=config)
+    )
+    assert auth_service.fetch_auth_header() == {"Authorization": "Bearer at-1"}
+    assert exchanges == [("jwt-inline", "rule-1", "BASETEN_WORKLOAD_IDENTITY_TOKEN")]
+
+
+def _clear_workload_identity_env(monkeypatch):
+    for name in (
+        "BASETEN_API_KEY",
+        "BASETEN_TRUSS_AUTH_API_KEY",
+        "BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE",
+        "BASETEN_WORKLOAD_IDENTITY_TOKEN",
+        "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.mark.parametrize(
-    "env",
-    [{"BASETEN_IDENTITY_TOKEN_FILE": "/token"}, {"BASETEN_TRUST_RULE_ID": "rule-1"}],
+    "env, message",
+    [
+        (
+            {"BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE": "/token"},
+            "BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE is set but "
+            "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID is not",
+        ),
+        (
+            {"BASETEN_WORKLOAD_IDENTITY_TOKEN": "jwt"},
+            "BASETEN_WORKLOAD_IDENTITY_TOKEN is set but "
+            "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID is not",
+        ),
+        (
+            {"BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID": "rule-1"},
+            "needs an identity token",
+        ),
+        (
+            {
+                "BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE": "/token",
+                "BASETEN_WORKLOAD_IDENTITY_TOKEN": "jwt",
+                "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID": "rule-1",
+            },
+            "Both BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE and "
+            "BASETEN_WORKLOAD_IDENTITY_TOKEN are set",
+        ),
+        (
+            {
+                "BASETEN_API_KEY": "key",
+                "BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE": "/token",
+                "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID": "rule-1",
+            },
+            "Both BASETEN_API_KEY and workload identity",
+        ),
+        (
+            {
+                "BASETEN_TRUSS_AUTH_API_KEY": "key",
+                "BASETEN_WORKLOAD_IDENTITY_TOKEN": "jwt",
+                "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID": "rule-1",
+            },
+            "Both BASETEN_TRUSS_AUTH_API_KEY and workload identity",
+        ),
+    ],
 )
-def test_workload_identity_from_env_half_configured_raises(monkeypatch, env):
-    monkeypatch.delenv("BASETEN_IDENTITY_TOKEN_FILE", raising=False)
-    monkeypatch.delenv("BASETEN_TRUST_RULE_ID", raising=False)
+def test_workload_identity_from_env_ambiguous_or_incomplete_raises(
+    monkeypatch, env, message
+):
+    _clear_workload_identity_env(monkeypatch)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    with pytest.raises(ValueError, match="needs both"):
+    with pytest.raises(ValueError, match=re.escape(message)):
         workload_identity_from_env()

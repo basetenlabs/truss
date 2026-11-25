@@ -3,7 +3,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Union
 
 import pydantic
 import requests
@@ -38,37 +38,89 @@ class OAuthSession(pydantic.BaseModel):
 
 
 BASETEN_API_KEY_ENV = "BASETEN_API_KEY"
-IDENTITY_TOKEN_FILE_ENV = "BASETEN_IDENTITY_TOKEN_FILE"
-TRUST_RULE_ID_ENV = "BASETEN_TRUST_RULE_ID"
+# Set by the baseten CLI when it hands its credential to truss.
+TRUSS_AUTH_API_KEY_ENV = "BASETEN_TRUSS_AUTH_API_KEY"
+IDENTITY_TOKEN_FILE_ENV = "BASETEN_WORKLOAD_IDENTITY_TOKEN_FILE"
+IDENTITY_TOKEN_ENV = "BASETEN_WORKLOAD_IDENTITY_TOKEN"
+TRUST_RULE_ID_ENV = "BASETEN_WORKLOAD_IDENTITY_TRUST_RULE_ID"
 
 
-def workload_identity_from_env() -> Optional[Tuple[Path, str]]:
-    """Return ``(identity_token_file, trust_rule_id)`` when workload identity
-    federation is configured in the environment, or None. Setting just one of
-    the two variables is an error."""
+class WorkloadIdentityConfig(pydantic.BaseModel):
+    """Workload identity federation settings from the environment. Exactly one
+    of ``identity_token_file`` and ``identity_token`` is set."""
+
+    model_config = pydantic.ConfigDict(frozen=True)
+
+    trust_rule_id: str = pydantic.Field(min_length=1)
+    identity_token_file: Optional[Path] = None
+    # Unlike a file, it cannot be replaced while truss runs, so exchanges fail
+    # once it expires.
+    identity_token: Optional[pydantic.SecretStr] = None
+
+    @pydantic.model_validator(mode="after")
+    def _one_identity_token(self) -> "WorkloadIdentityConfig":
+        if (self.identity_token_file is None) == (self.identity_token is None):
+            raise ValueError(
+                "Exactly one of identity_token_file and identity_token is required."
+            )
+        return self
+
+    @property
+    def identity_token_source(self) -> str:
+        """Where the identity token comes from, for messages."""
+        if self.identity_token is not None:
+            return IDENTITY_TOKEN_ENV
+        return str(self.identity_token_file)
+
+
+def workload_identity_from_env() -> Optional[WorkloadIdentityConfig]:
+    """Return the workload identity federation settings, or None when none of
+    its variables is set.
+
+    Incomplete settings, both identity token variables, or an API key variable
+    alongside them are errors: picking one silently could run as a different
+    identity.
+    """
     token_file = os.environ.get(IDENTITY_TOKEN_FILE_ENV)
+    token = os.environ.get(IDENTITY_TOKEN_ENV)
     trust_rule_id = os.environ.get(TRUST_RULE_ID_ENV)
-    if not token_file and not trust_rule_id:
+    if not token_file and not token and not trust_rule_id:
         return None
-    if not token_file or not trust_rule_id:
-        missing, present = (
-            (IDENTITY_TOKEN_FILE_ENV, TRUST_RULE_ID_ENV)
-            if not token_file
-            else (TRUST_RULE_ID_ENV, IDENTITY_TOKEN_FILE_ENV)
-        )
+    if token_file and token:
         raise ValueError(
-            f"{present} is set but {missing} is not; workload identity "
+            f"Both {IDENTITY_TOKEN_FILE_ENV} and {IDENTITY_TOKEN_ENV} are set; "
+            "set only one."
+        )
+    if not trust_rule_id:
+        present = IDENTITY_TOKEN_FILE_ENV if token_file else IDENTITY_TOKEN_ENV
+        raise ValueError(
+            f"{present} is set but {TRUST_RULE_ID_ENV} is not; workload identity "
             "federation needs both."
         )
-    return Path(token_file).expanduser(), trust_rule_id
+    if not token_file and not token:
+        raise ValueError(
+            f"{TRUST_RULE_ID_ENV} is set but neither {IDENTITY_TOKEN_FILE_ENV} nor "
+            f"{IDENTITY_TOKEN_ENV} is; workload identity federation needs an "
+            "identity token."
+        )
+    for api_key_env in (BASETEN_API_KEY_ENV, TRUSS_AUTH_API_KEY_ENV):
+        if os.environ.get(api_key_env):
+            raise ValueError(
+                f"Both {api_key_env} and workload identity ({TRUST_RULE_ID_ENV}) "
+                "are set; unset one."
+            )
+    return WorkloadIdentityConfig(
+        trust_rule_id=trust_rule_id,
+        identity_token_file=Path(token_file).expanduser() if token_file else None,
+        identity_token=pydantic.SecretStr(token) if token else None,
+    )
 
 
 class WorkloadIdentityCredential(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True)
 
     api_url: str
-    identity_token_file: Path
-    trust_rule_id: str = pydantic.Field(min_length=1)
+    config: WorkloadIdentityConfig
 
 
 class AuthService:
@@ -127,10 +179,12 @@ class AuthService:
         if token is not None and not token.is_expired():
             return token
         try:
+            config = credential.config
             token = exchange_identity_token(
                 credential.api_url,
-                credential.identity_token_file,
-                credential.trust_rule_id,
+                _read_identity_token(config),
+                config.trust_rule_id,
+                config.identity_token_source,
             )
         except (OAuthError, requests.RequestException) as exc:
             # Refreshes start before expiry, so a failed one can keep using the
@@ -146,3 +200,22 @@ class AuthService:
             return previous
         self._workload_identity_token = token
         return token
+
+
+def _read_identity_token(config: WorkloadIdentityConfig) -> str:
+    """Return the identity token, re-reading the file on every exchange because
+    platforms such as Kubernetes rotate it in place."""
+    if config.identity_token is not None:
+        return config.identity_token.get_secret_value()
+    assert config.identity_token_file is not None
+    try:
+        token = config.identity_token_file.read_text().strip()
+    except OSError as exc:
+        raise OAuthError(
+            f"Cannot read the identity token file {config.identity_token_file}: {exc}"
+        ) from exc
+    if not token:
+        raise OAuthError(
+            f"The identity token file {config.identity_token_file} is empty."
+        )
+    return token
