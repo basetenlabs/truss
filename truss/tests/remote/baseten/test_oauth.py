@@ -304,25 +304,26 @@ def test_exchange_identity_token_other_error():
             oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
 
 
-@pytest.mark.parametrize("expires_in", [60, 90])
-def test_short_lived_token_is_not_expired_on_arrival(expires_in):
-    token = oauth.AccessToken.from_token_response(
-        {"access_token": "t", "expires_in": expires_in}
+def test_oauth_credential_keeps_the_full_leeway(monkeypatch):
+    credential = oauth.OAuthCredential.from_token_response(
+        {"access_token": "t", "refresh_token": "r", "expires_in": 90}
     )
-    assert not token.is_expired()
-
-
-def test_short_lived_token_expires_after_half_its_lifetime(monkeypatch):
-    token = oauth.AccessToken.from_token_response(
-        {"access_token": "t", "expires_in": 60}
-    )
+    assert credential.lifetime_seconds is None
     now = time.time()
     monkeypatch.setattr(oauth.time, "time", lambda: now + 31)
-    assert token.is_expired()
+    assert credential.is_expired()
 
 
-def test_token_of_unknown_lifetime_keeps_the_full_leeway(monkeypatch):
-    token = oauth.AccessToken(access_token="t", expires_at=int(time.time()) + 90)
-    now = time.time()
-    monkeypatch.setattr(oauth.time, "time", lambda: now + 31)
-    assert token.is_expired()
+def test_is_expired_accepts_a_leeway(monkeypatch):
+    credential = oauth.OAuthCredential(
+        access_token="t", refresh_token="r", expires_at=int(time.time()) + 90
+    )
+    assert not credential.is_expired(leeway=0)
+    assert credential.is_expired(leeway=120)
+
+
+def test_exchange_errors_are_workload_identity_errors():
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, status_code=503, text="unavailable")
+        with pytest.raises(oauth.WorkloadIdentityError):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")

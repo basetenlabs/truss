@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 from truss.cli.utils.output import console
 from truss.remote.baseten.auth import refused_by_baseten
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
-from truss.remote.baseten.oauth import OAuthError
+from truss.remote.baseten.oauth import WorkloadIdentityError
 from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
@@ -320,7 +320,7 @@ def wait_for_development_model_ready(
             resp = requests_lib.post(
                 wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
             )
-        except (requests_lib.RequestException, OAuthError):
+        except (requests_lib.RequestException, WorkloadIdentityError):
             # best effort
             break
         remote_provider.note_auth_response(resp)
@@ -441,8 +441,8 @@ def keepalive_loop(
             else:
                 # Count 5xx errors as failures
                 consecutive_failures += 1
-        except (requests_lib.RequestException, OAuthError):
-            # OAuthError: getting a new access token failed.
+        except (requests_lib.RequestException, WorkloadIdentityError):
+            # WorkloadIdentityError: exchanging for a new access token failed.
             consecutive_failures += 1
 
         if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:

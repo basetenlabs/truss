@@ -38,6 +38,10 @@ class OAuthError(Exception):
     """Raised on terminal OAuth failures (denied, expired, invalid request)."""
 
 
+class WorkloadIdentityError(OAuthError):
+    """Raised when getting an access token through workload identity fails."""
+
+
 class AccessToken(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True, extra="ignore")
 
@@ -46,11 +50,7 @@ class AccessToken(pydantic.BaseModel):
     # Seconds the token was issued for; unknown for credentials loaded from storage.
     lifetime_seconds: Optional[int] = None
 
-    def is_expired(self) -> bool:
-        leeway = EXPIRY_LEEWAY_SECONDS
-        if self.lifetime_seconds is not None:
-            # A token issued for a minute or less would otherwise be expired on arrival.
-            leeway = min(leeway, self.lifetime_seconds // 2)
+    def is_expired(self, leeway: int = EXPIRY_LEEWAY_SECONDS) -> bool:
         return time.time() + leeway >= self.expires_at
 
     @classmethod
@@ -62,11 +62,7 @@ class AccessToken(pydantic.BaseModel):
             raise OAuthError(
                 f"Token response missing required fields: {sorted(payload)}"
             )
-        payload = {
-            **payload,
-            "expires_at": int(time.time()) + int(expires_in),
-            "lifetime_seconds": int(expires_in),
-        }
+        payload = {**payload, "expires_at": int(time.time()) + int(expires_in)}
         try:
             return cls.model_validate(payload)
         except pydantic.ValidationError as exc:
@@ -222,13 +218,13 @@ def exchange_identity_token(
         code = None
     # The server never says why it refused, so point at both inputs.
     if code == "invalid_grant":
-        raise OAuthError(
+        raise WorkloadIdentityError(
             f"Baseten refused to exchange the identity token for trust rule "
             f"{trust_rule_id!r}. Check that the trust rule exists and that the "
             f"token from {assertion_source} is current and matches the rule. The "
             f"server answered {resp.status_code}: {resp.text.strip()}"
         )
-    raise OAuthError(
+    raise WorkloadIdentityError(
         f"Identity token exchange failed ({resp.status_code}): {resp.text.strip()}"
     )
 
@@ -238,15 +234,17 @@ def _parse_exchange_response(payload: dict, issued_at: int) -> AccessToken:
     token_type = payload.get("token_type")
     expires_in = payload.get("expires_in")
     if not isinstance(access_token, str) or not access_token:
-        raise OAuthError(
+        raise WorkloadIdentityError(
             "Identity token exchange: the response carried no access_token."
         )
     if not isinstance(token_type, str) or token_type.lower() != "bearer":
-        raise OAuthError(
+        raise WorkloadIdentityError(
             f"Identity token exchange: unsupported token_type {token_type!r}."
         )
     if not isinstance(expires_in, int) or expires_in <= 0:
-        raise OAuthError(f"Identity token exchange: invalid expires_in {expires_in!r}.")
+        raise WorkloadIdentityError(
+            f"Identity token exchange: invalid expires_in {expires_in!r}."
+        )
     return AccessToken(
         access_token=access_token,
         expires_at=issued_at + expires_in,

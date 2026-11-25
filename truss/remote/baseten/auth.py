@@ -13,6 +13,7 @@ from truss.remote.baseten.oauth import (
     AccessToken,
     OAuthCredential,
     OAuthError,
+    WorkloadIdentityError,
     exchange_identity_token,
     refresh,
 )
@@ -232,17 +233,17 @@ def _read_identity_token(config: WorkloadIdentityConfig) -> str:
     if config.identity_token is not None:
         token = config.identity_token.get_secret_value().strip()
         if not token:
-            raise OAuthError(f"{IDENTITY_TOKEN_ENV} is empty.")
+            raise WorkloadIdentityError(f"{IDENTITY_TOKEN_ENV} is empty.")
         return token
     assert config.identity_token_file is not None
     try:
         token = config.identity_token_file.read_text().strip()
     except OSError as exc:
-        raise OAuthError(
+        raise WorkloadIdentityError(
             f"Cannot read the identity token file {config.identity_token_file}: {exc}"
         ) from exc
     if not token:
-        raise OAuthError(
+        raise WorkloadIdentityError(
             f"The identity token file {config.identity_token_file} is empty."
         )
     return token
