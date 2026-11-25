@@ -1,16 +1,18 @@
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
+from truss.base.constants import CONFIG_FILE
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_handle.patch.hash import str_hash_str
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import copy_file_path, copy_tree_path, remove_tree_path
 
 
-def gather(truss_path: Path) -> Path:
-    handle = TrussHandle(truss_path)
-    shadow_truss_dir_name = calc_shadow_truss_dirname(truss_path)
+def gather(truss_path: Path, config_path: Optional[Path] = None) -> Path:
+    handle = TrussHandle(truss_path, config_path=config_path)
+    shadow_truss_dir_name = calc_shadow_truss_dirname(truss_path, config_path)
     shadow_truss_metdata_file_path = (
         LocalConfigHandler.shadow_trusses_dir_path()
         / f"{shadow_truss_dir_name}.metadata.yaml"
@@ -30,6 +32,9 @@ def gather(truss_path: Path) -> Path:
         remove_tree_path(shadow_truss_path)
 
     copy_tree_path(truss_path, shadow_truss_path)
+    if config_path is not None:
+        # The shadow truss is loaded from its default config location.
+        copy_file_path(config_path, shadow_truss_path / CONFIG_FILE)
     packages_dir_path_in_shadow = (
         shadow_truss_path / handle.spec.config.bundled_packages_dir
     )
@@ -63,6 +68,10 @@ def gather(truss_path: Path) -> Path:
     return shadow_truss_path
 
 
-def calc_shadow_truss_dirname(truss_path: Path) -> str:
+def calc_shadow_truss_dirname(
+    truss_path: Path, config_path: Optional[Path] = None
+) -> str:
     resolved_path_str = str(truss_path.resolve())
+    if config_path is not None:
+        resolved_path_str += f":{config_path.resolve()}"
     return str_hash_str(resolved_path_str)
