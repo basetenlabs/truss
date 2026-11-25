@@ -12,7 +12,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
-bytes = "1.5"
+bytes = "1.11"
 pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
 pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] }
 numpy = "0.24"
