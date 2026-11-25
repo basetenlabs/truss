@@ -1,5 +1,6 @@
 """batch_post / async_batch_post take and return raw JSON bytes without re-encoding."""
 
+import asyncio
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -11,6 +12,10 @@ from baseten_performance_client import PerformanceClient
 class _EchoHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
+        gated = self.path == "/gated" and json.loads(body).get("wait")
+        if gated and not self.server.release_response.wait(timeout=5):
+            self.send_error(504)
+            return
         out = json.dumps(
             {
                 "raw": body.decode(),
@@ -21,21 +26,32 @@ class _EchoHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(out)))
-        self.end_headers()
-        self.wfile.write(out)
+        try:
+            self.end_headers()
+            self.wfile.write(out)
+        except (BrokenPipeError, ConnectionResetError):
+            if not gated:
+                raise
 
     def log_message(self, *args):
         pass
 
 
 @pytest.fixture(scope="module")
-def client():
+def server():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _EchoHandler)
+    server.release_response = threading.Event()
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield PerformanceClient(
+    yield server
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture(scope="module")
+def client(server):
+    return PerformanceClient(
         base_url=f"http://127.0.0.1:{server.server_port}", api_key="test-key"
     )
-    server.shutdown()
 
 
 # Odd spacing, key order and surrounding whitespace prove the bytes are sent unchanged.
@@ -86,3 +102,47 @@ def test_batch_post_raw_bytes_response(client):
 @pytest.mark.anyio
 async def test_async_batch_post_raw_bytes_response(client):
     _check_raw(await client.async_batch_post("/echo", PAYLOADS, raw_bytes=True))
+
+
+@pytest.mark.anyio
+async def test_batch_post_as_completed_yields_before_the_slow_response(client, server):
+    server.release_response.clear()
+    responses = client.async_batch_post_as_completed("/gated", [{"wait": True}, RAW])
+    try:
+        index, body = await asyncio.wait_for(responses.__anext__(), timeout=2)
+        assert index == 1
+        assert isinstance(body, bytes)
+        assert json.loads(body)["raw"] == RAW.decode()
+        assert json.loads(body)["accept"] == "application/json"
+
+        server.release_response.set()
+        index, body = await asyncio.wait_for(responses.__anext__(), timeout=2)
+        assert index == 0
+        assert json.loads(body)["raw"] == '{"wait":true}'
+        with pytest.raises(StopAsyncIteration):
+            await responses.__anext__()
+    finally:
+        server.release_response.set()
+        await responses.aclose()
+
+
+@pytest.mark.anyio
+async def test_batch_post_as_completed_can_close_early(client, server):
+    server.release_response.clear()
+    responses = client.async_batch_post_as_completed("/gated", [{"wait": True}, RAW])
+    try:
+        index, _ = await asyncio.wait_for(responses.__anext__(), timeout=2)
+        assert index == 1
+        await responses.aclose()
+        with pytest.raises(StopAsyncIteration):
+            await responses.__anext__()
+    finally:
+        server.release_response.set()
+        await responses.aclose()
+
+
+@pytest.mark.anyio
+async def test_batch_post_as_completed_rejects_invalid_bytes(client):
+    responses = client.async_batch_post_as_completed("/echo", [b"not json"])
+    with pytest.raises(ValueError, match="index 0 is not valid UTF-8 JSON"):
+        await responses.__anext__()

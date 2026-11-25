@@ -511,6 +511,14 @@ class EndpointPool:
         """
         ...
 
+class BatchPostIterator:
+    """A completion-ordered iterator over (input index, response bytes)."""
+
+    def __aiter__(self) -> BatchPostIterator: ...
+    async def __anext__(self) -> tuple[int, bytes]: ...
+    async def aclose(self) -> None:
+        """Cancel outstanding requests and discard any buffered response."""
+
 class PerformanceClient:
     """
     Baseten.co API client for embedding, reranking, and classification, and custom workloads.
@@ -893,6 +901,20 @@ class PerformanceClient:
         requests: builtins.list[builtins.dict[builtins.str, typing.Any]],
         preference: RequestProcessingPreference | None = None,
     ) -> BatchPostResponse: ...
+    def async_batch_post_as_completed(
+        self,
+        url_path: builtins.str,
+        payloads: builtins.list[typing.Any],
+        preference: RequestProcessingPreference | None = None,
+        method: builtins.str | None = None,
+    ) -> BatchPostIterator:
+        """Yield complete raw JSON responses in completion order.
+
+        Each item contains the zero-based input index and response bytes.
+        The next item raises on a request failure and cancels remaining requests.
+        Await aclose() if you stop iterating early.
+        """
+
     async def async_batch_post(
         self,
         url_path: builtins.str,

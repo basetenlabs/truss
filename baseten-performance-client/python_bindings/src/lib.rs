@@ -12,11 +12,12 @@ use baseten_performance_client_core::{
     RETRY_BUDGET_PERCENTAGE,
 };
 
+use baseten_performance_client_core::client::IndexedBatchResponse;
 use baseten_performance_client_core::http_client::BatchPayload;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::{PyBytes, PyType};
@@ -24,6 +25,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::{mpsc, Mutex};
+use tokio::task::AbortHandle;
 
 impl Default for CancellationToken {
     fn default() -> Self {
@@ -1347,6 +1350,52 @@ impl PerformanceClient {
         })
     }
 
+    /// Return an async iterator over (input index, raw JSON bytes) in completion order.
+    #[pyo3(signature = (url_path, payloads, preference = None, method = None))]
+    fn async_batch_post_as_completed(
+        &self,
+        py: Python<'_>,
+        url_path: String,
+        payloads: Vec<PyObject>,
+        preference: Option<&RequestProcessingPreference>,
+        method: Option<String>,
+    ) -> PyResult<BatchPostIterator> {
+        if payloads.is_empty() {
+            return Err(PyValueError::new_err("Payloads list cannot be empty"));
+        }
+        let payloads = collect_batch_payloads(py, payloads)?;
+        let preference = rust_preference_from_py(preference);
+        let method =
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
+                .map_err(PyValueError::new_err)?;
+        let core_client = self.core_client.clone();
+        // Buffer one completed item while the caller processes the previous one.
+        let (sender, receiver) = mpsc::channel(1);
+        let producer = pyo3_async_runtimes::tokio::get_runtime().spawn(async move {
+            let result = match validate_raw_batch_payloads(&payloads) {
+                Ok(()) => {
+                    core_client
+                        .process_batch_post_as_completed(
+                            url_path,
+                            payloads,
+                            &preference,
+                            method,
+                            &sender,
+                        )
+                        .await
+                }
+                Err(err) => Err(ClientError::InvalidParameter(err)),
+            };
+            if let Err(err) = result {
+                let _ = sender.send(Err(err)).await;
+            }
+        });
+        Ok(BatchPostIterator {
+            responses: Arc::new(Mutex::new(receiver)),
+            producer: producer.abort_handle(),
+        })
+    }
+
     #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, method = None, raw_bytes = false))]
     fn async_batch_post<'py>(
         &self,
@@ -1432,9 +1481,73 @@ impl PerformanceClient {
     }
 }
 
+struct AbortPendingBatch(Option<AbortHandle>);
+
+impl Drop for AbortPendingBatch {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            handle.abort();
+        }
+    }
+}
+
+type BatchResponseReceiver = mpsc::Receiver<Result<IndexedBatchResponse, ClientError>>;
+
+#[pyclass]
+struct BatchPostIterator {
+    responses: Arc<Mutex<BatchResponseReceiver>>,
+    producer: AbortHandle,
+}
+
+impl Drop for BatchPostIterator {
+    fn drop(&mut self) {
+        self.producer.abort();
+    }
+}
+
+#[pymethods]
+impl BatchPostIterator {
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let responses = self.responses.clone();
+        let mut on_cancel = AbortPendingBatch(Some(self.producer.clone()));
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let response = responses.lock().await.recv().await;
+            // Once a result is available, the batch can keep running while
+            // Python processes it. Dropping a pending await aborts the batch.
+            drop(on_cancel.0.take());
+            let (index, value, _, _) = response
+                .ok_or_else(|| PyStopAsyncIteration::new_err(()))?
+                .map_err(PerformanceClient::convert_core_error_to_py_err)?;
+            Python::with_gil(|py| {
+                let body = pythonize::pythonize(py, &value)
+                    .map_err(|err| PyValueError::new_err(err.to_string()))?
+                    .unbind();
+                Ok((index, body))
+            })
+        })
+    }
+
+    fn aclose<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let producer = self.producer.clone();
+        let responses = self.responses.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            producer.abort();
+            let mut responses = responses.lock().await;
+            responses.close();
+            while responses.try_recv().is_ok() {}
+            Ok(())
+        })
+    }
+}
+
 #[pymodule]
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
+    m.add_class::<BatchPostIterator>()?;
     m.add_class::<HttpClientWrapper>()?;
     m.add_class::<PyEndpoint>()?;
     m.add_class::<PyEndpointPool>()?;
