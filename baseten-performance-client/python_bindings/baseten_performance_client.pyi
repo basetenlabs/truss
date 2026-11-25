@@ -535,6 +535,7 @@ class PerformanceClient:
         client_wrapper: typing.Optional[HttpClientWrapper] = None,
         proxy: typing.Optional[builtins.str] = None,
         endpoint_pool: typing.Optional[EndpointPool] = None,
+        credentials: typing.Optional[typing.Any] = None,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -548,6 +549,12 @@ class PerformanceClient:
                 across multiple PerformanceClient instances.
             proxy: Optional proxy URL to route all HTTP requests through (e.g., "http://proxy:8080").
             endpoint_pool: Optional EndpointPool for weighted endpoint routing and background health checks.
+            credentials: Optional object shaped like `baseten.client.Credentials`, such as
+                `baseten.client.WorkloadIdentityCredentials`, for short-lived tokens. Its
+                `access_token(options)` is called from a worker thread before every HTTP attempt
+                and must be synchronous; the SDK's credentials cache the token and refresh it
+                before it expires. Cannot be combined with `api_key`, and environment variables
+                are not read.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)
@@ -577,7 +584,7 @@ class PerformanceClient:
     @property
     def api_key(self) -> builtins.str:
         """
-        Returns the configured API key.
+        Returns the configured API key. Raises ValueError for a client created with `credentials`.
 
         Example:
             >>> print(client.api_key)

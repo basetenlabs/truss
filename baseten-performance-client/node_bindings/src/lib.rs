@@ -5,11 +5,15 @@ use baseten_performance_client_core::{
   CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse, Endpoint as CoreEndpoint,
   EndpointConfig as CoreEndpointConfig, EndpointPool as CoreEndpointPool, EndpointPoolConfig,
   HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-  RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE,
-  HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
+  RequestProcessingPreference as RustRequestProcessingPreference, TokenProvider,
+  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
+  DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
 };
 
+use async_trait::async_trait;
+use napi::bindgen_prelude::Promise;
+use napi::threadsafe_function::{ErrorStrategy, ThreadSafeCallContext, ThreadsafeFunction};
+use napi::{Env, JsFunction, JsObject, JsUnknown};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -44,6 +48,71 @@ fn convert_core_error_to_napi_error(error: ClientError) -> napi::Error {
       format!("Remote timeout: {}", msg),
     ),
     ClientError::Cancellation(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
+  }
+}
+
+// Wraps `credentials`, any object shaped like the baseten SDK's `Credentials`, without
+// depending on the SDK. A throw or rejection must come back as data: napi aborts the
+// process when a threadsafe function's JS callback throws.
+const SETTLE_CREDENTIALS_JS: &str = r#"(credentials) => {
+  if (typeof credentials?.accessToken !== 'function') {
+    throw new TypeError('credentials must have an accessToken(options) method, like WorkloadIdentityCredentials from @basetenlabs/client')
+  }
+  return () => {
+    try {
+      return Promise.resolve(credentials.accessToken({})).then(
+        (accessToken) => typeof accessToken?.token === 'string'
+          ? { token: accessToken.token }
+          : { error: `credentials.accessToken must resolve to { token: string }, got ${typeof accessToken?.token}` },
+        (err) => ({ error: `credentials.accessToken rejected: ${err}` }),
+      )
+    } catch (err) {
+      return Promise.resolve({ error: `credentials.accessToken threw: ${err}` })
+    }
+  }
+}"#;
+
+/// Asks JS `credentials.accessToken()` on the main thread for the bearer token of each request.
+struct JsCredentials {
+  settled_access_token: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
+}
+
+impl JsCredentials {
+  fn new(env: &Env, credentials: JsObject) -> napi::Result<Self> {
+    let settle: JsFunction = env.run_script(SETTLE_CREDENTIALS_JS)?;
+    let settled: JsFunction = settle.call(None, &[credentials])?.try_into()?;
+    let mut settled_access_token = settled
+      .create_threadsafe_function(0, |_ctx: ThreadSafeCallContext<()>| {
+        Ok(Vec::<JsUnknown>::new())
+      })?;
+    // The credentials alone must not keep the Node.js process alive.
+    settled_access_token.unref(env)?;
+    Ok(Self {
+      settled_access_token,
+    })
+  }
+}
+
+#[async_trait]
+impl TokenProvider for JsCredentials {
+  async fn token(&self) -> Result<String, ClientError> {
+    let outcome: Promise<JsonValue> = self
+      .settled_access_token
+      .call_async(())
+      .await
+      .map_err(|err| ClientError::Network(format!("credentials.accessToken call failed: {err}")))?;
+    let outcome = outcome
+      .await
+      .map_err(|err| ClientError::Network(format!("credentials.accessToken call failed: {err}")))?;
+    match (outcome.get("token"), outcome.get("error")) {
+      (Some(JsonValue::String(token)), _) => Ok(token.clone()),
+      (_, Some(JsonValue::String(error))) => {
+        Err(ClientError::Network(format!("credentials failed: {error}")))
+      }
+      _ => Err(ClientError::Network(format!(
+        "unexpected credentials.accessToken outcome: {outcome}"
+      ))),
+    }
   }
 }
 
@@ -506,24 +575,44 @@ pub struct PerformanceClient {
 impl PerformanceClient {
   #[napi(constructor)]
   pub fn new(
+    env: Env,
     base_url: String,
     api_key: Option<String>,
     http_version: Option<u8>,
     client_wrapper: Option<&HttpClientWrapper>,
     proxy: Option<String>,
     endpoint_pool: Option<&EndpointPool>,
+    #[napi(
+      ts_arg_type = "{ accessToken(options: { signal?: AbortSignal; refusedToken?: string }): Promise<{ token: string }> }"
+    )]
+    credentials: Option<JsObject>,
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
     let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
-    let core_client = PerformanceClientCore::new(
-      base_url,
-      api_key,
-      http_version,
-      wrapper,
-      proxy,
-      endpoint_pool,
-    )
+    let core_client = match credentials {
+      Some(_) if api_key.is_some() => {
+        return Err(create_napi_error(
+          "pass either apiKey or credentials, not both",
+        ));
+      }
+      Some(credentials) => PerformanceClientCore::new_with_token_provider(
+        base_url,
+        Arc::new(JsCredentials::new(&env, credentials)?),
+        http_version,
+        wrapper,
+        proxy,
+        endpoint_pool,
+      ),
+      None => PerformanceClientCore::new(
+        base_url,
+        api_key,
+        http_version,
+        wrapper,
+        proxy,
+        endpoint_pool,
+      ),
+    }
     .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })

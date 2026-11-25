@@ -1,3 +1,4 @@
+use crate::auth::Credential;
 use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
@@ -188,6 +189,21 @@ impl RequestProcessingPreference {
     ) -> Result<RequestProcessingConfig, ClientError> {
         RequestProcessingConfig::new_from_preference(self, base_url, total_requests, api_key)
     }
+
+    /// Like `pair_with_request_validate_and_convert`, for any credential, including a token provider.
+    pub fn pair_with_credential_validate_and_convert(
+        &self,
+        base_url: String,
+        total_requests: usize,
+        credential: Credential,
+    ) -> Result<RequestProcessingConfig, ClientError> {
+        RequestProcessingConfig::new_from_preference_with_credential(
+            self,
+            base_url,
+            total_requests,
+            credential,
+        )
+    }
 }
 
 /// Policy for splitting requests into batches
@@ -235,8 +251,11 @@ pub struct RequestProcessingConfig {
     /// Cancellation token for coordinated shutdown
     pub cancel_token: CancellationToken,
 
-    /// Primary API key to use for requests
+    /// Primary API key to use for requests; empty when a token provider supplies the token
     pub api_key_primary: String,
+
+    /// Where primary requests get their bearer token
+    pub(crate) credential: Credential,
 
     /// Extra headers to include with all requests
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
@@ -264,7 +283,7 @@ impl RequestProcessingConfig {
         max_retries: u32,
         initial_backoff_ms: u64,
         total_requests: usize,
-        api_key: &str,
+        credential: &Credential,
     ) -> Result<(), ClientError> {
         // Validate total_requests
         if total_requests == 0 {
@@ -373,8 +392,7 @@ impl RequestProcessingConfig {
             )));
         }
 
-        // Validate API key
-        if api_key.is_empty() {
+        if matches!(credential, Credential::ApiKey(key) if key.is_empty()) {
             return Err(ClientError::InvalidParameter(
                 "API key cannot be empty".to_string(),
             ));
@@ -409,6 +427,22 @@ impl RequestProcessingConfig {
         total_requests: usize,
         api_key: String,
     ) -> Result<Self, ClientError> {
+        Self::new_from_preference_with_credential(
+            preference,
+            base_url,
+            total_requests,
+            Credential::ApiKey(api_key),
+        )
+    }
+
+    /// Like `new_from_preference`, for any credential. A `primary_api_key_override`
+    /// in the preference still takes precedence.
+    pub fn new_from_preference_with_credential(
+        preference: &RequestProcessingPreference,
+        base_url: String,
+        total_requests: usize,
+        credential: Credential,
+    ) -> Result<Self, ClientError> {
         // Apply defaults to preference
         let pref = preference.with_defaults();
 
@@ -425,11 +459,13 @@ impl RequestProcessingConfig {
         let initial_backoff_ms = pref.initial_backoff_ms.unwrap();
         let non_retryable_status_codes = pref.non_retryable_status_codes.as_ref();
 
-        // Handle API key override
-        let api_key_primary = if let Some(ref key) = pref.primary_api_key_override {
-            key.clone()
-        } else {
-            api_key
+        let credential = match pref.primary_api_key_override {
+            Some(ref key) => Credential::ApiKey(key.clone()),
+            None => credential,
+        };
+        let api_key_primary = match &credential {
+            Credential::ApiKey(key) => key.clone(),
+            Credential::TokenProvider(_) => String::new(),
         };
 
         // Validate parameters
@@ -445,7 +481,7 @@ impl RequestProcessingConfig {
             max_retries,
             initial_backoff_ms,
             total_requests,
-            &api_key_primary,
+            &credential,
         )?;
 
         let non_retryable_status_codes =
@@ -532,6 +568,7 @@ impl RequestProcessingConfig {
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
+            credential,
             extra_headers,
             non_retryable_status_codes,
             endpoint_router: EndpointRouter::single(base_url),

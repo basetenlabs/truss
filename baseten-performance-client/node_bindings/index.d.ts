@@ -29,7 +29,7 @@ export declare class EndpointPool {
 }
 
 export declare class PerformanceClient {
-  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null, endpointPool?: EndpointPool | undefined | null)
+  constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null, proxy?: string | undefined | null, endpointPool?: EndpointPool | undefined | null, credentials?: { accessToken(options: { signal?: AbortSignal; refusedToken?: string }): Promise<{ token: string }> })
   getClientWrapper(): HttpClientWrapper
   embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
   rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>

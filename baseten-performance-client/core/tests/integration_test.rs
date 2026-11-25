@@ -1170,6 +1170,205 @@ async fn test_primary_api_key_override_is_sent_as_bearer() {
     }
 }
 
+/// Hands out `token-1`, `token-2`, ... or the scripted tokens first, counting calls.
+struct CountingTokenProvider {
+    calls: AtomicUsize,
+    scripted: Vec<&'static str>,
+}
+
+impl CountingTokenProvider {
+    fn new(scripted: Vec<&'static str>) -> Arc<Self> {
+        Arc::new(Self {
+            calls: AtomicUsize::new(0),
+            scripted,
+        })
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait::async_trait]
+impl TokenProvider for CountingTokenProvider {
+    async fn token(&self) -> Result<String, ClientError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(match self.scripted.get(call) {
+            Some(token) => token.to_string(),
+            None => format!("token-{}", call + 1),
+        })
+    }
+}
+
+struct FailingTokenProvider;
+
+#[async_trait::async_trait]
+impl TokenProvider for FailingTokenProvider {
+    async fn token(&self) -> Result<String, ClientError> {
+        Err(ClientError::Network("identity provider unavailable".into()))
+    }
+}
+
+struct AuthServer {
+    base_url: String,
+    seen_authorization: Arc<Mutex<Vec<String>>>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for AuthServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+/// Answers 401 to every bearer token in `rejected`, with `www_authenticate` when set.
+async fn start_auth_server(
+    rejected: &'static [&'static str],
+    www_authenticate: Option<&'static str>,
+) -> AuthServer {
+    let seen_authorization = Arc::new(Mutex::new(Vec::new()));
+    let seen = seen_authorization.clone();
+    let app = Router::new().route(
+        "/auth",
+        post(move |headers: AxumHeaderMap| {
+            let seen = seen.clone();
+            async move {
+                let authorization = headers["authorization"].to_str().unwrap().to_string();
+                let token = authorization.trim_start_matches("Bearer ").to_string();
+                seen.lock().await.push(authorization);
+                if rejected.contains(&token.as_str()) {
+                    let mut response_headers = AxumHeaderMap::new();
+                    if let Some(value) = www_authenticate {
+                        response_headers
+                            .insert("www-authenticate", HeaderValue::from_static(value));
+                    }
+                    return (StatusCode::UNAUTHORIZED, response_headers, "rejected")
+                        .into_response();
+                }
+                Json(json!({"ok": true})).into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    AuthServer {
+        base_url: format!("http://{}", addr),
+        seen_authorization,
+        handle,
+    }
+}
+
+const INVALID_TOKEN: &str = r#"Bearer error="invalid_token", error_description="token expired""#;
+
+fn token_provider_client(
+    base_url: &str,
+    provider: Arc<dyn TokenProvider>,
+) -> PerformanceClientCore {
+    PerformanceClientCore::new_with_token_provider(
+        base_url.to_string(),
+        provider,
+        1,
+        None,
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+async fn post_auth(
+    client: &PerformanceClientCore,
+    payloads: usize,
+    preference: &RequestProcessingPreference,
+) -> Result<(), ClientError> {
+    client
+        .process_batch_post_requests(
+            "/auth".to_string(),
+            vec![json!({}); payloads],
+            preference,
+            HttpMethod::POST,
+        )
+        .await
+        .map(|_| ())
+}
+
+#[tokio::test]
+async fn test_token_provider_is_asked_for_every_request() {
+    let server = start_auth_server(&[], None).await;
+    let provider = CountingTokenProvider::new(vec![]);
+    let client = token_provider_client(&server.base_url, provider.clone());
+
+    post_auth(&client, 3, &single_request_preference())
+        .await
+        .unwrap();
+
+    let seen: HashSet<String> = server
+        .seen_authorization
+        .lock()
+        .await
+        .iter()
+        .cloned()
+        .collect();
+    let expected: HashSet<String> = (1..=3).map(|i| format!("Bearer token-{i}")).collect();
+    assert_eq!(seen, expected);
+    assert_eq!(provider.calls(), 3);
+}
+
+#[tokio::test]
+async fn test_unauthorized_is_not_retried_with_a_new_token() {
+    // A 401 can come from the model itself, so even invalid_token is returned as is.
+    for www_authenticate in [None, Some(INVALID_TOKEN)] {
+        let server = start_auth_server(&["token-1"], www_authenticate).await;
+        let provider = CountingTokenProvider::new(vec![]);
+        let client = token_provider_client(&server.base_url, provider.clone());
+
+        let error = post_auth(&client, 1, &single_request_preference())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, ClientError::Http { status: 401, .. }),
+            "{error}"
+        );
+        assert_eq!(
+            *server.seen_authorization.lock().await,
+            vec!["Bearer token-1"]
+        );
+        assert_eq!(provider.calls(), 1);
+    }
+}
+
+#[tokio::test]
+async fn test_primary_api_key_override_takes_precedence_over_token_provider() {
+    let server = start_auth_server(&[], None).await;
+    let provider = CountingTokenProvider::new(vec![]);
+    let client = token_provider_client(&server.base_url, provider.clone());
+
+    let preference = single_request_preference().with_primary_api_key_override("override".into());
+    post_auth(&client, 1, &preference).await.unwrap();
+
+    assert_eq!(
+        *server.seen_authorization.lock().await,
+        vec!["Bearer override"]
+    );
+    assert_eq!(provider.calls(), 0);
+}
+
+#[tokio::test]
+async fn test_token_provider_error_fails_the_call_without_sending() {
+    let server = start_auth_server(&[], None).await;
+    let client = token_provider_client(&server.base_url, Arc::new(FailingTokenProvider));
+
+    let error = post_auth(&client, 1, &single_request_preference())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, ClientError::Network(_)), "{error}");
+    assert!(server.seen_authorization.lock().await.is_empty());
+}
+
 #[tokio::test]
 async fn test_http2_keep_alive_closes_silent_connection() {
     // A server that accepts the connection and then never sends a byte.

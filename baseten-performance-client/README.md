@@ -104,6 +104,63 @@ const httpWrapper = new HttpClientWrapper(2); // HTTP/2
 const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrapper);
 ```
 
+### Short-lived tokens
+
+Short-lived credentials, such as Baseten access tokens obtained through workload identity
+federation, can expire while a long-running client is still in use. Instead of an API key, pass
+`credentials`: an object shaped like the Baseten SDK's `Credentials`, such as
+`WorkloadIdentityCredentials`. The client asks it for a token before every HTTP attempt and sends
+it as `Authorization: Bearer <token>`. The SDK's credentials cache the token and refresh it before
+it expires. This package does not depend on the SDK; any object with the same method works.
+
+- Python calls the synchronous `access_token(options)` from a worker thread and reads `.token`
+  from the result. Async credentials, such as `AsyncWorkloadIdentityCredentials`, are rejected.
+- Node.js calls `accessToken(options)` and reads `token` from the resolved value.
+- A `401` is returned as is, without asking for another token: on a model endpoint it can come
+  from the model itself.
+- If the credentials raise, the call fails without sending the request.
+- `credentials` cannot be combined with `api_key`, and the API key environment variables are not
+  read. A per-call `primary_api_key_override` still takes precedence.
+- `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
+
+Python:
+
+```python
+from baseten.client import WorkloadIdentityCredentials
+from baseten_performance_client import PerformanceClient
+
+client = PerformanceClient(
+    base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+    credentials=WorkloadIdentityCredentials(
+        trust_rule_id="my-trust-rule-id",
+        identity_token_file="/var/run/secrets/tokens/baseten",
+    ),
+)
+```
+
+Node.js (`credentials` is the seventh constructor argument):
+
+```javascript
+const { WorkloadIdentityCredentials } = require('@basetenlabs/client');
+const { PerformanceClient } = require('@basetenlabs/performance-client');
+
+const client = new PerformanceClient(
+  "https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+  undefined, // apiKey
+  undefined, // httpVersion
+  undefined, // clientWrapper
+  undefined, // proxy
+  undefined, // endpointPool
+  new WorkloadIdentityCredentials({
+    identityTokenFile: "/var/run/secrets/tokens/baseten",
+    trustRuleId: "my-trust-rule-id",
+  }),
+);
+```
+
+Rust: implement the `TokenProvider` trait and create the client with
+`PerformanceClientCore::new_with_token_provider`.
+
 ### EndpointPool
 
 `EndpointPool` lets a `PerformanceClient` route requests across reusable `Endpoint` objects.

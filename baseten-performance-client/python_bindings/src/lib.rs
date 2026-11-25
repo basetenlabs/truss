@@ -4,22 +4,23 @@ use baseten_performance_client_core::{
     CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
-    Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
+    Credential, Endpoint as CoreEndpoint, EndpointConfig as CoreEndpointConfig,
     EndpointPool as CoreEndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
     PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
-    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT_S,
-    DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-    RETRY_BUDGET_PERCENTAGE,
+    TokenProvider, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_MAX_RETRIES,
+    DEFAULT_REQUEST_TIMEOUT_S, DEFAULT_TIMEOUT_IS_NO_VOTE, HEDGE_BUDGET_PERCENTAGE,
+    INITIAL_BACKOFF_MS, RETRY_BUDGET_PERCENTAGE,
 };
 
+use async_trait::async_trait;
 use baseten_performance_client_core::http_client::BatchPayload;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedBytes;
-use pyo3::types::{PyBytes, PyType};
+use pyo3::types::{PyBytes, PyDict, PyType};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -74,6 +75,52 @@ where
 
         // Run the actual future
         result = future => result,
+    }
+}
+
+/// Gets the bearer token of each request from Python `credentials`, any object shaped like
+/// `baseten.client.Credentials`: `access_token(options)` returning an object with a `token` str.
+/// Duck-typed so this package does not depend on the baseten SDK.
+struct PyCredentials {
+    credentials: Arc<Py<PyAny>>,
+}
+
+impl PyCredentials {
+    fn access_token(py: Python<'_>, credentials: &Py<PyAny>) -> PyResult<String> {
+        // Mirrors baseten.client.AccessTokenOptions; no token has been refused.
+        let fields = PyDict::new(py);
+        fields.set_item("refused_token", py.None())?;
+        let options = py
+            .import("types")?
+            .getattr("SimpleNamespace")?
+            .call((), Some(&fields))?;
+        let access_token = credentials.call_method1(py, "access_token", (options,))?;
+        let access_token = access_token.bind(py);
+        if access_token.hasattr("__await__")? {
+            if access_token.hasattr("close")? {
+                access_token.call_method0("close")?;
+            }
+            return Err(PyTypeError::new_err(
+                "credentials.access_token must be synchronous; pass sync credentials, \
+                 such as WorkloadIdentityCredentials rather than AsyncWorkloadIdentityCredentials",
+            ));
+        }
+        access_token.getattr("token")?.extract::<String>()
+    }
+}
+
+#[async_trait]
+impl TokenProvider for PyCredentials {
+    async fn token(&self) -> Result<String, ClientError> {
+        let credentials = Arc::clone(&self.credentials);
+        // A blocking thread waits for the GIL, so a busy interpreter cannot stall a runtime worker.
+        tokio::task::spawn_blocking(move || {
+            Python::with_gil(|py| Self::access_token(py, &credentials)).map_err(|err| {
+                ClientError::Network(format!("credentials.access_token failed: {err}"))
+            })
+        })
+        .await
+        .map_err(|err| ClientError::Network(format!("credentials.access_token task failed: {err}")))?
     }
 }
 
@@ -800,25 +847,53 @@ fn validate_raw_batch_payloads(payloads: &[BatchPayload]) -> Result<(), String> 
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None, credentials = None))]
     fn new(
+        py: Python<'_>,
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
         proxy: Option<String>,
         endpoint_pool: Option<&PyEndpointPool>,
+        credentials: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
         let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
-        let core_client = PerformanceClientCore::new(
-            base_url,
-            api_key,
-            http_version,
-            wrapper,
-            proxy,
-            endpoint_pool,
-        )
+        let core_client = match credentials {
+            Some(_) if api_key.is_some() => {
+                return Err(PyValueError::new_err(
+                    "pass either api_key or credentials, not both",
+                ));
+            }
+            Some(credentials) => {
+                let access_token = credentials.bind(py).getattr("access_token");
+                if !access_token.is_ok_and(|method| method.is_callable()) {
+                    return Err(PyTypeError::new_err(
+                        "credentials must have an access_token(options) method, \
+                         like baseten.client.WorkloadIdentityCredentials",
+                    ));
+                }
+                PerformanceClientCore::new_with_token_provider(
+                    base_url,
+                    Arc::new(PyCredentials {
+                        credentials: Arc::new(credentials),
+                    }),
+                    http_version,
+                    wrapper,
+                    proxy,
+                    endpoint_pool,
+                )
+            }
+            None => PerformanceClientCore::new(
+                base_url,
+                api_key,
+                http_version,
+                wrapper,
+                proxy,
+                endpoint_pool,
+            ),
+        }
         .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
@@ -829,6 +904,11 @@ impl PerformanceClient {
 
     #[getter]
     fn api_key(&self) -> PyResult<String> {
+        if let Credential::TokenProvider(_) = self.core_client.credential() {
+            return Err(PyValueError::new_err(
+                "this client authenticates with credentials and has no static api_key",
+            ));
+        }
         Ok(self.core_client.api_key.clone())
     }
 

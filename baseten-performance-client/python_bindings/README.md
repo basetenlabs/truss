@@ -35,6 +35,37 @@ advanced_client = PerformanceClient(
     client_wrapper=http_wrapper  # Share connection pool
 )
 ```
+### Short-lived tokens
+
+Short-lived credentials, such as Baseten access tokens obtained through workload identity
+federation, can expire while a long-running client is still in use. Instead of an API key, pass
+`credentials`: an object shaped like `baseten.client.Credentials`, such as
+`WorkloadIdentityCredentials` from the `baseten` package. Its synchronous `access_token(options)`
+is called from a worker thread before every HTTP attempt, and the result's `.token` is sent as
+`Authorization: Bearer <token>`. The SDK's credentials cache the token and refresh it before it
+expires. This package does not depend on the SDK; any object with the same method works.
+
+- Async credentials, such as `AsyncWorkloadIdentityCredentials`, are rejected.
+- A `401` is returned as is, without asking for another token: on a model endpoint it can come
+  from the model itself.
+- If the credentials raise, the call fails with `ValueError` without sending the request.
+- `credentials` cannot be combined with `api_key`, and the API key environment variables are not
+  read. A per-call `primary_api_key_override` still takes precedence.
+- `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
+
+```python
+from baseten.client import WorkloadIdentityCredentials
+from baseten_performance_client import PerformanceClient
+
+client = PerformanceClient(
+    base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
+    credentials=WorkloadIdentityCredentials(
+        trust_rule_id="my-trust-rule-id",
+        identity_token_file="/var/run/secrets/tokens/baseten",
+    ),
+)
+```
+
 ### Embeddings
 #### Synchronous Embedding
 

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod cancellation;
 pub mod client;
 mod client_spans;
@@ -11,6 +12,7 @@ pub mod split_policy;
 pub mod utils;
 
 // JoinSetGuard is internal only - not reexported
+pub use auth::{Credential, TokenProvider};
 pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
