@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import os
 import sys
@@ -140,6 +141,91 @@ async def test_gather_generator_decodes_byte_chunks(app_path):
         yield b"\x98\x80"
 
     assert await gather_generator(byte_stream()) == "hello \U0001f600"
+
+
+@pytest.mark.anyio
+async def test_stream_discards_output_after_consumer_exits(app_path):
+    model_wrapper_module = importlib.import_module("model_wrapper")
+    config = yaml.safe_load((app_path / "config.yaml").read_text())
+    tracer = sdk_trace.NoOpTracer()
+    model_wrapper = model_wrapper_module.ModelWrapper(config, tracer)
+
+    resume = asyncio.Event()
+    cleaned_up = asyncio.Event()
+    produced = []
+
+    async def stream():
+        produced.append(0)
+        yield b"0"
+        # Hold production until after the consumer is gone.
+        await resume.wait()
+        for i in range(1, 10):
+            produced.append(i)
+            yield str(i).encode()
+
+    with patch.object(
+        model_wrapper,
+        "_write_response_to_queue",
+        wraps=model_wrapper._write_response_to_queue,
+    ) as write_spy:
+        consumer = await model_wrapper._stream_with_background_task(
+            stream(), tracer.start_span("test"), None, cleanup_fn=cleaned_up.set
+        )
+        assert await consumer.__anext__() == b"0"
+        # Simulates the client disconnecting after the first chunk.
+        await consumer.aclose()
+
+        resume.set()
+        await asyncio.wait_for(cleaned_up.wait(), timeout=5)
+
+    # The generator still runs to completion, but nothing is left buffered
+    # except the end-of-stream sentinel.
+    assert produced == list(range(10))
+    response_queue = write_spy.call_args.args[0]
+    assert response_queue.qsize() == 1
+    assert response_queue.get_nowait() == model_wrapper_module.SENTINEL
+
+
+@pytest.mark.anyio
+async def test_stream_discards_output_when_consumer_dropped_before_first_read(
+    app_path,
+):
+    model_wrapper_module = importlib.import_module("model_wrapper")
+    config = yaml.safe_load((app_path / "config.yaml").read_text())
+    tracer = sdk_trace.NoOpTracer()
+    model_wrapper = model_wrapper_module.ModelWrapper(config, tracer)
+
+    resume = asyncio.Event()
+    cleaned_up = asyncio.Event()
+    produced = []
+
+    async def stream():
+        # Hold production until after the consumer is gone.
+        await resume.wait()
+        for i in range(10):
+            produced.append(i)
+            yield str(i).encode()
+
+    with patch.object(
+        model_wrapper,
+        "_write_response_to_queue",
+        wraps=model_wrapper._write_response_to_queue,
+    ) as write_spy:
+        consumer = await model_wrapper._stream_with_background_task(
+            stream(), tracer.start_span("test"), None, cleanup_fn=cleaned_up.set
+        )
+        # Simulates the response being dropped before it is ever iterated.
+        del consumer
+
+        resume.set()
+        await asyncio.wait_for(cleaned_up.wait(), timeout=5)
+
+    # The generator still runs to completion, but nothing is left buffered
+    # except the end-of-stream sentinel.
+    assert produced == list(range(10))
+    response_queue = write_spy.call_args.args[0]
+    assert response_queue.qsize() == 1
+    assert response_queue.get_nowait() == model_wrapper_module.SENTINEL
 
 
 @pytest.mark.anyio

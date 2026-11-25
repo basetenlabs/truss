@@ -708,11 +708,16 @@ class ModelWrapper:
         queue: asyncio.Queue,
         generator: AsyncGenerator[bytes, None],
         span: trace.Span,
+        consumer_gone: asyncio.Event,
     ) -> None:
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
                 async for chunk in generator:
-                    await queue.put(chunk)
+                    # Once the consumer is gone (e.g. client disconnect), keep
+                    # running the generator to completion but discard its output
+                    # instead of buffering it for nobody.
+                    if not consumer_gone.is_set():
+                        await queue.put(chunk)
             except Exception as e:
                 self._logger.exception(
                     f"Exception while generating streamed response: {str(e)}",
@@ -740,13 +745,24 @@ class ModelWrapper:
         # We then return a new generator that reads from the queue, and then
         # exits the semaphore block.
         response_queue: asyncio.Queue = asyncio.Queue()
+        consumer_gone = asyncio.Event()
 
         # `write_response_to_queue` keeps running the background until completion.
         gen_task = asyncio.create_task(
-            self._write_response_to_queue(response_queue, async_generator, span)
+            self._write_response_to_queue(
+                response_queue, async_generator, span, consumer_gone
+            )
         )
         # Defer the release of the semaphore until the write_response_to_queue task.
         gen_task.add_done_callback(lambda _: cleanup_fn())
+
+        def _on_consumer_gone() -> None:
+            # The consumer may exit early (e.g. client disconnect or read timeout).
+            # Signal the producer to stop buffering and free anything already
+            # buffered, since nobody will read it.
+            consumer_gone.set()
+            while not response_queue.empty():
+                response_queue.get_nowait()
 
         # The gap between responses in a stream must be < streaming_read_timeout
         # TODO: this whole buffering might be superfluous and sufficiently done by
@@ -759,15 +775,22 @@ class ModelWrapper:
             with self._tracer.start_as_current_span(
                 "buffered-response-generator", context=trace_ctx
             ):
-                while True:
-                    chunk = await asyncio.wait_for(
-                        response_queue.get(), timeout=streaming_read_timeout
-                    )
-                    if chunk == SENTINEL:
-                        return
-                    yield chunk
+                try:
+                    while True:
+                        chunk = await asyncio.wait_for(
+                            response_queue.get(), timeout=streaming_read_timeout
+                        )
+                        if chunk == SENTINEL:
+                            return
+                        yield chunk
+                finally:
+                    _on_consumer_gone()
 
-        return _buffered_response_generator()
+        consumer = _buffered_response_generator()
+        # The `finally` above only runs if iteration started, so also handle the
+        # response being dropped before its first read.
+        weakref.finalize(consumer, _on_consumer_gone)
+        return consumer
 
     async def _execute_user_model_fn(
         self,
