@@ -108,64 +108,41 @@ const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrappe
 
 Short-lived credentials, such as Baseten access tokens obtained through workload identity
 federation, can expire while a long-running client is still in use. Instead of an API key, pass
-`token_provider`, a function that takes no arguments and returns the current token. The client sends it as `Authorization: Bearer <token>`.
+`credentials`: an object shaped like the Baseten SDK's `Credentials`, such as
+`WorkloadIdentityCredentials`. The client asks it for a token before every HTTP attempt and sends
+it as `Authorization: Bearer <token>`. The SDK's credentials cache the token and refresh it before
+it expires. This package does not depend on the SDK; any object with the same method works.
 
-- The client calls the provider from a worker thread, with the GIL held before every HTTP attempt, so it should cache the token and
-  fetch a new one only shortly before it expires.
-- A `401` is returned as is, without asking the provider again: on a model endpoint it can come
+- Python calls the synchronous `access_token(options)` from a worker thread and reads `.token`
+  from the result. Async credentials, such as `AsyncWorkloadIdentityCredentials`, are rejected.
+- Node.js calls `accessToken(options)` and reads `token` from the resolved value.
+- A `401` is returned as is, without asking for another token: on a model endpoint it can come
   from the model itself.
-- If it raises, the call fails with `ValueError` without sending the request.
-- It cannot be combined with `api_key`, and the API key environment variables are not read.
-  A per-call `primary_api_key_override` still takes precedence.
+- If the credentials raise, the call fails without sending the request.
+- `credentials` cannot be combined with `api_key`, and the API key environment variables are not
+  read. A per-call `primary_api_key_override` still takes precedence.
 - `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
 
 Python:
 
 ```python
-import threading
-import time
-
+from baseten.client import WorkloadIdentityCredentials
 from baseten_performance_client import PerformanceClient
 
-
-class CachedToken:
-    """Calls fetch() for a new (token, expires_at) only when the cached one is about to expire."""
-
-    def __init__(self, fetch, refresh_before_s=30):
-        self._fetch = fetch
-        self._refresh_before_s = refresh_before_s
-        self._lock = threading.Lock()
-        self._token, self._expires_at = None, 0.0
-
-    def __call__(self) -> str:
-        with self._lock:
-            if time.time() >= self._expires_at - self._refresh_before_s:
-                self._token, self._expires_at = self._fetch()
-            return self._token
-
-
-# fetch_access_token is yours: for example, exchange a workload identity token for a
-# Baseten access token and return it with its expiry as a Unix timestamp.
 client = PerformanceClient(
     base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
-    token_provider=CachedToken(fetch_access_token),
+    credentials=WorkloadIdentityCredentials(
+        trust_rule_id="my-trust-rule-id",
+        identity_token_file="/var/run/secrets/tokens/baseten",
+    ),
 )
 ```
 
-Node.js (`tokenProvider` is the seventh constructor argument; same behavior):
+Node.js (`credentials` is the seventh constructor argument):
 
 ```javascript
+const { WorkloadIdentityCredentials } = require('@basetenlabs/client');
 const { PerformanceClient } = require('@basetenlabs/performance-client');
-
-// fetchAccessToken is yours: for example, exchange a workload identity token for a
-// Baseten access token and resolve to { token, expiresAt } with expiresAt in milliseconds.
-let cached = { token: null, expiresAt: 0 };
-async function tokenProvider() {
-  if (Date.now() >= cached.expiresAt - 30_000) {
-    cached = await fetchAccessToken();
-  }
-  return cached.token;
-}
 
 const client = new PerformanceClient(
   "https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
@@ -174,7 +151,10 @@ const client = new PerformanceClient(
   undefined, // clientWrapper
   undefined, // proxy
   undefined, // endpointPool
-  tokenProvider,
+  new WorkloadIdentityCredentials({
+    identityTokenFile: "/var/run/secrets/tokens/baseten",
+    trustRuleId: "my-trust-rule-id",
+  }),
 );
 ```
 

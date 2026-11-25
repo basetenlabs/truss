@@ -251,8 +251,11 @@ pub struct RequestProcessingConfig {
     /// Cancellation token for coordinated shutdown
     pub cancel_token: CancellationToken,
 
-    /// Bearer credential for primary requests
-    pub credential: Credential,
+    /// Primary API key to use for requests; empty when a token provider supplies the token
+    pub api_key_primary: String,
+
+    /// Where primary requests get their bearer token
+    pub(crate) credential: Credential,
 
     /// Extra headers to include with all requests
     pub extra_headers: Option<std::collections::HashMap<String, String>>,
@@ -460,6 +463,10 @@ impl RequestProcessingConfig {
             Some(ref key) => Credential::ApiKey(key.clone()),
             None => credential,
         };
+        let api_key_primary = match &credential {
+            Credential::ApiKey(key) => key.clone(),
+            Credential::TokenProvider(_) => String::new(),
+        };
 
         // Validate parameters
         Self::validate_parameters(
@@ -560,6 +567,7 @@ impl RequestProcessingConfig {
             retry_budget_pct,
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
+            api_key_primary,
             credential,
             extra_headers,
             non_retryable_status_codes,

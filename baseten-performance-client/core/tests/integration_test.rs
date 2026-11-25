@@ -1205,9 +1205,7 @@ struct FailingTokenProvider;
 #[async_trait::async_trait]
 impl TokenProvider for FailingTokenProvider {
     async fn token(&self) -> Result<String, ClientError> {
-        Err(ClientError::TokenProvider(
-            "identity provider unavailable".into(),
-        ))
+        Err(ClientError::Network("identity provider unavailable".into()))
     }
 }
 
@@ -1367,7 +1365,7 @@ async fn test_token_provider_error_fails_the_call_without_sending() {
         .await
         .unwrap_err();
 
-    assert!(matches!(error, ClientError::TokenProvider(_)), "{error}");
+    assert!(matches!(error, ClientError::Network(_)), "{error}");
     assert!(server.seen_authorization.lock().await.is_empty());
 }
 

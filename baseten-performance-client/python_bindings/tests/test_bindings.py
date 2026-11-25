@@ -1,6 +1,7 @@
 import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
+from types import SimpleNamespace
 
 import pytest
 from baseten_performance_client import (
@@ -272,7 +273,7 @@ def _record_request_headers(run, rejected_tokens=(), **client_kwargs):
     """
     seen = []
     client_kwargs.setdefault(
-        "api_key", None if "token_provider" in client_kwargs else "test-key"
+        "api_key", None if "credentials" in client_kwargs else "test-key"
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -342,8 +343,20 @@ def test_send_batch_key():
     assert "x-baseten-batch-key" not in unkeyed
 
 
-def test_token_provider_supplies_the_bearer_token_of_every_request():
-    tokens = iter(["token-1", "token-2", "token-3"])
+class _Credentials:
+    """Shaped like baseten.client.Credentials; hands out the given tokens in order."""
+
+    def __init__(self, *tokens):
+        self._tokens = iter(tokens)
+        self.options = []
+
+    def access_token(self, options):
+        self.options.append(options)
+        return SimpleNamespace(token=next(self._tokens), expires_at=None)
+
+
+def test_credentials_supply_the_bearer_token_of_every_request():
+    credentials = _Credentials("token-1", "token-2", "token-3")
 
     def run(client):
         client.batch_post(
@@ -352,18 +365,17 @@ def test_token_provider_supplies_the_bearer_token_of_every_request():
             preference=RequestProcessingPreference(max_concurrent_requests=1),
         )
 
-    seen = _record_request_headers(run, token_provider=lambda: next(tokens))
+    seen = _record_request_headers(run, credentials=credentials)
     assert sorted(headers["authorization"] for headers in seen) == [
         "Bearer token-1",
         "Bearer token-2",
         "Bearer token-3",
     ]
+    assert [options.refused_token for options in credentials.options] == [None] * 3
 
 
-def test_token_provider_is_not_asked_again_after_401():
+def test_credentials_are_not_asked_again_after_401():
     import requests
-
-    tokens = iter(["stale", "fresh"])
 
     def run(client):
         with pytest.raises(requests.exceptions.HTTPError):
@@ -372,40 +384,53 @@ def test_token_provider_is_not_asked_again_after_401():
             )
 
     seen = _record_request_headers(
-        run, rejected_tokens={"stale"}, token_provider=lambda: next(tokens)
+        run, rejected_tokens={"stale"}, credentials=_Credentials("stale", "fresh")
     )
     assert [headers["authorization"] for headers in seen] == ["Bearer stale"]
 
 
-def test_token_provider_works_with_async_methods():
+def test_credentials_work_with_async_methods():
     def run(client):
         async def call():
             await client.async_batch_post("/echo", [{}])
 
         asyncio.run(call())
 
-    seen = _record_request_headers(run, token_provider=lambda: "async-token")
+    seen = _record_request_headers(run, credentials=_Credentials("async-token"))
     assert seen[0]["authorization"] == "Bearer async-token"
 
 
-def test_token_provider_exception_fails_the_call():
-    def provider():
-        raise RuntimeError("identity provider unavailable")
+def test_credentials_exception_fails_the_call():
+    class Failing:
+        def access_token(self, options):
+            raise RuntimeError("identity provider unavailable")
 
     def run(client):
         with pytest.raises(ValueError, match="identity provider unavailable"):
             client.batch_post("/echo", [{}])
 
-    assert _record_request_headers(run, token_provider=provider) == []
+    assert _record_request_headers(run, credentials=Failing()) == []
 
 
-def test_token_provider_validation():
-    with pytest.raises(ValueError, match="either api_key or token_provider"):
+def test_async_credentials_are_rejected_at_call_time():
+    class AsyncOnly:
+        async def access_token(self, options):
+            return SimpleNamespace(token="token")
+
+    def run(client):
+        with pytest.raises(ValueError, match="must be synchronous"):
+            client.batch_post("/echo", [{}])
+
+    assert _record_request_headers(run, credentials=AsyncOnly()) == []
+
+
+def test_credentials_validation():
+    with pytest.raises(ValueError, match="either api_key or credentials"):
         PerformanceClient(
-            "http://127.0.0.1:1", api_key="key", token_provider=lambda: "token"
+            "http://127.0.0.1:1", api_key="key", credentials=_Credentials("token")
         )
-    with pytest.raises(TypeError, match="callable"):
-        PerformanceClient("http://127.0.0.1:1", token_provider="not-callable")
-    client = PerformanceClient("http://127.0.0.1:1", token_provider=lambda: "token")
-    with pytest.raises(ValueError, match="token_provider"):
-        client.api_key
+    with pytest.raises(TypeError, match="access_token"):
+        PerformanceClient("http://127.0.0.1:1", credentials=lambda: "token")
+    client = PerformanceClient("http://127.0.0.1:1", credentials=_Credentials("token"))
+    with pytest.raises(ValueError, match="credentials"):
+        _ = client.api_key

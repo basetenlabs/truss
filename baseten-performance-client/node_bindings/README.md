@@ -440,29 +440,23 @@ const client = new PerformanceClient(
 
 Short-lived credentials, such as Baseten access tokens obtained through workload identity
 federation, can expire while a long-running client is still in use. Instead of an API key, pass
-`tokenProvider`, a function that takes no arguments and returns the current token or a Promise of it. The client sends it as `Authorization: Bearer <token>`.
+`credentials`: an object shaped like `Credentials` from `@basetenlabs/client`, such as
+`WorkloadIdentityCredentials`. Its `accessToken(options)` is called on the main thread before
+every HTTP attempt, and the resolved `token` is sent as `Authorization: Bearer <token>`. The SDK's
+credentials cache the token and refresh it before it expires. This package does not depend on the
+SDK; any object with the same method works.
 
-- The client calls the provider on the main thread before every HTTP attempt, so it should cache the token and
-  fetch a new one only shortly before it expires.
-- A `401` is returned as is, without asking the provider again: on a model endpoint it can come
+- A `401` is returned as is, without asking for another token: on a model endpoint it can come
   from the model itself.
-- If it throws, rejects or returns something other than a string, the call rejects without sending the request.
-- It cannot be combined with `apiKey`, and the API key environment variables are not read.
-  A per-call `primaryApiKeyOverride` still takes precedence.
+- If `accessToken` throws, rejects or resolves without a string `token`, the call rejects without
+  sending the request.
+- `credentials` cannot be combined with `apiKey`, and the API key environment variables are not
+  read. A per-call `primaryApiKeyOverride` still takes precedence.
 - `Endpoint` health checks in an `EndpointPool` keep using each endpoint's own API key.
 
 ```javascript
+const { WorkloadIdentityCredentials } = require('@basetenlabs/client');
 const { PerformanceClient } = require('@basetenlabs/performance-client');
-
-// fetchAccessToken is yours: for example, exchange a workload identity token for a
-// Baseten access token and resolve to { token, expiresAt } with expiresAt in milliseconds.
-let cached = { token: null, expiresAt: 0 };
-async function tokenProvider() {
-  if (Date.now() >= cached.expiresAt - 30_000) {
-    cached = await fetchAccessToken();
-  }
-  return cached.token;
-}
 
 const client = new PerformanceClient(
   "https://model-yqv4yjjq.api.baseten.co/environments/production/sync",
@@ -471,7 +465,10 @@ const client = new PerformanceClient(
   undefined, // clientWrapper
   undefined, // proxy
   undefined, // endpointPool
-  tokenProvider,
+  new WorkloadIdentityCredentials({
+    identityTokenFile: "/var/run/secrets/tokens/baseten",
+    trustRuleId: "my-trust-rule-id",
+  }),
 );
 ```
 
@@ -482,7 +479,7 @@ const client = new PerformanceClient(
 #### PerformanceClient
 
 ```javascript
-new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?, endpointPool?, tokenProvider?)
+new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?, endpointPool?, credentials?)
 ```
 
 - `baseUrl` (string): The base URL for the API endpoint
@@ -491,7 +488,7 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?, en
 - `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
 - `proxy` (string, optional): Proxy URL to route all HTTP requests through (e.g., "http://proxy:8080")
 - `endpointPool` (EndpointPool, optional): Weighted endpoint routing with background health checks
-- `tokenProvider` (function, optional): Returns the current bearer token, or a Promise of it, for short-lived credentials. Cannot be combined with `apiKey`. See [Short-lived Tokens](#short-lived-tokens)
+- `credentials` (object, optional): Has `accessToken(options)` resolving to `{ token }`, like `WorkloadIdentityCredentials` from `@basetenlabs/client`, for short-lived tokens. Cannot be combined with `apiKey`. See [Short-lived Tokens](#short-lived-tokens)
 
 #### RequestProcessingPreference
 

@@ -105,7 +105,7 @@ test('HttpClientWrapper from one client can be used in another', (t) => {
 
 // Runs run(client) against a local server and returns each request's headers.
 // Bearer tokens in rejectedTokens get a 401 with error="invalid_token".
-async function recordRequestHeaders(t, run, {tokenProvider, rejectedTokens = []} = {}) {
+async function recordRequestHeaders(t, run, {credentials, rejectedTokens = []} = {}) {
   const seen = []
   const server = createServer((req, res) => {
     seen.push(req.headers)
@@ -123,8 +123,8 @@ async function recordRequestHeaders(t, run, {tokenProvider, rejectedTokens = []}
   t.teardown(() => server.close())
   const baseUrl = `http://127.0.0.1:${server.address().port}`
   await run(
-    tokenProvider
-      ? new PerformanceClient(baseUrl, undefined, 1, undefined, undefined, undefined, tokenProvider)
+    credentials
+      ? new PerformanceClient(baseUrl, undefined, 1, undefined, undefined, undefined, credentials)
       : new PerformanceClient(baseUrl, 'test-key'),
   )
   return seen
@@ -165,8 +165,14 @@ test('sendBatchKey sends the call request ID as the batch key on every request',
   t.is(seen[3]['x-baseten-batch-key'], undefined)
 })
 
-test('tokenProvider supplies the bearer token of every request', async (t) => {
+// Shaped like Credentials from @basetenlabs/client.
+function credentialsFrom(accessToken) {
+  return {accessToken}
+}
+
+test('credentials supply the bearer token of every request', async (t) => {
   let calls = 0
+  const options = []
   const seen = await recordRequestHeaders(
     t,
     async (client) => {
@@ -174,16 +180,22 @@ test('tokenProvider supplies the bearer token of every request', async (t) => {
       const preference = new RequestProcessingPreference(maxConcurrentRequests)
       await client.batchPost('/echo', [{}, {}, {}], preference)
     },
-    {tokenProvider: () => `token-${++calls}`},
+    {
+      credentials: credentialsFrom(async (opts) => {
+        options.push(opts)
+        return {token: `token-${++calls}`, expiresAt: new Date()}
+      }),
+    },
   )
   t.deepEqual(seen.map((headers) => headers.authorization).sort(), [
     'Bearer token-1',
     'Bearer token-2',
     'Bearer token-3',
   ])
+  t.deepEqual(options, [{}, {}, {}])
 })
 
-test('an async tokenProvider is not asked again after a 401', async (t) => {
+test('credentials are not asked again after a 401', async (t) => {
   const tokens = ['stale', 'fresh']
   const seen = await recordRequestHeaders(
     t,
@@ -193,7 +205,7 @@ test('an async tokenProvider is not asked again after a 401', async (t) => {
       t.is(preference.maxRetries, 0)
       await t.throwsAsync(client.batchPost('/echo', [{}], preference), {message: /401/})
     },
-    {tokenProvider: async () => tokens.shift(), rejectedTokens: ['stale']},
+    {credentials: credentialsFrom(async () => ({token: tokens.shift()})), rejectedTokens: ['stale']},
   )
   t.deepEqual(
     seen.map((headers) => headers.authorization),
@@ -201,26 +213,30 @@ test('an async tokenProvider is not asked again after a 401', async (t) => {
   )
 })
 
-test('tokenProvider failures fail the call without sending it', async (t) => {
-  for (const [tokenProvider, message] of [
+test('credentials failures fail the call without sending it', async (t) => {
+  for (const [accessToken, message] of [
     [() => { throw new Error('identity provider unavailable') }, /threw: Error: identity provider unavailable/],
     [async () => { throw new Error('identity provider unavailable') }, /rejected: Error: identity provider unavailable/],
-    [() => 42, /must return a string, got number/],
+    [async () => 'bare-token', /must resolve to \{ token: string \}, got undefined/],
   ]) {
     const seen = await recordRequestHeaders(
       t,
       async (client) => {
         await t.throwsAsync(client.batchPost('/echo', [{}]), {message})
       },
-      {tokenProvider},
+      {credentials: credentialsFrom(accessToken)},
     )
     t.deepEqual(seen, [])
   }
 })
 
-test('apiKey and tokenProvider cannot be combined', (t) => {
+test('credentials are validated when the client is created', (t) => {
   t.throws(
-    () => new PerformanceClient('http://127.0.0.1:1', 'key', 1, undefined, undefined, undefined, () => 'token'),
-    {message: /either apiKey or tokenProvider/},
+    () => new PerformanceClient('http://127.0.0.1:1', 'key', 1, undefined, undefined, undefined, credentialsFrom(async () => ({token: 't'}))),
+    {message: /either apiKey or credentials/},
+  )
+  t.throws(
+    () => new PerformanceClient('http://127.0.0.1:1', undefined, 1, undefined, undefined, undefined, {}),
+    {message: /accessToken\(options\) method/},
   )
 })

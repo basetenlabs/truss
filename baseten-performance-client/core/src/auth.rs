@@ -28,7 +28,7 @@ impl Credential {
             Credential::TokenProvider(provider) => {
                 let token = provider.token().await?;
                 if token.is_empty() {
-                    return Err(ClientError::TokenProvider(
+                    return Err(ClientError::Network(
                         "token provider returned an empty token".to_string(),
                     ));
                 }
