@@ -405,6 +405,146 @@ def test_failed_model_load_leaves_no_sys_modules_entry(failing_import_app_path):
         assert "model.model" not in sys.modules
 
 
+_STRING_ANNOTATIONS_HEADER = """
+from __future__ import annotations
+
+import fastapi
+import pydantic
+
+
+class Input(pydantic.BaseModel):
+    value: int
+
+
+class Output(pydantic.BaseModel):
+    value: int
+"""
+
+
+@pytest.mark.parametrize(
+    "model_class,expected_arg_config,expected_input,expected_output",
+    [
+        (
+            """
+class Model:
+    def predict(self, request: fastapi.Request):
+        return "ok"
+""",
+            "REQUEST_ONLY",
+            None,
+            None,
+        ),
+        (
+            """
+class Model:
+    def predict(self, inputs: Input, request: fastapi.Request) -> Output:
+        return Output(value=inputs.value)
+""",
+            "INPUTS_AND_REQUEST",
+            "Input",
+            "Output",
+        ),
+        (
+            """
+class Model:
+    def predict(self, inputs: Input) -> Output:
+        return Output(value=inputs.value)
+""",
+            "INPUTS_ONLY",
+            "Input",
+            "Output",
+        ),
+        (
+            """
+class Model:
+    def preprocess(self, inputs: Input) -> dict:
+        return inputs.model_dump()
+
+    def predict(self, inputs: dict) -> dict:
+        return inputs
+
+    def postprocess(self, result: dict) -> Output:
+        return Output(**result)
+""",
+            "INPUTS_ONLY",
+            "Input",
+            "Output",
+        ),
+    ],
+    ids=["request_only", "inputs_and_request", "inputs_only", "pre_and_postprocess"],
+)
+def test_string_annotations_are_resolved(
+    truss_container_fs,
+    helpers,
+    model_class,
+    expected_arg_config,
+    expected_input,
+    expected_output,
+):
+    app_path = truss_container_fs / "app"
+    with (
+        helpers.file_content(
+            app_path / "model" / "model.py", _STRING_ANNOTATIONS_HEADER + model_class
+        ),
+        helpers.sys_paths(app_path),
+        _clear_model_load_modules(),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+        model_wrapper = model_wrapper_module.ModelWrapper(
+            config, sdk_trace.NoOpTracer()
+        )
+        model_wrapper.load()
+
+        assert model_wrapper.ready
+        descriptor = model_wrapper.model_descriptor
+        assert descriptor.predict.arg_config.name == expected_arg_config
+        assert model_wrapper.skip_input_parsing == (
+            expected_arg_config == "REQUEST_ONLY"
+        )
+        schema = descriptor.truss_schema
+        if expected_input is None:
+            assert schema is None
+        else:
+            assert schema.input_type.__name__ == expected_input
+            assert schema.output_type.__name__ == expected_output
+
+
+def test_unresolvable_string_annotations_keep_loading(truss_container_fs, helpers):
+    app_path = truss_container_fs / "app"
+    model_code = """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from not_installed import Input
+
+
+class Model:
+    def predict(self, inputs: Input):
+        return inputs
+"""
+    with (
+        helpers.file_content(app_path / "model" / "model.py", model_code),
+        helpers.sys_paths(app_path),
+        _clear_model_load_modules(),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+        model_wrapper = model_wrapper_module.ModelWrapper(
+            config, sdk_trace.NoOpTracer()
+        )
+        model_wrapper.load()
+
+        assert model_wrapper.ready
+        descriptor = model_wrapper.model_descriptor
+        assert descriptor.predict.arg_config.name == "INPUTS_ONLY"
+        assert descriptor.truss_schema is None
+
+
 @contextmanager
 def _change_directory(new_directory: Path):
     original_directory = os.getcwd()
