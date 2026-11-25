@@ -850,6 +850,43 @@ def test_prepare_bis_llm_request_body_forwards_egress_restrictions(
     assert body["egress_restrictions"] == expected
 
 
+@pytest.mark.parametrize(
+    "secrets",
+    [
+        {"DOCKER_REGISTRY_https://index.docker.io/v1/": "a-default-value"},
+        ["DOCKER_REGISTRY_https://index.docker.io/v1/"],
+    ],
+)
+def test_prepare_bis_llm_request_body_forwards_secret_names_without_values(
+    remote, secrets
+):
+    config = TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"}), secrets=secrets)
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config,
+        model_name="model_name",
+        model_id=None,
+        labels=None,
+        deployment_name=None,
+    )
+
+    assert body["secrets"] == {"DOCKER_REGISTRY_https://index.docker.io/v1/": None}
+
+
+def test_prepare_bis_llm_request_body_omits_secrets_when_none_declared(remote):
+    config = TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"}))
+
+    body = remote._prepare_bis_llm_request_body(
+        config=config,
+        model_name="model_name",
+        model_id=None,
+        labels=None,
+        deployment_name=None,
+    )
+
+    assert "secrets" not in body
+
+
 def test_prepare_bis_llm_request_body_omits_unset_egress_restrictions(remote):
     config = TrussConfig(bis_llm=BISLLM(config={"model": "test-llm"}))
 

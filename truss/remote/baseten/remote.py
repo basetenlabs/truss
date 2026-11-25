@@ -360,6 +360,9 @@ class BasetenRemote(TrussRemote):
         if config.model_metadata:
             body["model_metadata"] = config.model_metadata
         body["bdn"] = config.bdn.model_dump(exclude_none=True)
+        if config.secrets:
+            # Names only: a custom engine build reads its registry credentials by name.
+            body["secrets"] = {name: None for name in config.secrets}
         if labels is not None:
             body["metadata"] = labels
         if deployment_name is not None:
