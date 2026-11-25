@@ -114,6 +114,8 @@ _DEFAULT_APT_MIRROR_URL = "mirror://mirrors.ubuntu.com/US.txt"
 
 _CACHE_MOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
+_SUPERVISORD_PERCENT_RE = re.compile(r"%%|%\([^)]+\)s|%")
+
 
 def _resolve_apt_mirror_url() -> str:
     return os.getenv("BT_APT_MIRROR_URL") or _DEFAULT_APT_MIRROR_URL
@@ -470,6 +472,17 @@ def generate_docker_server_nginx_config(build_dir, config):
     nginx_filepath.write_text(nginx_content)
 
 
+def _escape_supervisord_percents(command: str) -> str:
+    """Doubles each `%` in `command` that is not a supervisord expansion.
+
+    Supervisord applies `%`-formatting to its config values, and configparser rejects
+    a lone `%`. `%%` and `%(ENV_NAME)s` already have a meaning there, so they are kept.
+    """
+    return _SUPERVISORD_PERCENT_RE.sub(
+        lambda match: "%%" if match.group() == "%" else match.group(), command
+    )
+
+
 def generate_docker_server_supervisord_config(build_dir, config):
     """Generate supervisord.conf for docker_server deployments.
 
@@ -491,7 +504,8 @@ def generate_docker_server_supervisord_config(build_dir, config):
     }
 
     cfg["program:model-server"] = {
-        "command": config.docker_server.start_command,  # Command to start the model server
+        # Command to start the model server
+        "command": _escape_supervisord_percents(config.docker_server.start_command),
         "startsecs": "30",  # Wait 30s before assuming server is running
         "startretries": "0",  # Don't retry if server fails to start
         "autostart": "true",  # Start automatically with supervisord
