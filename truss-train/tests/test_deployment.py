@@ -1,4 +1,5 @@
 import pathlib
+import subprocess
 from unittest import mock
 
 import pytest
@@ -269,6 +270,38 @@ class TestGatherTrainingDir:
         assert (result / "src" / "main.py").exists()
         assert not (result / "data").exists()
         assert (result / "external" / "helpers.py").exists()
+
+    def test_git_ignored_files_are_skipped(self, tmp_path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        subprocess.run(["git", "init", "-q", str(project_dir)], check=True)
+        (project_dir / ".gitignore").write_text("outputs/\n*.ckpt\n")
+        (project_dir / "config.py").touch()
+        (project_dir / "train.py").write_text("# training code")
+        (project_dir / "model.ckpt").write_bytes(b"x" * 10)
+        (project_dir / "outputs").mkdir()
+        (project_dir / "outputs" / "run.log").write_text("log")
+
+        result = deployment._gather_training_dir(
+            project_dir, workspace=Workspace(workspace_root=".")
+        )
+
+        assert (result / "train.py").exists()
+        assert not (result / "model.ckpt").exists()
+        assert not (result / "outputs").exists()
+
+    @mock.patch("truss_train.deployment.MAX_ARCHIVE_SIZE_BYTES", 100)
+    def test_size_error_lists_largest_entries(self, tmp_path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "config.py").touch()
+        (project_dir / "big_data").mkdir()
+        (project_dir / "big_data" / "shard.bin").write_bytes(b"x" * 500)
+
+        with pytest.raises(ValueError, match="big_data: "):
+            deployment._gather_training_dir(
+                project_dir, workspace=Workspace(workspace_root=".")
+            )
 
 
 class TestWorkspaceValidation:

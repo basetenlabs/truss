@@ -1,9 +1,14 @@
 import logging
+import os
+import re
 import shutil
+import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+import pathspec
 
 from truss.base import truss_config
 from truss.base.custom_types import SafeModel
@@ -13,6 +18,7 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
+from truss.util.path import load_trussignore_patterns_from_truss_dir, walk_filtered
 from truss_train.definitions import (
     DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES,
     AvailabilityModel,
@@ -124,22 +130,84 @@ def _validate_external_dirs(
     return valid_dirs
 
 
-def _calculate_dir_size(path: Path, exclude_set: set, is_root: bool = True) -> int:
-    """Calculate total size of directory, respecting excludes at root level."""
-    total = 0
+def _anchored_pattern(relative_path: str) -> str:
+    return "/" + re.sub(r"([\\*?\[])", r"\\\1", relative_path)
+
+
+def _git_ignored_patterns(root: Path) -> List[str]:
+    """Patterns for paths under root that git ignores; empty if root is not in a git repo."""
     try:
-        for item in path.iterdir():
-            if is_root and item.name in exclude_set:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "-z",
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return []
+    if result.returncode != 0:
+        return []
+    return [
+        _anchored_pattern(path) for path in result.stdout.decode().split("\0") if path
+    ]
+
+
+def _upload_ignore_patterns(root: Path, exclude_names: set) -> List[str]:
+    # Same .truss_ignore rules archive_dir applies later, plus git ignores and exclude_dirs.
+    return (
+        load_trussignore_patterns_from_truss_dir(root)
+        + _git_ignored_patterns(root)
+        + [_anchored_pattern(name) for name in exclude_names]
+    )
+
+
+def _top_level_sizes(root: Path, ignore_patterns: List[str]) -> Dict[str, int]:
+    """Bytes under each top-level entry of root, skipping ignored paths and symlinks."""
+    sizes: Dict[str, int] = {}
+    for dirpath, _dirs, filenames in walk_filtered(root, ignore_patterns):
+        rel_root = Path(dirpath).relative_to(root)
+        for filename in filenames:
+            file_path = Path(dirpath) / filename
+            if file_path.is_symlink():
                 continue
-            if item.is_symlink():
-                continue
-            if item.is_file():
-                total += item.stat().st_size
-            elif item.is_dir():
-                total += _calculate_dir_size(item, exclude_set, is_root=False)
-    except PermissionError:
-        pass
-    return total
+            top_level_name = (rel_root / filename).parts[0]
+            sizes[top_level_name] = (
+                sizes.get(top_level_name, 0) + file_path.stat().st_size
+            )
+    return sizes
+
+
+def _copy_tree_filtered(src: Path, dest: Path, ignore_patterns: List[str]) -> None:
+    spec = pathspec.PathSpec.from_lines(
+        pathspec.patterns.GitWildMatchPattern, ignore_patterns
+    )
+
+    def ignore(directory: str, contents: List[str]) -> List[str]:
+        rel_dir = Path(os.path.relpath(directory, src))
+        ignored = []
+        for name in contents:
+            rel_path = (rel_dir / name).as_posix()
+            if spec.match_file(rel_path) or (
+                os.path.isdir(os.path.join(directory, name))
+                and spec.match_file(rel_path + "/")
+            ):
+                ignored.append(name)
+        return ignored
+
+    shutil.copytree(src, dest, ignore=ignore)
+
+
+def _format_gb(size_bytes: int) -> str:
+    return f"{size_bytes / (1024 * 1024 * 1024):.2f}GB"
 
 
 def _gather_training_dir(
@@ -188,37 +256,39 @@ def _gather_training_dir(
         if not ext_dir.is_dir():
             raise ValueError(f"external_dir is not a directory: {ext_dir}")
 
+    workspace_ignore_patterns = _upload_ignore_patterns(
+        resolved_workspace_root, exclude_names
+    )
+    external_ignore_patterns = {
+        ext_dir: _upload_ignore_patterns(ext_dir, set())
+        for ext_dir in resolved_external_dirs
+    }
+
     # Early size check before copying/archiving
-    total_size = _calculate_dir_size(resolved_workspace_root, exclude_names)
-    for ext_dir in resolved_external_dirs:
-        total_size += _calculate_dir_size(ext_dir, set())
+    sizes = _top_level_sizes(resolved_workspace_root, workspace_ignore_patterns)
+    for ext_dir, patterns in external_ignore_patterns.items():
+        sizes[ext_dir.name] = sum(_top_level_sizes(ext_dir, patterns).values())
+    total_size = sum(sizes.values())
 
     if total_size > MAX_ARCHIVE_SIZE_BYTES:
-        size_gb = total_size / (1024 * 1024 * 1024)
+        largest = sorted(sizes.items(), key=lambda item: item[1], reverse=True)[:5]
+        breakdown = "\n".join(f"  {name}: {_format_gb(size)}" for name, size in largest)
         raise ValueError(
-            f"Workspace size ({size_gb:.2f}GB) exceeds maximum allowed size (5GB). "
-            f"Please use 'exclude_dirs' to exclude large files/directories, "
-            f"or contact Baseten support for assistance."
+            f"Workspace size ({_format_gb(total_size)}) exceeds maximum allowed size (5GB). "
+            f"Files ignored by git or .truss_ignore are already skipped. "
+            f"Largest entries:\n{breakdown}\n"
+            f"Add large entries to 'exclude_dirs' (it only matches entries directly "
+            f"under workspace_root), or contact Baseten support for assistance."
         )
 
     temp_dir = Path(tempfile.mkdtemp(prefix="truss_train_"))
     gathered_dir = temp_dir / "gathered"
 
-    def ignore_excluded(directory: str, contents: List[str]) -> List[str]:
-        # Only apply excludes at the top level of workspace_root
-        if Path(directory).resolve() == resolved_workspace_root.resolve():
-            return [c for c in contents if c in exclude_names]
-        return []
-
-    shutil.copytree(
-        resolved_workspace_root,
-        gathered_dir,
-        ignore=ignore_excluded if exclude_names else None,
+    _copy_tree_filtered(
+        resolved_workspace_root, gathered_dir, workspace_ignore_patterns
     )
-
-    for ext_dir in resolved_external_dirs:
-        dest = gathered_dir / ext_dir.name
-        shutil.copytree(ext_dir, dest)
+    for ext_dir, patterns in external_ignore_patterns.items():
+        _copy_tree_filtered(ext_dir, gathered_dir / ext_dir.name, patterns)
 
     return gathered_dir
 
