@@ -174,12 +174,12 @@ def test_exits_after_max_consecutive_failures():
 
 def test_failed_token_exchange_counts_as_failure():
     """A failed access token exchange must not end the keepalive thread."""
-    from truss.remote.baseten.oauth import OAuthError
+    from truss.remote.baseten.oauth import WorkloadIdentityError
 
     stop_event = threading.Event()
 
     def failing_header_provider():
-        raise OAuthError("exchange failed")
+        raise WorkloadIdentityError("exchange failed")
 
     with patch("truss.cli.utils.common.requests_lib.get") as mock_get:
         with patch("truss.cli.utils.common.console"):
@@ -193,6 +193,27 @@ def test_failed_token_exchange_counts_as_failure():
                     )
     mock_exit.assert_called_once_with(1)
     mock_get.assert_not_called()
+
+
+def test_failed_oauth_refresh_still_ends_the_keepalive_thread():
+    """Only workload identity failures count; an OAuth refresh error propagates."""
+    from truss.remote.baseten.oauth import OAuthError
+
+    stop_event = threading.Event()
+
+    def failing_header_provider():
+        raise OAuthError("refresh failed")
+
+    with patch("truss.cli.utils.common.console"):
+        with patch(
+            "truss.cli.utils.common.os._exit",
+            side_effect=AssertionError("the OAuth error was counted as a failure"),
+        ):
+            with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                with pytest.raises(OAuthError, match="refresh failed"):
+                    common.keepalive_loop(
+                        "http://fake", failing_header_provider, stop_event
+                    )
 
 
 def test_request_exception_counts_as_failure():
