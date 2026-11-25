@@ -756,6 +756,14 @@ class ModelWrapper:
         # Defer the release of the semaphore until the write_response_to_queue task.
         gen_task.add_done_callback(lambda _: cleanup_fn())
 
+        def _on_consumer_gone() -> None:
+            # The consumer may exit early (e.g. client disconnect or read timeout).
+            # Signal the producer to stop buffering and free anything already
+            # buffered, since nobody will read it.
+            consumer_gone.set()
+            while not response_queue.empty():
+                response_queue.get_nowait()
+
         # The gap between responses in a stream must be < streaming_read_timeout
         # TODO: this whole buffering might be superfluous and sufficiently done by
         #   by the FastAPI server already. See `test_limit_concurrency_with_sse`.
@@ -776,14 +784,13 @@ class ModelWrapper:
                             return
                         yield chunk
                 finally:
-                    # The consumer may exit early (e.g. client disconnect or read
-                    # timeout). Signal the producer to stop buffering and free
-                    # anything already buffered, since nobody will read it.
-                    consumer_gone.set()
-                    while not response_queue.empty():
-                        response_queue.get_nowait()
+                    _on_consumer_gone()
 
-        return _buffered_response_generator()
+        consumer = _buffered_response_generator()
+        # The `finally` above only runs if iteration started, so also handle the
+        # response being dropped before its first read.
+        weakref.finalize(consumer, _on_consumer_gone)
+        return consumer
 
     async def _execute_user_model_fn(
         self,
