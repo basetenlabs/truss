@@ -216,6 +216,35 @@ def test_failed_oauth_refresh_still_ends_the_keepalive_thread():
                     )
 
 
+def test_wake_lets_a_failed_oauth_refresh_propagate():
+    from truss.remote.baseten.oauth import OAuthError
+
+    remote = MagicMock()
+    remote.fetch_auth_header.side_effect = OAuthError("refresh failed")
+    with patch("truss.cli.utils.common.requests_lib.post") as mock_post:
+        with pytest.raises(OAuthError, match="refresh failed"):
+            common.wait_for_development_model_ready(
+                "http://fake", "model", "version", remote, MagicMock()
+            )
+    mock_post.assert_not_called()
+    remote.api.get_deployment.assert_not_called()
+
+
+def test_wake_is_best_effort_on_a_failed_token_exchange():
+    from truss.remote.baseten.oauth import WorkloadIdentityError
+
+    remote = MagicMock()
+    remote.fetch_auth_header.side_effect = WorkloadIdentityError("exchange failed")
+    remote.api.get_deployment.return_value = {"status": "ACTIVE"}
+    with patch("truss.cli.utils.common.requests_lib.post") as mock_post:
+        with patch("truss.cli.utils.common.time.sleep"):
+            common.wait_for_development_model_ready(
+                "http://fake", "model", "version", remote, MagicMock()
+            )
+    mock_post.assert_not_called()
+    remote.api.get_deployment.assert_called_once_with("model", "version")
+
+
 def test_request_exception_counts_as_failure():
     """Network errors should count toward consecutive failures."""
     stop_event = threading.Event()
