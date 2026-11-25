@@ -1,10 +1,12 @@
 import abc
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import threading
 import time
+import weakref
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -49,6 +51,39 @@ async def _safe_close(session: "aiohttp.ClientSession", timeout_sec: float) -> N
         logging.info("Timeout while closing cycled-out aiohttp session.")
     except Exception as e:
         logging.info(f"Unexpected error while closing cycled-out aiohttp session: {e}")
+
+
+class _ResponseStreamIterator(AsyncIterator[bytes]):
+    """Release terminally failed responses even if their RPC frame is retained."""
+
+    def __init__(self, response: "aiohttp.ClientResponse") -> None:
+        self.read_func = response.content.readany
+        self._response_ref = weakref.ref(response)
+
+    async def __anext__(self) -> bytes:
+        try:
+            data = await self.read_func()
+        except BaseException:
+            response = self._response_ref()
+            if response is not None and not response.closed:
+                # Cancellation alone is recoverable, but a payload failure or
+                # an expired deadline leaves no usable response to retain.
+                timed_out = False
+                try:
+                    response._timer.assert_timeout()
+                except asyncio.TimeoutError:
+                    timed_out = True
+                connection = response.connection
+                if (
+                    timed_out
+                    or response.content.exception() is not None
+                    or (connection is not None and connection.closed)
+                ):
+                    response.release()
+            raise
+        if data == b"":
+            raise StopAsyncIteration
+        return data
 
 
 class BasetenSession:
@@ -98,6 +133,7 @@ class BasetenSession:
         )
         self._cached_sync_client = None
         self._cached_async_client = None
+        self._async_client_users: dict["aiohttp.ClientSession", int] = {}
         self._sync_lock = threading.Lock()
         self._async_lock = asyncio.Lock()
         self._sync_semaphore_wrapper = utils.ThreadSemaphoreWrapper(
@@ -154,6 +190,14 @@ class BasetenSession:
         with self._sync_semaphore_wrapper():
             yield client
 
+    def _close_async_client(self, client: "aiohttp.ClientSession") -> None:
+        # Bound closing itself, not the lifetime of outstanding borrowers.
+        self._close_tasks.append(
+            asyncio.create_task(
+                _safe_close(client, self._service_descriptor.options.timeout_sec * 1.1)
+            )
+        )
+
     @contextlib.asynccontextmanager
     async def _client_async(self) -> AsyncIterator["aiohttp.ClientSession"]:
         try:
@@ -166,22 +210,12 @@ class BasetenSession:
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
-                    if self._cached_async_client is not None:
-                        # Close with same timeout as connections, but add some buffer.
-                        self._close_tasks.append(
-                            asyncio.create_task(
-                                _safe_close(
-                                    self._cached_async_client[0],
-                                    self._service_descriptor.options.timeout_sec * 1.1,
-                                )
-                            )
-                        )
                     limit = self._client_limits.max_connections
                     assert limit is not None
                     connector = aiohttp.TCPConnector(
                         limit=limit, ttl_dns_cache=DEFAULT_DNS_CACHE_TIMEOUT_SECONDS
                     )
-                    self._cached_async_client = (
+                    new_client = (
                         aiohttp.ClientSession(
                             headers=self._headers,
                             connector=connector,
@@ -191,11 +225,27 @@ class BasetenSession:
                         ),
                         int(time.time()),
                     )
+                    old_client = self._cached_async_client
+                    self._cached_async_client = new_client
+                    if old_client and old_client[0] not in self._async_client_users:
+                        self._close_async_client(old_client[0])
         assert self._cached_async_client is not None
         client = self._cached_async_client[0]
+        # Count queued callers too: they already hold this client and may outlive
+        # another caller's rollover while waiting for the concurrency semaphore.
+        self._async_client_users[client] = self._async_client_users.get(client, 0) + 1
+        try:
+            async with self._async_semaphore_wrapper():
+                yield client
+        finally:
+            self._release_async_client(client)
 
-        async with self._async_semaphore_wrapper():
-            yield client
+    def _release_async_client(self, client: "aiohttp.ClientSession") -> None:
+        self._async_client_users[client] -= 1
+        if not self._async_client_users[client]:
+            del self._async_client_users[client]
+            if client is not self._cached_async_client[0]:  # type: ignore[index]
+                self._close_async_client(client)
 
 
 class StubBase(BasetenSession, abc.ABC):
@@ -418,6 +468,15 @@ class StubBase(BasetenSession, abc.ABC):
             async with self._client_async() as client:
                 response = await client.post(self._target_url, **params)
                 await utils.async_response_raise_errors(response, self.name)
+                # The returned reader still needs its connection until aiohttp
+                # releases it, even though this RPC's semaphore slot is free.
+                connection = response.connection
+                if connection is not None:
+                    self._async_client_users[client] += 1
+                    connection.add_callback(
+                        functools.partial(self._release_async_client, client)
+                    )
+                    return _ResponseStreamIterator(response)
                 return response.content.iter_any()
 
         try:

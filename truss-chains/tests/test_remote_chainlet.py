@@ -1,12 +1,16 @@
 import asyncio
+import contextlib
 import logging
 import re
+import sys
 import threading
 import time
 
 import pytest
+from aiohttp import ClientPayloadError, web
 
 import truss_chains as chains
+from truss_chains.remote_chainlet import stub as stub_module
 
 
 @pytest.fixture
@@ -160,3 +164,244 @@ async def test_no_waiting_logging_async(stub_session, caplog):
     logs = [r.message for r in caplog.records]
 
     assert any("No queueing" in m for m in logs), logs
+
+
+@contextlib.asynccontextmanager
+async def _serve_stub(handler, **options):
+    app = web.Application()
+    app.router.add_post("/", handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    stub = chains.StubBase.from_url(
+        f"http://127.0.0.1:{runner.addresses[0][1]}/",
+        "dummy-API-key",
+        chains.RPCOptions(**options),
+    )
+    try:
+        yield stub
+    finally:
+        if stub._cached_async_client:
+            await stub._cached_async_client[0].close()
+        await stub.shut_down()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rollover", [False, True], ids=["no-rollover", "rollover"])
+async def test_predictions_survive_session_rollover(rollover):
+    inflight = 2
+    body_started = asyncio.Event()
+    finish_body = asyncio.Event()
+    requests = 0
+    bodies_started = 0
+
+    async def predict(request):
+        nonlocal requests, bodies_started
+        requests += 1
+        first_wave = requests <= inflight
+        if first_wave:
+            response = web.StreamResponse(headers={"Content-Type": "application/json"})
+            await response.prepare(request)
+            await response.write(b"tr")
+            bodies_started += 1
+            if bodies_started == inflight:
+                body_started.set()
+            await finish_body.wait()
+            await response.write(b"ue")
+            return response
+        return web.json_response(True)
+
+    async with _serve_stub(
+        predict, retries=1, timeout_sec=5, concurrency_limit=2 * inflight
+    ) as stub:
+        first = [asyncio.create_task(stub.predict_async({})) for _ in range(inflight)]
+        try:
+            await asyncio.wait_for(body_started.wait(), timeout=5)
+            cached = stub._cached_async_client
+            old_client = cached[0]
+            if rollover:
+                expired = (old_client, cached[1] - stub._client_cycle_time_sec - 1)
+                stub._cached_async_client = expired
+            second = await asyncio.gather(
+                *(stub.predict_async({}) for _ in range(inflight)),
+                return_exceptions=True,
+            )
+            finish_body.set()
+            results = await asyncio.gather(*first, return_exceptions=True)
+            assert results + second == [True] * (2 * inflight)
+            await stub.shut_down()
+            assert old_client.closed == rollover
+        finally:
+            finish_body.set()
+            await asyncio.gather(*first, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_prediction_releases_retired_session():
+    body_started = asyncio.Event()
+    finish_body = asyncio.Event()
+
+    async def predict(request):
+        if (await request.json()).get("hold"):
+            response = web.StreamResponse(headers={"Content-Type": "application/json"})
+            await response.prepare(request)
+            await response.write(b"tr")
+            body_started.set()
+            await finish_body.wait()
+            return response
+        return web.json_response(True)
+
+    async with _serve_stub(predict, retries=1, timeout_sec=5) as stub:
+        task = asyncio.create_task(stub.predict_async({"hold": True}))
+        try:
+            await asyncio.wait_for(body_started.wait(), timeout=5)
+            old_client = stub._cached_async_client[0]
+            stub._client_cycle_time_sec = -1
+            assert await stub.predict_async({}) is True
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await stub.shut_down()
+            assert old_client.closed
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            finish_body.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_queued", [False, True], ids=["complete", "cancel"])
+async def test_queued_predictions_survive_session_rollover(cancel_queued):
+    body_started = asyncio.Event()
+    finish_body = asyncio.Event()
+
+    async def predict(request):
+        if (await request.json()).get("hold"):
+            response = web.StreamResponse(headers={"Content-Type": "application/json"})
+            await response.prepare(request)
+            await response.write(b"tr")
+            body_started.set()
+            await finish_body.wait()
+            await response.write(b"ue")
+            return response
+        return web.json_response(True)
+
+    async with _serve_stub(
+        predict, retries=1, timeout_sec=5, concurrency_limit=1
+    ) as stub:
+
+        async def wait_for_queue(count):
+            while stub._async_semaphore_wrapper.queued_requests < count:
+                await asyncio.sleep(0)
+
+        first = asyncio.create_task(stub.predict_async({"hold": True}))
+        tasks = [first]
+        try:
+            await asyncio.wait_for(body_started.wait(), timeout=5)
+            queued = asyncio.create_task(stub.predict_async({}))
+            tasks.append(queued)
+            await asyncio.wait_for(wait_for_queue(1), timeout=5)
+            old_client, timestamp = stub._cached_async_client
+            stub._cached_async_client = (old_client, timestamp - 3601)
+            third = asyncio.create_task(stub.predict_async({}))
+            tasks.append(third)
+            await asyncio.wait_for(wait_for_queue(2), timeout=5)
+            if cancel_queued:
+                queued.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await queued
+            await stub.shut_down()
+            assert not old_client.closed
+            finish_body.set()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            expected = [True, True, True]
+            if cancel_queued:
+                assert isinstance(results[1], asyncio.CancelledError)
+                expected[1] = results[1]
+            assert results == expected
+            await stub.shut_down()
+            assert old_client.closed
+        finally:
+            finish_body.set()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_stream_remains_readable_after_session_rollover():
+    finish_body = asyncio.Event()
+
+    async def predict(request):
+        if (await request.json()).get("stream"):
+            response = web.StreamResponse()
+            await response.prepare(request)
+            await response.write(b"first")
+            await finish_body.wait()
+            await response.write(b"last")
+            return response
+        return web.json_response(True)
+
+    async with _serve_stub(predict) as stub:
+        stream = await stub.predict_async_stream({"stream": True})
+        old_client, timestamp = stub._cached_async_client
+        try:
+            stub._cached_async_client = (old_client, timestamp - 3601)
+            await stub.predict_async({})
+            finish_body.set()
+            assert b"".join([chunk async for chunk in stream]) == b"firstlast"
+            await stub.shut_down()
+            assert old_client.closed
+        finally:
+            finish_body.set()
+            await old_client.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_stream_releases_retired_session():
+    finish_body = asyncio.Event()
+    frames = []
+
+    async def predict(request):
+        if (await request.json()).get("stream"):
+            response = web.StreamResponse(headers={"Content-Length": "5"})
+            await response.prepare(request)
+            await response.write(b"abc")
+            await finish_body.wait()
+            request.transport.close()
+            return response
+        return web.json_response(True)
+
+    def retain_rpc_frame(frame, event, value):
+        if (
+            event == "return"
+            and frame.f_code.co_filename == stub_module.__file__
+            and frame.f_code.co_name == "_rpc"
+            and hasattr(value, "__anext__")
+        ):
+            frames.append(frame)
+        return retain_rpc_frame
+
+    async with _serve_stub(predict) as stub:
+        previous_trace = sys.gettrace()
+        try:
+            # Profilers can retain the response after the RPC has returned.
+            sys.settrace(retain_rpc_frame)
+            try:
+                stream = await stub.predict_async_stream({"stream": True})
+            finally:
+                sys.settrace(previous_trace)
+            assert len(frames) == 1
+            assert await stream.__anext__() == b"abc"
+            old_client, timestamp = stub._cached_async_client
+            stub._cached_async_client = (old_client, timestamp - 3601)
+            assert await stub.predict_async({}) is True
+            finish_body.set()
+            with pytest.raises(ClientPayloadError):
+                await stream.__anext__()
+            await stub.shut_down()
+            assert old_client.closed
+        finally:
+            finish_body.set()
+            frames.clear()
