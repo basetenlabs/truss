@@ -534,3 +534,136 @@ fn is_retryable_status(status: u16, config: &RequestProcessingConfig) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::HttpMethod;
+    use crate::{PerformanceClientCore, RequestProcessingPreference};
+    use axum::{body::Body, routing::post, Router};
+    use bytes::Bytes;
+    use futures::{stream, StreamExt};
+    use serde_json::json;
+    use std::{convert::Infallible, sync::Arc, task::Poll};
+    use tokio::{net::TcpListener, sync::oneshot, sync::Notify, task::JoinHandle, time::timeout};
+
+    struct StalledHttp2Body {
+        url: String,
+        stalled: Arc<Notify>,
+        dropped: Arc<Notify>,
+        server: JoinHandle<()>,
+    }
+
+    impl Drop for StalledHttp2Body {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+
+    async fn start_stalled_http2_body() -> StalledHttp2Body {
+        struct BodyGuard(Arc<Notify>);
+
+        impl Drop for BodyGuard {
+            fn drop(&mut self) {
+                self.0.notify_one();
+            }
+        }
+
+        let stalled = Arc::new(Notify::new());
+        let dropped = Arc::new(Notify::new());
+        let app = Router::new().route(
+            "/body",
+            post({
+                let stalled = stalled.clone();
+                let dropped = dropped.clone();
+                move || async move {
+                    let guard = BodyGuard(dropped);
+                    // Send more than the HTTP/2 flow-control window before stalling
+                    // so the client has to be consuming the response body.
+                    let prefix = stream::iter(
+                        (0..256)
+                            .map(|_| Ok::<_, Infallible>(Bytes::from_static(&[b' '; 16 * 1024]))),
+                    );
+                    let tail = stream::poll_fn(move |_| {
+                        let _guard = &guard;
+                        stalled.notify_one();
+                        Poll::Pending
+                    });
+                    Body::from_stream(prefix.chain(tail))
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        StalledHttp2Body {
+            url: format!("http://{addr}"),
+            stalled,
+            dropped,
+            server,
+        }
+    }
+
+    #[tokio::test]
+    async fn token_cancels_batch_while_reading_http2_response_body() {
+        let body = start_stalled_http2_body().await;
+        let client = PerformanceClientCore::new(
+            body.url.clone(),
+            Some("test-key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let token = CancellationToken::new(false);
+        let preference = RequestProcessingPreference::new().with_cancel_token(token.clone());
+        let batch = client.process_batch_post_requests_with(
+            "/body".to_string(),
+            vec![json!({})],
+            &preference,
+            HttpMethod::POST,
+            true,
+        );
+
+        let (result, ()) = timeout(Duration::from_secs(3), async {
+            tokio::join!(batch, async {
+                body.stalled.notified().await;
+                token.cancel();
+                body.dropped.notified().await;
+            })
+        })
+        .await
+        .expect("cancellation should reset the stalled response body");
+        assert!(matches!(result, Err(ClientError::Cancellation(_))));
+    }
+
+    #[tokio::test]
+    async fn token_stops_draining_a_losing_hedge_body() {
+        let body = start_stalled_http2_body().await;
+        let client = Client::builder()
+            .http2_prior_knowledge()
+            .http2_initial_stream_window_size(16 * 1024)
+            .build()
+            .unwrap();
+        let mut losing_tasks = JoinSetGuard::new();
+        let (headers_ready, headers_received) = oneshot::channel();
+        let url = format!("{}/body", body.url);
+        losing_tasks.spawn(async move {
+            let response = client.post(url).send().await.map_err(ClientError::from)?;
+            headers_ready.send(()).unwrap();
+            Ok(response)
+        });
+        let token = CancellationToken::new(false);
+        timeout(Duration::from_secs(3), async {
+            // The losing task has returned headers, so cleanup will drain its body.
+            headers_received.await.unwrap();
+            spawn_hedged_request_cleanup(losing_tasks, token.clone());
+            body.stalled.notified().await;
+            token.cancel();
+            body.dropped.notified().await;
+        })
+        .await
+        .expect("cancellation should reset the losing hedge body");
+    }
+}
