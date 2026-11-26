@@ -10,6 +10,7 @@ use crate::utils::process_joinset_outcome;
 
 use opentelemetry::trace::{Span as _, Status};
 use reqwest::Client;
+use std::collections::VecDeque;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -936,8 +937,32 @@ impl PerformanceClientCore {
             for payload in payloads.by_ref().take(config.max_concurrent_requests) {
                 spawn_request(&mut join_set, payload);
             }
-            while let Some(result) = join_set.join_next().await {
-                on_response(process_joinset_outcome(result)?).await?;
+            let mut completed = VecDeque::new();
+            loop {
+                let response = match completed.pop_front() {
+                    Some(response) => response,
+                    None => {
+                        let Some(result) = join_set.join_next().await else {
+                            break;
+                        };
+                        process_joinset_outcome(result)?
+                    }
+                };
+                let delivery = on_response(response);
+                tokio::pin!(delivery);
+                loop {
+                    tokio::select! {
+                        biased;
+                        result = &mut delivery => {
+                            result?;
+                            break;
+                        }
+                        Some(result) = join_set.join_next() => {
+                            // Observe failures even if the receiver is paused.
+                            completed.push_back(process_joinset_outcome(result)?);
+                        }
+                    }
+                }
                 // Wait for the receiver before starting another request. Slow
                 // consumers can retain at most one response per request slot.
                 if let Some(payload) = payloads.next() {
@@ -967,5 +992,93 @@ impl PerformanceClientCore {
             span.set_status(Status::Ok);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{http::StatusCode, routing::post, Json, Router};
+    use serde_json::{json, Value};
+    use std::future::pending;
+    use tokio::net::TcpListener;
+    use tokio::sync::Notify;
+
+    #[tokio::test]
+    async fn batch_cancels_other_requests_on_failure_while_delivery_is_blocked() {
+        struct RequestGuard(Arc<Notify>);
+
+        impl Drop for RequestGuard {
+            fn drop(&mut self) {
+                self.0.notify_one();
+            }
+        }
+
+        let release_failure = Arc::new(Notify::new());
+        let slow_started = Arc::new(Notify::new());
+        let slow_dropped = Arc::new(Notify::new());
+        let app = Router::new().route(
+            "/batch",
+            post({
+                let release_failure = release_failure.clone();
+                let slow_started = slow_started.clone();
+                let slow_dropped = slow_dropped.clone();
+                move |Json(payload): Json<Value>| async move {
+                    match payload.as_str() {
+                        Some("fast") => (StatusCode::OK, Json(json!({}))),
+                        Some("failure") => {
+                            release_failure.notified().await;
+                            (StatusCode::BAD_REQUEST, Json(json!({})))
+                        }
+                        Some("slow") => {
+                            let _guard = RequestGuard(slow_dropped);
+                            slow_started.notify_one();
+                            pending().await
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let client = PerformanceClientCore::new(
+            format!("http://{addr}"),
+            Some("test-key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let preference = RequestProcessingPreference::new().with_max_concurrent_requests(3);
+        let delivery_blocked = Notify::new();
+
+        // Model a receiver whose buffer is full and never has space for the
+        // fast response. The failure should still drop the slow HTTP/2 stream.
+        let batch = client.process_batch_post_completions(
+            "/batch".to_string(),
+            vec![json!("fast"), json!("failure"), json!("slow")],
+            &preference,
+            HttpMethod::POST,
+            true,
+            |_| async {
+                delivery_blocked.notify_one();
+                pending().await
+            },
+        );
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(3), async {
+            tokio::join!(batch, async {
+                delivery_blocked.notified().await;
+                slow_started.notified().await;
+                release_failure.notify_one();
+                slow_dropped.notified().await;
+            })
+        })
+        .await
+        .expect("a full response buffer must not hide failures");
+        assert!(matches!(result, Err(ClientError::Http { status: 400, .. })));
+        server.abort();
     }
 }

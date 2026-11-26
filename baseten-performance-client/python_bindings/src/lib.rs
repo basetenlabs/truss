@@ -1511,10 +1511,13 @@ impl BatchPostIterator {
         slf
     }
 
-    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let responses = self.responses.clone();
-        let mut on_cancel = AbortPendingBatch(Some(self.producer.clone()));
+    fn __anext__<'py>(slf: PyRef<'py, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let responses = slf.responses.clone();
+        let mut on_cancel = AbortPendingBatch(Some(slf.producer.clone()));
+        let iterator: Py<Self> = slf.into();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            // Keep temporary iterators alive until this awaitable finishes.
+            let _iterator = iterator;
             let response = responses.lock().await.recv().await;
             // Once a result is available, the batch can keep running while
             // Python processes it. Dropping a pending await aborts the batch.

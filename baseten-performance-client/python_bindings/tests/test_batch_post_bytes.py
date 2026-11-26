@@ -146,3 +146,18 @@ async def test_batch_post_as_completed_rejects_invalid_bytes(client):
     responses = client.async_batch_post_as_completed("/echo", [b"not json"])
     with pytest.raises(ValueError, match="index 0 is not valid UTF-8 JSON"):
         await responses.__anext__()
+
+
+@pytest.mark.anyio
+async def test_batch_post_as_completed_keeps_temporary_iterator_alive(client, server):
+    server.release_response.clear()
+    try:
+        next_response = client.async_batch_post_as_completed(
+            "/gated", [{"wait": True}]
+        ).__anext__()
+    finally:
+        server.release_response.set()
+
+    index, body = await asyncio.wait_for(next_response, timeout=2)
+    assert index == 0
+    assert json.loads(body)["raw"] == '{"wait":true}'
