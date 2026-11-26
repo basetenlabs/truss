@@ -19,6 +19,7 @@ async-trait = "0.1"
 bytes = "1"
 http = "1"
 tokio = { workspace = true }
+tokio-util = "0.7"
 reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
 # Keep the G3 distrust floor in the manifest for downstream Rust consumers too.

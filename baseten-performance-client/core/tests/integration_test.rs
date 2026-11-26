@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 #[tokio::test]
 async fn test_embeddings_with_max_chars_per_request() {
@@ -503,6 +503,77 @@ async fn test_batch_post_decodes_msgpack_response() {
         responses[0].1.get("content-type").map(String::as_str),
         Some("application/msgpack")
     );
+}
+
+#[tokio::test]
+async fn test_token_cancels_in_flight_http2_batch() {
+    struct RequestGuard(Arc<Notify>);
+
+    impl Drop for RequestGuard {
+        fn drop(&mut self) {
+            self.0.notify_one();
+        }
+    }
+
+    let started = Arc::new(Notify::new());
+    let dropped = Arc::new(Notify::new());
+    let app = Router::new()
+        .route("/fast", post(|| async { Json(json!({"ok": true})) }))
+        .route(
+            "/slow",
+            post({
+                let started = started.clone();
+                let dropped = dropped.clone();
+                move || async move {
+                    let _guard = RequestGuard(dropped);
+                    started.notify_one();
+                    std::future::pending::<Json<serde_json::Value>>().await
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+    let client = PerformanceClientCore::new(
+        format!("http://{addr}"),
+        Some("test-key".to_string()),
+        2,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    let token = CancellationToken::new(false);
+    let preference = single_request_preference().with_cancel_token(token.clone());
+
+    let call = |path: &str| {
+        client.process_batch_post_requests(
+            path.to_string(),
+            vec![json!({})],
+            &preference,
+            HttpMethod::POST,
+        )
+    };
+    tokio::time::timeout(Duration::from_secs(2), async {
+        let (response, ()) = tokio::join!(call("/slow"), async {
+            started.notified().await;
+            call("/fast").await.expect("fast batch should succeed");
+            assert!(
+                !token.is_cancelled(),
+                "success must leave a shared token active"
+            );
+            token.cancel();
+        });
+        assert!(matches!(response, Err(ClientError::Cancellation(_))));
+        dropped.notified().await;
+        assert!(matches!(
+            call("/fast").await,
+            Err(ClientError::Cancellation(_))
+        ));
+    })
+    .await
+    .expect("cancellation should promptly drop the HTTP/2 request");
+    server.abort();
 }
 
 #[tokio::test]
