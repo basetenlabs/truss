@@ -10,8 +10,9 @@ def get_most_recent_job(
     remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> tuple[str, str]:
     if not project_id or not job_id:
+        # Two is enough to pick the newest job and warn that there are others.
         jobs = remote_provider.api.search_training_jobs(
-            project_id=project_id, job_id=job_id
+            project_id=project_id, job_id=job_id, limit=2
         )
         if not jobs:
             raise click.UsageError("No jobs found.")

@@ -68,7 +68,7 @@ def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
 
 def _get_latest_job(remote_provider: BasetenRemote) -> dict:
     jobs = remote_provider.api.search_training_jobs(
-        order_by=[{"field": "created_at", "order": "desc"}]
+        order_by=[{"field": "created_at", "order": "desc"}], limit=1
     )
     if not jobs:
         raise click.ClickException("No training jobs found. Please start a job first.")

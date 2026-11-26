@@ -19,6 +19,7 @@ from truss.cli.train.workstation import (
 )
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.remote_factory import ENV_REMOTE_NAME
 from truss_train.definitions import (
     AvailabilityModel,
     InteractiveSessionProvider,
@@ -107,7 +108,7 @@ def test_workstation_template_dir_exists():
         assert (WORKSTATION_TEMPLATE_DIR / name).exists(), f"Missing template {name}"
 
 
-@pytest.mark.parametrize("remote", [None, "baseten"])
+@pytest.mark.parametrize("remote", [None, "baseten", ENV_REMOTE_NAME])
 def test_workstation_ssh_hostnames_omits_default_remote(remote):
     assert workstation_ssh_hostnames("job123", 1, remote=remote) == [
         "training-job-job123-0.ssh.baseten.co"

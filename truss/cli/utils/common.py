@@ -27,7 +27,9 @@ from truss.cli.utils import self_upgrade
 if TYPE_CHECKING:
     from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
+from truss.remote.baseten.auth import refused_by_baseten
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.oauth import WorkloadIdentityError
 from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
@@ -311,13 +313,19 @@ def wait_for_development_model_ready(
 ) -> None:
     # Wake the model in case it's scaled to zero
     wake_url = f"{model_hostname}/development/wake"
-    try:
-        requests_lib.post(
-            wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
-        )
-    except requests_lib.RequestException:
-        # best effort
-        pass
+    # Sent once more with a fresh token if Baseten refused the first one; the
+    # wake is safe to repeat, and a missed wake leaves the model scaled to zero.
+    for _ in range(2):
+        try:
+            resp = requests_lib.post(
+                wake_url, headers=remote_provider.fetch_auth_header(), timeout=10
+            )
+        except (requests_lib.RequestException, WorkloadIdentityError):
+            # best effort
+            break
+        remote_provider.note_auth_response(resp)
+        if not refused_by_baseten(resp):
+            break
 
     # Wait for model to be ready before starting keepalive
     with console.status(
@@ -374,6 +382,7 @@ def start_keepalive(
     is_draft: bool = True,
     deployment_id: Optional[str] = None,
     ping_path: str = KEEPALIVE_DEFAULT_PING_PATH,
+    on_response: Optional[Callable[[requests_lib.Response], None]] = None,
 ) -> threading.Event:
     """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
     keepalive_url = _keepalive_url(model_hostname, is_draft, deployment_id, ping_path)
@@ -381,7 +390,7 @@ def start_keepalive(
     stop_event = threading.Event()
     keepalive_thread = threading.Thread(
         target=keepalive_loop,
-        args=(keepalive_url, header_provider, stop_event),
+        args=(keepalive_url, header_provider, stop_event, on_response),
         daemon=True,
     )
     keepalive_thread.start()
@@ -392,6 +401,7 @@ def keepalive_loop(
     keepalive_url: str,
     header_provider: Callable[[], dict[str, str]],
     stop_event: threading.Event,
+    on_response: Optional[Callable[[requests_lib.Response], None]] = None,
 ) -> None:
     consecutive_failures = 0
     start_time = time.time()
@@ -421,6 +431,8 @@ def keepalive_loop(
             resp = requests_lib.get(
                 keepalive_url, headers=header_provider(), timeout=10
             )
+            if on_response is not None:
+                on_response(resp)
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:
@@ -429,7 +441,8 @@ def keepalive_loop(
             else:
                 # Count 5xx errors as failures
                 consecutive_failures += 1
-        except requests_lib.RequestException:
+        except (requests_lib.RequestException, WorkloadIdentityError):
+            # WorkloadIdentityError: exchanging for a new access token failed.
             consecutive_failures += 1
 
         if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:

@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import requests
 
@@ -13,15 +13,23 @@ _DEFAULT_TIMEOUT_SEC = (10, 60)
 class RestAPIClient:
     base_url: str
 
-    def __init__(self, base_url: str, header_provider: Callable[[], dict[str, str]]):
+    def __init__(
+        self,
+        base_url: str,
+        header_provider: Callable[[], dict[str, str]],
+        on_response: Optional[Callable[[requests.Response], None]] = None,
+    ):
         self.base_url = base_url
         self._header_provider = header_provider
+        self._on_response = on_response
         self.suppress_error_print = False
 
     def _headers(self) -> dict[str, str]:
         return with_user_agent(self._header_provider())
 
     def _handle_error(self, resp: requests.Response):
+        if self._on_response is not None:
+            self._on_response(resp)
         if 400 <= resp.status_code < 500:
             try:
                 data = resp.json()

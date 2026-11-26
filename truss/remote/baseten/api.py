@@ -150,7 +150,12 @@ class BasetenApi:
         self._rest_api_client = RestAPIClient(
             base_url=self._rest_api_url,
             header_provider=self._auth_service.fetch_auth_header,
+            on_response=self._auth_service.note_response,
         )
+
+    def note_auth_response(self, response: requests.Response) -> None:
+        """See :meth:`AuthService.note_response`."""
+        self._auth_service.note_response(response)
 
     @property
     def app_url(self) -> str:
@@ -177,6 +182,7 @@ class BasetenApi:
         resp = requests.post(
             self._graphql_api_url, json=payload, headers=headers, timeout=120
         )
+        self._auth_service.note_response(resp)
 
         if not resp.ok:
             logger.error(f"GraphQL endpoint failed with error: {str(resp.content)}")
@@ -893,16 +899,19 @@ class BasetenApi:
         project_id: Optional[str] = None,
         job_id: Optional[str] = None,
         order_by: List[dict[str, str]] = [{"field": "created_at", "order": "desc"}],
+        limit: Optional[int] = None,
     ):
-        resp_json = self._rest_api_client.post(
-            "v1/training_jobs/search",
-            body={
-                "statuses": statuses,
-                "project_id": project_id,
-                "job_id": job_id,
-                "order_by": order_by,
-            },
-        )
+        body: dict[str, Any] = {
+            "statuses": statuses,
+            "project_id": project_id,
+            "job_id": job_id,
+            "order_by": order_by,
+        }
+        # Without a limit the server returns its largest page; ask for less when only the
+        # newest jobs are needed.
+        if limit is not None:
+            body["limit"] = limit
+        resp_json = self._rest_api_client.post("v1/training_jobs/search", body=body)
         return resp_json["training_jobs"]
 
     def get_training_job(self, project_id: str, job_id: str):

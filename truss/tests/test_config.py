@@ -30,6 +30,7 @@ from truss.base.truss_config import (
     EgressRestrictions,
     FabricRequirement,
     HTTPOptions,
+    MetricsEndpoint,
     ModelCache,
     ModelRepo,
     ModelRepoCacheInternal,
@@ -2708,6 +2709,41 @@ class TestCheckpointListNoMixing:
         ckpt_list = CheckpointList()
         assert ckpt_list.artifact_references == []
         assert ckpt_list.loops_checkpoint_ids == []
+
+
+class TestMetricsEndpoint:
+    """The metrics_endpoint block."""
+
+    def test_default_is_none(self):
+        assert TrussConfig().metrics_endpoint is None
+
+    def test_from_yaml_round_trip(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "metrics_endpoint:\n  port: 8002\n  path: /custom/metrics\n  disable_scraping: true\n"
+        )
+
+        config = TrussConfig.from_yaml(config_path)
+        config.validate_forbid_extra()
+
+        assert config.metrics_endpoint == MetricsEndpoint(
+            port=8002, path="/custom/metrics", disable_scraping=True
+        )
+        assert config.to_dict(verbose=False)["metrics_endpoint"] == {
+            "port": 8002,
+            "path": "/custom/metrics",
+            "disable_scraping": True,
+        }
+
+    @pytest.mark.parametrize(
+        "block", ['port: "8002"', 'disable_scraping: "true"', "path: 8002"]
+    )
+    def test_rejects_quoted_or_mistyped_values(self, tmp_path, block):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"metrics_endpoint:\n  {block}\n")
+
+        with pytest.raises(pydantic.ValidationError):
+            TrussConfig.from_yaml(config_path)
 
 
 class TestEgressRestrictions:

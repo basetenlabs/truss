@@ -90,7 +90,7 @@ class TestRecreateTrainingJob:
 
             # Verify the API calls
             mock_remote.api.search_training_jobs.assert_called_once_with(
-                order_by=[{"field": "created_at", "order": "desc"}]
+                order_by=[{"field": "created_at", "order": "desc"}], limit=1
             )
             mock_remote.api.recreate_training_job.assert_called_once_with(
                 "project_456", "test_job_123"

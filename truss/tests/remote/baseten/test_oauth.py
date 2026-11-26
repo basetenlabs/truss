@@ -230,3 +230,100 @@ def test_run_device_flow_browser_open_failure_still_prints(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "https://login.baseten.co/device?user_code=USER" in out
     assert "USER" in out
+
+
+TOKEN_EXCHANGE_URL = API_URL + oauth.TOKEN_EXCHANGE_PATH
+
+
+def test_exchange_identity_token_request_shape():
+    with requests_mock.Mocker() as m:
+        m.post(
+            TOKEN_EXCHANGE_URL,
+            json={"access_token": "at", "token_type": "Bearer", "expires_in": 3600},
+        )
+        token = oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
+    assert m.last_request.json() == {
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "subject_token": "idp-jwt",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "audience": "rule-1",
+    }
+    assert m.last_request.timeout == oauth.EXCHANGE_TIMEOUT_SECONDS
+    assert token.access_token == "at"
+    assert token.expires_at > int(time.time()) + 3500
+    assert token.lifetime_seconds == 3600
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        ({"token_type": "Bearer", "expires_in": 3600}, "no access_token"),
+        (
+            {"access_token": "at", "token_type": "mac", "expires_in": 3600},
+            "unsupported token_type",
+        ),
+        (
+            {"access_token": "at", "token_type": "Bearer", "expires_in": 0},
+            "invalid expires_in",
+        ),
+    ],
+)
+def test_exchange_identity_token_rejects_bad_response(payload, message):
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, json=payload)
+        with pytest.raises(oauth.OAuthError, match=message):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
+
+
+def test_exchange_identity_token_invalid_grant():
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, status_code=400, json={"error": "invalid_grant"})
+        with pytest.raises(
+            oauth.OAuthError, match="refused.*rule-1.*/token.*400.*invalid_grant"
+        ):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
+
+
+def test_exchange_identity_token_does_not_follow_redirects():
+    with requests_mock.Mocker() as m:
+        m.post(
+            TOKEN_EXCHANGE_URL,
+            status_code=307,
+            headers={"Location": "https://elsewhere.example/token"},
+        )
+        elsewhere = m.post("https://elsewhere.example/token", json={})
+        with pytest.raises(oauth.OAuthError, match="307"):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
+    assert not elsewhere.called
+
+
+def test_exchange_identity_token_other_error():
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, status_code=503, text="unavailable")
+        with pytest.raises(oauth.OAuthError, match="503"):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
+
+
+def test_oauth_credential_keeps_the_full_leeway(monkeypatch):
+    credential = oauth.OAuthCredential.from_token_response(
+        {"access_token": "t", "refresh_token": "r", "expires_in": 90}
+    )
+    assert credential.lifetime_seconds is None
+    now = time.time()
+    monkeypatch.setattr(oauth.time, "time", lambda: now + 31)
+    assert credential.is_expired()
+
+
+def test_is_expired_accepts_a_leeway(monkeypatch):
+    credential = oauth.OAuthCredential(
+        access_token="t", refresh_token="r", expires_at=int(time.time()) + 90
+    )
+    assert not credential.is_expired(leeway=0)
+    assert credential.is_expired(leeway=120)
+
+
+def test_exchange_errors_are_workload_identity_errors():
+    with requests_mock.Mocker() as m:
+        m.post(TOKEN_EXCHANGE_URL, status_code=503, text="unavailable")
+        with pytest.raises(oauth.WorkloadIdentityError):
+            oauth.exchange_identity_token(API_URL, "idp-jwt", "rule-1", "/token")
