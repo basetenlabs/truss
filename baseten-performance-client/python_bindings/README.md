@@ -209,6 +209,23 @@ preference = RequestProcessingPreference(
 # To run:
 # asyncio.run(async_batch_post_example())
 ```
+#### Process batch responses as they finish
+
+`async_batch_post_as_completed` yields each complete response as
+`(input_index, raw_bytes)`. Use the index to find the original request.
+It uses one batch's preferences and request budgets. If a request fails,
+iteration raises the error and cancels the outstanding requests.
+
+```python
+responses = client.async_batch_post_as_completed("/v1/embeddings", payloads)
+try:
+    async for index, raw_bytes in responses:
+        result = orjson.loads(raw_bytes)
+        print(index, result)
+finally:
+    await responses.aclose()
+```
+
 ### Reranking
 Reranking compatible with BEI or text-embeddings-inference.
 

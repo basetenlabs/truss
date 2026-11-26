@@ -10,12 +10,17 @@ use crate::utils::process_joinset_outcome;
 
 use opentelemetry::trace::{Span as _, Status};
 use reqwest::Client;
+use std::collections::VecDeque;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tracing;
+
+/// One completed batch request, with its original payload index.
+pub type IndexedBatchResponse = (usize, rmpv::Value, HeaderMap, Duration);
 
 /// HTTP client wrapper that supports both HTTP/1.1 and HTTP/2
 ///
@@ -812,14 +817,78 @@ impl PerformanceClientCore {
     where
         T: Into<crate::http_client::BatchPayload> + Send + 'static,
     {
-        let start_time = std::time::Instant::now();
-        let total_payloads = payloads_json.len();
+        let start_time = Instant::now();
+        let mut indexed_results = Vec::with_capacity(payloads_json.len());
+        self.process_batch_post_completions(
+            url_path,
+            payloads_json,
+            preference,
+            method,
+            raw_response,
+            |response| {
+                indexed_results.push(response);
+                std::future::ready(Ok(()))
+            },
+        )
+        .await?;
 
-        // Create and validate config from preference
+        indexed_results.sort_by_key(|&(index, _, _, _)| index);
+        let responses = indexed_results
+            .into_iter()
+            .map(|(_, value, headers, duration)| (value, headers, duration))
+            .collect();
+        Ok((responses, start_time.elapsed()))
+    }
+
+    /// Send complete raw JSON responses to a bounded channel in completion order.
+    ///
+    /// The batch fails on the first request error. Dropping this future cancels
+    /// its remaining requests. The caller owns the channel and its lifetime.
+    pub async fn process_batch_post_as_completed<T>(
+        &self,
+        url_path: String,
+        payloads_json: Vec<T>,
+        preference: &RequestProcessingPreference,
+        method: crate::http::HttpMethod,
+        sender: &mpsc::Sender<Result<IndexedBatchResponse, ClientError>>,
+    ) -> Result<(), ClientError>
+    where
+        T: Into<crate::http_client::BatchPayload> + Send + 'static,
+    {
+        self.process_batch_post_completions(
+            url_path,
+            payloads_json,
+            preference,
+            method,
+            true,
+            |response| async move {
+                sender.send(Ok(response)).await.map_err(|_| {
+                    ClientError::Cancellation("Batch response iterator closed".to_string())
+                })
+            },
+        )
+        .await
+    }
+
+    async fn process_batch_post_completions<T, F, Fut>(
+        &self,
+        url_path: String,
+        payloads_json: Vec<T>,
+        preference: &RequestProcessingPreference,
+        method: crate::http::HttpMethod,
+        raw_response: bool,
+        mut on_response: F,
+    ) -> Result<(), ClientError>
+    where
+        T: Into<crate::http_client::BatchPayload> + Send + 'static,
+        F: FnMut(IndexedBatchResponse) -> Fut,
+        Fut: std::future::Future<Output = Result<(), ClientError>>,
+    {
+        let start_time = Instant::now();
         let config = preference
             .pair_with_request_validate_and_convert(
                 self.base_url.to_string(),
-                total_payloads,
+                payloads_json.len(),
                 self.api_key.clone(),
             )?
             .with_endpoint_router(Arc::clone(&self.endpoint_router));
@@ -828,117 +897,188 @@ impl PerformanceClientCore {
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
-        let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
             Result<(usize, rmpv::Value, HeaderMap, Duration), ClientError>,
         > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());
-        let mut indexed_results: Vec<(usize, rmpv::Value, HeaderMap, Duration)> =
-            Vec::with_capacity(total_payloads);
+        let request_suffix = normalize_request_suffix(&url_path);
+        let mut payloads = payloads_json.into_iter().enumerate();
 
-        for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
-            // Clone config for this iteration
-            let config_clone = config.clone();
-            let client_wrapper = self.client_wrapper.clone();
-            // Per-call key: the preference override if set, otherwise the client key.
-            let api_key = config_clone.api_key_primary.clone();
-            let request_suffix = normalize_request_suffix(&url_path);
-            let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
-            let individual_request_timeout = request_timeout_duration;
+        let spawn_request =
+            |join_set: &mut JoinSetGuard<Result<IndexedBatchResponse, ClientError>>,
+             (index, payload): (usize, T)| {
+                let config = config.clone();
+                let client_wrapper = self.client_wrapper.clone();
+                let request_suffix = request_suffix.clone();
+                let api_key = config.api_key_primary.clone();
+                let request_customer_id = config.create_request_customer_id(index);
 
-            // Generate individual request ID for this batch
-            let request_customer_id = config.create_request_customer_id(index);
-
-            join_set.spawn(async move {
-                let _permit = semaphore
-                    .acquire_owned()
-                    .await
-                    .map_err(|e| ClientError::Network(format!("Semaphore closed: {}", e)))?;
-                let client = client_wrapper.get_client();
-                let request_time_start = std::time::Instant::now();
-
-                let result_tuple = send_http_request_with_headers(
-                    &client,
-                    request_suffix,
-                    payload_item_json.into(),
-                    api_key,
-                    individual_request_timeout,
-                    &config_clone,
-                    request_customer_id,
-                    method,
-                    raw_response,
-                )
-                .await;
-
-                let request_time_elapsed = request_time_start.elapsed();
-
-                result_tuple.map(|(response_json_value, headers_map)| {
-                    (
-                        index,
-                        response_json_value,
-                        headers_map,
-                        request_time_elapsed,
+                join_set.spawn(async move {
+                    let client = client_wrapper.get_client();
+                    let request_time_start = Instant::now();
+                    let (value, headers) = send_http_request_with_headers(
+                        &client,
+                        request_suffix,
+                        payload.into(),
+                        api_key,
+                        request_timeout_duration,
+                        &config,
+                        request_customer_id,
+                        method,
+                        raw_response,
                     )
-                })
-            });
-        }
-
-        // Process results as they complete, racing against total timeout if specified
-        loop {
-            let task_result = if let Some(timeout_duration) = total_timeout {
-                let remaining = timeout_duration.saturating_sub(start_time.elapsed());
-                if remaining.is_zero() {
-                    return Err(ClientError::LocalTimeout(
-                        format!(
-                            "Total operation timed out after {:.2}s",
-                            timeout_duration.as_secs_f64()
-                        ),
-                        None,
-                    ));
-                }
-                match tokio::time::timeout(remaining, join_set.join_next()).await {
-                    Ok(Some(result)) => result,
-                    Ok(None) => break,
-                    Err(_) => {
-                        return Err(ClientError::LocalTimeout(
-                            format!(
-                                "Total operation timed out after {:.2}s",
-                                timeout_duration.as_secs_f64()
-                            ),
-                            Some(config.customer_request_id.to_string()),
-                        ));
-                    }
-                }
-            } else {
-                match join_set.join_next().await {
-                    Some(result) => result,
-                    None => break,
-                }
+                    .await?;
+                    Ok((index, value, headers, request_time_start.elapsed()))
+                });
             };
 
-            match process_joinset_outcome(task_result) {
-                Ok(indexed_data) => {
-                    indexed_results.push(indexed_data);
+        let process = async {
+            for payload in payloads.by_ref().take(config.max_concurrent_requests) {
+                spawn_request(&mut join_set, payload);
+            }
+            let mut completed = VecDeque::new();
+            loop {
+                let response = match completed.pop_front() {
+                    Some(response) => response,
+                    None => {
+                        let Some(result) = join_set.join_next().await else {
+                            break;
+                        };
+                        process_joinset_outcome(result)?
+                    }
+                };
+                let delivery = on_response(response);
+                tokio::pin!(delivery);
+                loop {
+                    tokio::select! {
+                        biased;
+                        result = &mut delivery => {
+                            result?;
+                            break;
+                        }
+                        Some(result) = join_set.join_next() => {
+                            // Observe failures even if the receiver is paused.
+                            completed.push_back(process_joinset_outcome(result)?);
+                        }
+                    }
                 }
-                Err(e) => {
-                    // JoinSetGuard::drop will abort remaining tasks automatically
-                    return Err(e);
+                // Wait for the receiver before starting another request. Slow
+                // consumers can retain at most one response per request slot.
+                if let Some(payload) = payloads.next() {
+                    spawn_request(&mut join_set, payload);
                 }
             }
+            Ok::<(), ClientError>(())
+        };
+
+        if let Some(timeout) = total_timeout {
+            tokio::time::timeout(timeout.saturating_sub(start_time.elapsed()), process)
+                .await
+                .map_err(|_| {
+                    ClientError::LocalTimeout(
+                        format!(
+                            "Total operation timed out after {:.2}s",
+                            timeout.as_secs_f64()
+                        ),
+                        Some(config.customer_request_id.to_string()),
+                    )
+                })??;
+        } else {
+            process.await?;
         }
 
-        indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
-
-        let final_results: Vec<(rmpv::Value, HeaderMap, Duration)> = indexed_results
-            .into_iter()
-            .map(|(_, val, headers, dur)| (val, headers, dur))
-            .collect();
-
-        let total_time = start_time.elapsed();
         if let Some(span) = &mut span {
             span.set_status(Status::Ok);
         }
-        Ok((final_results, total_time))
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{http::StatusCode, routing::post, Json, Router};
+    use serde_json::{json, Value};
+    use std::future::pending;
+    use tokio::net::TcpListener;
+    use tokio::sync::Notify;
+
+    #[tokio::test]
+    async fn batch_cancels_other_requests_on_failure_while_delivery_is_blocked() {
+        struct RequestGuard(Arc<Notify>);
+
+        impl Drop for RequestGuard {
+            fn drop(&mut self) {
+                self.0.notify_one();
+            }
+        }
+
+        let release_failure = Arc::new(Notify::new());
+        let slow_started = Arc::new(Notify::new());
+        let slow_dropped = Arc::new(Notify::new());
+        let app = Router::new().route(
+            "/batch",
+            post({
+                let release_failure = release_failure.clone();
+                let slow_started = slow_started.clone();
+                let slow_dropped = slow_dropped.clone();
+                move |Json(payload): Json<Value>| async move {
+                    match payload.as_str() {
+                        Some("fast") => (StatusCode::OK, Json(json!({}))),
+                        Some("failure") => {
+                            release_failure.notified().await;
+                            (StatusCode::BAD_REQUEST, Json(json!({})))
+                        }
+                        Some("slow") => {
+                            let _guard = RequestGuard(slow_dropped);
+                            slow_started.notify_one();
+                            pending().await
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let client = PerformanceClientCore::new(
+            format!("http://{addr}"),
+            Some("test-key".to_string()),
+            2,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let preference = RequestProcessingPreference::new().with_max_concurrent_requests(3);
+        let delivery_blocked = Notify::new();
+
+        // Model a receiver whose buffer is full and never has space for the
+        // fast response. The failure should still drop the slow HTTP/2 stream.
+        let batch = client.process_batch_post_completions(
+            "/batch".to_string(),
+            vec![json!("fast"), json!("failure"), json!("slow")],
+            &preference,
+            HttpMethod::POST,
+            true,
+            |_| async {
+                delivery_blocked.notify_one();
+                pending().await
+            },
+        );
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(3), async {
+            tokio::join!(batch, async {
+                delivery_blocked.notified().await;
+                slow_started.notified().await;
+                release_failure.notify_one();
+                slow_dropped.notified().await;
+            })
+        })
+        .await
+        .expect("a full response buffer must not hide failures");
+        assert!(matches!(result, Err(ClientError::Http { status: 400, .. })));
+        server.abort();
     }
 }
