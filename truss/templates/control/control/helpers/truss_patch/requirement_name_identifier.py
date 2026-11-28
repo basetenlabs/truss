@@ -4,6 +4,7 @@ from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 from packaging import requirements  # type: ignore
+from packaging.utils import canonicalize_name
 
 URL_PATTERN = re.compile(r"^(https?|git|svn|hg|bzr)(\+|:\/\/)")
 
@@ -40,7 +41,10 @@ def identify_requirement_name(req: str) -> str:
             return req
 
         parsed_req = requirements.Requirement(req)
-        return parsed_req.name  # type: ignore
+        # Normalize per PEP 503 so names that pip treats as the same package map
+        # to one key. Without this, `Pillow` and `pillow`, or `scikit-learn` and
+        # `scikit_learn`, look like different requirements to the patcher.
+        return str(canonicalize_name(parsed_req.name))
     except (requirements.InvalidRequirement, ValueError):
         # default to the whole line if we can't parse it.
         return req.strip()
