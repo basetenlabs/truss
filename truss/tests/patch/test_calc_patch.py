@@ -998,6 +998,19 @@ def _apply_config_change_and_calc_patches(
             [],
             [],
         ),
+        (
+            "treats a case/separator rename as one update, not remove + add",
+            ["scikit-learn==1.0.0"],
+            ["scikit_learn==1.1.0"],
+            [
+                Patch(
+                    type=PatchType.PYTHON_REQUIREMENT,
+                    body=PythonRequirementPatch(
+                        action=Action.UPDATE, requirement="scikit_learn==1.1.0"
+                    ),
+                )
+            ],
+        ),
     ],
 )
 def test_calc_python_requirements_patches(

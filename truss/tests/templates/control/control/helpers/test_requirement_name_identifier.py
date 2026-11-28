@@ -30,6 +30,11 @@ from truss.templates.control.control.helpers.truss_patch.requirement_name_identi
         ("pytorch==1.0", "pytorch"),
         ("pytorch>=1.0", "pytorch"),
         ("pytorch<=1.0", "pytorch"),
+        # PEP 503 normalization: case and `-` / `_` / `.` are equivalent.
+        ("Pillow", "pillow"),
+        ("scikit_learn", "scikit-learn"),
+        ("scikit-learn==1.4.0", "scikit-learn"),
+        ("ruamel.yaml", "ruamel-yaml"),
     ],
 )
 def test_identify_requirement_name(req, expected_name):
@@ -39,6 +44,13 @@ def test_identify_requirement_name(req, expected_name):
 def test_reqs_by_name():
     reqs = ["pytorch", " ", "jinja==1.0"]
     assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0"}
+
+
+def test_reqs_by_name_collapses_equivalent_names():
+    # `Pillow` and `pillow` are the same package to pip, so they must map to one
+    # requirement, not two.
+    reqs = ["Pillow==10.0.0", "pillow==10.1.0"]
+    assert list(reqs_by_name(reqs).keys()) == ["pillow"]
 
 
 @pytest.mark.parametrize(
